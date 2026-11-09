@@ -1,0 +1,35 @@
+{
+  "name": "@lan-detective/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
+    "start": "node --env-file-if-exists=../../.env src/main.ts",
+    "dev:db": "node --env-file-if-exists=../../.env scripts/dev-db.ts",
+    "migrate": "node --env-file-if-exists=../../.env src/database/migrate-cli.ts",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.0",
+    "helmet": "^8.1.0",
+    "ipaddr.js": "^2.2.0",
+    "oui-data": "^1.1.0",
+    "pg": "^8.16.0",
+    "pino": "^9.7.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@lan-detective/shared-types": "workspace:*",
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "@types/supertest": "^6.0.0",
+    "embedded-postgres": "18.6.0-beta.19",
+    "supertest": "^7.1.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

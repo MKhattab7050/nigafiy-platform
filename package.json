@@ -1,0 +1,20 @@
+{
+  "name": "lan-detective",
+  "private": true,
+  "version": "0.1.0",
+  "description": "LAN Detective — Network Intelligence & IT Infrastructure Operations Platform",
+  "packageManager": "pnpm@10.34.8",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev:db": "pnpm --filter @lan-detective/api dev:db",
+    "dev:api": "pnpm --filter @lan-detective/api dev",
+    "dev:web": "pnpm --filter @lan-detective/web dev",
+    "migrate": "pnpm --filter @lan-detective/api migrate",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm --filter @lan-detective/api test",
+    "test:collector": "cd collectors/lan-collector && go test ./...",
+    "build:collector": "cd collectors/lan-collector && go build -o bin/ ./cmd/lan-collector"
+  }
+}

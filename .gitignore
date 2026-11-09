@@ -1,0 +1,12 @@
+node_modules/
+.next/
+dist/
+bin/
+.data/
+.env
+*.log
+coverage/
+collectors/lan-collector/state/
+collectors/lan-collector/spool/
+collectors/lan-collector/collector.yaml
+.tools/
