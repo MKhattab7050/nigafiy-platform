@@ -1,12 +1,12 @@
 'use client';
 
-import { ArrowLeft } from 'lucide-react';
+import { Activity, ArrowLeft, Ban, BellOff, ExternalLink, Power } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
-import { DEVICE_TYPES, type DeviceDetail } from '@lan-detective/shared-types';
+import { type Collector, DEVICE_TRUSTS, DEVICE_TYPES, type DeviceDetail, type DeviceTrust } from '@lan-detective/shared-types';
 import { ConfidenceBadge } from '@/components/diagnosis';
 import { EventList } from '@/components/event-list';
-import { Async, Button, Card, EmptyState, ErrorNote, Fact, Field, Input, PageHeader, Select, StatusBadge, Tag, Textarea, statusTone } from '@/components/ui';
+import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Fact, Field, Input, PageHeader, Segmented, Select, StatusBadge, Tag, Textarea, statusTone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, duration, relativeTime } from '@/lib/format';
@@ -198,6 +198,127 @@ function ManagePanel({ device, onSaved }: { device: DeviceDetail; onSaved: () =>
   );
 }
 
+/** Things the user can do about a device. Removing a device happens on the router; we explain how. */
+function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; onChanged: () => void }) {
+  const { t } = useI18n();
+  const { can } = useApp();
+  const collectors = useQuery<{ items: Collector[] }>('/collectors', ['collectors']);
+  const gateway = collectors.data?.items.find((c) => c.site_id === d.site_id && c.gateway_ip)?.gateway_ip ?? null;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [wakeVia, setWakeVia] = useState<string | null>(null);
+
+  async function run(key: string, fn: () => Promise<unknown>) {
+    setBusy(key);
+    setError(null);
+    try {
+      await fn();
+      onChanged();
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const tech = can('technician');
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="mb-1.5 text-xs font-medium text-muted">{t('ctl.trustLabel')}</p>
+        <Segmented<DeviceTrust>
+          label={t('ctl.trustLabel')}
+          value={d.trust}
+          options={DEVICE_TRUSTS.map((v) => ({ value: v, label: t(`trust.${v}`) }))}
+          onChange={(trust) => tech && trust !== d.trust && run('trust', () => api(`/devices/${d.id}`, { method: 'PATCH', body: { trust } }))}
+        />
+        <p className={`mt-1.5 text-xs ${d.trust === 'unwanted' ? 'text-crit' : 'text-faint'}`}>{t(`ctl.trustHint.${d.trust}`)}</p>
+      </div>
+
+      <label className="flex cursor-pointer items-start gap-2.5">
+        <input
+          type="checkbox"
+          disabled={!tech || busy === 'mute'}
+          checked={d.alerts_muted}
+          onChange={(e) => run('mute', () => api(`/devices/${d.id}`, { method: 'PATCH', body: { alerts_muted: e.target.checked } }))}
+          className="mt-0.5 size-4 accent-[var(--color-accent)]"
+        />
+        <span>
+          <span className="block text-[13px] text-fg">{t('ctl.mute')}</span>
+          <span className="block text-xs text-muted">{t('ctl.muteHint')}</span>
+        </span>
+      </label>
+
+      <div className="space-y-1.5 border-t border-line pt-4">
+        {d.monitor_check_id ? (
+          <p className="flex items-center gap-2 text-[13px] text-ok">
+            <Activity className="size-4" aria-hidden />
+            {t('ctl.monitored')}
+            <Link href="/monitoring" className="ms-auto text-xs text-accent-hover hover:underline">
+              {t('ctl.openMonitoring')}
+            </Link>
+          </p>
+        ) : (
+          can('admin') && (
+            <Button busy={busy === 'monitor'} disabled={!d.current_ip} onClick={() => run('monitor', () => api(`/devices/${d.id}/monitor`, { method: 'POST' }))}>
+              <Activity className="size-4" aria-hidden />
+              {t('ctl.monitor')}
+            </Button>
+          )
+        )}
+        <p className="text-xs text-faint">{t('ctl.monitorHint')}</p>
+      </div>
+
+      {tech && d.primary_mac && (
+        <div className="space-y-1.5">
+          <Button
+            busy={busy === 'wake'}
+            onClick={() =>
+              run('wake', async () => {
+                const res = await api<{ collector: string }>(`/devices/${d.id}/wake`, { method: 'POST' });
+                setWakeVia(res.collector);
+              })
+            }
+          >
+            <Power className="size-4" aria-hidden />
+            {t('ctl.wake')}
+          </Button>
+          {wakeVia && (
+            <p className="text-xs text-ok" role="status">
+              {t('ctl.wakeSent')} {wakeVia}
+            </p>
+          )}
+          <p className="text-xs text-faint">{t('ctl.wakeHint')}</p>
+        </div>
+      )}
+
+      <ErrorNote error={error} />
+
+      <details className={`rounded-md border px-3 py-2.5 ${d.trust === 'unwanted' ? 'border-crit/40 bg-crit/5' : 'border-line'}`} open={d.trust === 'unwanted'}>
+        <summary className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-fg">
+          <Ban className="size-4 text-crit" aria-hidden />
+          {t('ctl.block')}
+        </summary>
+        <p className="mt-2 text-xs leading-relaxed text-muted">{t('ctl.blockBody')}</p>
+        <div className="mt-3 space-y-3">
+          {d.primary_mac ? <CopyBlock label={t('ctl.macToBlock')} value={d.primary_mac} /> : <p className="text-xs text-warn">{t('ctl.noMac')}</p>}
+          {gateway && (
+            <a
+              href={`http://${gateway}/`}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 text-xs font-medium text-fg hover:bg-line"
+            >
+              {t('ctl.openRouter')} <span className="mono text-muted">{gateway}</span>
+              <ExternalLink className="size-3" aria-hidden />
+            </a>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 export default function DevicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t, locale } = useI18n();
@@ -222,6 +343,8 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                     {d.tags.map((tag) => (
                       <Tag key={tag}>{tag}</Tag>
                     ))}
+                    {d.alerts_muted && <BellOff className="size-4 text-faint" aria-label={t('devices.muted')} />}
+                    {d.trust !== 'known' && <Badge tone={d.trust === 'unwanted' ? 'crit' : 'warn'}>{t(`trust.${d.trust}`)}</Badge>}
                     <StatusBadge status={d.status} />
                   </>
                 }
@@ -269,6 +392,9 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                   </Card>
                 </div>
                 <div className="space-y-4">
+                  <Card title={t('ctl.title')}>
+                    <ControlsPanel device={d} onChanged={query.reload} />
+                  </Card>
                   <Card title={t('device.manage')}>
                     <ManagePanel device={d} onSaved={query.reload} />
                   </Card>

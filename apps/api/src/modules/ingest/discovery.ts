@@ -17,6 +17,8 @@ interface DeviceRow {
   hostname: string | null;
   display_name: string | null;
   is_critical: boolean;
+  trust: 'unreviewed' | 'known' | 'unwanted';
+  alerts_muted: boolean;
   discovery_sources: string[];
   last_seen_at: Date;
 }
@@ -107,7 +109,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
   const macs = [...identities.values()].flatMap((i) => (i.mac ? [i.mac] : []));
   const loaded = await db.query<DeviceRow>(
-    `SELECT id, primary_mac::text AS mac, host(current_ip) AS ip, status, hostname, display_name, is_critical, discovery_sources, last_seen_at
+    `SELECT id, primary_mac::text AS mac, host(current_ip) AS ip, status, hostname, display_name, is_critical, trust, alerts_muted, discovery_sources, last_seen_at
        FROM devices
       WHERE site_id = $1 AND (primary_mac = ANY($2::macaddr[]) OR current_ip <<= $3::cidr)
       ORDER BY last_seen_at DESC
@@ -197,9 +199,12 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
           deviceId: id,
           collectorId: c.id,
           type: 'device_discovered',
-          severity: 'info',
-          title: `New device on the network: ${deviceLabel({ hostname: identity.hostname, ip: chosenIp, mac: identity.mac })}`,
+          // Something nobody has approved joined after the baseline: worth a look.
+          severity: 'warning',
+          title: `Unknown device joined the network: ${deviceLabel({ hostname: identity.hostname, ip: chosenIp, mac: identity.mac })}`,
           details: {
+            trust: 'unreviewed',
+            next_step: 'Open the device and mark it Known if it belongs here, or Unwanted to be alerted whenever it returns.',
             ip: chosenIp,
             mac: identity.mac,
             mac_randomized: identity.mac ? isLocallyAdministeredMac(identity.mac) : null,
@@ -248,6 +253,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
     if (device.ip !== chosenIp) {
       await db.query(`UPDATE devices SET current_ip = $2 WHERE id = $1`, [device.id, chosenIp]);
+      // Checks created from this device follow it to its new address.
+      await db.query(`UPDATE monitoring_checks SET target = $2 WHERE device_id = $1 AND kind IN ('icmp', 'tcp')`, [device.id, chosenIp]);
       await emitEvent(db, c.organizationId, {
         siteId: c.siteId,
         deviceId: device.id,
@@ -269,7 +276,25 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
     }
     if (device.status !== 'online') {
       cameOnline.push(device.id);
-      if (device.status === 'offline') {
+      if (device.trust === 'unwanted' && !device.alerts_muted) {
+        await emitEvent(db, c.organizationId, {
+          siteId: c.siteId,
+          deviceId: device.id,
+          collectorId: c.id,
+          type: 'unwanted_device_online',
+          severity: 'critical',
+          title: `A device you marked unwanted is back on the network: ${deviceLabel(device)}`,
+          details: {
+            ip: chosenIp,
+            mac: device.mac,
+            previously_last_seen_at: device.last_seen_at,
+            observed_via: sources,
+            how_to_block: 'Block this MAC address in your router (usually under Wi-Fi / Access control / Blocked devices) and change the Wi-Fi password if you do not know who it is.',
+          },
+          source: 'collector',
+          occurredAt: finishedAt,
+        });
+      } else if (device.status === 'offline' && !device.alerts_muted) {
         await emitEvent(db, c.organizationId, {
           siteId: c.siteId,
           deviceId: device.id,
@@ -312,6 +337,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       await db.query(`UPDATE devices SET status = 'offline' WHERE id = ANY($1)`, [ids]);
       await setAvailability(db, c.organizationId, ids, 'offline', finishedAt);
       for (const d of goneOffline) {
+        if (d.alerts_muted) continue; // muted: availability is still recorded, no alert
         await emitEvent(db, c.organizationId, {
           siteId: c.siteId,
           deviceId: d.id,

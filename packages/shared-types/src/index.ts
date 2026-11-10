@@ -115,12 +115,57 @@ export interface Device {
   fingerprint: DeviceFingerprint;
   status: DeviceStatus;
   is_critical: boolean;
+  /** Owner's approval: unreviewed (new), known (belongs here), unwanted (alert when it returns). */
+  trust: DeviceTrust;
+  trust_changed_at: string | null;
+  /** No on/offline alerts for this device. */
+  alerts_muted: boolean;
+  /** Ping check created from this device (follows its IP), if any. */
+  monitor_check_id: string | null;
   owner: string | null;
   notes: string | null;
   discovery_sources: string[];
   first_seen_at: string;
   last_seen_at: string;
   tags: string[];
+}
+
+export const DEVICE_TRUSTS = ['unreviewed', 'known', 'unwanted'] as const;
+export type DeviceTrust = (typeof DEVICE_TRUSTS)[number];
+
+export interface InsightAction {
+  /** Stable code the UI localizes (review, mark_all_known, open_router, …); label is the English fallback. */
+  code: string;
+  label: string;
+  /** link: navigate; api: POST to the endpoint (after confirmation if confirm is set); external: open in a new tab. */
+  kind: 'link' | 'api' | 'external';
+  href: string;
+  body?: Record<string, unknown>;
+  confirm?: string;
+}
+
+export interface Insight {
+  id: string;
+  /** Rule that produced it; with params the UI renders title and detail in the user's language. */
+  code: string;
+  params: Record<string, string | number>;
+  severity: Severity;
+  category: 'security' | 'availability' | 'performance' | 'inventory' | 'setup';
+  title: string;
+  detail: string;
+  evidence: string[];
+  actions: InsightAction[];
+}
+
+export interface InsightsReport {
+  generated_at: string;
+  /** 0–100, from the deductions listed in score_breakdown. */
+  score: number;
+  score_breakdown: { code: string; reason: string; points: number }[];
+  /** healthy (≥ 90) | attention (70–89) | urgent (< 70) */
+  verdict: 'healthy' | 'attention' | 'urgent';
+  summary: string;
+  insights: Insight[];
 }
 
 export interface DeviceFingerprint {

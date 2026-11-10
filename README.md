@@ -28,6 +28,8 @@ cloud platform.
 | Network Doctor | Deterministic, evidence-backed root-cause rules (LAN / gateway / WAN-ISP / DNS / service / device / collector) with confidence and next steps |
 | Time Machine | State of the network at any recorded moment; comparison of two periods; 90-day charts from hourly roll-ups |
 | Topology | Evidence-based map (internet → gateway → subnets → devices); every link marked observed or inferred |
+| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), and guidance plus the MAC and router link to block a device on the router. LAN Detective never disconnects or interferes with devices itself |
+| Smart insights | Rule-based summary on the Overview: network score with the reasons behind it, and the few things worth doing now (unwanted devices online, devices to review, silent collector, router/internet/DNS problems, IP changes, important devices offline or unmonitored), each with evidence and a one-click action |
 | Other | Audit log, English + Arabic (true RTL), responsive layout, retention job |
 
 ## Use it on your home network: desktop app

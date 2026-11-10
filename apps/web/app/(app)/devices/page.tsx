@@ -1,12 +1,12 @@
 'use client';
 
-import { MonitorSmartphone, Search, ShieldAlert } from 'lucide-react';
+import { BellOff, CheckCheck, MonitorSmartphone, Search, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { DEVICE_TYPES, type Device, type Paginated } from '@lan-detective/shared-types';
-import { Async, Button, Card, EmptyState, Input, PageHeader, Select, StatusBadge, Tag } from '@/components/ui';
-import { qs } from '@/lib/api';
+import { DEVICE_TRUSTS, DEVICE_TYPES, type Device, type Paginated } from '@lan-detective/shared-types';
+import { Async, Badge, Button, Card, EmptyState, Input, PageHeader, Select, StatusBadge, Tag } from '@/components/ui';
+import { api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -23,13 +23,14 @@ function DevicesView() {
   // Filters live in the URL so a filtered view can be bookmarked and shared.
   const status = params.get('status') ?? '';
   const type = params.get('type') ?? '';
+  const trust = params.get('trust') ?? '';
   const sort = params.get('sort') ?? 'ip';
   const q = params.get('q') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? 1));
   const [search, setSearch] = useState(q);
 
   const update = (next: Record<string, string>) => {
-    const merged = { status, type, sort, q, page: String(page), ...next };
+    const merged = { status, type, trust, sort, q, page: String(page), ...next };
     if (!('page' in next)) merged.page = '1';
     router.replace(`/devices${qs({ ...merged, sort: merged.sort === 'ip' ? '' : merged.sort, page: merged.page === '1' ? '' : merged.page })}`);
   };
@@ -41,13 +42,39 @@ function DevicesView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const query = useQuery<Paginated<Device>>(`/devices${qs({ site_id: siteId, status, device_type: type, sort, q, page, page_size: PAGE_SIZE })}`, ['devices']);
-  const filtered = Boolean(status || type || q);
+  const query = useQuery<Paginated<Device>>(`/devices${qs({ site_id: siteId, status, device_type: type, trust, sort, q, page, page_size: PAGE_SIZE })}`, ['devices']);
+  const filtered = Boolean(status || type || trust || q);
+  const { can } = useApp();
+  const [marking, setMarking] = useState(false);
+  const [marked, setMarked] = useState<number | null>(null);
+
+  async function markAllKnown() {
+    if (!window.confirm(t('devices.markAllConfirm'))) return;
+    setMarking(true);
+    try {
+      const res = await api<{ updated: number }>('/devices/trust', { method: 'POST', body: { all_unreviewed: true, trust: 'known' } });
+      setMarked(res.updated);
+      query.reload();
+    } finally {
+      setMarking(false);
+    }
+  }
 
   return (
     <>
-      <PageHeader title={t('devices.title')} description={query.data ? `${query.data.total} ${t('devices.count')}` : undefined} />
-      <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+      <PageHeader
+        title={t('devices.title')}
+        description={query.data ? `${query.data.total} ${t('devices.count')}${marked !== null ? ` · ${marked} ${t('devices.markedKnown')}` : ''}` : undefined}
+        actions={
+          can('technician') && trust === 'unreviewed' && query.data && query.data.total > 0 ? (
+            <Button variant="primary" size="sm" busy={marking} onClick={markAllKnown}>
+              <CheckCheck className="size-3.5" aria-hidden />
+              {t('devices.markAllKnown')}
+            </Button>
+          ) : undefined
+        }
+      />
+      <div className="mb-3 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto]">
         <div className="relative">
           <Search className="pointer-events-none absolute start-3 top-2.5 size-4 text-faint" aria-hidden />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('devices.searchPlaceholder')} aria-label={t('common.search')} className="ps-9" maxLength={100} />
@@ -69,6 +96,16 @@ function DevicesView() {
           {DEVICE_TYPES.map((d) => (
             <option key={d} value={d}>
               {DEVICE_TYPE_LABEL[d]?.[locale]}
+            </option>
+          ))}
+        </Select>
+        <Select aria-label={t('devices.trust')} value={trust} onChange={(e) => update({ trust: e.target.value })} className="sm:w-40">
+          <option value="">
+            {t('devices.trust')}: {t('common.all')}
+          </option>
+          {DEVICE_TRUSTS.map((s) => (
+            <option key={s} value={s}>
+              {t(`trust.${s}`)}
             </option>
           ))}
         </Select>
@@ -108,6 +145,13 @@ function DevicesView() {
                               <span className="block truncate">{d.display_name || d.hostname || d.current_ip || d.primary_mac}</span>
                             </Link>
                             <span className="mt-0.5 flex flex-wrap items-center gap-1">
+                              {d.trust !== 'known' && <Badge tone={d.trust === 'unwanted' ? 'crit' : 'warn'}>{t(`trust.${d.trust}`)}</Badge>}
+                              {d.alerts_muted && (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-faint" title={t('devices.muted')}>
+                                  <BellOff className="size-3" aria-hidden />
+                                  <span className="sr-only">{t('devices.muted')}</span>
+                                </span>
+                              )}
                               {d.is_critical && (
                                 <span className="inline-flex items-center gap-1 text-[11px] text-warn">
                                   <ShieldAlert className="size-3" aria-hidden />

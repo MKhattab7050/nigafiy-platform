@@ -1,8 +1,23 @@
 // Local development database: a real PostgreSQL server (embedded binaries from npm),
 // for machines without Docker. Data lives in <repo>/.data/pg. Stop with Ctrl+C.
 import { existsSync } from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
+
+// embedded-postgres chmods its binaries to add the executable bit. Windows has no such bit, and in an
+// installed app the binaries live under C:\Program Files, which a normal user cannot modify — the call
+// then fails with EPERM although the binaries run fine. Ignore exactly that case.
+if (process.platform === 'win32') {
+  const chmod = fsp.chmod;
+  fsp.chmod = (async (...args: Parameters<typeof chmod>) => {
+    try {
+      await chmod(...args);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+    }
+  }) as typeof chmod;
+}
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/lan_detective');
 // LD_PG_DIR: set by the desktop app, which keeps its data in the user's profile.

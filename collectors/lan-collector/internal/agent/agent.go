@@ -26,6 +26,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/scope"
 	"github.com/lan-detective/lan-collector/internal/spool"
+	"github.com/lan-detective/lan-collector/internal/wol"
 )
 
 const (
@@ -372,6 +373,8 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			default:
 				a.markCompleted(cmd.ID)
 			}
+		case "wake_device":
+			go a.wakeDevice(cmd)
 		default:
 			a.log.Warn("ignoring unsupported command", "kind", cmd.Kind)
 		}
@@ -384,6 +387,43 @@ func interfacesOrEmpty() []netinfo.Interface {
 		return ifs
 	}
 	return []netinfo.Interface{}
+}
+
+// wakeDevice sends a Wake-on-LAN packet. Only to the broadcast address of a scope that is both delivered by
+// the cloud and allowed by this collector's own policy; the command is acknowledged either way.
+func (a *Agent) wakeDevice(cmd cloud.Command) {
+	defer a.markCompleted(cmd.ID)
+	var p struct {
+		MAC       string `json:"mac"`
+		Broadcast string `json:"broadcast"`
+	}
+	if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+		a.log.Warn("wake request ignored: malformed payload")
+		return
+	}
+	mac, err := wol.ParseMAC(p.MAC)
+	if err != nil {
+		a.log.Warn("wake request ignored", "reason", err.Error())
+		return
+	}
+	broadcast, err := netip.ParseAddr(p.Broadcast)
+	if err != nil {
+		a.log.Warn("wake request ignored: bad broadcast address")
+		return
+	}
+	var allowed []netip.Prefix
+	if rc := a.remoteConfig(); rc != nil {
+		for _, sc := range rc.Discovery.Scopes {
+			if prefix, err := a.policy.Check(sc.CIDR); err == nil {
+				allowed = append(allowed, prefix)
+			}
+		}
+	}
+	if err := wol.Send(mac, broadcast, allowed); err != nil {
+		a.log.Warn("wake request not sent", "mac", mac.String(), "error", err.Error())
+		return
+	}
+	a.log.Info("sent Wake-on-LAN packet", "mac", mac.String(), "broadcast", broadcast.String())
 }
 
 func (a *Agent) markCompleted(id string) {

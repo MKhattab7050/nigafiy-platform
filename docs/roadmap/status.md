@@ -23,11 +23,19 @@ webhooks, audit log, English + Arabic (RTL).
 
 On the real test network (5 phones with randomized MACs) **no phone answered any of the three protocols**, so they are typed by the low-confidence hint only and have no names. The parsers and rules are covered by tests, but mDNS/SSDP/NetBIOS answers from real devices have not been observed yet. To name them, the collector now **passively listens for DHCP client broadcasts** (`internal/dhcp`, UDP 67, receive-only — never sends or answers). When a device joins it broadcasts its hostname (option 12) and vendor class (option 60, e.g. `android-dhcp-14`, `MSFT 5.0`); these are matched by MAC to discovered devices, shown with name source "DHCP", and `android-dhcp*` classifies a phone with high confidence. On the Windows dev host the port bound successfully ("passive DHCP name learning is on"). Limits: a name is only learned when a device joins or rebinds (normal lease renewals are unicast to the router and are not seen), the learned table lives in collector memory (lost on restart), and some phones send no hostname. Whether real phone names arrive on the test network is not yet confirmed — it needs a phone to reconnect while the collector runs. Reading the router's client table remains an alternative (not built).
 
+**Device controls and smart insights (added after Phase 2):** migration `004_device_controls.sql` adds device trust (`unreviewed` / `known` / `unwanted`), per-device alert mute, a device link on monitoring checks, and a payload on collector commands.
+- Ingestion now raises a *warning* when an unreviewed device joins after the baseline, and a *critical* `unwanted_device_online` when an unwanted device is seen. Muted devices produce no online/offline events.
+- Endpoints: `POST /devices/trust` (bulk), `POST /devices/:id/monitor` (one ping check that follows IP changes), and `POST /devices/:id/wake`.
+- Wake-on-LAN adds the closed-list collector command `wake_device`. The API derives the broadcast address from the authorized scope containing the device. The collector re-checks it against its own scopes (`internal/wol`) and refuses anything else. Requests expire after 10 minutes.
+- `GET /insights` (`modules/insights/rules.ts`) applies deterministic rules to stored facts. It returns a 0–100 score with each deduction, plus insights with evidence and actions. Arabic wording is rendered client-side from `code` + `params` (`lib/insights-text.ts`); evidence lines and score reasons stay English.
+- Deliberately not built: disconnecting, blocking or throttling devices from LAN Detective (it would require ARP spoofing or similar interference). The UI explains how to block on the router instead, with the MAC to copy and a link to the gateway. Router integrations (reading the client list, blocking through a router API) are not built.
+- Not verified: Wake-on-LAN waking a real machine (packet format and scope checks are unit-tested only).
+
 ## Verified in the development environment
 
 | What | How |
 | --- | --- |
-| API, phases 1 + 2 | 33 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
+| API, phases 1 + 2 + controls | 42 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
 | Collector | Go tests (`pnpm test:collector`), including the new command path |
 | Real collector ↔ API ↔ database | `scripts/e2e-smoke.mjs` (loopback range, real ICMP, real internet/DNS checks) — run for Phase 1; not re-run after the Phase 2 collector change |
 | Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |

@@ -2,8 +2,9 @@
 
 import { ArrowRight, Radar } from 'lucide-react';
 import Link from 'next/link';
-import type { CheckState, Overview } from '@lan-detective/shared-types';
+import type { CheckState, InsightsReport, Overview } from '@lan-detective/shared-types';
 import { EventList } from '@/components/event-list';
+import { InsightsPanel } from '@/components/insights';
 import { IncidentRow } from '@/components/incident-row';
 import { Async, Card, Dot, EmptyState, PageHeader, StateBadge, StatusBadge, type Tone, stateTone } from '@/components/ui';
 import { qs } from '@/lib/api';
@@ -73,6 +74,7 @@ export default function OverviewPage() {
   const { t } = useI18n();
   const { siteId } = useApp();
   const query = useQuery<Overview>(`/overview${qs({ site_id: siteId })}`, ['events', 'devices', 'checks', 'collectors']);
+  const insights = useQuery<InsightsReport>('/insights', ['events', 'devices', 'checks', 'collectors']);
 
   return (
     <>
@@ -109,6 +111,15 @@ export default function OverviewPage() {
           const total = o.devices.total || 1;
           return (
             <div className="space-y-4">
+              {insights.data && (
+                <InsightsPanel
+                  report={insights.data}
+                  onChanged={() => {
+                    insights.reload();
+                    query.reload();
+                  }}
+                />
+              )}
               <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <Stat label={t('overview.devices')} value={String(o.devices.total)}>
                   <div className="flex h-1.5 overflow-hidden rounded-full bg-line" aria-hidden>

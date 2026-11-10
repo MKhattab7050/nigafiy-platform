@@ -145,10 +145,17 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
       `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
       [c.siteId],
     );
+    // A wake request that could not be delivered within 10 minutes expires: waking a computer an
+    // hour after someone asked is not what they wanted.
+    await db.query(
+      `UPDATE collector_commands SET status = 'completed', completed_at = $2
+        WHERE collector_id = $1 AND kind = 'wake_device' AND status <> 'completed' AND created_at < $2::timestamptz - interval '10 minutes'`,
+      [c.id, now],
+    );
     // Commands stay "delivered" (and are re-sent) until the collector acknowledges completion.
-    const commands = await db.query<{ id: string; kind: string }>(
+    const commands = await db.query<{ id: string; kind: string; payload: Record<string, unknown> }>(
       `UPDATE collector_commands SET status = 'delivered', delivered_at = coalesce(delivered_at, $2)
-        WHERE collector_id = $1 AND status <> 'completed' RETURNING id, kind`,
+        WHERE collector_id = $1 AND status <> 'completed' RETURNING id, kind, payload`,
       [c.id, now],
     );
 
