@@ -33,6 +33,15 @@ export function clockTime(iso: string, locale: Locale, withDate: boolean): strin
 export const ms = (v: number | null | undefined): string => (v === null || v === undefined ? '—' : v < 10 ? `${v.toFixed(1)} ms` : `${Math.round(v)} ms`);
 export const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? '—' : `${v.toFixed(v === 0 || v === 100 ? 0 : digits)}%`);
 
+/** Bits per second in the unit a network engineer expects (decimal: 1 Mb/s = 1,000,000 b/s). */
+export function bps(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '—';
+  if (v >= 1e9) return `${(v / 1e9).toFixed(2)} Gb/s`;
+  if (v >= 1e6) return `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)} Mb/s`;
+  if (v >= 1e3) return `${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)} kb/s`;
+  return `${Math.round(v)} b/s`;
+}
+
 export function duration(fromIso: string, toIso: string | null): string {
   const seconds = Math.max(0, Math.round(((toIso ? new Date(toIso).getTime() : Date.now()) - new Date(fromIso).getTime()) / 1000));
   if (seconds < 90) return `${seconds}s`;

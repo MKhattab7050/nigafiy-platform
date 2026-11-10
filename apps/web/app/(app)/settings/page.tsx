@@ -3,11 +3,113 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { AuditEntry, NotificationChannel } from '@lan-detective/shared-types';
-import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Fact, Input, Modal, PageHeader, Select } from '@/components/ui';
+import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Fact, Field, Input, Modal, PageHeader, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
+
+function EmailChannelModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [recipients, setRecipients] = useState('');
+  const [host, setHost] = useState('');
+  const [security, setSecurity] = useState<'starttls' | 'tls' | 'none'>('starttls');
+  const [port, setPort] = useState('587');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [from, setFrom] = useState('');
+  const [severity, setSeverity] = useState('warning');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const list = recipients.split(/[\s,;،]+/).filter(Boolean);
+  const ready = name.trim() && list.length > 0 && host.trim() && Number(port) > 0 && from.trim();
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const login = security !== 'none' && username.trim() ? { username: username.trim(), ...(password ? { password } : {}) } : {};
+      const res = await api<{ channel: NotificationChannel }>('/notification-channels', {
+        method: 'POST',
+        body: { kind: 'email', name: name.trim(), recipients: list, min_severity: severity, smtp: { host: host.trim(), port: Number(port), security, from: from.trim(), ...login } },
+      });
+      // Send a test straight away so a wrong server or password shows up now, not during an outage.
+      await api(`/notification-channels/${res.channel.id}/test`, { method: 'POST' });
+      onSaved();
+    } catch (err) {
+      setError(err as ApiError);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t('settings.email.title')} onClose={onClose} wide>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label={t('common.name')}>{(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />}</Field>
+        <Field label={t('settings.minSeverity')}>
+          {(id) => (
+            <Select id={id} value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              {(['info', 'warning', 'critical'] as const).map((s) => (
+                <option key={s} value={s}>
+                  ≥ {t(`severity.${s}`)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label={t('settings.email.recipients')} hint={t('settings.email.recipientsHint')}>
+            {(id) => <Input id={id} dir="ltr" value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder="it@example.com" maxLength={600} />}
+          </Field>
+        </div>
+        <Field label={t('settings.email.host')}>{(id) => <Input id={id} dir="ltr" value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.example.com" maxLength={253} />}</Field>
+        <Field label={t('settings.email.from')}>{(id) => <Input id={id} dir="ltr" type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="lan-detective@example.com" maxLength={254} />}</Field>
+        <Field label={t('settings.email.security')}>
+          {(id) => (
+            <Select
+              id={id}
+              value={security}
+              onChange={(e) => {
+                const v = e.target.value as typeof security;
+                setSecurity(v);
+                setPort(v === 'tls' ? '465' : v === 'starttls' ? '587' : '25');
+              }}
+            >
+              <option value="starttls">{t('settings.email.starttls')}</option>
+              <option value="tls">{t('settings.email.tls')}</option>
+              <option value="none">{t('settings.email.none')}</option>
+            </Select>
+          )}
+        </Field>
+        <Field label={t('settings.email.port')}>{(id) => <Input id={id} dir="ltr" inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} maxLength={5} />}</Field>
+        {security !== 'none' && (
+          <>
+            <Field label={t('settings.email.username')} hint={t('settings.email.usernameHint')}>
+              {(id) => <Input id={id} dir="ltr" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={254} />}
+            </Field>
+            <Field label={t('settings.email.password')} hint={t('settings.email.passwordHint')}>
+              {(id) => <Input id={id} dir="ltr" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={500} disabled={!username.trim()} />}
+            </Field>
+          </>
+        )}
+      </div>
+      {error && (
+        <div className="mt-3">
+          <ErrorNote error={error} />
+        </div>
+      )}
+      <div className="mt-4 flex gap-2">
+        <Button variant="primary" busy={busy} disabled={!ready} onClick={save}>
+          {t('settings.email.saveAndTest')}
+        </Button>
+        <Button variant="ghost" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
 
 function Notifications() {
   const { t, locale } = useI18n();
@@ -19,6 +121,7 @@ function Notifications() {
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState('');
   const [secret, setSecret] = useState<string | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -52,7 +155,17 @@ function Notifications() {
               {items.map((c) => (
                 <li key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-3 py-2.5">
                   <span className="text-[13px] font-medium" dir="auto">{c.name}</span>
-                  <span className="mono max-w-[22rem] truncate text-xs text-muted">{c.url}</span>
+                  <Badge tone="idle" dot={false}>
+                    {t(`settings.kind.${c.kind}` as Key)}
+                  </Badge>
+                  <span className="mono max-w-[22rem] truncate text-xs text-muted">
+                    {c.kind === 'email' ? c.url.replace(/^mailto:/, '').replaceAll(',', ', ') : c.url}
+                  </span>
+                  {c.kind === 'email' && c.config.host && (
+                    <span className="text-xs text-faint">
+                      {t('settings.email.via')} <span className="mono">{c.config.host}:{c.config.port}</span>
+                    </span>
+                  )}
                   <Badge tone="info" dot={false}>
                     ≥ {t(`severity.${c.min_severity}`)}
                   </Badge>
@@ -61,6 +174,11 @@ function Notifications() {
                       {t('settings.lastDelivery')}:{' '}
                       <span className={c.last_delivery_status === 'failed' ? 'text-crit' : c.last_delivery_status === 'delivered' ? 'text-ok' : ''}>{t(`settings.delivery.${c.last_delivery_status}` as Key)}</span> ·{' '}
                       {relativeTime(c.last_delivery_at, locale)}
+                    </span>
+                  )}
+                  {c.last_delivery_status !== 'delivered' && c.last_delivery_error && (
+                    <span className="basis-full text-xs text-crit" dir="ltr">
+                      {c.last_delivery_error}
                     </span>
                   )}
                   <span className="ms-auto flex items-center gap-1">
@@ -106,6 +224,22 @@ function Notifications() {
           {t('settings.addChannel')}
         </Button>
       </form>
+      <div className="mt-2">
+        <Button onClick={() => setEmailOpen(true)}>
+          <Plus className="size-4" aria-hidden />
+          {t('settings.addEmail')}
+        </Button>
+      </div>
+      {emailOpen && (
+        <EmailChannelModal
+          onClose={() => setEmailOpen(false)}
+          onSaved={() => {
+            setEmailOpen(false);
+            setNotice(t('settings.testQueued'));
+            query.reload();
+          }}
+        />
+      )}
       {secret && (
         <Modal title={t('settings.secretTitle')} onClose={() => setSecret(null)}>
           <p className="mb-3 text-[13px] text-muted">{t('settings.secretOnce')}</p>

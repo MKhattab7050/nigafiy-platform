@@ -6,7 +6,7 @@ Network intelligence and IT infrastructure monitoring for IT administrators and 
 collector runs inside the customer network and reports — over outbound HTTPS only — to a multi-tenant
 cloud platform.
 
-> **Status: Phases 1 and 2 (functional core + network intelligence).** Everything listed under "What works" is implemented, connected
+> **Status: Phases 1, 2, 3 and 4 (core platform + network intelligence + endpoint management + remote administration).** Everything listed under "What works" is implemented, connected
 > to the real backend and tested. Everything else in the product vision is listed honestly under
 > [docs/roadmap/status.md](docs/roadmap/status.md) and is **not** in the UI.
 
@@ -23,16 +23,18 @@ cloud platform.
 | Monitoring | ICMP (latency, loss, jitter), TCP port, DNS resolution checks; explainable state machine with flap damping; history charts 15 min → 30 days |
 | Dashboard | Overview computed from stored data only, fault-domain hint (LAN vs WAN vs DNS), real-time updates over SSE |
 | Events | Timeline with the evidence behind every event, filters, time ranges |
-| Notifications | Signed webhooks (HMAC-SHA256) with retry + backoff and SSRF protection |
+| Notifications | Email (SMTP / STARTTLS / TLS, AES-256-GCM credentials) and signed webhooks (HMAC-SHA256) with retry + backoff and SSRF protection |
 | Incidents | Automatic correlation of alerts into incidents, auto-resolution, assignment, notes, before/during/after replay |
 | Network Doctor | Deterministic, evidence-backed root-cause rules (LAN / gateway / WAN-ISP / DNS / service / device / collector) with confidence and next steps |
+| IT Toolbox | On-demand network probes run from the site collector: ICMP ping, TCP port check, 19-port common IT/management service scanner, DNS lookup, reverse DNS, and hop-by-hop traceroute |
 | Time Machine | State of the network at any recorded moment; comparison of two periods; 90-day charts from hourly roll-ups |
-| Topology | Evidence-based map (internet → gateway → subnets → devices); every link marked observed or inferred |
-| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), and guidance plus the MAC and router link to block a device on the router. LAN Detective never disconnects or interferes with devices itself |
+| Topology | Evidence-based map (internet → gateway → switches / subnets → devices) using routing tables, ARP, SNMP forwarding tables and LLDP; every link marked observed or inferred |
+| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), one-click IT Toolbox probes, and guidance plus the MAC and router link to block a device on the router. LAN Detective never disconnects or interferes with devices itself |
+| Managed endpoints & remote control | Per-machine Go endpoint agent (`agents/endpoint-agent`) with single-use enrollment token, live CPU / RAM / disk telemetry and history charts, logged-in users, running processes (with remote End Task), system services (with Start / Stop / Restart), active TCP/UDP network connections, installed software inventory, power / session controls (Lock, Logoff, Restart, Shutdown), and on-screen IT administrator messages — auto-linked by MAC/IP to discovered LAN devices and fully audited |
 | Access control (any router) | The collector can answer DNS for the network (point the router's DHCP DNS at it). Block categories (ads & malware, adult, gambling, social, video, games, chat) and sites for the whole network, per profile (Kids, Guests, Focus templates) or per device; pause the internet for a device or a profile; bedtimes; per-device activity (requests, blocked names). Encrypted-DNS endpoints are blocked so devices fall back to the rules. A device using a VPN or its own DNS can bypass it, and speed limits need router control — both stated in the UI |
 | Smart insights | Rule-based summary on the Overview: network score with the reasons behind it, and the few things worth doing now (unwanted devices online, devices to review, silent collector, router/internet/DNS problems, IP changes, important devices offline or unmonitored), each with evidence and a one-click action |
-| Port Detective | Reads managed switches over SNMP (read-only): port state, speed, errors, the devices on each port, LLDP neighbours; answers "which port is this device plugged into" with confidence and evidence. Needs a switch with SNMP enabled |
-| IPAM | Per-subnet address map: observed, documented and free addresses, subnet plan (VLAN, gateway, DHCP pool, DNS), static / reserved records, conflict detection with evidence, address history, CSV export, subnet calculator |
+| Port Detective | Reads managed switches over SNMP (read-only): port state, speed, traffic rate & error history charts, the devices on each port, LLDP neighbours; answers "which port is this device plugged into" with confidence and evidence. Needs a switch with SNMP enabled |
+| IPAM | Per-subnet address map: observed, documented and free addresses, subnet plan (VLAN, gateway, DHCP pool, DNS), static / reserved records, conflict detection + automatic conflict events with evidence, address history, CSV export, subnet calculator |
 | Other | Audit log, English + Arabic (true RTL), responsive layout, retention job |
 
 ## Use it on your home network: desktop app
@@ -159,10 +161,11 @@ End-to-end against a running stack with the **real collector binary**, using the
 ```
 apps/api                 Cloud API — Node 24 (native TypeScript), Express 5, PostgreSQL
 apps/web                 Web app — Next.js 16, React 19, Tailwind 4, Recharts
-collectors/lan-collector Edge collector — Go
+collectors/lan-collector Edge network collector — Go (ICMP, ARP, DHCP, DNS filter, SNMP, Toolbox)
+agents/endpoint-agent    Per-machine IT management & remote control agent — Go
 packages/shared-types    API contract types shared by api and web
 docs/                    Architecture, protocol, database, security, roadmap
-scripts/                 e2e smoke test
+scripts/                 e2e smoke test and simulated demo seed
 ```
 
 ## Documentation

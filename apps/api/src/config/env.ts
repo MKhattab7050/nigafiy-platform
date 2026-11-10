@@ -20,6 +20,8 @@ const schema = z.object({
   TRUST_PROXY: z.string().default('loopback'),
   ALLOW_LOOPBACK_SCOPES: bool,
   ALLOW_PRIVATE_WEBHOOKS: bool,
+  /** Allow notification email through a mail relay on a private address. Meant for on-premise installs; keep off when hosting for others. */
+  SMTP_ALLOW_PRIVATE_HOSTS: bool,
 });
 
 export type Env = z.infer<typeof schema>;

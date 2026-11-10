@@ -2,7 +2,7 @@
 
 import { Background, Controls, type Edge, Handle, MiniMap, type Node, type NodeProps, Position, ReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Download, Globe, Network, Radar, Router, Search } from 'lucide-react';
+import { Cable, Download, Globe, Network, Radar, Router, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { DEVICE_TYPES, type Topology, type TopologyEdge, type TopologyNode } from '@lan-detective/shared-types';
@@ -27,16 +27,24 @@ function DeviceNode({ data, selected }: NodeProps<FlowNode>) {
   const n = data.node;
   return (
     <div
-      className={`flex h-full w-full items-center gap-2 rounded-md border bg-raised px-2.5 transition-opacity ${selected ? 'border-accent' : 'border-line-strong'} ${data.dim ? 'opacity-20' : ''}`}
+      className={`flex h-full w-full items-center gap-2 rounded-md border bg-raised px-2.5 transition-opacity ${selected ? 'border-accent' : n.is_switch ? 'border-cyan/60' : 'border-line-strong'} ${data.dim ? 'opacity-20' : ''}`}
       style={{ width: CELL_W, height: CELL_H }}
+      title={n.attached_to ?? undefined}
     >
+      {/* Invisible anchors: port links are drawn from a device to its switch when one of them is selected. */}
+      <Handle type="source" position={Position.Top} className="!size-px !border-0 !bg-transparent" />
+      <Handle type="target" position={Position.Bottom} className="!size-px !border-0 !bg-transparent" />
       <Dot tone={n.status ? statusTone(n.status) : 'idle'} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-fg" dir="auto">
           {n.label}
         </span>
-        <span className="mono block truncate text-[11px] text-muted">{n.ip ?? n.mac ?? '—'}</span>
+        <span className="mono block truncate text-[11px] text-muted">
+          {n.ip ?? n.mac ?? '—'}
+          {n.attached_to && <span className="text-faint"> · {n.attached_to.split(' · ')[0]}</span>}
+        </span>
       </span>
+      {n.is_switch && <Cable className="size-3.5 shrink-0 text-cyan" aria-hidden />}
       {n.runs_collector && <Radar className="size-3.5 shrink-0 text-cyan" aria-hidden />}
     </div>
   );
@@ -85,7 +93,7 @@ function SegmentNode({ data }: NodeProps<FlowNode>) {
 
 const nodeTypes = { device: DeviceNode, gateway: GatewayNode, internet: InternetNode, segment: SegmentNode };
 
-function buildFlow(t: Topology, matches: (n: TopologyNode) => boolean): { nodes: FlowNode[]; edges: Edge[] } {
+function buildFlow(t: Topology, matches: (n: TopologyNode) => boolean, focus: string | undefined): { nodes: FlowNode[]; edges: Edge[] } {
   const segments = t.nodes.filter((n) => n.kind === 'segment');
   const gateways = t.nodes.filter((n) => n.kind === 'gateway');
   const memberOf = new Map(t.edges.filter((e) => e.relation === 'member_of').map((e) => [e.source, e.target]));
@@ -93,7 +101,14 @@ function buildFlow(t: Topology, matches: (n: TopologyNode) => boolean): { nodes:
   let x = 0;
   const segmentCenter = new Map<string, number>();
   for (const seg of segments) {
-    const members = t.nodes.filter((n) => n.kind === 'device' && memberOf.get(n.id) === seg.id);
+    // Switches first, then the devices on each switch together, then everything without a known port.
+    const attachment = new Map(t.edges.filter((e) => e.relation === 'connected_to').map((e) => [e.source, `${e.target}|${e.port ?? ''}`]));
+    const rank = (n: TopologyNode) => (n.is_switch ? '0' : attachment.has(n.id) ? `1${attachment.get(n.id)}` : '2');
+    const members = t.nodes
+      .filter((n) => n.kind === 'device' && memberOf.get(n.id) === seg.id)
+      .map((n, i) => ({ n, i, r: rank(n) }))
+      .sort((a, b) => a.r.localeCompare(b.r, undefined, { numeric: true }) || a.i - b.i)
+      .map((x) => x.n);
     // Wide rather than tall: a few hundred devices stay readable and fit a landscape screen.
     const cols = Math.max(2, Math.min(12, Math.ceil(Math.sqrt(Math.max(1, members.length) * 2.2))));
     const rows = Math.max(1, Math.ceil(members.length / cols));
@@ -126,12 +141,18 @@ function buildFlow(t: Topology, matches: (n: TopologyNode) => boolean): { nodes:
     nodes.push({ id: internet.id, type: 'internet', position: { x: cx - 80, y: 20 }, data: { node: internet, dim: false } });
   }
   const edges: Edge[] = t.edges
-    .filter((e) => e.relation !== 'member_of') // membership is shown by containment, not by hundreds of lines
+    // Membership is shown by containment, not by hundreds of lines. Port links are drawn only for the
+    // selected device or switch, for the same reason.
+    .filter((e) => e.relation !== 'member_of' && (e.relation !== 'connected_to' || e.source === focus || e.target === focus))
     .map((e) => ({
       id: e.id,
       source: e.source,
       target: e.target,
-      type: 'smoothstep',
+      type: e.relation === 'connected_to' ? 'default' : 'smoothstep',
+      label: e.relation === 'connected_to' || e.relation === 'switch_link' ? e.port : undefined,
+      labelStyle: { fill: 'var(--color-fg)', fontSize: 11 },
+      labelBgStyle: { fill: 'var(--color-raised)' },
+      labelBgPadding: [4, 2] as [number, number],
       style: { stroke: e.confidence === 'high' ? 'var(--color-accent)' : 'var(--color-idle)', strokeWidth: 1.75, strokeDasharray: e.basis === 'inferred' ? '6 5' : undefined },
       interactionWidth: 24,
     }));
@@ -175,7 +196,8 @@ function Inspector({ topology, selected }: { topology: Topology; selected: { nod
   }
   const n = topology.nodes.find((x) => x.id === selected.node);
   if (!n) return <p className="rounded-lg border border-line bg-surface px-4 py-6 text-center text-[13px] text-muted">{t('topo.select')}</p>;
-  const edges = topology.edges.filter((e) => e.source === n.id || (n.kind === 'gateway' && e.target === n.id));
+  const edges = topology.edges.filter((e) => e.source === n.id || (n.kind === 'gateway' && e.target === n.id && e.relation !== 'connected_to') || (e.relation === 'switch_link' && e.target === n.id));
+  const attached = topology.edges.filter((e) => e.relation === 'connected_to' && e.target === n.id).length;
   return (
     <Card title={<span dir="auto">{n.label}</span>} action={n.status && <StatusBadge status={n.status} />}>
       <dl>
@@ -195,8 +217,18 @@ function Inspector({ topology, selected }: { topology: Topology; selected: { nod
             <span className="mono">{n.segment}</span>
           </Fact>
         )}
+        {n.attached_to && (
+          <Fact label={t('topo.port')}>
+            <span dir="auto">{n.attached_to}</span>
+          </Fact>
+        )}
         {n.last_seen_at && <Fact label={t('device.lastSeen')}>{relativeTime(n.last_seen_at, locale)}</Fact>}
       </dl>
+      {n.is_switch && (
+        <p className="mt-2 text-xs text-cyan">
+          {t('topo.switch')} · {attached} {t('topo.attached')}
+        </p>
+      )}
       {n.runs_collector && <p className="mt-2 text-xs text-cyan">{t('topo.runsCollector')}</p>}
       {n.kind === 'gateway' && !n.device_id && <p className="mt-2 text-xs leading-relaxed text-muted">{t('topo.notInInventory')}</p>}
       {edges.map((e) => (
@@ -228,8 +260,8 @@ function TopologyMap({ topology }: { topology: Topology }) {
     const q = search.trim().toLowerCase();
     const matches = (n: TopologyNode) =>
       (!q || [n.label, n.ip, n.mac, n.vendor].some((v) => v?.toLowerCase().includes(q))) && (!status || n.status === status) && (!type || n.device_type === type);
-    return buildFlow(topology, matches);
-  }, [topology, search, status, type]);
+    return buildFlow(topology, matches, selected.node);
+  }, [topology, search, status, type, selected.node]);
   // Positions the user dragged survive live data refreshes.
   const nodes = useMemo(() => flow.nodes.map((n) => ({ ...n, position: moved[n.id] ?? n.position, selected: n.id === selected.node })), [flow.nodes, moved, selected.node]);
   const edges = useMemo(() => flow.edges.map((e) => ({ ...e, selected: e.id === selected.edge, style: { ...e.style, strokeWidth: e.id === selected.edge ? 3 : 1.75 } })), [flow.edges, selected.edge]);
@@ -314,6 +346,12 @@ function TopologyMap({ topology }: { topology: Topology }) {
             <Radar className="me-1 inline size-3.5 text-cyan" aria-hidden />
             {t('topo.runsCollector')}
           </span>
+          {topology.nodes.some((n) => n.is_switch) && (
+            <span>
+              <Cable className="me-1 inline size-3.5 text-cyan" aria-hidden />
+              {t('topo.legend.ports')}
+            </span>
+          )}
         </p>
       </div>
       <div className="space-y-4">

@@ -4,6 +4,7 @@ import type { DeviceStatus, DeviceType, Topology, TopologyEdge, TopologyNode } f
 import { auth, notFound, parse } from '../../common/http.ts';
 import { cidrContains } from '../../common/net.ts';
 import { withTenant } from '../../infrastructure/db.ts';
+import { type Sighting, locate } from '../ports/locate.ts';
 
 /**
  * Network topology, built only from evidence the platform actually has today:
@@ -11,8 +12,10 @@ import { withTenant } from '../../infrastructure/db.ts';
  *   - the collector host's neighbour (ARP) table → proof of sharing a layer-2 segment,
  *   - authorized scopes and ICMP replies → subnet membership,
  *   - internet check results → the uplink works.
+ *   - forwarding tables and LLDP neighbours of the switches read over SNMP → which switch port a
+ *     device is on, and which switches are linked.
  * Every edge states whether it is observed or inferred, why, how confident, and when last verified.
- * Switch-level links are NOT guessed; they arrive with SNMP/LLDP collection (Phase 3).
+ * Switch-level links are never guessed: a device seen only "somewhere behind" a trunk gets no link.
  */
 export const topologyRouter: Router = Router();
 
@@ -149,11 +152,105 @@ topologyRouter.get('/topology', async (req, res) => {
       });
     }
 
+    // ── switch level: what the switches read over SNMP actually saw ──
+    const switches = (
+      await db.query<{ id: string; device_id: string | null; name: string; sys_name: string | null; last_ok_at: Date | null }>(
+        `SELECT id, device_id, coalesce(name, sys_name, host(host)) AS name, sys_name, last_ok_at FROM snmp_targets WHERE site_id = $1 AND last_ok_at IS NOT NULL`,
+        [siteId],
+      )
+    ).rows;
+    const nodeById = new Map(nodes.map((n) => [n.id, n]));
+    const switchNode = new Map<string, string>(); // snmp target id → node id
+    for (const sw of switches) {
+      const node = sw.device_id ? nodeById.get(`dev:${sw.device_id}`) : undefined;
+      if (!node) continue;
+      node.is_switch = true;
+      switchNode.set(sw.id, node.id);
+    }
+    let placed = 0;
+    let behind = 0;
+    if (switchNode.size) {
+      const sightings = (
+        await db.query<Sighting & { mac: string }>(
+          `SELECT f.mac::text AS mac, t.id AS target_id, coalesce(t.name, t.sys_name, host(t.host)) AS switch_name, host(t.host) AS switch_host, f.if_index,
+                  p.name AS port_name, p.alias AS port_alias, f.vlan, p.mac_count, p.neighbors, p.oper_up, p.speed_mbps::int AS speed_mbps, f.last_seen_at
+             FROM switch_fdb f
+             JOIN snmp_targets t ON t.id = f.target_id AND t.site_id = $1
+             JOIN switch_ports p ON p.target_id = f.target_id AND p.if_index = f.if_index`,
+          [siteId],
+        )
+      ).rows;
+      const byMac = new Map<string, Sighting[]>();
+      for (const s of sightings) byMac.set(s.mac, [...(byMac.get(s.mac) ?? []), s]);
+      for (const d of devices.rows) {
+        if (!d.mac) continue;
+        const loc = locate(byMac.get(d.mac) ?? []);
+        if (!loc) continue;
+        const target = switchNode.get(loc.target_id);
+        const id = `dev:${d.id}`;
+        if (!target || target === id) continue;
+        if (loc.kind === 'behind') {
+          behind++; // reached through a trunk: the real port is on equipment that is not read, so no link is drawn
+          continue;
+        }
+        placed++;
+        nodeById.get(id)!.attached_to = `${loc.port_name} · ${loc.switch_name}`;
+        edges.push({
+          id: `e:${id}:port`,
+          source: id,
+          target,
+          relation: 'connected_to',
+          port: loc.port_name,
+          basis: 'observed',
+          confidence: loc.confidence,
+          evidence: `${loc.evidence.join('. ')}.`,
+          evidence_source: 'Switch forwarding table (SNMP)',
+          last_verified_at: new Date(loc.last_seen_at).toISOString(),
+        });
+      }
+      // Switch ↔ switch: an LLDP neighbour whose name is another switch that is read.
+      const byName = new Map(switches.flatMap((sw) => [sw.sys_name, sw.name].filter((n): n is string => Boolean(n)).map((n) => [n.toLowerCase(), sw] as const)));
+      const linkPorts = (
+        await db.query<{ target_id: string; name: string; neighbors: { sys_name?: string; port_id?: string }[]; updated_at: Date }>(
+          `SELECT p.target_id, p.name, p.neighbors, p.updated_at FROM switch_ports p JOIN snmp_targets t ON t.id = p.target_id WHERE t.site_id = $1 AND p.neighbors <> '[]'::jsonb`,
+          [siteId],
+        )
+      ).rows;
+      const seen = new Set<string>();
+      for (const lp of linkPorts) {
+        for (const n of lp.neighbors) {
+          const other = n.sys_name ? byName.get(n.sys_name.toLowerCase()) : undefined;
+          const a = switchNode.get(lp.target_id);
+          const b = other ? switchNode.get(other.id) : undefined;
+          if (!a || !b || a === b) continue;
+          const key = [a, b].sort().join('|');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push({
+            id: `e:link:${key}`,
+            source: a,
+            target: b,
+            relation: 'switch_link',
+            port: lp.name,
+            basis: 'observed',
+            confidence: 'high',
+            evidence: `${nodeById.get(a)!.label} heard ${n.sys_name} as its LLDP neighbour on port ${lp.name}${n.port_id ? ` (remote port ${n.port_id})` : ''}.`,
+            evidence_source: 'LLDP neighbour table (SNMP)',
+            last_verified_at: lp.updated_at.toISOString(),
+          });
+        }
+      }
+    }
+
+    const unread = switches.filter((sw) => !switchNode.has(sw.id)).map((sw) => sw.name);
     const limitations = [
-      'Switch and access-point links are not shown: they require SNMP/LLDP data from managed switches, which is not collected yet. Devices are grouped by IP subnet instead.',
+      switchNode.size
+        ? `Switch ports are shown for ${placed} device(s) seen on access ports of the ${switchNode.size} switch(es) read over SNMP.${behind ? ` ${behind} device(s) were seen only behind a trunk or uplink port, so their link is not drawn.` : ''} Devices on Wi-Fi or behind unmanaged switches have no port. Everything else is grouped by IP subnet.`
+        : 'Switch and access-point links are not shown: no managed switch has been read over SNMP yet (add one in Port Detective). Devices are grouped by IP subnet instead.',
       'The gateway relationship is known only for the segment a collector sits in.',
-      'VLANs are not observed.',
+      'VLANs are shown per port in Port Detective; this map does not group by VLAN.',
     ];
+    if (unread.length) limitations.push(`${unread.join(', ')}: read over SNMP but not in the device inventory, so its ports are not drawn here.`);
     if (!collectors.rows.length) limitations.unshift('No collector is enrolled at this site, so no gateway or layer-2 evidence exists.');
     if (devices.rows.length === 2000) limitations.push('Only the first 2000 devices are shown.');
 

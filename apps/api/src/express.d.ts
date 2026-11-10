@@ -4,5 +4,6 @@ declare namespace Express {
     id: string;
     auth?: import('./common/http.ts').AuthContext;
     collector?: import('./modules/ingest/schema.ts').CollectorContext;
+    endpoint?: import('./modules/endpoints/schema.ts').EndpointContext;
   }
 }

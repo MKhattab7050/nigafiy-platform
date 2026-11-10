@@ -1,15 +1,15 @@
 'use client';
 
 import type { PortSearchHit, SwitchDetail, SwitchPort, SwitchSummary } from '@lan-detective/shared-types';
-import { Cable, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Cable, ChevronDown, ChevronUp, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import { LocationView } from '@/components/ports';
+import { LocationView, PortHistoryChart } from '@/components/ports';
 import { Async, Badge, Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Select, StatusBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
-import { relativeTime } from '@/lib/format';
+import { bps, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { portsText } from '@/lib/ports-text';
 
@@ -317,18 +317,19 @@ function SwitchView({ id, admin, canPoll, onRemoved }: { id: string; admin: bool
           </div>
           {s.ports.length > 0 && (
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[680px] text-start text-[13px]">
+              <table className="w-full min-w-[820px] text-start text-[13px]">
                 <thead>
                   <tr className="border-y border-line text-xs text-muted">
                     <th scope="col" className="px-4 py-2 text-start font-medium">{tx.port}</th>
                     <th scope="col" className="px-3 py-2 text-start font-medium">{tx.state}</th>
                     <th scope="col" className="px-3 py-2 text-start font-medium">{tx.connected}</th>
+                    <th scope="col" className="px-3 py-2 text-start font-medium">{tx.traffic}</th>
                     <th scope="col" className="px-4 py-2 text-start font-medium">{tx.errors}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
                   {s.ports.map((p) => (
-                    <PortRow key={p.if_index} p={p} />
+                    <PortRow key={p.if_index} p={p} switchId={s.id} />
                   ))}
                 </tbody>
               </table>
@@ -344,15 +345,22 @@ function speed(mbps: number): string {
   return mbps >= 1000 ? `${mbps / 1000} Gb/s` : mbps > 0 ? `${mbps} Mb/s` : '';
 }
 
-function PortRow({ p }: { p: SwitchPort }) {
+function PortRow({ p, switchId }: { p: SwitchPort; switchId: string }) {
   const { locale } = useI18n();
   const tx = portsText(locale);
+  const [open, setOpen] = useState(false);
+  const busiest = Math.max(p.in_bps ?? 0, p.out_bps ?? 0);
+  const share = p.speed_mbps > 0 && (p.in_bps !== null || p.out_bps !== null) ? (busiest / (p.speed_mbps * 1e6)) * 100 : null;
   const total = p.in_errors + p.out_errors;
   const rising = (p.errors_delta ?? 0) > 0;
   return (
+    <>
     <tr className="align-top">
       <td className="px-4 py-2.5">
-        <span className="mono font-medium">{p.name}</span>
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} title={open ? tx.hideHistory : tx.showHistory} className="mono inline-flex items-center gap-1 font-medium hover:text-accent-hover">
+          {p.name}
+          {open ? <ChevronUp className="size-3.5 text-faint" aria-hidden /> : <ChevronDown className="size-3.5 text-faint" aria-hidden />}
+        </button>
         {p.alias && <span className="block text-xs text-muted" dir="auto">{p.alias}</span>}
       </td>
       <td className="whitespace-nowrap px-3 py-2.5">
@@ -392,6 +400,22 @@ function PortRow({ p }: { p: SwitchPort }) {
         )}
         {p.role === 'down' && <span className="text-xs text-faint">{tx.nothing}</span>}
       </td>
+      <td className="whitespace-nowrap px-3 py-2.5 text-xs">
+        {p.in_bps === null && p.out_bps === null ? (
+          <span className="text-faint">{p.oper_up ? tx.trafficNone : '—'}</span>
+        ) : (
+          <>
+            <span className="block tnum" dir="ltr">
+              ↓ {bps(p.in_bps)} · ↑ {bps(p.out_bps)}
+            </span>
+            {share !== null && (
+              <span className={`block tnum ${share >= 80 ? 'text-warn' : 'text-faint'}`}>
+                {share < 1 ? '<1' : Math.round(share)}% {tx.ofSpeed}
+              </span>
+            )}
+          </>
+        )}
+      </td>
       <td className="whitespace-nowrap px-4 py-2.5 text-xs">
         {rising ? (
           <span className="text-crit tnum">
@@ -401,6 +425,14 @@ function PortRow({ p }: { p: SwitchPort }) {
         <span className="block text-faint tnum">{total > 0 ? `${total} ${tx.total}` : rising ? '' : tx.noErrors}</span>
       </td>
     </tr>
+    {open && (
+      <tr>
+        <td colSpan={5} className="bg-bg/40 px-4 py-3">
+          <PortHistoryChart switchId={switchId} ifIndex={p.if_index} />
+        </td>
+      </tr>
+    )}
+    </>
   );
 }
 

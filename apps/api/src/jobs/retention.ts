@@ -23,6 +23,22 @@ export async function applyRetention(): Promise<void> {
     `DELETE FROM dns_stats s USING organizations o
       WHERE o.id = s.organization_id AND s.window_end < now() - make_interval(days => least(o.metric_retention_days, 30))`,
   );
+  await systemPool.query(
+    `DELETE FROM switch_port_samples s USING organizations o
+      WHERE o.id = s.organization_id AND s.ts < now() - make_interval(days => o.metric_retention_days)`,
+  );
+  await systemPool.query(
+    `DELETE FROM toolbox_runs r USING organizations o
+      WHERE o.id = r.organization_id AND r.created_at < now() - make_interval(days => least(o.metric_retention_days, 30))`,
+  );
+  await systemPool.query(
+    `DELETE FROM endpoint_samples s USING organizations o
+      WHERE o.id = s.organization_id AND s.ts < now() - make_interval(days => o.metric_retention_days)`,
+  );
+  await systemPool.query(
+    `DELETE FROM endpoint_commands c USING organizations o
+      WHERE o.id = c.organization_id AND c.created_at < now() - make_interval(days => o.event_retention_days)`,
+  );
   await systemPool.query(`DELETE FROM ingest_batches WHERE received_at < now() - interval '14 days'`);
   await systemPool.query(`DELETE FROM sessions WHERE expires_at < now()`);
   if ((metrics.rowCount ?? 0) + (runs.rowCount ?? 0) + (events.rowCount ?? 0) > 0) {

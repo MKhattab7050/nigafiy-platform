@@ -7,6 +7,7 @@ import { isPublicAddress } from '../common/net.ts';
 import { env } from '../config/env.ts';
 import { systemPool } from '../infrastructure/db.ts';
 import { logger } from '../infrastructure/logger.ts';
+import { type NotificationEvent, type SmtpConfig, renderEmail, sendEmail } from '../modules/notifications/email.ts';
 
 const MAX_ATTEMPTS = 6;
 const LEASE_SECONDS = 120;
@@ -15,9 +16,12 @@ const TIMEOUT_MS = 8000;
 interface DueDelivery {
   id: string;
   attempts: number;
+  kind: 'webhook' | 'email';
   url: string;
+  config: SmtpConfig;
   secret_encrypted: string;
   organization_id: string;
+  organization_name: string;
   event: Record<string, unknown>;
 }
 
@@ -60,12 +64,13 @@ export async function dispatchNotifications(): Promise<void> {
      )
      UPDATE notification_deliveries d
         SET attempts = d.attempts + 1, next_attempt_at = now() + make_interval(secs => $1)
-       FROM claimed, notification_channels c, network_events e
-      WHERE d.id = claimed.id AND c.id = d.channel_id AND e.id = d.event_id
-     RETURNING d.id, d.attempts, d.organization_id, c.url, c.secret_encrypted,
+       FROM claimed, notification_channels c, network_events e, organizations o
+      WHERE d.id = claimed.id AND c.id = d.channel_id AND e.id = d.event_id AND o.id = d.organization_id
+     RETURNING d.id, d.attempts, d.organization_id, o.name AS organization_name, c.kind, c.url, c.config, c.secret_encrypted,
                jsonb_build_object('id', e.id, 'type', e.type, 'severity', e.severity, 'title', e.title, 'details', e.details,
                                   'site_id', e.site_id, 'device_id', e.device_id, 'check_id', e.check_id,
-                                  'occurred_at', e.occurred_at) AS event`,
+                                  'occurred_at', e.occurred_at,
+                                  'site_name', (SELECT s.name FROM sites s WHERE s.id = e.site_id)) AS event`,
     [LEASE_SECONDS],
   );
 
@@ -74,6 +79,15 @@ export async function dispatchNotifications(): Promise<void> {
       const timestamp = Math.floor(Date.now() / 1000);
       const body = JSON.stringify({ delivery_id: d.id, organization_id: d.organization_id, sent_at: new Date().toISOString(), event: d.event });
       let error: string | null = null;
+      if (d.kind === 'email') {
+        try {
+          const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { password?: string };
+          const recipients = d.url.replace(/^mailto:/, '').split(',');
+          await sendEmail(d.config, secret.password ?? null, recipients, renderEmail(d.event as unknown as NotificationEvent, d.organization_name));
+        } catch (err) {
+          error = (err as Error).message.replace(/[\r\n]+/g, ' ').slice(0, 200);
+        }
+      } else
       try {
         const signature = hmacSha256(decryptSecret(d.secret_encrypted), `${timestamp}.${body}`);
         const status = await post(d.url, body, {
@@ -97,7 +111,7 @@ export async function dispatchNotifications(): Promise<void> {
         `UPDATE notification_deliveries SET status = $2, last_error = $3, next_attempt_at = now() + make_interval(secs => $4) WHERE id = $1`,
         [d.id, exhausted ? 'failed' : 'pending', error, delaySeconds],
       );
-      logger.warn({ delivery_id: d.id, attempt: d.attempts, error, exhausted }, 'webhook delivery failed');
+      logger.warn({ delivery_id: d.id, kind: d.kind, attempt: d.attempts, error, exhausted }, 'notification delivery failed');
     }),
   );
 }

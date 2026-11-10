@@ -54,14 +54,32 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 - Roles: viewers read, technicians document addresses, admins change the subnet plan. Every change is audited.
 - Verified: 6 tests (rules + API + roles + tenant isolation) and the page in a browser against the running stack with the simulated organization, in English and Arabic (plan saved, validation error shown, address documented, conflict listed, calculator).
 - Not verified: the CSV download button in a browser (the endpoint is tested), subnets larger than /24 in the UI, and the conflict rules that need an *online* device against real data (covered by tests only).
-- Limits: IPv4 only; conflicts are computed when the page or API is read and do not raise events or notifications yet; DNS records and DHCP leases are not read from servers; a subnet that is documented but not authorized for discovery cannot be recorded; conflict evidence lines are English.
+- Limits: IPv4 only; DNS records and DHCP leases are not read from servers; a subnet that is documented but not authorized for discovery cannot be recorded; conflict evidence lines are English.
+
+**Closing Phase 2 — interface history, IPAM conflict events, switch-level topology, email notifications & IT Toolbox:**
+- **Interface history (`008_interface_history.sql`):** derives traffic bit-rates (`in_bps`, `out_bps`) and error deltas from consecutive 64-bit SNMP octet/error counters (`switch_port_samples`), handling counter resets and gaps cleanly, with historical charts in the switch port table.
+- **IPAM conflict events (`009_ipam_conflict_events.sql`):** tracks currently open IP conflicts in `ipam_open_conflicts` (`modules/ipam/events.ts`) so each conflict produces one `ip_conflict_detected` event when it appears and one `ip_conflict_resolved` event when it clears, rather than repeating every sweep.
+- **Switch-level topology (`modules/topology/routes.ts`):** incorporates SNMP forwarding tables (`switch_fdb`) and LLDP neighbours into the topology graph so switches appear as infrastructure nodes with observed layer-2 links to the devices on their ports and inter-switch trunk links.
+- **Email notifications (`010_email_notifications.sql`, `modules/notifications/email.ts`):** adds SMTP / STARTTLS / TLS email notification channels alongside signed webhooks, with AES-256-GCM encrypted SMTP passwords and SSRF protection against private/loopback mail hosts.
+- **IT Toolbox (`011_toolbox.sql`, `collectors/lan-collector/internal/tools`, `modules/toolbox`):** on-demand diagnostics executed by the site collector (`run_tool` command): ICMP Ping, TCP port check, 19-port Common IT/Management Ports scanner (SSH, RDP, SMB, HTTP/S, VNC, WinRM/RPC, databases, printer ports on a single private LAN host), DNS lookup, Reverse DNS, and hop-by-hop Traceroute. Accessible from `/toolbox` and via one-click quick buttons on every device detail page.
+
+**Phases 3 & 4 — Endpoint Management & Remote IT Administration (`012_endpoints.sql`, `agents/endpoint-agent`, `modules/endpoints`):**
+- **Go Endpoint Agent (`agents/endpoint-agent`):** standalone, zero-external-dependency Go agent for Windows, Linux and macOS. Enrolls with a single-use `ldet_<token>` to receive a permanent per-endpoint `lda_<id>.<secret>` credential (`SHA-256` stored). Reports every 20 seconds over `/api/v1/agent/heartbeat`.
+- **Deep Endpoint Visibility:** collects OS build, CPU model & cores, live CPU %, RAM usage, per-volume disk usage, network interfaces, active logged-in users, top running processes (PID, CPU time, RAM), system services (name, display name, state, startup mode), active TCP/UDP connections (`netstat` with PID), and installed software inventory, plus time-series samples in `endpoint_samples`. Automatically links to the matching discovered LAN `devices` row by MAC or IP.
+- **Remote IT Control (`internal/control`, `endpoint_commands`):** closed allow-list of remote administrative actions queued by authenticated technicians/admins and executed by the enrolled endpoint agent:
+  - `refresh_inventory`: immediate full inventory & telemetry sync.
+  - `kill_process`: terminate a hung or unwanted process by PID.
+  - `service_action`: start, stop, or restart a system service.
+  - `power_action`: lock workstation, log off user session (`technician`+), or restart / shut down machine (`admin`+).
+  - `notify_user`: display an on-screen IT message box to the logged-in user.
+- Every queued action and execution result is recorded in `endpoint_commands`, `audit_logs`, and `network_events`.
 
 ## Verified in the development environment
 
 | What | How |
 | --- | --- |
-| API, phases 1 + 2 + controls + access + ports + IPAM | 58 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
-| Collector | Go tests (`pnpm test:collector`), including the new command path |
+| API, phases 1–4 (core + intelligence + controls + access + ports + IPAM + email + toolbox + endpoints) | 67 integration tests across 11 suites against real PostgreSQL + RLS (`pnpm test`) |
+| Network Collector & Endpoint Agent | Go unit + lifecycle tests (`pnpm test:collector` and `pnpm test:agent`) and binary builds (`pnpm build:collector`, `pnpm build:agent`) |
 | Real collector ↔ API ↔ database | `scripts/e2e-smoke.mjs` (loopback range, real ICMP, real internet/DNS checks) — run for Phase 1; not re-run after the Phase 2 collector change |
 | Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |
 | Desktop app, self-contained | Packaged app (`electron-builder --win dir`, copied outside the repository) opened in local mode with a fresh profile: started the bundled database, API and web server on 127.0.0.1 with Electron's own Node 22, created and signed in to the local account, authorized 192.168.1.0/24, enrolled the bundled collector (first sweep: 8 devices) and showed the dashboard; Quit stopped every process. The scan consent was given through the non-interactive test switch, not by clicking the dialog. The NSIS installer itself was built but not installed over the existing installation |
@@ -83,18 +101,19 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 
 ## Known limitations
 
-- **Topology has no switch-level links yet.** Port Detective now collects forwarding tables and LLDP
-  neighbours, but the topology map does not use them; it is still subnet-level and says so.
-- **Doctor rules cover the network path, services, critical devices and collectors.** Wi-Fi, DHCP,
-  switch-port and interface-error diagnostics need data sources that arrive in Phase 3.
+- **Doctor rules cover the network path, services, critical devices and collectors.** Wi-Fi and DHCP
+  server diagnostics are not built yet.
 - **Baselines** are a 7-day average latency used in wording; they do not change state thresholds yet.
 - **Diagnosis text and event titles are English**; UI chrome is translated.
 - Time Machine check state is the last recorded transition before the moment; configuration-change
   history does not exist yet (no config backup module).
 - Period comparison of periods older than ~25 days uses hourly roll-ups (coarser).
 - Device status granularity equals the discovery interval; devices on routed subnets are IP-identified.
-- Notifications: webhook only. No maintenance windows, escalation, member invitations, password
+- Notifications: webhook and SMTP email. No maintenance windows, escalation, member invitations, password
   reset, MFA or billing. Dark theme only.
+- Endpoint remote administration covers processes, services, power/session actions, on-screen user
+  notifications, and live inventory/connections. Interactive remote desktop streaming (WebRTC/RDP gateway)
+  and remote file transfer are not built yet.
 - AI is not used anywhere. The planned AI layer only rephrases and ranks what the rule engine found.
 
 ## Risks and assumptions
@@ -117,9 +136,9 @@ six phases. Status against it:
 | Phase | In the brief | State |
 | --- | --- | --- |
 | 1 Core platform | structure, database, auth, RBAC, desktop app, API, live dashboard, inventory, discovery, collector | **Built.** Gaps: member invitations, MFA, password reset |
-| 2 Network intelligence | SNMP, monitoring, topology, charts, IPAM, switch ports, alerts, Network Doctor | **Built**, with gaps: SNMP interface metrics are not charted over time (only the latest counters and deltas), topology ignores FDB/LLDP, alerts are webhook-only, no IT toolbox page |
-| 3 Endpoint management | Go endpoint agent, enrollment, inventory, health, software inventory, activity telemetry | Not started |
-| 4 Remote administration | remote desktop, file manager, processes, services, commands, power, session audit | Not started |
+| 2 Network intelligence | SNMP, monitoring, topology, charts, IPAM, switch ports, alerts, Network Doctor, IT toolbox | **Built.** Interface history charts, switch-level FDB/LLDP topology, IPAM conflict events, email notifications, and IT toolbox (Ping, TCP, Common ports, DNS, rDNS, Traceroute) are all implemented and tested |
+| 3 Endpoint management | Go endpoint agent, enrollment, inventory, health, software inventory, activity telemetry | **Built.** `agents/endpoint-agent` + `/api/v1/agent/*` + `/api/v1/endpoints/*` + `/endpoints` UI with auto-linking to LAN devices |
+| 4 Remote administration | processes, services, power/session actions, user messaging, command audit; remote desktop & file manager | **Built (core IT control).** Process termination, service start/stop/restart, lock/logoff/restart/shutdown, on-screen user messaging, and full audit log. Gaps: live remote desktop streaming and file browser |
 | 5 Infrastructure control & security | MikroTik / switch / firewall control, VLAN operations, quarantine, security intelligence, config backup, automation | Not started (DNS-based access control exists) |
 | 6 Intelligence | AI assistant, knowledge memory, incident replay, digital twin, reports, multi-site / MSP | Incident replay and the multi-tenant data model exist; the rest is not started |
 

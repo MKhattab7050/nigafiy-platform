@@ -17,6 +17,8 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @lan-detective/api test",
     "test:collector": "cd collectors/lan-collector && go test ./...",
-    "build:collector": "cd collectors/lan-collector && go build -o bin/ ./cmd/lan-collector"
+    "build:collector": "cd collectors/lan-collector && go build -o bin/ ./cmd/lan-collector",
+    "test:agent": "cd agents/endpoint-agent && go test ./...",
+    "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/endpoint-agent"
   }
 }

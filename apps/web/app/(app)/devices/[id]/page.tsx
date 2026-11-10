@@ -1,20 +1,22 @@
 'use client';
 
-import { Activity, ArrowLeft, Ban, BellOff, ExternalLink, Power } from 'lucide-react';
+import { Activity, ArrowLeft, Ban, BellOff, Cpu, ExternalLink, Power, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
-import { type Collector, DEVICE_TRUSTS, DEVICE_TYPES, type DeviceDetail, type DeviceTrust } from '@lan-detective/shared-types';
+import { type Collector, DEVICE_TRUSTS, DEVICE_TYPES, type DeviceDetail, type DeviceTrust, type EndpointSummary } from '@lan-detective/shared-types';
 import { ConfidenceBadge } from '@/components/diagnosis';
 import { EventList } from '@/components/event-list';
 import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Fact, Field, Input, PageHeader, Segmented, Select, StatusBadge, Tag, Textarea, statusTone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
-import { DEVICE_TYPE_LABEL, absoluteTime, duration, relativeTime } from '@/lib/format';
+import { DEVICE_TYPE_LABEL, absoluteTime, duration, pct, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
 import { accessText } from '@/lib/access-text';
 import { DeviceAccessCard } from '@/components/access';
 import { DevicePortCard } from '@/components/ports';
+import { endpointsText } from '@/lib/endpoints-text';
 import { portsText } from '@/lib/ports-text';
+import { toolboxText } from '@/lib/toolbox-text';
 
 const WEEK_MS = 7 * 86_400_000;
 const BAR = { ok: 'bg-ok', crit: 'bg-crit', idle: 'bg-idle', warn: 'bg-warn', info: 'bg-accent' } as const;
@@ -204,7 +206,8 @@ function ManagePanel({ device, onSaved }: { device: DeviceDetail; onSaved: () =>
 
 /** Things the user can do about a device. Removing a device happens on the router; we explain how. */
 function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; onChanged: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const txTool = toolboxText(locale);
   const { can } = useApp();
   const collectors = useQuery<{ items: Collector[] }>('/collectors', ['collectors']);
   const gateway = collectors.data?.items.find((c) => c.site_id === d.site_id && c.gateway_ip)?.gateway_ip ?? null;
@@ -273,6 +276,27 @@ function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; onChang
         <p className="text-xs text-faint">{t('ctl.monitorHint')}</p>
       </div>
 
+      {tech && d.current_ip && (
+        <div className="space-y-1.5 border-t border-line pt-4">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-muted">
+            <Wrench className="size-3.5" aria-hidden />
+            {txTool.deviceCardTitle}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['ping', 'ports', 'tcp', 'rdns', 'traceroute'] as const).map((tool) => (
+              <Link
+                key={tool}
+                href={`/toolbox?site_id=${encodeURIComponent(d.site_id)}&target=${encodeURIComponent(d.current_ip!)}&tool=${tool}`}
+                className="inline-flex h-7 items-center rounded-md border border-line-strong bg-raised px-2.5 text-xs font-medium text-fg hover:bg-line"
+              >
+                {txTool.tools[tool]}
+              </Link>
+            ))}
+          </div>
+          <p className="text-xs text-faint">{txTool.deviceCardHint}</p>
+        </div>
+      )}
+
       {tech && d.primary_mac && (
         <div className="space-y-1.5">
           <Button
@@ -319,6 +343,68 @@ function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; onChang
           )}
         </div>
       </details>
+    </div>
+  );
+}
+
+function DeviceEndpointCard({ device }: { device: DeviceDetail }) {
+  const { locale } = useI18n();
+  const tx = endpointsText(locale);
+  const { can } = useApp();
+  const query = useQuery<{ items: EndpointSummary[] }>(`/endpoints?device_id=${device.id}`, ['devices'], 15_000);
+  const ep = query.data?.items[0] ?? null;
+
+  if (ep) {
+    const online = ep.status === 'active' && ep.connection_state === 'online';
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-medium text-fg">{ep.name}</span>
+          <Badge tone={online ? 'ok' : ep.status === 'pending' ? 'warn' : 'crit'}>
+            {ep.status === 'pending' ? tx.pending : online ? tx.online : tx.offline}
+          </Badge>
+        </div>
+        {ep.status === 'active' && (
+          <div className="grid grid-cols-3 gap-2 rounded-md border border-line bg-bg/60 p-2 text-xs">
+            <div>
+              <span className="block text-[11px] text-muted">{tx.cpu}</span>
+              <span className="mono font-medium text-fg">{pct(ep.cpu_pct, 0)}</span>
+            </div>
+            <div>
+              <span className="block text-[11px] text-muted">{tx.memory}</span>
+              <span className="mono font-medium text-fg">{pct(ep.ram_pct, 0)}</span>
+            </div>
+            <div>
+              <span className="block text-[11px] text-muted">{tx.disk}</span>
+              <span className="mono font-medium text-fg">{pct(ep.disk_used_pct, 0)}</span>
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-muted">{tx.deviceCardEnrolled}</p>
+        <Link
+          href={`/endpoints/${ep.id}`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-white hover:bg-accent-hover"
+        >
+          <Cpu className="size-3.5" aria-hidden />
+          {tx.deviceCardOpen}
+        </Link>
+      </div>
+    );
+  }
+
+  const label = device.display_name || device.hostname || device.current_ip || 'PC';
+  return (
+    <div className="space-y-2.5">
+      <p className="text-xs leading-relaxed text-muted">{tx.deviceCardNone}</p>
+      {can('admin') && (
+        <Link
+          href={`/endpoints?site_id=${encodeURIComponent(device.site_id)}&device_id=${encodeURIComponent(device.id)}&enroll_name=${encodeURIComponent(label)}`}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 text-xs font-medium text-fg hover:bg-line"
+        >
+          <Cpu className="size-3.5" aria-hidden />
+          {tx.deviceCardEnroll}
+        </Link>
+      )}
     </div>
   );
 }
@@ -396,6 +482,9 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                   </Card>
                 </div>
                 <div className="space-y-4">
+                  <Card title={endpointsText(locale).deviceCardTitle}>
+                    <DeviceEndpointCard device={d} />
+                  </Card>
                   <Card title={portsText(locale).cardTitle}>
                     <DevicePortCard deviceId={d.id} />
                   </Card>

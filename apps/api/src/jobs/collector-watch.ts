@@ -60,5 +60,16 @@ export async function watchCollectors(): Promise<void> {
       await notifyRealtime(db, c.organization_id, 'collectors');
       await notifyRealtime(db, c.organization_id, 'devices');
     }
+
+    const goneEndpoints = await db.query<{ id: string; organization_id: string }>(
+      `UPDATE endpoints SET connection_state = 'offline'
+        WHERE status = 'active' AND connection_state = 'online'
+          AND last_heartbeat_at < now() - make_interval(secs => $1)
+        RETURNING id, organization_id`,
+      [COLLECTOR_OFFLINE_AFTER_SECONDS],
+    );
+    for (const ep of goneEndpoints.rows) {
+      await notifyRealtime(db, ep.organization_id, 'devices');
+    }
   });
 }

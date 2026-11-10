@@ -251,15 +251,19 @@ export interface Overview {
 
 export interface NotificationChannel {
   id: string;
-  kind: 'webhook';
+  kind: 'webhook' | 'email';
   name: string;
+  /** Webhook URL, or "mailto:" + recipients for email. */
   url: string;
+  /** Email only: the non-secret SMTP settings. */
+  config: { host?: string; port?: number; security?: 'tls' | 'starttls' | 'none'; username?: string | null; from?: string };
   min_severity: Severity;
   event_types: string[] | null;
   enabled: boolean;
   created_at: string;
   last_delivery_status: string | null;
   last_delivery_at: string | null;
+  last_delivery_error?: string | null;
 }
 
 export interface AuditEntry {
@@ -395,13 +399,20 @@ export interface TopologyNode {
   runs_collector: boolean;
   segment: string | null;
   last_seen_at: string | null;
+  /** True when this device is a switch that LAN Detective reads over SNMP. */
+  is_switch?: boolean;
+  /** "Gi0/4 on Core switch" when a read switch saw this device on an access port. */
+  attached_to?: string | null;
 }
 
 export interface TopologyEdge {
   id: string;
   source: string;
   target: string;
-  relation: 'member_of' | 'gateway_of' | 'uplink';
+  /** connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP). */
+  relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link';
+  /** Port name on the switch, for connected_to and switch_link. */
+  port?: string;
   basis: 'observed' | 'inferred';
   confidence: Confidence;
   evidence: string;
@@ -574,6 +585,9 @@ export interface SwitchPort {
   errors_delta: number | null;
   discards_delta: number | null;
   delta_seconds: number | null;
+  /** Average bits per second between the last two reads; null when it could not be derived. */
+  in_bps: number | null;
+  out_bps: number | null;
   mac_count: number;
   neighbors: PortNeighbor[];
   oper_changed_at: string | null;
@@ -581,6 +595,28 @@ export interface SwitchPort {
   role: PortRole;
   devices: PortDevice[];
   unknown_addresses: string[];
+}
+
+export interface PortHistoryPoint {
+  ts: string;
+  in_bps: number | null;
+  out_bps: number | null;
+  /** Highest read-to-read average inside the bucket (not a true peak). */
+  in_max_bps: number | null;
+  out_max_bps: number | null;
+  errors: number;
+  discards: number;
+  up: boolean;
+  samples: number;
+}
+
+export interface PortHistory {
+  from: string;
+  to: string;
+  bucket_seconds: number;
+  name: string;
+  speed_mbps: number;
+  points: PortHistoryPoint[];
 }
 
 export interface SwitchDetail extends SwitchSummary {
@@ -703,3 +739,160 @@ export interface IpamHistoryEntry {
   first_seen_at: string;
   last_seen_at: string;
 }
+
+// ── IT Toolbox ──────────────────────────────────────────────────────────────
+
+export type ToolKind = 'ping' | 'tcp' | 'ports' | 'dns' | 'rdns' | 'traceroute';
+export type ToolRunStatus = 'pending' | 'completed' | 'failed' | 'expired';
+
+export interface ToolHop {
+  n: number;
+  address?: string;
+  rtt_ms?: number[];
+}
+
+export interface ToolOpenPort {
+  port: number;
+  service: string;
+  connect_ms?: number;
+}
+
+export interface ToolRun {
+  id: string;
+  site_id: string;
+  collector_id: string;
+  collector_name: string;
+  tool: ToolKind;
+  target: string;
+  port: number | null;
+  status: ToolRunStatus;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  duration_ms: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+// ── Phase 3 & 4: Endpoint management & remote administration ────────────────
+
+export type EndpointStatus = 'pending' | 'active' | 'revoked';
+export type EndpointCommandKind = 'refresh_inventory' | 'kill_process' | 'service_action' | 'power_action' | 'notify_user';
+export type EndpointCommandStatus = 'pending' | 'delivered' | 'completed' | 'failed' | 'expired';
+
+export interface EndpointDisk {
+  mount: string;
+  filesystem?: string;
+  total_gb: number;
+  used_gb: number;
+  free_gb: number;
+  used_pct: number;
+}
+
+export interface EndpointInterface {
+  name: string;
+  mac?: string;
+  addresses: string[];
+}
+
+export interface EndpointProcess {
+  pid: number;
+  name: string;
+  cpu_pct?: number;
+  mem_mb: number;
+  user?: string;
+  command?: string;
+}
+
+export interface EndpointService {
+  name: string;
+  display_name: string;
+  state: 'running' | 'stopped' | 'other';
+  start_mode?: 'auto' | 'manual' | 'disabled' | 'other';
+}
+
+export interface EndpointSoftware {
+  name: string;
+  version?: string;
+  publisher?: string;
+  install_date?: string;
+}
+
+export interface EndpointConnection {
+  proto: 'tcp' | 'udp';
+  local_address: string;
+  local_port: number;
+  remote_address?: string;
+  remote_port?: number;
+  state: string;
+  pid?: number;
+  process_name?: string;
+}
+
+export interface EndpointSummary {
+  id: string;
+  site_id: string;
+  site_name: string;
+  device_id: string | null;
+  name: string;
+  status: EndpointStatus;
+  connection_state: 'never' | 'online' | 'offline';
+  agent_version: string | null;
+  hostname: string | null;
+  os: string | null;
+  os_version: string | null;
+  arch: string | null;
+  cpu_model: string | null;
+  cpu_cores: number | null;
+  ram_total_mb: number | null;
+  uptime_seconds: number | null;
+  logged_in_users: string[];
+  primary_ip: string | null;
+  primary_mac: string | null;
+  cpu_pct: number | null;
+  ram_used_mb: number | null;
+  ram_pct: number | null;
+  disk_used_pct: number | null;
+  last_heartbeat_at: string | null;
+  inventory_updated_at: string | null;
+  enrollment_expires_at: string | null;
+  created_at: string;
+}
+
+export interface EndpointCreated {
+  endpoint: EndpointSummary;
+  enrollment_token: string;
+}
+
+export interface EndpointCommand {
+  id: string;
+  endpoint_id: string;
+  kind: EndpointCommandKind;
+  payload: Record<string, unknown>;
+  status: EndpointCommandStatus;
+  output: string | null;
+  error: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  delivered_at: string | null;
+  completed_at: string | null;
+}
+
+export interface EndpointDetail extends EndpointSummary {
+  disks: EndpointDisk[];
+  interfaces: EndpointInterface[];
+  processes: EndpointProcess[];
+  services: EndpointService[];
+  software: EndpointSoftware[];
+  connections: EndpointConnection[];
+  commands: EndpointCommand[];
+}
+
+export interface EndpointSeriesPoint {
+  ts: string;
+  cpu_pct: number | null;
+  ram_pct: number | null;
+  disk_used_pct: number | null;
+  samples: number;
+}
+
+

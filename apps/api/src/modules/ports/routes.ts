@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { PortLocation as PortLocationDto, SwitchDetail, SwitchPort, SwitchSummary } from '@lan-detective/shared-types';
+import type { PortHistoryPoint, PortLocation as PortLocationDto, SwitchDetail, SwitchPort, SwitchSummary } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { decryptSecret, encryptSecret } from '../../common/crypto.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
@@ -206,7 +206,7 @@ portsRouter.get('/switches/:id', async (req, res) => {
     const ports = (
       await db.query<Omit<SwitchPort, 'role' | 'devices' | 'unknown_addresses'>>(
         `SELECT if_index, name, descr, alias, admin_up, oper_up, speed_mbps::int AS speed_mbps, in_errors::float8 AS in_errors, out_errors::float8 AS out_errors,
-                in_discards::float8 AS in_discards, out_discards::float8 AS out_discards, errors_delta::float8 AS errors_delta, discards_delta::float8 AS discards_delta, delta_seconds, mac_count, neighbors,
+                in_discards::float8 AS in_discards, out_discards::float8 AS out_discards, errors_delta::float8 AS errors_delta, discards_delta::float8 AS discards_delta, delta_seconds, in_bps, out_bps, mac_count, neighbors,
                 oper_changed_at, updated_at
            FROM switch_ports WHERE target_id = $1 ORDER BY if_index`,
         [id],
@@ -250,6 +250,43 @@ portsRouter.get('/switches/:id', async (req, res) => {
     };
   });
   res.json(detail);
+});
+
+// ── traffic and error history of one port ──────────────────────────────────
+
+// Bucket sizes keep a chart at a few hundred points. Reads normally arrive every 5 minutes.
+const HISTORY: Record<string, { seconds: number; bucket: number }> = {
+  '6h': { seconds: 21_600, bucket: 300 },
+  '24h': { seconds: 86_400, bucket: 300 },
+  '7d': { seconds: 604_800, bucket: 3600 },
+  '30d': { seconds: 2_592_000, bucket: 14_400 },
+};
+
+portsRouter.get('/switches/:id/ports/:ifIndex/history', async (req, res) => {
+  const ctx = auth(req);
+  const { id, ifIndex } = parse(z.object({ id: z.uuid(), ifIndex: z.coerce.number().int().min(0).max(2_147_483_647) }), req.params);
+  const { range } = parse(z.object({ range: z.enum(['6h', '24h', '7d', '30d']).default('24h') }), req.query);
+  const r = HISTORY[range]!;
+  const to = new Date();
+  const from = new Date(to.getTime() - r.seconds * 1000);
+  const data = await withTenant(ctx.organizationId, async (db) => {
+    const port = (await db.query<{ name: string; speed_mbps: number }>(`SELECT name, speed_mbps::int AS speed_mbps FROM switch_ports WHERE target_id = $1 AND if_index = $2`, [id, ifIndex])).rows[0];
+    if (!port) throw notFound('Port');
+    // avg() ignores NULL rates, so a bucket is NULL only when no read in it produced a rate. The
+    // maximum is the highest read-to-read average in the bucket, not a true peak.
+    const points = (
+      await db.query<PortHistoryPoint>(
+        `SELECT date_bin(make_interval(secs => $5), ts, timestamptz '2000-01-01') AS ts,
+                avg(in_bps) AS in_bps, avg(out_bps) AS out_bps, max(in_bps) AS in_max_bps, max(out_bps) AS out_max_bps,
+                coalesce(sum(errors), 0)::int AS errors, coalesce(sum(discards), 0)::int AS discards, bool_and(oper_up) AS up, count(*)::int AS samples
+           FROM switch_port_samples WHERE target_id = $1 AND if_index = $2 AND ts >= $3 AND ts < $4
+          GROUP BY 1 ORDER BY 1`,
+        [id, ifIndex, from, to, r.bucket],
+      )
+    ).rows;
+    return { ...port, points };
+  });
+  res.json({ from, to, bucket_seconds: r.bucket, ...data });
 });
 
 // ── where is this device? ───────────────────────────────────────────────────

@@ -1,0 +1,214 @@
+import request from 'supertest';
+import { describe, expect, it } from 'vitest';
+import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
+
+describe('endpoint management and remote administration (Phases 3 & 4)', () => {
+  it('enrolls an endpoint, auto-links it to its discovered LAN device, ingests health + inventory, and isolates tenants', async () => {
+    const a = await newAccount('ep-a');
+    const b = await newAccount('ep-b');
+    const scopeId = await addScope(a, '192.168.10.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c, { gateway_ip: '192.168.10.1' });
+    await telemetry(c, [
+      sweep(scopeId, [{ ip: '192.168.10.50', mac: '00:11:22:33:44:55', hostname: 'workstation-1' }]),
+    ]);
+
+    const devices = (await a.agent.get('/api/v1/devices')).body.items as { id: string; current_ip: string }[];
+    const lanDevice = devices.find((d) => d.current_ip === '192.168.10.50')!;
+    expect(lanDevice).toBeDefined();
+
+    // Admin creates an endpoint
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
+      site_id: a.siteId,
+      name: 'Accounting PC 1',
+    });
+    expect(created.status).toBe(201);
+    const epId: string = created.body.endpoint.id;
+    const token: string = created.body.enrollment_token;
+    expect(token.startsWith('ldea_')).toBe(true);
+
+    // Agent enrolls using the single-use token and gets linked to lanDevice by MAC
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: token,
+      hostname: 'WORKSTATION-1',
+      agent_version: '0.1.0',
+      os: 'windows',
+      os_version: 'Microsoft Windows 11 Pro',
+      arch: 'amd64',
+      cpu_model: 'Intel Core i7',
+      cpu_cores: 8,
+      ram_total_mb: 16384,
+      primary_ip: '192.168.10.50',
+      primary_mac: '00:11:22:33:44:55',
+    });
+    expect(enrolled.status).toBe(201);
+    const cred: string = enrolled.body.credential;
+    expect(cred.startsWith(`lda_${epId}.`)).toBe(true);
+
+    // Token is single-use
+    const replay = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: token,
+      hostname: 'SPOOF',
+      agent_version: '0.1.0',
+      os: 'windows',
+      arch: 'amd64',
+    });
+    expect(replay.status).toBe(401);
+
+    // Agent sends heartbeat and full inventory
+    const hb = await request(app)
+      .post('/api/v1/agent/heartbeat')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({
+        agent_version: '0.1.0',
+        hostname: 'WORKSTATION-1',
+        os: 'windows',
+        arch: 'amd64',
+        uptime_seconds: 7200,
+        logged_in_users: ['CONTOSO\\ahmed'],
+        primary_ip: '192.168.10.50',
+        primary_mac: '00:11:22:33:44:55',
+        cpu_pct: 18.4,
+        ram_used_mb: 6144,
+        ram_pct: 37.5,
+        disk_used_pct: 62.0,
+      });
+    expect(hb.status).toBe(200);
+
+    const inv = await request(app)
+      .post('/api/v1/agent/inventory')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({
+        disks: [{ mount: 'C:', filesystem: 'NTFS', total_gb: 500, used_gb: 310, free_gb: 190, used_pct: 62 }],
+        interfaces: [{ name: 'Ethernet', mac: '00:11:22:33:44:55', addresses: ['192.168.10.50/24'] }],
+        processes: [{ pid: 4120, name: 'excel.exe', cpu_pct: 4.2, mem_mb: 280, user: 'ahmed' }],
+        services: [{ name: 'Spooler', display_name: 'Print Spooler', state: 'running', start_mode: 'auto' }],
+        software: [{ name: '7-Zip 24.08', version: '24.08', publisher: 'Igor Pavlov' }],
+        connections: [{ proto: 'tcp', local_address: '192.168.10.50', local_port: 51200, remote_address: '192.168.10.1', remote_port: 443, state: 'ESTABLISHED', pid: 4120, process_name: 'excel.exe' }],
+      });
+    expect(inv.status).toBe(200);
+
+    // Tenant B cannot see Tenant A's endpoint
+    expect((await b.agent.get(`/api/v1/endpoints/${epId}`)).status).toBe(404);
+    expect((await b.agent.get('/api/v1/endpoints')).body.items).toHaveLength(0);
+
+    // Tenant A reads full endpoint detail and series
+    const detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.device_id).toBe(lanDevice.id);
+    expect(detail.body.connection_state).toBe('online');
+    expect(detail.body.logged_in_users).toEqual(['CONTOSO\\ahmed']);
+    expect(detail.body.processes).toHaveLength(1);
+    expect(detail.body.services[0].name).toBe('Spooler');
+    expect(detail.body.software[0].name).toBe('7-Zip 24.08');
+    expect(detail.body.connections[0].process_name).toBe('excel.exe');
+
+    const series = await a.agent.get(`/api/v1/endpoints/${epId}/series?range=1h`);
+    expect(series.status).toBe(200);
+    expect(series.body.points.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('enforces role permissions for remote control commands, delivers them on heartbeat, and records results + revocation', async () => {
+    const a = await newAccount('ep-ctrl');
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Reception PC' });
+    const epId: string = created.body.endpoint.id;
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: created.body.enrollment_token,
+      hostname: 'RECEPTION',
+      agent_version: '0.1.0',
+      os: 'windows',
+      arch: 'amd64',
+    });
+    const cred: string = enrolled.body.credential;
+
+    await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.1.0',
+      hostname: 'RECEPTION',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 100,
+      cpu_pct: 5,
+      ram_used_mb: 1024,
+      ram_pct: 25,
+    });
+
+    // Viewer cannot run any remote command
+    await setRole(a.email, a.organizationId, 'viewer');
+    const viewerKill = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'kill_process',
+      pid: 1234,
+    });
+    expect(viewerKill.status).toBe(403);
+
+    // Technician can kill a process, control a service, lock workstation, or message user, but cannot reboot/shutdown
+    await setRole(a.email, a.organizationId, 'technician');
+    const techReboot = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'power_action',
+      action: 'restart',
+    });
+    expect(techReboot.status).toBe(403);
+
+    const techKill = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'kill_process',
+      pid: 4120,
+      name: 'excel.exe',
+    });
+    expect(techKill.status).toBe(202);
+    const cmdId: string = techKill.body.id;
+
+    // Admin can request restart
+    await setRole(a.email, a.organizationId, 'admin');
+    const adminReboot = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'power_action',
+      action: 'restart',
+      reason: 'Security patch',
+    });
+    expect(adminReboot.status).toBe(202);
+
+    // Agent polls heartbeat, receives commands, and reports completion on next heartbeat
+    const pollHb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.1.0',
+      hostname: 'RECEPTION',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 120,
+      cpu_pct: 5,
+      ram_used_mb: 1024,
+      ram_pct: 25,
+    });
+    expect(pollHb.body.commands.length).toBe(2);
+
+    await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.1.0',
+      hostname: 'RECEPTION',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 140,
+      cpu_pct: 4,
+      ram_used_mb: 980,
+      ram_pct: 24,
+      command_results: [{ id: cmdId, ok: true, output: 'Terminated PID 4120' }],
+    });
+
+    const detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    const completedCmd = (detail.body.commands as { id: string; status: string; output: string }[]).find((c) => c.id === cmdId);
+    expect(completedCmd?.status).toBe('completed');
+    expect(completedCmd?.output).toBe('Terminated PID 4120');
+
+    // Revoking immediately blocks the agent's credential
+    const revoke = await a.agent.post(`/api/v1/endpoints/${epId}/revoke`).set(CSRF);
+    expect(revoke.status).toBe(200);
+    const afterRevoke = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.1.0',
+      hostname: 'RECEPTION',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 160,
+      cpu_pct: 4,
+      ram_used_mb: 980,
+      ram_pct: 24,
+    });
+    expect(afterRevoke.status).toBe(401);
+  });
+});
+

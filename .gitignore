@@ -9,6 +9,7 @@ coverage/
 collectors/lan-collector/state/
 collectors/lan-collector/spool/
 collectors/lan-collector/collector.yaml
+agents/endpoint-agent/state/
 .tools/
 release/
 *.tsbuildinfo

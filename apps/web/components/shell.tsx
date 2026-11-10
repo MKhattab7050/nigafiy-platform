@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Activity, Cable, Clock, Gauge, Hash, History, LogOut, Menu, MonitorSmartphone, Network, Radar, Settings, ShieldCheck, Siren, Stethoscope, X } from 'lucide-react';
+import { Activity, Cable, Clock, Cpu, Gauge, Hash, History, LogOut, Menu, MonitorSmartphone, Network, Radar, Settings, ShieldCheck, Siren, Stethoscope, Wrench, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -17,6 +17,7 @@ const NAV: { group: Key; items: { href: string; label: Key; icon: typeof Gauge }
     items: [
       { href: '/', label: 'nav.overview', icon: Gauge },
       { href: '/devices', label: 'nav.devices', icon: MonitorSmartphone },
+      { href: '/endpoints', label: 'nav.endpoints', icon: Cpu },
       { href: '/topology', label: 'nav.topology', icon: Network },
       { href: '/ports', label: 'nav.ports', icon: Cable },
       { href: '/ipam', label: 'nav.ipam', icon: Hash },
@@ -29,6 +30,7 @@ const NAV: { group: Key; items: { href: string; label: Key; icon: typeof Gauge }
     items: [
       { href: '/incidents', label: 'nav.incidents', icon: Siren },
       { href: '/doctor', label: 'nav.doctor', icon: Stethoscope },
+      { href: '/toolbox', label: 'nav.toolbox', icon: Wrench },
       { href: '/time-machine', label: 'nav.timeMachine', icon: Clock },
       { href: '/events', label: 'nav.events', icon: History },
     ],

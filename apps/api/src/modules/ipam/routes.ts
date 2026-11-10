@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { IpamHistoryEntry, IpamRecord, IpamSubnetDetail, IpamSubnetSummary } from '@lan-detective/shared-types';
+import type { IpamConflict, IpamHistoryEntry, IpamRecord, IpamSubnetDetail, IpamSubnetSummary } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { cidrContains, isIPv4, normalizeMac } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
-import { notifyRealtime } from '../events/emit.ts';
+import { emitEvent, notifyRealtime } from '../events/emit.ts';
 import { type ObservedDevice, buildPlan, csvCell, intToIp, ipToInt, subnetMath } from './plan.ts';
 
 export const ipamRouter: Router = Router();
@@ -116,6 +116,70 @@ async function loadSubnet(db: Db, id: string): Promise<IpamSubnetDetail> {
   };
 }
 
+// ── conflict events ─────────────────────────────────────────────────────────
+
+const CONFLICT_TITLE: Record<IpamConflict['kind'], (ip: string) => string> = {
+  duplicate_ip: (ip) => `Two devices are using the address ${ip}`,
+  reserved_in_use: (ip) => `The reserved address ${ip} is in use`,
+  assignment_mismatch: (ip) => `${ip} is used by a different device than documented`,
+  static_in_dhcp_pool: (ip) => `The static address ${ip} is inside the DHCP pool`,
+};
+
+/**
+ * Compares the conflicts of a site with those already open and raises one event per conflict that
+ * appeared and one per conflict that cleared. Called after a discovery sweep was applied and after
+ * the documentation changed. Idempotent.
+ */
+export async function syncIpamConflicts(db: Db, organizationId: string, siteId: string, at: Date, collectorId: string | null = null): Promise<void> {
+  const scopes = (await db.query<ScopeRow>(`${SCOPES} WHERE s.site_id = $1`, [siteId])).rows;
+  const open = (await db.query<{ ip: string; kind: IpamConflict['kind'] }>(`SELECT host(ip) AS ip, kind FROM ipam_open_conflicts WHERE site_id = $1`, [siteId])).rows;
+  if (!scopes.length && !open.length) return;
+  const facts = scopes.length ? await loadFacts(db, [siteId]) : null;
+  const current = new Map<string, { conflict: IpamConflict; deviceId: string | null }>();
+  for (const scope of scopes) {
+    const { plan } = planFor(scope, facts!);
+    for (const conflict of plan.conflicts) {
+      const online = plan.addresses.find((a) => a.ip === conflict.ip)?.devices.find((d) => d.status === 'online');
+      current.set(`${conflict.ip}|${conflict.kind}`, { conflict, deviceId: online?.id ?? null });
+    }
+  }
+  const known = new Set(open.map((o) => `${o.ip}|${o.kind}`));
+  let changed = false;
+  for (const [key, { conflict, deviceId }] of current) {
+    if (known.has(key)) continue;
+    changed = true;
+    await db.query(`INSERT INTO ipam_open_conflicts (site_id, ip, kind, organization_id, opened_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`, [siteId, conflict.ip, conflict.kind, organizationId, at]);
+    await emitEvent(db, organizationId, {
+      siteId,
+      deviceId,
+      collectorId,
+      type: 'ip_conflict',
+      // A documentation inconsistency is worth knowing; two machines fighting over an address is a fault.
+      severity: conflict.kind === 'static_in_dhcp_pool' ? 'info' : 'warning',
+      title: CONFLICT_TITLE[conflict.kind](conflict.ip),
+      details: { ip: conflict.ip, kind: conflict.kind, evidence: conflict.evidence, source: 'Discovery results compared with the IPAM records' },
+      source: 'platform',
+      occurredAt: at,
+    });
+  }
+  for (const o of open) {
+    if (current.has(`${o.ip}|${o.kind}`)) continue;
+    changed = true;
+    await db.query(`DELETE FROM ipam_open_conflicts WHERE site_id = $1 AND ip = $2::inet AND kind = $3`, [siteId, o.ip, o.kind]);
+    await emitEvent(db, organizationId, {
+      siteId,
+      collectorId,
+      type: 'ip_conflict_resolved',
+      severity: 'info',
+      title: `The address conflict on ${o.ip} is resolved`,
+      details: { ip: o.ip, kind: o.kind },
+      source: 'platform',
+      occurredAt: at,
+    });
+  }
+  if (changed) await notifyRealtime(db, organizationId, 'events');
+}
+
 // ── subnets ─────────────────────────────────────────────────────────────────
 
 ipamRouter.get('/ipam/subnets', async (req, res) => {
@@ -157,7 +221,7 @@ ipamRouter.put('/ipam/subnets/:id', requireRole('admin'), async (req, res) => {
   const { id } = parse(idParams, req.params);
   const body = parse(subnetBody, req.body);
   const detail = await withTenant(ctx.organizationId, async (db) => {
-    const scope = (await db.query<{ cidr: string }>(`SELECT cidr::text AS cidr FROM network_scopes WHERE id = $1`, [id])).rows[0];
+    const scope = (await db.query<{ cidr: string; site_id: string }>(`SELECT cidr::text AS cidr, site_id FROM network_scopes WHERE id = $1`, [id])).rows[0];
     if (!scope) throw notFound('Subnet');
     const invalid = (message: string) => new AppError(422, 'invalid_plan', message);
     if (body.gateway && !cidrContains(scope.cidr, body.gateway)) throw invalid(`The gateway must be inside ${scope.cidr}`);
@@ -174,6 +238,7 @@ ipamRouter.put('/ipam/subnets/:id', requireRole('admin'), async (req, res) => {
       [id, ctx.organizationId, body.vlan_id, body.gateway, body.dns_servers, body.dhcp_start, body.dhcp_end, body.notes || null, ctx.userId],
     );
     await audit(db, req, 'ipam.subnet_documented', { type: 'network_scope', id }, { cidr: scope.cidr, ...body });
+    await syncIpamConflicts(db, ctx.organizationId, scope.site_id, new Date());
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return loadSubnet(db, id);
   });
@@ -240,6 +305,7 @@ ipamRouter.post('/ipam/addresses', requireRole('technician'), async (req, res) =
       )
     ).rows[0]!;
     await audit(db, req, 'ipam.address_documented', { type: 'ipam_address', id: row.id }, { ip: row.ip, kind: row.kind, label: row.label, mac: row.mac });
+    await syncIpamConflicts(db, ctx.organizationId, body.site_id, new Date());
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return row;
   });
@@ -270,6 +336,7 @@ ipamRouter.patch('/ipam/addresses/:id', requireRole('technician'), async (req, r
       ])
     ).rows[0]!;
     await audit(db, req, 'ipam.address_updated', { type: 'ipam_address', id }, { ip: row.ip, ...body });
+    await syncIpamConflicts(db, ctx.organizationId, row.site_id, new Date());
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return row;
   });
@@ -280,9 +347,10 @@ ipamRouter.delete('/ipam/addresses/:id', requireRole('technician'), async (req, 
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {
-    const gone = (await db.query<{ ip: string; label: string }>(`DELETE FROM ipam_addresses WHERE id = $1 RETURNING host(ip) AS ip, label`, [id])).rows[0];
+    const gone = (await db.query<{ ip: string; label: string; site_id: string }>(`DELETE FROM ipam_addresses WHERE id = $1 RETURNING host(ip) AS ip, label, site_id`, [id])).rows[0];
     if (!gone) throw notFound('Address');
-    await audit(db, req, 'ipam.address_removed', { type: 'ipam_address', id }, gone);
+    await audit(db, req, 'ipam.address_removed', { type: 'ipam_address', id }, { ip: gone.ip, label: gone.label });
+    await syncIpamConflicts(db, ctx.organizationId, gone.site_id, new Date());
     await notifyRealtime(db, ctx.organizationId, 'devices');
   });
   res.status(204).end();

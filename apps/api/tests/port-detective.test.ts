@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { rate } from '../src/modules/ports/ingest.ts';
 import { locate, portRole } from '../src/modules/ports/locate.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
@@ -184,5 +185,67 @@ describe('Port Detective API', () => {
     // Removing the switch removes what was read from it.
     expect((await a.agent.delete(`/api/v1/switches/${sw}`).set(CSRF)).status).toBe(204);
     expect(await where('192.168.5.10')).toMatchObject({ location: null, reason: 'no_switches' });
+  });
+
+  it('derives traffic rates from counters and keeps a history, without inventing values', async () => {
+    expect(rate(375_000_000, '0', 300, 1000)).toBe(10_000_000); // 375 MB in 5 minutes = 10 Mb/s
+    expect(rate(100, '200', 300, 1000)).toBeNull(); // counter went backwards: the switch restarted
+    expect(rate(375_000_000, '0', 7200, 1000)).toBeNull(); // two hours between reads: an average would mislead
+    expect(rate(1e12, '0', 300, 100)).toBeNull(); // more than a 100 Mb/s port can carry: counter glitch
+
+    const { a, c, add } = await office();
+    const sw = (await add({ host: '192.168.5.2', credentials: { version: '2c', community: COMMUNITY } })).body.id as string;
+    const read = (minutesAgo: number, inOctets: number, outOctets: number, extra: Record<string, unknown> = {}) =>
+      telemetry(c, [poll(sw, minutesAgo, { ports: [port(1, { in_octets: inOctets, out_octets: outOctets, ...extra }), port(3, { oper_up: false })], fdb: [] })]);
+
+    await read(15, 0, 0);
+    let detail = (await a.agent.get(`/api/v1/switches/${sw}`)).body;
+    expect(detail.ports[0]).toMatchObject({ in_bps: null, out_bps: null }); // one read is not enough for a rate
+    const history = async (range = '6h') => (await a.agent.get(`/api/v1/switches/${sw}/ports/1/history?range=${range}`)).body;
+    expect((await history()).points).toEqual([]);
+
+    await read(10, 375_000_000, 37_500_000);
+    await read(5, 750_000_000, 75_000_000, { in_errors: 4 });
+    detail = (await a.agent.get(`/api/v1/switches/${sw}`)).body;
+    expect(detail.ports[0].in_bps).toBeCloseTo(10_000_000, -3);
+    expect(detail.ports[0].out_bps).toBeCloseTo(1_000_000, -3);
+
+    await read(0, 1000, 500); // the switch restarted: counters start again from zero
+    detail = (await a.agent.get(`/api/v1/switches/${sw}`)).body;
+    expect(detail.ports[0]).toMatchObject({ in_bps: null, out_bps: null });
+
+    const h = await history();
+    expect(h).toMatchObject({ name: 'Gi0/1', speed_mbps: 1000, bucket_seconds: 300 });
+    const known = h.points.filter((x: any) => x.in_bps !== null);
+    expect(known).toHaveLength(2);
+    expect(known[0].in_bps).toBeCloseTo(10_000_000, -3);
+    expect(h.points.reduce((n: number, x: any) => n + x.errors, 0)).toBe(4);
+    expect(h.points.some((x: any) => x.in_bps === null)).toBe(true); // the restart is a gap, not a zero
+    // A port that stayed down has no history; unknown ports and other organizations get 404.
+    expect((await a.agent.get(`/api/v1/switches/${sw}/ports/3/history`)).body.points).toEqual([]);
+    expect((await a.agent.get(`/api/v1/switches/${sw}/ports/99/history`)).status).toBe(404);
+    const other = await newAccount('ports-hist-other');
+    expect((await other.agent.get(`/api/v1/switches/${sw}/ports/1/history`)).status).toBe(404);
+  });
+
+  it('draws switch ports on the topology only where a switch proved them', async () => {
+    const { a, c, byIp, add } = await office();
+    const before = (await a.agent.get(`/api/v1/topology?site_id=${a.siteId}`)).body;
+    expect(before.edges.some((e: any) => e.relation === 'connected_to')).toBe(false);
+    expect(before.limitations[0]).toContain('no managed switch has been read');
+
+    const sw = (await add({ host: '192.168.5.2', name: 'Core switch', credentials: { version: '2c', community: COMMUNITY } })).body.id as string;
+    await telemetry(c, [poll(sw, 1)]);
+    const t = (await a.agent.get(`/api/v1/topology?site_id=${a.siteId}`)).body;
+    const node = (ip: string) => t.nodes.find((n: any) => n.device_id === byIp(ip).id);
+    const link = (ip: string) => t.edges.find((e: any) => e.relation === 'connected_to' && e.source === node(ip).id);
+    expect(node('192.168.5.2')).toMatchObject({ is_switch: true });
+    expect(link('192.168.5.10')).toMatchObject({ target: node('192.168.5.2').id, port: 'Gi0/1', basis: 'observed', confidence: 'high', evidence_source: 'Switch forwarding table (SNMP)' });
+    expect(node('192.168.5.10').attached_to).toBe('Gi0/1 · Core switch');
+    expect(link('192.168.5.11')).toMatchObject({ port: 'Gi0/2', confidence: 'medium' }); // shared port
+    expect(link('192.168.5.20')).toBeUndefined(); // seen only behind a port with many addresses: not drawn
+    expect(link('192.168.5.1')).toBeUndefined(); // never seen by the switch
+    expect(t.limitations[0]).toContain('2 device(s) seen on access ports');
+    expect(t.limitations[0]).toContain('1 device(s) were seen only behind a trunk');
   });
 });

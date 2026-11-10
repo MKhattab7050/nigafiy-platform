@@ -11,18 +11,36 @@ export const notificationsRouter: Router = Router();
 
 // The signing secret is never part of any SELECT that leaves this module.
 const CHANNEL_SELECT = `
-  SELECT c.id, c.kind, c.name, c.url, c.min_severity, c.event_types, c.enabled, c.created_at,
-         d.status AS last_delivery_status, coalesce(d.delivered_at, d.created_at) AS last_delivery_at
+  SELECT c.id, c.kind, c.name, c.url, c.config, c.min_severity, c.event_types, c.enabled, c.created_at,
+         d.status AS last_delivery_status, coalesce(d.delivered_at, d.created_at) AS last_delivery_at, d.last_error AS last_delivery_error
     FROM notification_channels c
-    LEFT JOIN LATERAL (SELECT status, delivered_at, created_at FROM notification_deliveries
+    LEFT JOIN LATERAL (SELECT status, delivered_at, created_at, last_error FROM notification_deliveries
                         WHERE channel_id = c.id ORDER BY created_at DESC LIMIT 1) d ON true`;
 
-const channelInput = z.object({
+const common = {
   name: z.string().trim().min(1).max(80),
-  url: z.url().max(500),
   min_severity: z.enum(['info', 'warning', 'critical']).default('warning'),
   event_types: z.array(z.string().max(60)).max(30).nullable().default(null),
+};
+const webhookInput = z.object({ kind: z.literal('webhook').default('webhook'), url: z.url().max(500), ...common });
+const address = z.email().max(254);
+const emailInput = z.object({
+  kind: z.literal('email'),
+  recipients: z.array(address).min(1).max(10),
+  smtp: z
+    .object({
+      host: z.string().trim().min(1).max(253).regex(/^[A-Za-z0-9.-]+$/, 'Enter a host name or IPv4 address'),
+      port: z.number().int().min(1).max(65535),
+      security: z.enum(['tls', 'starttls', 'none']),
+      username: z.string().max(254).optional(),
+      password: z.string().max(500).optional(),
+      from: address,
+    })
+    .strict(),
+  ...common,
 });
+// Requests without "kind" are webhooks, as before email existed.
+const channelInput = z.union([emailInput, webhookInput]);
 
 function assertWebhookUrl(raw: string): void {
   const url = new URL(raw);
@@ -41,20 +59,37 @@ notificationsRouter.get('/notification-channels', requireRole('admin'), async (r
 notificationsRouter.post('/notification-channels', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const body = parse(channelInput, req.body);
-  assertWebhookUrl(body.url);
-  const secret = `whsec_${randomToken(32)}`;
+  let url: string;
+  let config: Record<string, unknown> = {};
+  let sealed: string;
+  let signingSecret: string | null = null;
+  if (body.kind === 'email') {
+    const { password, username, ...smtp } = body.smtp;
+    if (password && !username) throw new AppError(400, 'invalid_smtp', 'A password needs a user name');
+    // A mail password is never sent over an unencrypted connection.
+    if (username && smtp.security === 'none') throw new AppError(400, 'invalid_smtp', 'Signing in to the mail server needs TLS or STARTTLS');
+    url = `mailto:${body.recipients.join(',')}`;
+    config = { ...smtp, username: username || null };
+    sealed = encryptSecret(JSON.stringify(password ? { password } : {}));
+  } else {
+    assertWebhookUrl(body.url);
+    url = body.url;
+    signingSecret = `whsec_${randomToken(32)}`;
+    sealed = encryptSecret(signingSecret);
+  }
   const channel = await withTenant(ctx.organizationId, async (db) => {
     const inserted = await db.query<{ id: string }>(
-      `INSERT INTO notification_channels (organization_id, kind, name, url, secret_encrypted, min_severity, event_types)
-       VALUES ($1,'webhook',$2,$3,$4,$5,$6) RETURNING id`,
-      [ctx.organizationId, body.name, body.url, encryptSecret(secret), body.min_severity, body.event_types],
+      `INSERT INTO notification_channels (organization_id, kind, name, url, config, secret_encrypted, min_severity, event_types)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [ctx.organizationId, body.kind, body.name, url, JSON.stringify(config), sealed, body.min_severity, body.event_types],
     );
     const id = inserted.rows[0]!.id;
-    await audit(db, req, 'notification_channel.created', { type: 'notification_channel', id }, { name: body.name });
+    // The audit trail records that a channel was added, never its password or signing secret.
+    await audit(db, req, 'notification_channel.created', { type: 'notification_channel', id }, { name: body.name, kind: body.kind });
     return (await db.query<NotificationChannel>(`${CHANNEL_SELECT} WHERE c.id = $1`, [id])).rows[0]!;
   });
-  // Returned exactly once so the receiver can verify signatures; stored encrypted.
-  res.status(201).json({ channel, signing_secret: secret });
+  // A webhook signing secret is returned exactly once so the receiver can verify signatures; stored encrypted.
+  res.status(201).json({ channel, signing_secret: signingSecret });
 });
 
 notificationsRouter.patch('/notification-channels/:id', requireRole('admin'), async (req, res) => {

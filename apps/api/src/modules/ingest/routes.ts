@@ -10,8 +10,10 @@ import { refineCollectorIncident } from '../incidents/engine.ts';
 import { processCheckResult } from './checks.ts';
 import { processDiscoveryRun } from './discovery.ts';
 import { buildAccessPolicy } from '../access/routes.ts';
+import { syncIpamConflicts } from '../ipam/routes.ts';
 import { processSnmpPoll } from '../ports/ingest.ts';
 import { buildSnmpConfig } from '../ports/routes.ts';
+import { processToolResult } from '../toolbox/routes.ts';
 import { processDnsStats } from './dns-stats.ts';
 import { type CollectorContext, ItemRejected, enrollSchema, heartbeatSchema, telemetryBatchSchema } from './schema.ts';
 
@@ -149,11 +151,13 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
       `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
       [c.siteId],
     );
-    // A wake request that could not be delivered within 10 minutes expires: waking a computer an
-    // hour after someone asked is not what they wanted.
+    // A wake or toolbox request that could not be delivered within 10 / 5 minutes expires: waking a computer
+    // or running an on-demand test long after someone asked is not what they wanted.
     await db.query(
       `UPDATE collector_commands SET status = 'completed', completed_at = $2
-        WHERE collector_id = $1 AND kind = 'wake_device' AND status <> 'completed' AND created_at < $2::timestamptz - interval '10 minutes'`,
+        WHERE collector_id = $1 AND status <> 'completed'
+          AND ((kind = 'wake_device' AND created_at < $2::timestamptz - interval '10 minutes')
+               OR (kind = 'run_tool' AND created_at < $2::timestamptz - interval '5 minutes'))`,
       [c.id, now],
     );
     // Commands stay "delivered" (and are re-sent) until the collector acknowledges completion.
@@ -215,6 +219,8 @@ collectorGatewayRouter.post('/telemetry', requireCollector, async (req, res) => 
           await processDnsStats(db, c, item);
         } else if (item.type === 'snmp_poll') {
           await processSnmpPoll(db, c, item);
+        } else if (item.type === 'tool_result') {
+          await processToolResult(db, c, item);
         } else {
           await processCheckResult(db, c, item, now);
         }
@@ -226,7 +232,11 @@ collectorGatewayRouter.post('/telemetry', requireCollector, async (req, res) => 
         rejected.push({ index, reason: err.message });
       }
     }
-    if (touchedDevices) await notifyRealtime(db, c.organizationId, 'devices');
+    if (touchedDevices) {
+      await notifyRealtime(db, c.organizationId, 'devices');
+      // Discovery changed who answers where: compare with the documented addresses.
+      await syncIpamConflicts(db, c.organizationId, c.siteId, now, c.id);
+    }
     if (accepted) await refineCollectorIncident(db, c.organizationId, c.id);
     return { duplicate: false, accepted, rejected };
   });

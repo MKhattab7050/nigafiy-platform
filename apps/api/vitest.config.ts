@@ -16,6 +16,7 @@ export default defineConfig({
       WEB_ORIGIN: 'http://localhost:3100',
       ALLOW_LOOPBACK_SCOPES: 'false',
       ALLOW_PRIVATE_WEBHOOKS: 'true',
+      SMTP_ALLOW_PRIVATE_HOSTS: 'true',
     },
   },
 });

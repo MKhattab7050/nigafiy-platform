@@ -77,6 +77,19 @@ const en = {
   open: 'Open Port Detective',
   alsoSeen: 'Also seen on',
   onlyAdmins: 'Only admins can add or remove switches.',
+  traffic: 'Traffic',
+  trafficIn: 'In',
+  trafficOut: 'Out',
+  trafficMax: 'highest',
+  trafficNone: 'Not measured yet',
+  ofSpeed: 'of port speed',
+  showHistory: 'Show history',
+  hideHistory: 'Hide history',
+  historyEmpty: 'No history yet. A rate needs two reads of the switch; the first appears about five minutes after the switch is added.',
+  historyNote: 'Averages between reads of the switch counters (normally every 5 minutes), not instantaneous peaks. Gaps mean the rate could not be derived: the switch did not answer or its counters restarted.',
+  errorsIn: 'errors',
+  discardsIn: 'discards',
+  linkDown: 'link down',
 };
 
 type Dict = typeof en;
@@ -157,6 +170,19 @@ const ar: Dict = {
   open: 'فتح كاشف المنافذ',
   alsoSeen: 'شوهد أيضًا على',
   onlyAdmins: 'إضافة وحذف السويتشات للمسؤولين فقط.',
+  traffic: 'حركة البيانات',
+  trafficIn: 'داخل',
+  trafficOut: 'خارج',
+  trafficMax: 'الأعلى',
+  trafficNone: 'لم تُقَس بعد',
+  ofSpeed: 'من سرعة المنفذ',
+  showHistory: 'عرض السجل',
+  hideHistory: 'إخفاء السجل',
+  historyEmpty: 'لا يوجد سجل بعد. حساب المعدل يحتاج قراءتين للسويتش؛ يظهر أول معدل بعد نحو خمس دقائق من إضافة السويتش.',
+  historyNote: 'متوسطات بين قراءات عدّادات السويتش (كل 5 دقائق عادةً)، وليست قممًا لحظية. الفجوات تعني تعذّر حساب المعدل: السويتش لم يرد أو أُعيد تشغيل عدّاداته.',
+  errorsIn: 'أخطاء',
+  discardsIn: 'حزم مُسقَطة',
+  linkDown: 'الوصلة متوقفة',
 };
 
 export const portsText = (locale: Locale): Dict => (locale === 'ar' ? ar : en);

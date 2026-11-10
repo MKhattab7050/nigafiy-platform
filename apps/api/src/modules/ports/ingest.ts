@@ -13,6 +13,8 @@ interface PrevPort {
   out_errors: string;
   in_discards: string;
   out_discards: string;
+  in_octets: string;
+  out_octets: string;
   mac_count: number;
   neighbors: unknown[];
   updated_at: Date;
@@ -23,6 +25,22 @@ interface PrevPort {
 function delta(now: number, before: string, also: number, alsoBefore: string): number | null {
   const d = BigInt(Math.trunc(now)) - BigInt(before) + BigInt(Math.trunc(also)) - BigInt(alsoBefore);
   return d < 0n || d > 2_000_000_000n ? null : Number(d);
+}
+
+const MAX_RATE_INTERVAL_SECONDS = 3600;
+
+/**
+ * Average bits per second between two reads of a 64-bit octet counter. Null when it cannot be
+ * derived honestly: the counter went backwards (restart), the gap is too long, or the result is
+ * impossible for the port's speed (a counter glitch).
+ */
+export function rate(now: number, before: string, seconds: number, speedMbps: number): number | null {
+  if (seconds <= 0 || seconds > MAX_RATE_INTERVAL_SECONDS) return null;
+  const d = BigInt(Math.trunc(now)) - BigInt(before);
+  if (d < 0n) return null;
+  const bps = (Number(d) * 8) / seconds;
+  if (speedMbps > 0 && bps > speedMbps * 1_000_000 * 1.1) return null;
+  return bps;
 }
 
 /** Stores one read of a switch: status, ports (with change since the last read) and the forwarding table. */
@@ -63,7 +81,7 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
   const prevPorts = new Map(
     (
       await db.query<PrevPort>(
-        `SELECT if_index, name, oper_up, in_errors::text, out_errors::text, in_discards::text, out_discards::text, mac_count, neighbors, updated_at, oper_changed_at
+        `SELECT if_index, name, oper_up, in_errors::text, out_errors::text, in_discards::text, out_discards::text, in_octets::text, out_octets::text, mac_count, neighbors, updated_at, oper_changed_at
            FROM switch_ports WHERE target_id = $1`,
         [target.id],
       )
@@ -89,16 +107,28 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
     const prev = prevPorts.get(p.if_index);
     const seconds = prev ? Math.round((at.getTime() - prev.updated_at.getTime()) / 1000) : null;
     const fresh = prev && seconds !== null && seconds > 0;
+    const errorsDelta = fresh ? delta(p.in_errors, prev.in_errors, p.out_errors, prev.out_errors) : null;
+    const discardsDelta = fresh ? delta(p.in_discards, prev.in_discards, p.out_discards, prev.out_discards) : null;
+    const inBps = fresh ? rate(p.in_octets, prev.in_octets, seconds, p.speed_mbps) : null;
+    const outBps = fresh ? rate(p.out_octets, prev.out_octets, seconds, p.speed_mbps) : null;
+    // History: one sample per read for ports that are (or just were) up. Idle down ports add nothing.
+    if (fresh && (p.oper_up || prev.oper_up)) {
+      await db.query(
+        `INSERT INTO switch_port_samples (target_id, if_index, ts, organization_id, seconds, in_bps, out_bps, errors, discards, oper_up)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
+        [target.id, p.if_index, at, c.organizationId, seconds, inBps, outBps, errorsDelta, discardsDelta, p.oper_up],
+      );
+    }
     await db.query(
       `INSERT INTO switch_ports (target_id, if_index, organization_id, name, descr, alias, admin_up, oper_up, speed_mbps, in_errors, out_errors, in_discards,
-                                 out_discards, in_octets, out_octets, errors_delta, discards_delta, delta_seconds, mac_count, neighbors, oper_changed_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+                                 out_discards, in_octets, out_octets, errors_delta, discards_delta, delta_seconds, mac_count, neighbors, oper_changed_at, updated_at, in_bps, out_bps)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        ON CONFLICT (target_id, if_index) DO UPDATE SET
          name = EXCLUDED.name, descr = EXCLUDED.descr, alias = EXCLUDED.alias, admin_up = EXCLUDED.admin_up, oper_up = EXCLUDED.oper_up,
          speed_mbps = EXCLUDED.speed_mbps, in_errors = EXCLUDED.in_errors, out_errors = EXCLUDED.out_errors, in_discards = EXCLUDED.in_discards,
          out_discards = EXCLUDED.out_discards, in_octets = EXCLUDED.in_octets, out_octets = EXCLUDED.out_octets, errors_delta = EXCLUDED.errors_delta,
          discards_delta = EXCLUDED.discards_delta, delta_seconds = EXCLUDED.delta_seconds, mac_count = EXCLUDED.mac_count, neighbors = EXCLUDED.neighbors,
-         oper_changed_at = EXCLUDED.oper_changed_at, updated_at = EXCLUDED.updated_at`,
+         oper_changed_at = EXCLUDED.oper_changed_at, updated_at = EXCLUDED.updated_at, in_bps = EXCLUDED.in_bps, out_bps = EXCLUDED.out_bps`,
       [
         target.id,
         p.if_index,
@@ -115,13 +145,15 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
         p.out_discards,
         p.in_octets,
         p.out_octets,
-        fresh ? delta(p.in_errors, prev.in_errors, p.out_errors, prev.out_errors) : null,
-        fresh ? delta(p.in_discards, prev.in_discards, p.out_discards, prev.out_discards) : null,
+        errorsDelta,
+        discardsDelta,
         fresh ? seconds : null,
         macCount.get(p.if_index)?.size ?? 0,
         JSON.stringify(neighborsOf.get(p.if_index) ?? []),
         prev ? (prev.oper_up === p.oper_up ? prev.oper_changed_at : at) : null,
         at,
+        inBps,
+        outBps,
       ],
     );
   }

@@ -363,7 +363,7 @@ describe('topology', () => {
     expect(uplink).toMatchObject({ target: 'internet', basis: 'inferred', confidence: 'high' });
     expect(uplink.last_verified_at).not.toBeNull();
     expect(t.edges.every((e) => e.evidence.length > 20 && e.evidence_source.length > 0)).toBe(true);
-    expect(t.limitations.join(' ')).toContain('SNMP/LLDP');
+    expect(t.limitations.join(' ')).toContain('no managed switch has been read over SNMP');
     expect((await a.agent.get('/api/v1/topology')).status).toBe(400);
   });
 

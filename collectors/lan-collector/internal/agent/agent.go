@@ -28,6 +28,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/scope"
 	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
+	"github.com/lan-detective/lan-collector/internal/tools"
 	"github.com/lan-detective/lan-collector/internal/wol"
 )
 
@@ -59,6 +60,8 @@ type Deps struct {
 	ResolveIPv4 func(ctx context.Context, host string) (string, error)
 	// SNMPPoll reads one switch (Port Detective); nil disables it.
 	SNMPPoll func(ctx context.Context, t snmp.Target, timeout time.Duration) (*snmp.Result, error)
+	// Tool runs one IT-toolbox request; nil disables the toolbox.
+	Tool func(ctx context.Context, req tools.Request) (map[string]any, error)
 }
 
 // SystemDeps returns the real implementations.
@@ -79,6 +82,7 @@ func SystemDeps() Deps {
 		DNSListen:   ":53",
 		Identify:    identify.Run,
 		SNMPPoll:    snmp.Poll,
+		Tool:        tools.Runner{ICMP: icmp.Check, TCP: probe.TCP}.Run,
 		ReverseName: probe.ReverseName,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
@@ -139,12 +143,13 @@ type Agent struct {
 	seenCmds  map[string]bool
 	refused   map[string]bool
 
-	dhcp     *dhcp.Table
-	access   accessState
-	scan     chan string
-	checkNow chan string
-	snmpNow  chan string
-	wake     chan struct{}
+	dhcp      *dhcp.Table
+	access    accessState
+	scan      chan string
+	checkNow  chan string
+	snmpNow   chan string
+	toolSlots chan struct{}
+	wake      chan struct{}
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -164,7 +169,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		cfg: cfg, client: client, spool: sp, deps: deps, log: log, version: version, started: time.Now(), tuning: tuning,
 		policy:   scope.Policy{MinPrefixBits: config.MinScopePrefixBits, Allowed: cfg.Allowed(), AllowLoopback: cfg.AllowLoopbackScopes},
 		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: dhcp.NewTable(),
-		scan: make(chan string, 4), checkNow: make(chan string, 4), snmpNow: make(chan string, 4), wake: make(chan struct{}, 1),
+		scan: make(chan string, 4), checkNow: make(chan string, 4), snmpNow: make(chan string, 4), toolSlots: make(chan struct{}, maxConcurrentTools), wake: make(chan struct{}, 1),
 	}
 	ag.access.lists = lists
 	ag.access.server = dnsfilter.NewServer(lists, log)
@@ -395,6 +400,8 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			}
 		case "wake_device":
 			go a.wakeDevice(cmd)
+		case "run_tool":
+			go a.runTool(ctx, cmd)
 		case "poll_snmp":
 			select {
 			case a.snmpNow <- cmd.ID:

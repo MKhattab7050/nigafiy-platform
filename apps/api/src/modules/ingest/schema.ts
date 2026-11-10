@@ -186,11 +186,23 @@ const snmpPollSchema = z
   })
   .strict();
 
+const toolResultSchema = z
+  .object({
+    type: z.literal('tool_result'),
+    ts: timestamp,
+    run_id: z.uuid(),
+    ok: z.boolean(),
+    duration_ms: z.number().int().min(0).max(600_000).optional(),
+    error: z.string().max(400).optional(),
+    output: z.record(z.string().max(60), z.unknown()).optional(),
+  })
+  .strict();
+
 export const telemetryBatchSchema = z
   .object({
     batch_id: z.uuid(),
     sent_at: timestamp,
-    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema])).min(1).max(500),
+    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema, toolResultSchema])).min(1).max(500),
   })
   .strict();
 
@@ -199,6 +211,7 @@ export type DiscoveryRunItem = z.infer<typeof discoveryRunSchema>;
 export type CheckResultItem = z.infer<typeof checkResultSchema>;
 export type SnmpPollItem = z.infer<typeof snmpPollSchema>;
 export type DnsStatsItem = z.infer<typeof dnsStatsSchema>;
+export type ToolResultItem = z.infer<typeof toolResultSchema>;
 export type TelemetryBatch = z.infer<typeof telemetryBatchSchema>;
 
 export interface CollectorContext {

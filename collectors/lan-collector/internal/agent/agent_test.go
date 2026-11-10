@@ -15,9 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lan-detective/lan-collector/internal/cloud"
 	"github.com/lan-detective/lan-collector/internal/config"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
+	"github.com/lan-detective/lan-collector/internal/tools"
 )
 
 const goodToken = "lde_test-token-0123456789"
@@ -181,6 +183,9 @@ func newTestAgent(t *testing.T, serverURL, stateDir, token string, prober *recor
 		Gateway:     func(context.Context) string { return "192.168.50.1" },
 		ReverseName: func(context.Context, string) string { return "" },
 		ResolveIPv4: func(context.Context, string) (string, error) { return "192.168.50.2", nil },
+		Tool: func(_ context.Context, req tools.Request) (map[string]any, error) {
+			return map[string]any{"tool": req.Tool, "target": req.Target, "replied": true}, nil
+		},
 	}
 	a, err := New(cfg, deps, slog.New(slog.NewTextHandler(io.Discard, nil)), "test", testTuning())
 	if err != nil {
@@ -342,4 +347,28 @@ func TestMonitoringResumesFromCachedConfigWhileCloudIsDown(t *testing.T) {
 	waitFor(t, "checks buffered with no cloud at all", func() bool { return agent.spool.Depth() >= 2 })
 	cancel()
 	<-done
+}
+
+func TestRunToolEnqueuesResultAndAcknowledgesCommand(t *testing.T) {
+	a := newTestAgent(t, "http://127.0.0.1:1", t.TempDir(), "", &recordingProber{})
+	a.runTool(context.Background(), cloud.Command{
+		ID:      "cmd-tool-1",
+		Kind:    "run_tool",
+		Payload: json.RawMessage(`{"run_id":"run-1","tool":"ping","target":"192.168.50.1"}`),
+	})
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.completed) != 1 || a.completed[0] != "cmd-tool-1" {
+		t.Fatalf("expected cmd-tool-1 completed, got %+v", a.completed)
+	}
+	if len(a.queue) != 1 {
+		t.Fatalf("expected 1 queued tool_result, got %d", len(a.queue))
+	}
+	var item map[string]any
+	if err := json.Unmarshal(a.queue[0], &item); err != nil {
+		t.Fatal(err)
+	}
+	if item["type"] != "tool_result" || item["run_id"] != "run-1" || item["ok"] != true {
+		t.Fatalf("unexpected tool_result item: %+v", item)
+	}
 }

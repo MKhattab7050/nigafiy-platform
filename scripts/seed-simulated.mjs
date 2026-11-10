@@ -93,16 +93,85 @@ await call('PATCH', `/devices/${dev('core-switch.sim.lan').id}`, { device_type: 
 await call('PATCH', `/devices/${dev('erp.sim.lan').id}`, { device_type: 'server', tags: ['simulated'] });
 await call('PATCH', `/devices/${dev('ap-lobby.sim.lan').id}`, { device_type: 'access_point', tags: ['simulated'] });
 
+// Enroll a simulated managed endpoint (pc-1.sim.lan) so /endpoints and /devices/:id show endpoint telemetry.
+const createdEndpoint = await call('POST', '/endpoints', { site_id: site.id, name: 'pc-1.sim.lan' });
+const enrolledEndpoint = await call('POST', '/agent/enroll', {
+  enrollment_token: createdEndpoint.enrollment_token,
+  hostname: 'pc-1.sim.lan',
+  version: '0.1.0-simulated',
+  os: 'windows',
+  os_version: 'Microsoft Windows 11 Pro 10.0.22631',
+  arch: 'amd64',
+  cpu_model: 'Intel(R) Core(TM) i7-13700 (simulated)',
+  cpu_cores: 16,
+  ram_total_mb: 16384,
+  primary_ip: '192.168.10.100',
+  primary_mac: mac(100),
+});
+const agentCred = enrolledEndpoint.credential;
+const beatAgent = () =>
+  call(
+    'POST',
+    '/agent/heartbeat',
+    {
+      version: '0.1.0-simulated',
+      hostname: 'pc-1.sim.lan',
+      os: 'windows',
+      os_version: 'Microsoft Windows 11 Pro 10.0.22631',
+      arch: 'amd64',
+      cpu_model: 'Intel(R) Core(TM) i7-13700 (simulated)',
+      cpu_cores: 16,
+      ram_total_mb: 16384,
+      uptime_seconds: 14_400,
+      cpu_pct: Math.max(4, Math.min(95, jitter(18, 12))),
+      ram_used_mb: Math.round(jitter(6400, 400)),
+      ram_pct: jitter(39.1, 2.5),
+      disk_used_pct: 44.2,
+      primary_ip: '192.168.10.100',
+      primary_mac: mac(100),
+      logged_in_users: ['SIM-DOMAIN\\ahmed.it'],
+      disks: [{ mount: 'C:', total_gb: 512, used_gb: 226.3, used_pct: 44.2 }],
+      interfaces: [{ name: 'Ethernet0', mac: mac(100), addresses: ['192.168.10.100'] }],
+      processes: [
+        { pid: 4120, name: 'chrome.exe', cpu_s: 142.4, mem_mb: 680.5 },
+        { pid: 2890, name: 'Code.exe', cpu_s: 88.1, mem_mb: 520.0 },
+        { pid: 1104, name: 'svchost.exe', cpu_s: 34.2, mem_mb: 148.2 },
+        { pid: 5512, name: 'Teams.exe', cpu_s: 61.0, mem_mb: 410.8 },
+        { pid: 920, name: 'endpoint-agent.exe', cpu_s: 2.1, mem_mb: 18.4 },
+      ],
+      services: [
+        { name: 'LanmanWorkstation', display_name: 'Workstation', state: 'running', start_mode: 'Auto' },
+        { name: 'WinDefend', display_name: 'Microsoft Defender Antivirus Service', state: 'running', start_mode: 'Auto' },
+        { name: 'Dnscache', display_name: 'DNS Client', state: 'running', start_mode: 'Auto' },
+        { name: 'Spooler', display_name: 'Print Spooler', state: 'stopped', start_mode: 'Auto' },
+      ],
+      software: [
+        { name: 'Google Chrome', version: '131.0.6778.86', publisher: 'Google LLC', install_date: '20261012' },
+        { name: 'Microsoft Visual Studio Code', version: '1.95.2', publisher: 'Microsoft Corporation', install_date: '20261020' },
+        { name: '7-Zip 24.08 (x64)', version: '24.08', publisher: 'Igor Pavlov', install_date: '20260901' },
+      ],
+      connections: [
+        { proto: 'TCP', local_addr: '192.168.10.100:52410', remote_addr: '192.168.10.20:8443', state: 'ESTABLISHED', pid: 4120 },
+        { proto: 'TCP', local_addr: '192.168.10.100:52418', remote_addr: '192.168.10.21:445', state: 'ESTABLISHED', pid: 4 },
+        { proto: 'TCP', local_addr: '0.0.0.0:3389', remote_addr: '0.0.0.0:0', state: 'LISTENING', pid: 1104 },
+      ],
+      completed_commands: [],
+    },
+    agentCred,
+  );
+await beatAgent();
+
 const out = path.resolve(import.meta.dirname, '../.data');
 mkdirSync(out, { recursive: true });
 writeFileSync(path.join(out, 'simulated-login.txt'), `SIMULATED demo organization (invented data, not measured)\nemail: ${email}\npassword: ${password}\n`);
 const incidents = (await call('GET', '/incidents')).items;
-console.log(`Simulated organization ready: ${devices.length} devices, ${incidents.length} incidents (${incidents.filter((i) => i.status !== 'resolved').length} active).`);
+console.log(`Simulated organization ready: ${devices.length} devices, 1 enrolled endpoint, ${incidents.length} incidents (${incidents.filter((i) => i.status !== 'resolved').length} active).`);
 console.log('Login written to .data/simulated-login.txt (git-ignored). Heart-beating every 20 s — Ctrl+C to stop.');
 
 setInterval(async () => {
   try {
     await beat();
+    await beatAgent();
     const ts = new Date().toISOString();
     await call('POST', '/collector/telemetry', { batch_id: randomUUID(), sent_at: ts, items: [
       { type: 'check_result', check_id: id('auto:gateway'), ts, ok: true, latency_ms: jitter(1.8, 0.6), loss_pct: 0, resolved_target: '192.168.10.1' },
