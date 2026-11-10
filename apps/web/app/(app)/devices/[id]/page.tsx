@@ -13,6 +13,8 @@ import { DEVICE_TYPE_LABEL, absoluteTime, duration, relativeTime } from '@/lib/f
 import { type Key, useI18n } from '@/lib/i18n';
 import { accessText } from '@/lib/access-text';
 import { DeviceAccessCard } from '@/components/access';
+import { DevicePortCard } from '@/components/ports';
+import { portsText } from '@/lib/ports-text';
 
 const WEEK_MS = 7 * 86_400_000;
 const BAR = { ok: 'bg-ok', crit: 'bg-crit', idle: 'bg-idle', warn: 'bg-warn', info: 'bg-accent' } as const;
@@ -394,6 +396,9 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                   </Card>
                 </div>
                 <div className="space-y-4">
+                  <Card title={portsText(locale).cardTitle}>
+                    <DevicePortCard deviceId={d.id} />
+                  </Card>
                   <Card title={accessText(locale).deviceCard}>
                     <DeviceAccessCard deviceId={d.id} siteId={d.site_id} />
                   </Card>

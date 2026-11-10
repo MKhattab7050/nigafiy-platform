@@ -131,17 +131,73 @@ const dnsStatsSchema = z
   })
   .strict();
 
+const counter = z.number().min(0).max(1.9e19);
+const snmpPollSchema = z
+  .object({
+    type: z.literal('snmp_poll'),
+    ts: timestamp,
+    target_id: z.uuid(),
+    ok: z.boolean(),
+    error: z.string().max(300).optional(),
+    duration_ms: z.number().int().min(0).optional(),
+    sys_name: z.string().max(120).optional(),
+    sys_descr: z.string().max(300).optional(),
+    ports: z
+      .array(
+        z
+          .object({
+            if_index: z.number().int().min(0).max(2_147_483_647),
+            name: z.string().min(1).max(120),
+            descr: z.string().max(120).optional(),
+            alias: z.string().max(120).optional(),
+            admin_up: z.boolean(),
+            oper_up: z.boolean(),
+            speed_mbps: z.number().int().min(0).max(10_000_000),
+            in_errors: counter,
+            out_errors: counter,
+            in_discards: counter,
+            out_discards: counter,
+            in_octets: counter,
+            out_octets: counter,
+          })
+          .strict(),
+      )
+      .max(1024)
+      .optional(),
+    fdb: z
+      .array(z.object({ mac, if_index: z.number().int().min(1).max(2_147_483_647), vlan: z.number().int().min(0).max(16_777_215) }).strict())
+      .max(8192)
+      .optional(),
+    lldp: z
+      .array(
+        z
+          .object({
+            if_index: z.number().int().min(0).max(2_147_483_647),
+            sys_name: z.string().max(120).optional(),
+            port_id: z.string().max(80).optional(),
+            port_descr: z.string().max(120).optional(),
+            chassis_id: z.string().max(80).optional(),
+          })
+          .strict(),
+      )
+      .max(512)
+      .optional(),
+    truncated: z.array(z.enum(['ports', 'fdb'])).max(2).optional(),
+  })
+  .strict();
+
 export const telemetryBatchSchema = z
   .object({
     batch_id: z.uuid(),
     sent_at: timestamp,
-    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema])).min(1).max(500),
+    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema])).min(1).max(500),
   })
   .strict();
 
 export type Heartbeat = z.infer<typeof heartbeatSchema>;
 export type DiscoveryRunItem = z.infer<typeof discoveryRunSchema>;
 export type CheckResultItem = z.infer<typeof checkResultSchema>;
+export type SnmpPollItem = z.infer<typeof snmpPollSchema>;
 export type DnsStatsItem = z.infer<typeof dnsStatsSchema>;
 export type TelemetryBatch = z.infer<typeof telemetryBatchSchema>;
 

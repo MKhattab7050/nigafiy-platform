@@ -68,7 +68,20 @@ insightsRouter.get('/insights', async (req, res) => {
     } else {
       access = { enabled: false, listening: null, error: null, dns_server_ip: null, protected_devices: 0, online_devices: 0, blocked: [] };
     }
+    const [unreadable, erroring] = await Promise.all([
+      db.query<{ id: string; name: string; error: string | null }>(
+        `SELECT id, coalesce(name, sys_name, host(host)) AS name, last_error AS error FROM snmp_targets WHERE enabled AND last_status = 'error' ORDER BY host`,
+      ),
+      // More than a handful of new errors since the previous read (a few minutes): not a one-off.
+      db.query<{ target_id: string; switch_name: string; port_name: string; errors: number; seconds: number }>(
+        `SELECT t.id AS target_id, coalesce(t.name, t.sys_name, host(t.host)) AS switch_name, p.name AS port_name, p.errors_delta::int AS errors, p.delta_seconds AS seconds
+           FROM switch_ports p JOIN snmp_targets t ON t.id = p.target_id
+          WHERE t.enabled AND t.last_status = 'ok' AND p.oper_up AND p.errors_delta >= 10 AND p.delta_seconds > 0 AND p.updated_at > now() - interval '1 hour'
+          ORDER BY p.errors_delta DESC LIMIT 10`,
+      ),
+    ]);
     return {
+      ports: { unreadable: unreadable.rows, erroring: erroring.rows },
       access,
       now: new Date(),
       devices: devices.rows,

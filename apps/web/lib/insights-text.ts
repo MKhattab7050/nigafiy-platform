@@ -40,11 +40,14 @@ const AR: Record<string, Template> = {
   access_partial: { title: '{protected} من {online} جهاز متصل يستخدم الفلتر', detail: 'الباقي لم يطلب أي اسم من LAN Detective مؤخرًا: ربما يستخدم DNS خاصًا (Private DNS أو VPN) أو لم يجدد عنوانه بعد.' },
   adult_attempts: { title: 'تم حظر محتوى للبالغين خلال آخر 24 ساعة', detail: '{names}' },
   bypass_attempts: { title: 'بعض الأجهزة حاولت استخدام DNS مشفّر خاص بها', detail: 'تم حظره لتعود لقواعد الشبكة. لو تكرر، اقفل "Private DNS" على الجهاز: {names}' },
+  switch_unreadable: { title: 'السويتش {name} لا يرد على SNMP', detail: 'معلومات المنافذ الخاصة به هي آخر قراءة ناجحة. تأكد أن SNMP مفعّل عليه وأن بيانات الدخول صحيحة.' },
+  port_errors: { title: '{count} منفذ سويتش يسجل أخطاء', detail: 'زيادة عدادات الأخطاء تعني غالبًا كابلًا تالفًا أو منفذًا معطوبًا أو عدم توافق duplex. الجهاز الموصل هناك سيكون بطيئًا أو ينقطع: {ports}' },
   access_off: { title: 'تحكّم فيما تصل إليه الأجهزة', detail: 'احظر مواقع وتطبيقات، أوقف الإنترنت عن جهاز، أو حدد مواعيد النوم. يعمل مع أي راوتر.' },
 };
 
 const AR_ACTIONS: Record<string, string> = {
   open_access: 'التحكم في الوصول',
+  open_ports: 'كاشف المنافذ',
   see_activity: 'عرض النشاط',
   open_collectors: 'إعداد الاكتشاف',
   open_device: 'فتح الجهاز',

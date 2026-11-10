@@ -10,6 +10,8 @@ import { refineCollectorIncident } from '../incidents/engine.ts';
 import { processCheckResult } from './checks.ts';
 import { processDiscoveryRun } from './discovery.ts';
 import { buildAccessPolicy } from '../access/routes.ts';
+import { processSnmpPoll } from '../ports/ingest.ts';
+import { buildSnmpConfig } from '../ports/routes.ts';
 import { processDnsStats } from './dns-stats.ts';
 import { type CollectorContext, ItemRejected, enrollSchema, heartbeatSchema, telemetryBatchSchema } from './schema.ts';
 
@@ -173,6 +175,8 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
         },
         checks: checks.rows,
         access: await buildAccessPolicy(db, c.siteId, now),
+        // Read credentials for the switches of this site (Port Detective). Sent over the authenticated channel only.
+        snmp: await buildSnmpConfig(db, c.siteId),
       },
       commands: commands.rows,
     };
@@ -209,6 +213,8 @@ collectorGatewayRouter.post('/telemetry', requireCollector, async (req, res) => 
           touchedDevices = true;
         } else if (item.type === 'dns_stats') {
           await processDnsStats(db, c, item);
+        } else if (item.type === 'snmp_poll') {
+          await processSnmpPoll(db, c, item);
         } else {
           await processCheckResult(db, c, item, now);
         }

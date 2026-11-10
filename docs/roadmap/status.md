@@ -39,11 +39,28 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 - Not verified: real devices on the LAN using the filter (needs the router's DHCP DNS changed), port 53 on the LAN interface, Windows firewall prompt on a fresh install. Limits: VPNs, hard-coded resolvers and unlisted encrypted DNS bypass it; no speed limits; if the computer is off, devices pointed at it lose name resolution.
 - Router connectors (real block / disconnect / speed limit through the router's API) are not built yet. The test network's router is a Zyxel VMG3625-T50B (ZCFG/DAL API, RSA+AES login).
 
+**Port Detective — switch ports over SNMP (added after Phase 2):** migration `006_port_detective.sql` (`snmp_targets`, `switch_ports`, `switch_fdb`).
+- Collector package `internal/snmp` reads a managed switch read-only over SNMP v2c / v3: system name, interfaces (state, speed, errors, discards, octets), the forwarding table (MAC → port, with VLAN where the switch exposes it) and LLDP neighbours. A switch is read only when its address is inside an authorized scope; the collector re-checks this itself.
+- Credentials are stored AES-256-GCM encrypted, never returned by the API, never written to the audit log or the collector's disk cache, and delivered only to the collector of that site over its authenticated channel.
+- API (`modules/ports`): switches CRUD + "read now", port table with the devices on each port, `GET /devices/:id/port` ("where is this device plugged in" with kind direct / shared / behind, confidence and evidence), `GET /ports/find`. Events: `device_port_changed`, `switch_unreadable`, `switch_readable`. Insight when ports collect new errors.
+- Verified: Go unit tests against the bundled simulator, 4 API tests, and the real collector binary reading `cmd/snmp-sim` (a **simulated** switch serving invented data) through the running stack.
+- Not verified: any real switch. No hardware with SNMP was available (the test router does not offer it). CDP is not read. Port actions (disable / enable / VLAN change) are not built: this module is read-only.
+
+**IPAM — IP address management (added after Phase 2):** migration `007_ipam.sql` (`ipam_subnets`, `ipam_addresses`).
+- A subnet is an authorized scope. Observed facts (which device answers where, from discovery) and documented facts (the plan and the address records an administrator enters) are kept apart and compared; they are never merged.
+- Subnet plan: VLAN ID, gateway, DNS servers, DHCP pool, notes. Without a documented gateway the page shows the default gateway the collector observes, labelled as observed. The DHCP pool is entered by hand — LAN Detective does not read DHCP server configuration or leases.
+- Address records: static, DHCP reservation (MAC required) or reserved (kept free). Deterministic conflict rules with evidence (`modules/ipam/plan.ts`): two devices online at one address, a reserved address in use, a different MAC than documented, a static address inside the DHCP pool.
+- Address map (one cell per address, paged by /24 for larger subnets), utilization, suggestions for the next free static address, per-address history of the devices that held it, CSV export (formula-safe), and a client-side subnet calculator with subnet splitting.
+- Roles: viewers read, technicians document addresses, admins change the subnet plan. Every change is audited.
+- Verified: 6 tests (rules + API + roles + tenant isolation) and the page in a browser against the running stack with the simulated organization, in English and Arabic (plan saved, validation error shown, address documented, conflict listed, calculator).
+- Not verified: the CSV download button in a browser (the endpoint is tested), subnets larger than /24 in the UI, and the conflict rules that need an *online* device against real data (covered by tests only).
+- Limits: IPv4 only; conflicts are computed when the page or API is read and do not raise events or notifications yet; DNS records and DHCP leases are not read from servers; a subnet that is documented but not authorized for discovery cannot be recorded; conflict evidence lines are English.
+
 ## Verified in the development environment
 
 | What | How |
 | --- | --- |
-| API, phases 1 + 2 + controls + access | 48 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
+| API, phases 1 + 2 + controls + access + ports + IPAM | 58 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
 | Collector | Go tests (`pnpm test:collector`), including the new command path |
 | Real collector ↔ API ↔ database | `scripts/e2e-smoke.mjs` (loopback range, real ICMP, real internet/DNS checks) — run for Phase 1; not re-run after the Phase 2 collector change |
 | Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |
@@ -66,8 +83,8 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 
 ## Known limitations
 
-- **Topology has no switch-level links.** Without SNMP/LLDP the honest map is subnet-level; devices are
-  grouped by scope. The page says so.
+- **Topology has no switch-level links yet.** Port Detective now collects forwarding tables and LLDP
+  neighbours, but the topology map does not use them; it is still subnet-level and says so.
 - **Doctor rules cover the network path, services, critical devices and collectors.** Wi-Fi, DHCP,
   switch-port and interface-error diagnostics need data sources that arrive in Phase 3.
 - **Baselines** are a 7-day average latency used in wording; they do not change state thresholds yet.
@@ -93,15 +110,28 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 
 ## Roadmap
 
-**Phase 3 — advanced IT operations:** SNMP polling (interfaces, errors, discards), Port Detective
-(bridge/FDB tables, LLDP/CDP → real switch-level topology), IPAM, configuration backup with encrypted
-credentials, endpoint agent for servers, Wi-Fi controller integrations, reports, maintenance windows,
-email notifications, member invitations.
+The product brief of 2026-11-10 defines the target: a local-first, on-premise network operations,
+endpoint management and remote administration suite for company-owned, enrolled devices, built in
+six phases. Status against it:
 
-**Phase 4 — intelligence and security:** Security Center, explainable trust score, knowledge articles
-from resolved incidents, AI-assisted explanation over the deterministic rules, digital twin.
+| Phase | In the brief | State |
+| --- | --- | --- |
+| 1 Core platform | structure, database, auth, RBAC, desktop app, API, live dashboard, inventory, discovery, collector | **Built.** Gaps: member invitations, MFA, password reset |
+| 2 Network intelligence | SNMP, monitoring, topology, charts, IPAM, switch ports, alerts, Network Doctor | **Built**, with gaps: SNMP interface metrics are not charted over time (only the latest counters and deltas), topology ignores FDB/LLDP, alerts are webhook-only, no IT toolbox page |
+| 3 Endpoint management | Go endpoint agent, enrollment, inventory, health, software inventory, activity telemetry | Not started |
+| 4 Remote administration | remote desktop, file manager, processes, services, commands, power, session audit | Not started |
+| 5 Infrastructure control & security | MikroTik / switch / firewall control, VLAN operations, quarantine, security intelligence, config backup, automation | Not started (DNS-based access control exists) |
+| 6 Intelligence | AI assistant, knowledge memory, incident replay, digital twin, reports, multi-site / MSP | Incident replay and the multi-tenant data model exist; the rest is not started |
 
-**Phase 5 — automation and commercial scale:** visual workflows with approvals, MSP hierarchy UI and
-white-label, subscriptions and entitlements, public status pages, public API + SDK, on-premise packaging.
+**Next, in order:**
+1. Close Phase 2: interface history (bandwidth / errors over time from SNMP counters) with charts, switch-level topology from FDB + LLDP, IP-conflict events, email notifications, IT toolbox (ping, traceroute, DNS, port check run by the collector).
+2. Phase 3: `agents/endpoint-agent` (Go, Windows service) with enrollment tokens, per-agent credentials, heartbeat, local buffering, inventory and health telemetry; policy-controlled collection; a visible notice on managed machines.
+3. Phase 4 on top of the agent channel: processes, services, power actions, then file manager and command execution with role checks, per-action audit and approval for sensitive operations; remote desktop on an established stack (WebRTC or an RDP gateway) with an on-screen session notice.
+4. Phases 5 and 6 as in the table.
+
+**Decisions the brief forces** (to make when Phases 3–4 start):
+- `docs/security/model.md` states that remote command execution is deliberately absent and that the collector protocol cannot carry one. That stays true for the network collector. Remote administration goes through the separate endpoint agent, installed and enrolled per machine, with its own protocol, permissions and audit trail.
+- The API is currently something the collector dials out to; the desktop app runs it on loopback only. Serving agents on other machines means listening on the LAN interface with TLS, which does not exist yet.
+- Repository layout: `collectors/lan-collector` stays; the endpoint agent goes to `agents/endpoint-agent`. Moving existing apps to match the brief's suggested tree would churn every import for no functional gain.
 
 Each module appears in the navigation only when it is implemented.

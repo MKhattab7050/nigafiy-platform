@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Activity, Clock, Gauge, History, LogOut, Menu, MonitorSmartphone, Network, Radar, Settings, ShieldCheck, Siren, Stethoscope, X } from 'lucide-react';
+import { Activity, Cable, Clock, Gauge, Hash, History, LogOut, Menu, MonitorSmartphone, Network, Radar, Settings, ShieldCheck, Siren, Stethoscope, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -18,6 +18,8 @@ const NAV: { group: Key; items: { href: string; label: Key; icon: typeof Gauge }
       { href: '/', label: 'nav.overview', icon: Gauge },
       { href: '/devices', label: 'nav.devices', icon: MonitorSmartphone },
       { href: '/topology', label: 'nav.topology', icon: Network },
+      { href: '/ports', label: 'nav.ports', icon: Cable },
+      { href: '/ipam', label: 'nav.ipam', icon: Hash },
       { href: '/monitoring', label: 'nav.monitoring', icon: Activity },
       { href: '/access', label: 'nav.access', icon: ShieldCheck },
     ],

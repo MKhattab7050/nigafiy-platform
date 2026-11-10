@@ -3,64 +3,13 @@
 import { Moon, Pause, Play, Plus, X } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import type { AccessPage, ScheduleWindow } from '@lan-detective/shared-types';
 import { Badge, Button, Input, Select, Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
 import { accessText } from '@/lib/access-text';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
-
-export interface ScheduleWindow {
-  days: number[];
-  from: string;
-  to: string;
-}
-
-export interface AccessProfile {
-  id: string;
-  name: string;
-  blocked_categories: string[];
-  blocked_domains: string[];
-  allowed_domains: string[];
-  schedule: ScheduleWindow[];
-  paused_until: string | null;
-  device_count: number;
-}
-
-export interface AccessDevice {
-  id: string;
-  name: string;
-  device_type: string;
-  status: string;
-  trust: string;
-  mac: string | null;
-  ip: string | null;
-  profile_id: string | null;
-  profile_name: string | null;
-  paused_until: string | null;
-  blocked_domains: string[];
-  allowed_domains: string[];
-  schedule: ScheduleWindow[];
-  internet_off: 'paused' | 'schedule' | null;
-  protected: boolean;
-  queries_24h: number;
-  blocked_24h: number;
-}
-
-export interface AccessPage {
-  categories: string[];
-  settings: { enabled: boolean; blocked_categories: string[]; blocked_domains: string[]; allowed_domains: string[]; upstreams: string[] };
-  profiles: AccessProfile[];
-  setup: {
-    collector: { id: string; name: string; hostname: string | null; online: boolean } | null;
-    status: { enabled?: boolean; listening?: boolean; error?: string; lists?: Record<string, number>; list_error?: string } | null;
-    dns_server_ip: string | null;
-    gateway_ip: string | null;
-    protected_devices: number;
-    protected_within_minutes: number;
-  };
-  devices: AccessDevice[];
-}
 
 export const linesToList = (s: string) =>
   s

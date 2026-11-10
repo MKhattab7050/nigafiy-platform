@@ -48,6 +48,9 @@ type RemoteConfig struct {
 	Checks []Check `json:"checks"`
 	// Access is the network-wide access-control (DNS filter) policy; decoded by the agent.
 	Access json.RawMessage `json:"access,omitempty"`
+	// SNMP lists the switches to read for Port Detective. It carries read credentials, so the
+	// agent never writes it to the on-disk configuration cache.
+	SNMP json.RawMessage `json:"snmp,omitempty"`
 }
 
 type Command struct {

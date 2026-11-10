@@ -3,7 +3,8 @@
 import { CheckCircle2, CircleAlert, ExternalLink, Pencil, Plus, ShieldCheck, ShieldOff, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { type AccessPage, type AccessProfile, CategoryPicker, PauseControl, ScheduleEditor, type ScheduleWindow, linesToList } from '@/components/access';
+import type { AccessPage, AccessProfile, ScheduleWindow } from '@lan-detective/shared-types';
+import { CategoryPicker, PauseControl, ScheduleEditor, linesToList } from '@/components/access';
 import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Field, Input, PageHeader, Select, StatusBadge, Textarea } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { accessText } from '@/lib/access-text';

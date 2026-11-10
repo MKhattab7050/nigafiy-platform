@@ -29,6 +29,11 @@ export interface InsightFacts {
   openIncidents: { id: string; title: string; severity: Severity }[];
   /** ip_mac_changed events in the last 24 hours. */
   ipConflicts: { ip: string; at: Date }[];
+  /** Port Detective: switches that stopped answering and ports whose error counters are rising. */
+  ports?: {
+    unreadable: { id: string; name: string; error: string | null }[];
+    erroring: { target_id: string; switch_name: string; port_name: string; errors: number; seconds: number }[];
+  };
   /** Network access control (DNS filter), when the site has it configured. */
   access?: {
     enabled: boolean;
@@ -262,6 +267,36 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       evidence: newToday.slice(0, 5).map((d) => `${d.label}${d.ip ? ` (${d.ip})` : ''}`),
       actions: [link('review', 'See devices', '/devices?sort=first_seen')],
     });
+  }
+
+  for (const sw of f.ports?.unreadable ?? []) {
+    add({
+      id: `switch-unreadable-${sw.id}`,
+      code: 'switch_unreadable',
+      params: { name: sw.name },
+      severity: 'warning',
+      category: 'setup',
+      title: `Switch ${sw.name} is not answering SNMP`,
+      detail: 'Port information for it is as of the last successful read. Check that SNMP is enabled on it and the credentials are current.',
+      evidence: [sw.error ?? 'The last read failed'],
+      actions: [link('open_ports', 'Open Port Detective', '/ports')],
+    });
+    deduct('switch_unreadable', `Switch ${sw.name} unreadable`, 5);
+  }
+  const bad = (f.ports?.erroring ?? []).slice().sort((a, b) => b.errors / b.seconds - a.errors / a.seconds);
+  if (bad.length) {
+    add({
+      id: 'port-errors',
+      code: 'port_errors',
+      params: { count: bad.length, ports: list(bad.map((b) => `${b.switch_name} ${b.port_name}`)) },
+      severity: 'warning',
+      category: 'performance',
+      title: `${bad.length} switch port(s) are logging errors`,
+      detail: 'Rising error counters usually mean a bad cable, a failing port or a duplex mismatch. Whatever is plugged in there will be slow or drop out.',
+      evidence: bad.slice(0, 5).map((b) => `${b.switch_name} ${b.port_name}: ${b.errors} new error(s) in ${Math.round(b.seconds / 60)} min`),
+      actions: [link('open_ports', 'See the ports', `/ports?switch=${bad[0]!.target_id}`)],
+    });
+    deduct('port_errors', 'Switch ports with errors', Math.min(15, bad.length * 5));
   }
 
   const ac = f.access;

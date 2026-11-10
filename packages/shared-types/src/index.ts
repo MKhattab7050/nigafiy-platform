@@ -457,3 +457,249 @@ export interface Comparison {
   incidents_a: Incident[];
   incidents_b: Incident[];
 }
+
+// ── Access control (DNS filter) ─────────────────────────────────────────────
+
+export interface ScheduleWindow {
+  days: number[];
+  from: string;
+  to: string;
+}
+
+export interface AccessProfile {
+  id: string;
+  name: string;
+  blocked_categories: string[];
+  blocked_domains: string[];
+  allowed_domains: string[];
+  schedule: ScheduleWindow[];
+  paused_until: string | null;
+  device_count: number;
+}
+
+export interface AccessDevice {
+  id: string;
+  name: string;
+  device_type: string;
+  status: string;
+  trust: string;
+  mac: string | null;
+  ip: string | null;
+  profile_id: string | null;
+  profile_name: string | null;
+  paused_until: string | null;
+  blocked_domains: string[];
+  allowed_domains: string[];
+  schedule: ScheduleWindow[];
+  internet_off: 'paused' | 'schedule' | null;
+  protected: boolean;
+  queries_24h: number;
+  blocked_24h: number;
+}
+
+export interface AccessPage {
+  categories: string[];
+  settings: { enabled: boolean; blocked_categories: string[]; blocked_domains: string[]; allowed_domains: string[]; upstreams: string[] };
+  profiles: AccessProfile[];
+  setup: {
+    collector: { id: string; name: string; hostname: string | null; online: boolean } | null;
+    status: { enabled?: boolean; listening?: boolean; error?: string; lists?: Record<string, number>; list_error?: string } | null;
+    dns_server_ip: string | null;
+    gateway_ip: string | null;
+    protected_devices: number;
+    protected_within_minutes: number;
+  };
+  devices: AccessDevice[];
+}
+
+// ── Port Detective (switch ports over SNMP) ─────────────────────────────────
+
+/** edge: one device. shared: a few. trunk: many (inferred uplink / AP). uplink: LLDP neighbour heard. idle: up, nothing learned. */
+export type PortRole = 'edge' | 'shared' | 'trunk' | 'uplink' | 'idle' | 'down';
+
+export interface SwitchSummary {
+  id: string;
+  site_id: string;
+  device_id: string | null;
+  name: string;
+  host: string;
+  port: number;
+  version: '2c' | '3';
+  enabled: boolean;
+  poll_interval_seconds: number;
+  last_polled_at: string | null;
+  last_ok_at: string | null;
+  last_status: 'never' | 'ok' | 'error';
+  last_error: string | null;
+  sys_name: string | null;
+  sys_descr: string | null;
+  /** Tables that hit a size ceiling on the last read ("ports", "fdb"). */
+  truncated: string[];
+  in_scope: boolean;
+  port_count: number;
+  ports_up: number;
+  address_count: number;
+}
+
+export interface PortNeighbor {
+  sys_name?: string;
+  port_id?: string;
+  port_descr?: string;
+  chassis_id?: string;
+}
+
+export interface PortDevice {
+  id: string;
+  label: string;
+  ip: string | null;
+  mac: string;
+  vlan: number;
+  status: DeviceStatus;
+  device_type: string;
+}
+
+export interface SwitchPort {
+  if_index: number;
+  name: string;
+  descr: string | null;
+  alias: string | null;
+  admin_up: boolean;
+  oper_up: boolean;
+  speed_mbps: number;
+  in_errors: number;
+  out_errors: number;
+  in_discards: number;
+  out_discards: number;
+  /** Errors / discards added since the previous read; null on the first read or after a counter reset. */
+  errors_delta: number | null;
+  discards_delta: number | null;
+  delta_seconds: number | null;
+  mac_count: number;
+  neighbors: PortNeighbor[];
+  oper_changed_at: string | null;
+  updated_at: string;
+  role: PortRole;
+  devices: PortDevice[];
+  unknown_addresses: string[];
+}
+
+export interface SwitchDetail extends SwitchSummary {
+  ports: SwitchPort[];
+}
+
+export interface PortLocation {
+  target_id: string;
+  switch_name: string;
+  switch_host: string;
+  if_index: number;
+  port_name: string;
+  port_alias: string | null;
+  vlan: number;
+  mac_count: number;
+  neighbors: PortNeighbor[];
+  oper_up: boolean;
+  speed_mbps: number;
+  last_seen_at: string;
+  role: PortRole;
+  kind: 'direct' | 'shared' | 'behind';
+  confidence: Confidence;
+  evidence: string[];
+}
+
+export interface DevicePort {
+  location: PortLocation | null;
+  seen_on: { target_id: string; switch_name: string; port_name: string; mac_count: number; vlan: number }[];
+  switches_read: number;
+  reason: 'no_mac' | 'no_switches' | 'not_seen' | null;
+}
+
+export interface PortSearchHit {
+  device: { id: string; label: string; ip: string | null; mac: string | null; status: DeviceStatus };
+  location: PortLocation | null;
+}
+
+// ── IP address management ───────────────────────────────────────────────────
+
+export type IpamRecordKind = 'static' | 'dhcp_reservation' | 'reserved';
+
+/** An address the administrator documented. */
+export interface IpamRecord {
+  id: string;
+  site_id: string;
+  ip: string;
+  kind: IpamRecordKind;
+  label: string;
+  mac: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+/**
+ * duplicate_ip: two devices reported online at one address.
+ * reserved_in_use: something answers at an address documented as kept free.
+ * assignment_mismatch: the device online there is not the one the address is documented for.
+ * static_in_dhcp_pool: a documented static address lies inside the documented DHCP pool.
+ */
+export type IpamConflictKind = 'duplicate_ip' | 'reserved_in_use' | 'assignment_mismatch' | 'static_in_dhcp_pool';
+
+export interface IpamConflict {
+  ip: string;
+  kind: IpamConflictKind;
+  evidence: string[];
+}
+
+export type IpamFlag = 'gateway' | 'gateway_observed' | 'collector' | 'dhcp_pool';
+
+/** One address of a subnet that is observed, documented or infrastructure. Free addresses are not listed. */
+export interface IpamAddress {
+  ip: string;
+  /** online / offline / unknown: observed device status. documented: on record, never observed. infrastructure: flag only. */
+  state: 'online' | 'offline' | 'unknown' | 'documented' | 'infrastructure';
+  devices: { id: string; label: string; mac: string | null; device_type: string; status: DeviceStatus; last_seen_at: string }[];
+  record: IpamRecord | null;
+  flags: IpamFlag[];
+  conflict: IpamConflictKind | null;
+}
+
+export interface IpamSubnetSummary {
+  id: string;
+  site_id: string;
+  site_name: string;
+  cidr: string;
+  label: string | null;
+  enabled: boolean;
+  last_scan_at: string | null;
+  vlan_id: number | null;
+  gateway: { ip: string; source: 'documented' | 'observed' } | null;
+  usable: number;
+  online: number;
+  offline: number;
+  documented_only: number;
+  free: number;
+  conflicts: number;
+}
+
+export interface IpamSubnetDetail extends IpamSubnetSummary {
+  network: string;
+  broadcast: string;
+  netmask: string;
+  first_host: string;
+  last_host: string;
+  dns_servers: string[];
+  dhcp: { start: string; end: string } | null;
+  notes: string | null;
+  addresses: IpamAddress[];
+  conflict_list: IpamConflict[];
+  /** Unused, undocumented addresses outside the DHCP pool — candidates for a new static address. */
+  next_free: string[];
+}
+
+export interface IpamHistoryEntry {
+  device_id: string;
+  label: string;
+  mac: string | null;
+  status: DeviceStatus;
+  current: boolean;
+  first_seen_at: string;
+  last_seen_at: string;
+}

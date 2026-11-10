@@ -26,6 +26,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/scope"
+	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
 	"github.com/lan-detective/lan-collector/internal/wol"
 )
@@ -56,6 +57,8 @@ type Deps struct {
 	DNSListen   string
 	Identify    func(ctx context.Context, prefix netip.Prefix, hosts []string) map[string]*identify.Info
 	ResolveIPv4 func(ctx context.Context, host string) (string, error)
+	// SNMPPoll reads one switch (Port Detective); nil disables it.
+	SNMPPoll func(ctx context.Context, t snmp.Target, timeout time.Duration) (*snmp.Result, error)
 }
 
 // SystemDeps returns the real implementations.
@@ -75,6 +78,7 @@ func SystemDeps() Deps {
 		DHCPListen:  ":67",
 		DNSListen:   ":53",
 		Identify:    identify.Run,
+		SNMPPoll:    snmp.Poll,
 		ReverseName: probe.ReverseName,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
@@ -139,6 +143,7 @@ type Agent struct {
 	access   accessState
 	scan     chan string
 	checkNow chan string
+	snmpNow  chan string
 	wake     chan struct{}
 }
 
@@ -159,7 +164,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		cfg: cfg, client: client, spool: sp, deps: deps, log: log, version: version, started: time.Now(), tuning: tuning,
 		policy:   scope.Policy{MinPrefixBits: config.MinScopePrefixBits, Allowed: cfg.Allowed(), AllowLoopback: cfg.AllowLoopbackScopes},
 		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: dhcp.NewTable(),
-		scan: make(chan string, 4), checkNow: make(chan string, 4), wake: make(chan struct{}, 1),
+		scan: make(chan string, 4), checkNow: make(chan string, 4), snmpNow: make(chan string, 4), wake: make(chan struct{}, 1),
 	}
 	ag.access.lists = lists
 	ag.access.server = dnsfilter.NewServer(lists, log)
@@ -186,7 +191,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -358,7 +363,11 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 	}
 	a.completed = remaining
 	a.mu.Unlock()
-	if raw, err := json.Marshal(rc); err == nil {
+	// The disk cache never contains SNMP credentials: after a restart without the cloud, switch
+	// reads wait for the next heartbeat; everything else resumes from the cache.
+	cached := rc
+	cached.SNMP = nil
+	if raw, err := json.Marshal(cached); err == nil {
 		_ = os.WriteFile(a.configPath(), raw, 0o600)
 	}
 
@@ -386,6 +395,12 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			}
 		case "wake_device":
 			go a.wakeDevice(cmd)
+		case "poll_snmp":
+			select {
+			case a.snmpNow <- cmd.ID:
+			default:
+				a.markCompleted(cmd.ID)
+			}
 		default:
 			a.log.Warn("ignoring unsupported command", "kind", cmd.Kind)
 		}
