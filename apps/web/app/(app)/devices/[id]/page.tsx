@@ -11,6 +11,8 @@ import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, duration, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
+import { accessText } from '@/lib/access-text';
+import { DeviceAccessCard } from '@/components/access';
 
 const WEEK_MS = 7 * 86_400_000;
 const BAR = { ok: 'bg-ok', crit: 'bg-crit', idle: 'bg-idle', warn: 'bg-warn', info: 'bg-accent' } as const;
@@ -392,6 +394,9 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                   </Card>
                 </div>
                 <div className="space-y-4">
+                  <Card title={accessText(locale).deviceCard}>
+                    <DeviceAccessCard deviceId={d.id} siteId={d.site_id} />
+                  </Card>
                   <Card title={t('ctl.title')}>
                     <ControlsPanel device={d} onChanged={query.reload} />
                   </Card>

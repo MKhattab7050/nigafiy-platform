@@ -46,6 +46,8 @@ type RemoteConfig struct {
 		Scopes          []Scope `json:"scopes"`
 	} `json:"discovery"`
 	Checks []Check `json:"checks"`
+	// Access is the network-wide access-control (DNS filter) policy; decoded by the agent.
+	Access json.RawMessage `json:"access,omitempty"`
 }
 
 type Command struct {
@@ -64,6 +66,7 @@ type HeartbeatRequest struct {
 	Interfaces        any      `json:"interfaces"`
 	SpoolDepth        int      `json:"spool_depth"`
 	CompletedCommands []string `json:"completed_commands"`
+	AccessStatus      any      `json:"access_status,omitempty"`
 }
 
 type HeartbeatResponse struct {

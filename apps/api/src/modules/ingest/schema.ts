@@ -34,6 +34,18 @@ export const heartbeatSchema = z
       .default([]),
     spool_depth: z.number().int().min(0).max(1_000_000),
     completed_commands: z.array(z.uuid()).max(50).default([]),
+    access_status: z
+      .object({
+        enabled: z.boolean(),
+        listening: z.boolean(),
+        listen: z.string().max(64).optional(),
+        error: z.string().max(400).optional(),
+        upstreams: z.array(z.string().max(64)).max(8).optional(),
+        lists: z.record(z.string().max(40), z.number().int().min(0)).optional(),
+        list_error: z.string().max(400).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -86,17 +98,51 @@ const checkResultSchema = z
   })
   .strict();
 
+const dnsStatsSchema = z
+  .object({
+    type: z.literal('dns_stats'),
+    ts: timestamp,
+    window_start: timestamp,
+    clients: z
+      .array(
+        z
+          .object({
+            ip: z.string().max(64),
+            mac: z.string().max(17).optional(),
+            queries: z.number().int().min(0).max(10_000_000),
+            blocked: z.number().int().min(0).max(10_000_000),
+            top_domains: z
+              .array(
+                z
+                  .object({
+                    domain: z.string().max(253),
+                    count: z.number().int().min(0),
+                    blocked: z.number().int().min(0),
+                    reason: z.string().max(40).optional(),
+                    category: z.string().max(40).optional(),
+                  })
+                  .strict(),
+              )
+              .max(50),
+          })
+          .strict(),
+      )
+      .max(512),
+  })
+  .strict();
+
 export const telemetryBatchSchema = z
   .object({
     batch_id: z.uuid(),
     sent_at: timestamp,
-    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema])).min(1).max(500),
+    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema])).min(1).max(500),
   })
   .strict();
 
 export type Heartbeat = z.infer<typeof heartbeatSchema>;
 export type DiscoveryRunItem = z.infer<typeof discoveryRunSchema>;
 export type CheckResultItem = z.infer<typeof checkResultSchema>;
+export type DnsStatsItem = z.infer<typeof dnsStatsSchema>;
 export type TelemetryBatch = z.infer<typeof telemetryBatchSchema>;
 
 export interface CollectorContext {

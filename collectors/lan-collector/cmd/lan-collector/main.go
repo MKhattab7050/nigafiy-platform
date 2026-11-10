@@ -49,7 +49,12 @@ func main() {
 			"allow_insecure_http", cfg.AllowInsecureHTTP, "allow_loopback_scopes", cfg.AllowLoopbackScopes)
 	}
 
-	a, err := agent.New(cfg, agent.SystemDeps(), log, Version, agent.DefaultTuning())
+	deps := agent.SystemDeps()
+	deps.DNSListen = cfg.DNSListen
+	if deps.DNSListen == "off" {
+		deps.DNSListen = ""
+	}
+	a, err := agent.New(cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start", "error", err.Error())
 		os.Exit(1)

@@ -21,6 +21,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/config"
 	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
+	"github.com/lan-detective/lan-collector/internal/dnsfilter"
 	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
@@ -49,7 +50,10 @@ type Deps struct {
 	LocalMACs   func() map[string]string
 	LocalDown   func() []string
 	// DHCPListen is the address for passive DHCP name learning (":67"); empty disables it.
-	DHCPListen  string
+	DHCPListen string
+	// DNSListen is where the access-control DNS filter answers when the owner turns it on (":53");
+	// empty disables the feature on this collector.
+	DNSListen   string
 	Identify    func(ctx context.Context, prefix netip.Prefix, hosts []string) map[string]*identify.Info
 	ResolveIPv4 func(ctx context.Context, host string) (string, error)
 }
@@ -69,6 +73,7 @@ func SystemDeps() Deps {
 		LocalMACs:   netinfo.LocalMACs,
 		LocalDown:   netinfo.LocalDownAddrs,
 		DHCPListen:  ":67",
+		DNSListen:   ":53",
 		Identify:    identify.Run,
 		ReverseName: probe.ReverseName,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
@@ -131,6 +136,7 @@ type Agent struct {
 	refused   map[string]bool
 
 	dhcp     *dhcp.Table
+	access   accessState
 	scan     chan string
 	checkNow chan string
 	wake     chan struct{}
@@ -148,12 +154,16 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	if err != nil {
 		return nil, err
 	}
-	return &Agent{
+	lists := dnsfilter.NewLists()
+	ag := &Agent{
 		cfg: cfg, client: client, spool: sp, deps: deps, log: log, version: version, started: time.Now(), tuning: tuning,
 		policy:   scope.Policy{MinPrefixBits: config.MinScopePrefixBits, Allowed: cfg.Allowed(), AllowLoopback: cfg.AllowLoopbackScopes},
 		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: dhcp.NewTable(),
 		scan: make(chan string, 4), checkNow: make(chan string, 4), wake: make(chan struct{}, 1),
-	}, nil
+	}
+	ag.access.lists = lists
+	ag.access.server = dnsfilter.NewServer(lists, log)
+	return ag, nil
 }
 
 // Run blocks until ctx is cancelled. It returns an error only for conditions that retrying
@@ -176,7 +186,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -304,6 +314,7 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 		Interfaces:        interfacesOrEmpty(),
 		SpoolDepth:        a.spool.Depth(),
 		CompletedCommands: acks,
+		AccessStatus:      a.accessStatusOrNil(),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -380,6 +391,14 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 		}
 	}
 	return clamp(rc.HeartbeatIntervalSeconds, a.tuning.MinHeartbeat, 30*time.Second)
+}
+
+// accessStatusOrNil avoids sending a typed nil pointer (which would encode as null) when the feature is off.
+func (a *Agent) accessStatusOrNil() any {
+	if s := a.accessStatus(); s != nil {
+		return s
+	}
+	return nil
 }
 
 func interfacesOrEmpty() []netinfo.Interface {

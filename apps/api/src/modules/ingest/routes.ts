@@ -9,6 +9,8 @@ import { emitEvent, notifyRealtime } from '../events/emit.ts';
 import { refineCollectorIncident } from '../incidents/engine.ts';
 import { processCheckResult } from './checks.ts';
 import { processDiscoveryRun } from './discovery.ts';
+import { buildAccessPolicy } from '../access/routes.ts';
+import { processDnsStats } from './dns-stats.ts';
 import { type CollectorContext, ItemRejected, enrollSchema, heartbeatSchema, telemetryBatchSchema } from './schema.ts';
 
 /** Collector-facing API. Collectors only ever make outbound HTTPS requests to these endpoints. */
@@ -113,9 +115,9 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
     await db.query(
       `UPDATE collectors
           SET last_heartbeat_at = $2, connection_state = 'online', hostname = $3, version = $4, os = $5, arch = $6,
-              gateway_ip = $7, interfaces = $8, spool_depth = $9, last_ip = $10
+              gateway_ip = $7, interfaces = $8, spool_depth = $9, last_ip = $10, access_status = $11
         WHERE id = $1`,
-      [c.id, now, body.hostname, body.version, body.os, body.arch, body.gateway_ip ?? null, JSON.stringify(body.interfaces), body.spool_depth, req.ip ?? null],
+      [c.id, now, body.hostname, body.version, body.os, body.arch, body.gateway_ip ?? null, JSON.stringify(body.interfaces), body.spool_depth, req.ip ?? null, body.access_status ? JSON.stringify(body.access_status) : null],
     );
     if (c.connectionState !== 'online') {
       if (c.connectionState === 'offline') {
@@ -170,6 +172,7 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
           scopes: scopes.rows,
         },
         checks: checks.rows,
+        access: await buildAccessPolicy(db, c.siteId, now),
       },
       commands: commands.rows,
     };
@@ -204,6 +207,8 @@ collectorGatewayRouter.post('/telemetry', requireCollector, async (req, res) => 
         if (item.type === 'discovery_run') {
           await processDiscoveryRun(db, c, item, now);
           touchedDevices = true;
+        } else if (item.type === 'dns_stats') {
+          await processDnsStats(db, c, item);
         } else {
           await processCheckResult(db, c, item, now);
         }

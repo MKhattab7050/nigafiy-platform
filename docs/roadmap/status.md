@@ -31,11 +31,19 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 - Deliberately not built: disconnecting, blocking or throttling devices from LAN Detective (it would require ARP spoofing or similar interference). The UI explains how to block on the router instead, with the MAC to copy and a link to the gateway. Router integrations (reading the client list, blocking through a router API) are not built.
 - Not verified: Wake-on-LAN waking a real machine (packet format and scope checks are unit-tested only).
 
+**Access control that works with any router (added after Phase 2):** migration `005_access_control.sql` (site rules, profiles, per-device pause/rules, `dns_stats`).
+- Collector package `internal/dnsfilter`: a filtering DNS forwarder (UDP + TCP, local clients only, upstream = router then 1.1.1.1 / 8.8.8.8, never itself). Devices are matched by MAC from the neighbour table, else by IP. Blocked names get `0.0.0.0` / `::` (NXDOMAIN for other types). Category lists: StevenBlack hosts (ads & malware, adult, gambling) downloaded daily and cached; social / video / games / chat and the encrypted-DNS list are built in. Bedtimes are evaluated in the collector host's local time. Statistics (requests, blocked, top 25 names per device) are sent every 5 minutes.
+- The feature is off until an admin turns it on; it then binds port 53 (`dns_listen`, `LAN_COLLECTOR_DNS_LISTEN`, `off` disables).
+- API: `GET /access`, `PUT /access/settings`, profiles CRUD + pause, `POST /devices/:id/pause`, `PATCH /devices/:id/access`, `GET /devices/:id/activity`. Insights: filter not running, no device using it, partial coverage, adult content blocked, encrypted-DNS bypass attempts.
+- Verified: unit tests (Go) and 48 API tests; the real collector binary answered DNS on loopback (`127.0.0.1:15353`) over UDP and TCP — blocked category / custom / encrypted-DNS / adult names got `0.0.0.0`, allowed and normal names resolved through the router; the profile and pause reached the collector in its config; the page and device card were checked in English and Arabic.
+- Not verified: real devices on the LAN using the filter (needs the router's DHCP DNS changed), port 53 on the LAN interface, Windows firewall prompt on a fresh install. Limits: VPNs, hard-coded resolvers and unlisted encrypted DNS bypass it; no speed limits; if the computer is off, devices pointed at it lose name resolution.
+- Router connectors (real block / disconnect / speed limit through the router's API) are not built yet. The test network's router is a Zyxel VMG3625-T50B (ZCFG/DAL API, RSA+AES login).
+
 ## Verified in the development environment
 
 | What | How |
 | --- | --- |
-| API, phases 1 + 2 + controls | 42 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
+| API, phases 1 + 2 + controls + access | 48 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
 | Collector | Go tests (`pnpm test:collector`), including the new command path |
 | Real collector ↔ API ↔ database | `scripts/e2e-smoke.mjs` (loopback range, real ICMP, real internet/DNS checks) — run for Phase 1; not re-run after the Phase 2 collector change |
 | Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |

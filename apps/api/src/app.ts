@@ -15,6 +15,7 @@ import { incidentsRouter } from './modules/incidents/routes.ts';
 import { collectorGatewayRouter } from './modules/ingest/routes.ts';
 import { monitoringRouter } from './modules/monitoring/routes.ts';
 import { notificationsRouter } from './modules/notifications/routes.ts';
+import { accessRouter } from './modules/access/routes.ts';
 import { insightsRouter } from './modules/insights/routes.ts';
 import { overviewRouter } from './modules/overview/routes.ts';
 import { realtimeRouter } from './modules/realtime/routes.ts';
@@ -75,7 +76,7 @@ export function createApp(): Express {
   api.use(express.json({ limit: '100kb' }));
   api.use('/auth', authRouter);
   api.use(requireSession); // everything below requires a valid session + membership
-  api.use(overviewRouter, insightsRouter, sitesRouter, collectorsRouter, devicesRouter, monitoringRouter, eventsRouter, notificationsRouter, realtimeRouter, incidentsRouter, timeMachineRouter, topologyRouter);
+  api.use(overviewRouter, insightsRouter, accessRouter, sitesRouter, collectorsRouter, devicesRouter, monitoringRouter, eventsRouter, notificationsRouter, realtimeRouter, incidentsRouter, timeMachineRouter, topologyRouter);
   app.use('/api/v1', api);
 
   app.use((_req, _res, next) => next(new AppError(404, 'not_found', 'No such endpoint')));

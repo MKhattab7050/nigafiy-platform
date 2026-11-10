@@ -35,9 +35,17 @@ const AR: Record<string, Template> = {
     detail: 'تستخدم عناوين واي فاي خاصة ولا تعلن عن نفسها. اقفل الواي فاي وافتحه على الهاتف: يتعرف LAN Detective على اسمه عند إعادة الاتصال.',
   },
   new_today: { title: '{count} جهاز انضم اليوم', detail: '{names}' },
+  access_not_running: { title: 'التحكم في الوصول مفعّل لكنه لا يعمل', detail: 'المُجمِّع لم يستطع تشغيل فلتر DNS، فلا تُطبَّق أي قواعد.' },
+  access_no_devices: { title: 'لا يوجد جهاز يستخدم LAN Detective كـ DNS بعد', detail: 'اجعل خادم DNS في إعدادات DHCP بالراوتر {ip} حتى تصل القواعد للأجهزة، ثم أعد توصيلها بالـ Wi-Fi.' },
+  access_partial: { title: '{protected} من {online} جهاز متصل يستخدم الفلتر', detail: 'الباقي لم يطلب أي اسم من LAN Detective مؤخرًا: ربما يستخدم DNS خاصًا (Private DNS أو VPN) أو لم يجدد عنوانه بعد.' },
+  adult_attempts: { title: 'تم حظر محتوى للبالغين خلال آخر 24 ساعة', detail: '{names}' },
+  bypass_attempts: { title: 'بعض الأجهزة حاولت استخدام DNS مشفّر خاص بها', detail: 'تم حظره لتعود لقواعد الشبكة. لو تكرر، اقفل "Private DNS" على الجهاز: {names}' },
+  access_off: { title: 'تحكّم فيما تصل إليه الأجهزة', detail: 'احظر مواقع وتطبيقات، أوقف الإنترنت عن جهاز، أو حدد مواعيد النوم. يعمل مع أي راوتر.' },
 };
 
 const AR_ACTIONS: Record<string, string> = {
+  open_access: 'التحكم في الوصول',
+  see_activity: 'عرض النشاط',
   open_collectors: 'إعداد الاكتشاف',
   open_device: 'فتح الجهاز',
   open_router: 'فتح إعدادات الراوتر',

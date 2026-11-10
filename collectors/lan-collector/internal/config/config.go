@@ -39,6 +39,9 @@ type Config struct {
 	SpoolMaxBatches int    `yaml:"spool_max_batches"`
 	CAFile          string `yaml:"ca_file"`
 	LogLevel        string `yaml:"log_level"`
+	// DNSListen is where the access-control DNS filter answers once the owner turns it on in
+	// LAN Detective. Default ":53"; "off" disables the feature on this collector.
+	DNSListen string `yaml:"dns_listen"`
 	// Development/test switches. Both default to false.
 	AllowInsecureHTTP   bool `yaml:"allow_insecure_http"`
 	AllowLoopbackScopes bool `yaml:"allow_loopback_scopes"`
@@ -52,6 +55,7 @@ func defaults() Config {
 		Limits:          Limits{MaxConcurrency: 32, MaxPPS: 50, PingTimeoutMs: 1000},
 		SpoolMaxBatches: 5000,
 		LogLevel:        "info",
+		DNSListen:       ":53",
 	}
 }
 
@@ -75,6 +79,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("LAN_COLLECTOR_ENROLLMENT_TOKEN"); v != "" {
 		cfg.EnrollmentToken = v
+	}
+	if v := os.Getenv("LAN_COLLECTOR_DNS_LISTEN"); v != "" {
+		cfg.DNSListen = v
 	}
 	if v := os.Getenv("LAN_COLLECTOR_STATE_DIR"); v != "" {
 		cfg.StateDir = v

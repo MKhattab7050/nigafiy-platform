@@ -29,6 +29,17 @@ export interface InsightFacts {
   openIncidents: { id: string; title: string; severity: Severity }[];
   /** ip_mac_changed events in the last 24 hours. */
   ipConflicts: { ip: string; at: Date }[];
+  /** Network access control (DNS filter), when the site has it configured. */
+  access?: {
+    enabled: boolean;
+    listening: boolean | null;
+    error: string | null;
+    dns_server_ip: string | null;
+    protected_devices: number;
+    online_devices: number;
+    /** Blocked attempts in the last 24 hours, per device and category. */
+    blocked: { device_id: string; label: string; category: string; count: number }[];
+  };
 }
 
 const COLLECTOR_SILENT_MS = 3 * 60_000;
@@ -250,6 +261,90 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       detail: list(newToday.map((d) => d.label)),
       evidence: newToday.slice(0, 5).map((d) => `${d.label}${d.ip ? ` (${d.ip})` : ''}`),
       actions: [link('review', 'See devices', '/devices?sort=first_seen')],
+    });
+  }
+
+  const ac = f.access;
+  if (ac?.enabled) {
+    if (ac.listening === false || ac.error) {
+      add({
+        id: 'access-not-running',
+        code: 'access_not_running',
+        params: { error: ac.error ?? '' },
+        severity: 'warning',
+        category: 'setup',
+        title: 'Access control is on but not running',
+        detail: 'The collector could not start its DNS filter, so no rules are applied.',
+        evidence: [ac.error ?? 'The collector reports it is not listening for DNS'],
+        actions: [link('open_access', 'Open access control', '/access')],
+      });
+      deduct('access_not_running', 'Access control not running', 15);
+    } else if (ac.protected_devices === 0) {
+      add({
+        id: 'access-no-devices',
+        code: 'access_no_devices',
+        params: { ip: ac.dns_server_ip ?? '' },
+        severity: 'warning',
+        category: 'setup',
+        title: 'No device is using LAN Detective for DNS yet',
+        detail: `Set the router's DHCP "DNS server" to ${ac.dns_server_ip ?? 'this computer'} so devices receive the rules, then reconnect them to Wi-Fi.`,
+        evidence: ['No DNS questions arrived from any device in the last 30 minutes'],
+        actions: [link('open_access', 'Show me how', '/access')],
+      });
+      deduct('access_no_devices', 'Access rules reach no device', 10);
+    } else if (ac.protected_devices < ac.online_devices) {
+      add({
+        id: 'access-partial',
+        code: 'access_partial',
+        params: { protected: ac.protected_devices, online: ac.online_devices },
+        severity: 'info',
+        category: 'setup',
+        title: `${ac.protected_devices} of ${ac.online_devices} online devices use the filter`,
+        detail: 'The others did not ask LAN Detective for any name recently: they may use their own DNS (Private DNS, VPN) or not have renewed their address yet.',
+        evidence: [`${ac.protected_devices} devices sent DNS questions in the last 30 minutes`],
+        actions: [link('open_access', 'See which', '/access')],
+      });
+    }
+    const byCat = (cat: string) => ac.blocked.filter((b) => b.category === cat).sort((a, b) => b.count - a.count);
+    const adult = byCat('adult');
+    if (adult.length) {
+      add({
+        id: 'adult-attempts',
+        code: 'adult_attempts',
+        params: { names: list(adult.map((b) => b.label)), count: adult.reduce((n, b) => n + b.count, 0) },
+        severity: 'warning',
+        category: 'security',
+        title: 'Adult content was blocked in the last 24 hours',
+        detail: list(adult.map((b) => `${b.label} (${b.count})`)),
+        evidence: adult.slice(0, 5).map((b) => `${b.label}: ${b.count} blocked request(s)`),
+        actions: [link('see_activity', 'See activity', `/devices/${adult[0]!.device_id}`)],
+      });
+    }
+    const bypass = byCat('encrypted_dns');
+    if (bypass.length) {
+      add({
+        id: 'bypass-attempts',
+        code: 'bypass_attempts',
+        params: { names: list(bypass.map((b) => b.label)) },
+        severity: 'info',
+        category: 'security',
+        title: 'Some devices tried to use their own encrypted DNS',
+        detail: 'It was blocked so they fall back to the network rules. If a device keeps bypassing, turn off "Private DNS" on it.',
+        evidence: bypass.slice(0, 5).map((b) => `${b.label}: ${b.count} attempt(s)`),
+        actions: [link('open_access', 'Open access control', '/access')],
+      });
+    }
+  } else if (ac && !ac.enabled && f.devices.length > 0 && f.collectors.length > 0) {
+    add({
+      id: 'access-off',
+      code: 'access_off',
+      params: {},
+      severity: 'info',
+      category: 'setup',
+      title: 'Control what devices can reach',
+      detail: 'Block sites and apps, pause the internet for a device, or set bedtimes. Works with any router.',
+      evidence: ['Access control is off for this network'],
+      actions: [link('open_access', 'Set up access control', '/access')],
     });
   }
 
