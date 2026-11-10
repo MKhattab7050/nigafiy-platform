@@ -298,7 +298,7 @@ function TopologyMap({ topology }: { topology: Topology }) {
           >
             <Background color="var(--color-line)" gap={24} />
             <Controls showInteractive={false} />
-            <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'segment' ? 'transparent' : 'var(--color-line-strong)')} maskColor="rgba(7,13,26,.7)" style={{ background: 'var(--color-surface)' }} />
+            <MiniMap position="top-right" pannable zoomable nodeColor={(n) => (n.type === 'segment' ? 'transparent' : 'var(--color-line-strong)')} maskColor="rgba(7,13,26,.7)" style={{ background: 'var(--color-surface)' }} />
           </ReactFlow>
         </div>
         <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">

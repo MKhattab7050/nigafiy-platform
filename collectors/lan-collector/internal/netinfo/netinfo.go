@@ -238,6 +238,55 @@ func DefaultGateway(ctx context.Context) string {
 	}
 }
 
+// LocalMACs maps each IPv4 address of this host to the MAC of the interface that carries it.
+// A host never appears in its own neighbour table, so this is the only way to know its own MAC.
+func LocalMACs() map[string]string {
+	out := map[string]string{}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, i := range ifaces {
+		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		mac := NormalizeMAC(i.HardwareAddr.String())
+		if mac == "" {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
+				out[ipn.IP.String()] = mac
+			}
+		}
+	}
+	return out
+}
+
+// LocalDownAddrs lists IPv4 addresses still configured on this host's interfaces that are NOT up
+// (for example a disconnected Wi-Fi adapter). The OS answers pings to them locally, which would
+// otherwise make them look like devices on the network.
+func LocalDownAddrs() []string {
+	var out []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return out
+	}
+	for _, i := range ifaces {
+		if i.Flags&net.FlagUp != 0 || i.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, _ := i.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
+				out = append(out, ipn.IP.String())
+			}
+		}
+	}
+	return out
+}
+
 // Interface describes one active, non-loopback interface of the collector host.
 type Interface struct {
 	Name      string   `json:"name"`

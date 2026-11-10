@@ -402,6 +402,23 @@ const en = {
   'topo.relation.member_of': 'is in segment',
   'topo.relation.gateway_of': 'uses gateway',
   'topo.relation.uplink': 'uplink to',
+  // identification
+  'device.identification': 'How it was identified',
+  'device.identNone': 'This device has not announced anything about itself yet. Phones usually stay silent while locked; it is asked again on every sweep.',
+  'device.identRule': 'Classification',
+  'device.identNames': 'Names it announced',
+  'device.identServices': 'Services it advertises (mDNS)',
+  'device.identModel': 'Model',
+  'device.identManufacturer': 'Manufacturer',
+  'device.identUpnp': 'UPnP device type',
+  'device.identSoftware': 'Software',
+  'device.identLowHint': 'Low confidence: this is a hint, not a fact. Set the type manually if you know it.',
+  'device.nameSource.rdns': 'Reverse DNS',
+  'device.nameSource.mdns': 'Announced over mDNS',
+  'device.nameSource.netbios': 'NetBIOS name',
+  'device.nameSource.ssdp': 'UPnP friendly name',
+  'device.nameSource.collector': 'Reported by the collector running on it',
+  'device.nameSource.dhcp': 'Name it sent in its DHCP request',
 } as const;
 
 export type Key = keyof typeof en;
@@ -804,6 +821,23 @@ const ar: Record<Key, string> = {
   'topo.relation.member_of': 'ضمن المقطع',
   'topo.relation.gateway_of': 'يستخدم البوابة',
   'topo.relation.uplink': 'وصلة صاعدة إلى',
+  // identification
+  'device.identification': 'كيف تم التعرّف عليه',
+  'device.identNone': 'لم يُعلن هذا الجهاز عن نفسه بعد. الهواتف غالبًا تبقى صامتة وهي مقفلة؛ يُسأل الجهاز مجددًا في كل مسح.',
+  'device.identRule': 'التصنيف',
+  'device.identNames': 'الأسماء التي أعلنها',
+  'device.identServices': 'الخدمات التي يعلنها (mDNS)',
+  'device.identModel': 'الطراز',
+  'device.identManufacturer': 'المصنّع',
+  'device.identUpnp': 'نوع جهاز UPnP',
+  'device.identSoftware': 'البرمجيات',
+  'device.identLowHint': 'ثقة منخفضة: هذا تلميح وليس حقيقة. حدّد النوع يدويًا إن كنت تعرفه.',
+  'device.nameSource.rdns': 'DNS العكسي',
+  'device.nameSource.mdns': 'أعلنه عبر mDNS',
+  'device.nameSource.netbios': 'اسم NetBIOS',
+  'device.nameSource.ssdp': 'الاسم المعروض في UPnP',
+  'device.nameSource.collector': 'أبلغ به المجمِّع العامل عليه',
+  'device.nameSource.dhcp': 'الاسم الذي أرسله في طلب DHCP',
 };
 
 const dictionaries: Record<Locale, Record<Key, string>> = { en, ar };

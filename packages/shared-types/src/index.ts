@@ -16,6 +16,9 @@ export const DEVICE_TYPES = [
   'camera',
   'nas',
   'iot',
+  'mobile',
+  'apple_computer',
+  'media_player',
   'unknown',
 ] as const;
 export type DeviceType = (typeof DEVICE_TYPES)[number];
@@ -104,6 +107,12 @@ export interface Device {
   device_type: DeviceType;
   type_source: 'inferred' | 'manual' | 'none';
   type_evidence: string | null;
+  /** How sure the classification rule is (inferred types only). */
+  type_confidence: 'high' | 'medium' | 'low' | null;
+  /** Where the hostname came from: rdns | mdns | netbios | ssdp. */
+  name_source: string | null;
+  /** What the device announced about itself. */
+  fingerprint: DeviceFingerprint;
   status: DeviceStatus;
   is_critical: boolean;
   owner: string | null;
@@ -112,6 +121,13 @@ export interface Device {
   first_seen_at: string;
   last_seen_at: string;
   tags: string[];
+}
+
+export interface DeviceFingerprint {
+  names?: { source: string; name: string }[];
+  services?: string[];
+  hints?: Record<string, string>;
+  ssdp?: { server?: string; friendly_name?: string; manufacturer?: string; model?: string; device_types?: string[] };
 }
 
 export interface DeviceDetail extends Device {

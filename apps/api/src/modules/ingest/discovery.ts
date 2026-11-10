@@ -1,6 +1,8 @@
 import type { DeviceStatus } from '@lan-detective/shared-types';
 import { cidrContains, isLocallyAdministeredMac, normalizeMac, vendorForMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
+import type { Fingerprint } from '../devices/classify.ts';
+import { applyIdentification } from '../devices/identify.ts';
 import { emitEvent } from '../events/emit.ts';
 import { type CollectorContext, type DiscoveryRunItem, ItemRejected, MAX_FUTURE_SKEW_MS } from './schema.ts';
 
@@ -24,6 +26,7 @@ interface Identity {
   ips: string[];
   hostname: string | null;
   sources: Set<string>;
+  fingerprint: Fingerprint;
 }
 
 const ipToInt = (ip: string): number => ip.split('.').reduce((acc, octet) => acc * 256 + Number(octet), 0);
@@ -77,7 +80,11 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
     let mac = host.mac ? normalizeMac(host.mac) : null;
     if (mac === 'ff:ff:ff:ff:ff:ff' || mac === '00:00:00:00:00:00') mac = null;
     const key = mac ?? `ip:${host.ip}`;
-    const identity = identities.get(key) ?? { mac, ips: [], hostname: null, sources: new Set<string>() };
+    const identity = identities.get(key) ?? { mac, ips: [], hostname: null, sources: new Set<string>(), fingerprint: {} };
+    if (host.names) identity.fingerprint.names = [...(identity.fingerprint.names ?? []), ...host.names];
+    if (host.services) identity.fingerprint.services = [...(identity.fingerprint.services ?? []), ...host.services];
+    if (host.hints) identity.fingerprint.hints = { ...identity.fingerprint.hints, ...host.hints };
+    if (host.ssdp) identity.fingerprint.ssdp = host.ssdp;
     identity.ips.push(host.ip);
     identity.hostname ??= host.hostname ?? null;
     for (const s of host.sources) identity.sources.add(s);
@@ -119,6 +126,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
   const historyDeviceIds: string[] = [];
   const historyIps: string[] = [];
   const cameOnline: string[] = [];
+  const identified = new Map<string, Fingerprint>(); // device id → what it announced this sweep
+  const collectorHosts = new Set<string>(); // device ids that are the collector's own host
   let created = 0;
 
   for (const identity of identities.values()) {
@@ -156,8 +165,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
     if (!device) {
       const inserted = await db.query<{ id: string }>(
         `INSERT INTO devices (organization_id, site_id, identity_basis, primary_mac, mac_randomized, current_ip, hostname, vendor,
-                              status, discovery_sources, first_seen_at, last_seen_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'online',$9,$10,$10) RETURNING id`,
+                              status, discovery_sources, first_seen_at, last_seen_at, name_source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'online',$9,$10,$10, CASE WHEN $7::text IS NULL THEN NULL ELSE 'rdns' END) RETURNING id`,
         [
           c.organizationId,
           c.siteId,
@@ -173,6 +182,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       );
       const id = inserted.rows[0]!.id;
       created++;
+      identified.set(id, identity.fingerprint);
+      if (identity.sources.has('local_interface')) collectorHosts.add(id);
       claimed.add(id);
       await db.query(`INSERT INTO availability_history (organization_id, device_id, status, started_at) VALUES ($1,$2,'online',$3)`, [c.organizationId, id, finishedAt]);
       for (const ip of identity.ips) {
@@ -228,6 +239,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
     claimed.add(device.id);
     seenExisting.push(device.id);
+    identified.set(device.id, identity.fingerprint);
+    if (identity.sources.has('local_interface')) collectorHosts.add(device.id);
     for (const ip of identity.ips) {
       historyDeviceIds.push(device.id);
       historyIps.push(ip);
@@ -248,7 +261,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       });
     }
     if (identity.hostname && identity.hostname !== device.hostname) {
-      await db.query(`UPDATE devices SET hostname = $2 WHERE id = $1`, [device.id, identity.hostname]);
+      await db.query(`UPDATE devices SET hostname = $2, name_source = 'rdns' WHERE id = $1`, [device.id, identity.hostname]);
     }
     const knownSources = device.discovery_sources;
     if (sources.some((s) => !knownSources.includes(s))) {
@@ -325,14 +338,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
   await db.query(`UPDATE network_scopes SET last_run_finished_at = $2 WHERE id = $1`, [scope.id, finishedAt]);
 
-  if (c.gatewayIp) {
-    // The one classification we can back with evidence at this stage. Manual classifications are never overwritten.
-    await db.query(
-      `UPDATE devices SET device_type = 'router', type_source = 'inferred', type_evidence = $3
-        WHERE site_id = $1 AND current_ip = $2::inet AND type_source = 'none'`,
-      [c.siteId, c.gatewayIp, `Collector "${c.name}" uses this address as its default gateway`],
-    );
-  }
+  // Name and classify what was seen, from what the devices announced (never overrides a manual choice).
+  await applyIdentification(db, identified, { ip: c.gatewayIp, collector: c.name }, { ids: collectorHosts, os: c.os, hostname: c.hostname });
 
   if (baseline) {
     await emitEvent(db, c.organizationId, {

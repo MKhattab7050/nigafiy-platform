@@ -15,6 +15,10 @@ const API = process.env.API_URL ?? 'http://localhost:4100';
 const root = path.resolve(import.meta.dirname, '..');
 const binary = path.join(root, 'collectors/lan-collector/bin', process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector');
 const keep = process.argv.includes('--keep-running');
+// E2E_SCOPE: a range YOU own. Defaults to the loopback test network.
+const SCOPE = process.env.E2E_SCOPE ?? '127.0.0.0/29';
+const loopback = SCOPE.startsWith('127.');
+const minDevices = loopback ? 6 : 1;
 
 let cookie = '';
 async function api(method, url, body) {
@@ -46,11 +50,11 @@ const email = process.env.E2E_EMAIL ?? `e2e-${Date.now()}@example.test`;
 const password = process.env.E2E_PASSWORD ?? `e2e-${crypto.randomUUID()}`;
 
 step(`registering ${email}`);
-await api('POST', '/auth/register', { email, password, display_name: 'E2E Smoke', organization_name: 'E2E smoke org', site_name: 'Loopback lab' });
+await api('POST', '/auth/register', { email, password, display_name: 'E2E Smoke', organization_name: loopback ? 'E2E smoke org' : 'My network', site_name: loopback ? 'Loopback lab' : 'Main site' });
 const site = (await api('GET', '/sites')).items[0];
 
-step('authorizing scope 127.0.0.0/29 (loopback test network)');
-await api('POST', `/sites/${site.id}/scopes`, { cidr: '127.0.0.0/29', label: 'E2E loopback', authorization_confirmed: true });
+step(`authorizing scope ${SCOPE}`);
+await api('POST', `/sites/${site.id}/scopes`, { cidr: SCOPE, label: loopback ? 'E2E loopback' : 'LAN', authorization_confirmed: true });
 
 step('creating collector + enrollment token');
 const created = await api('POST', '/collectors', { site_id: site.id, name: 'e2e-collector' });
@@ -59,7 +63,7 @@ const stateDir = mkdtempSync(path.join(os.tmpdir(), 'ld-e2e-collector-'));
 const configPath = path.join(stateDir, 'collector.yaml');
 writeFileSync(
   configPath,
-  [`server_url: ${API}`, `state_dir: ${JSON.stringify(path.join(stateDir, 'state'))}`, 'allowed_cidrs: ["127.0.0.0/29"]', 'allow_insecure_http: true', 'allow_loopback_scopes: true', 'log_level: info', ''].join('\n'),
+  [`server_url: ${API}`, `state_dir: ${JSON.stringify(path.join(stateDir, 'state'))}`, `allowed_cidrs: ["${SCOPE}"]`, 'allow_insecure_http: true', `allow_loopback_scopes: ${loopback}`, 'log_level: info', ''].join('\n'),
 );
 
 step('starting collector binary');
@@ -84,11 +88,11 @@ try {
   console.log(`  collector online: ${online.hostname} ${online.os}/${online.arch} v${online.version}, gateway ${online.gateway_ip ?? 'none'}`);
 
   const devices = await until('devices discovered', async () => {
-    const d = await api('GET', '/devices');
-    return d.total >= 6 ? d : null;
+    const d = await api('GET', '/devices?page_size=200');
+    return d.total >= minDevices ? d : null;
   });
-  console.log(`  ${devices.total} devices discovered by real ICMP on 127.0.0.1–127.0.0.6:`);
-  for (const d of devices.items) console.log(`    ${d.current_ip.padEnd(12)} status=${d.status} identity=${d.identity_basis} sources=${d.discovery_sources.join('+')}`);
+  console.log(`  ${devices.total} devices discovered in ${SCOPE}:`);
+  for (const d of devices.items) console.log(`    ${d.current_ip.padEnd(12)} ${(d.primary_mac ?? '-').padEnd(18)} ${(d.vendor ?? (d.mac_randomized ? '(randomized MAC)' : '-')).slice(0, 28).padEnd(29)} ${(d.hostname ?? '-').slice(0, 22).padEnd(23)} type=${d.device_type} via=${d.discovery_sources.join('+')}`);
 
   const checks = await until('check results', async () => {
     const c = (await api('GET', '/checks')).items;

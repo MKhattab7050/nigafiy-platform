@@ -38,7 +38,8 @@ func (f *fakeProber) Ping(_ context.Context, ip string, _ time.Duration) (time.D
 }
 
 func TestSweepFindsHostsAndMergesNeighbourTable(t *testing.T) {
-	prober := &fakeProber{alive: map[string]bool{"192.168.1.1": true, "192.168.1.10": true}}
+	// .9 answers ping only because it is an address on our own disconnected adapter.
+	prober := &fakeProber{alive: map[string]bool{"192.168.1.1": true, "192.168.1.9": true, "192.168.1.10": true}}
 	prefix := netip.MustParsePrefix("192.168.1.0/28")
 	res := Sweep(context.Background(), prefix, prober, Options{
 		Concurrency: 8, PPS: 500, Timeout: time.Second,
@@ -51,6 +52,16 @@ func TestSweepFindsHostsAndMergesNeighbourTable(t *testing.T) {
 				"192.168.1.10": {MAC: "aa:bb:cc:00:00:10", Reachable: false}, // answered ICMP; stale MAC still usable
 			}, nil
 		},
+		LocalDown: func() []string { return []string{"192.168.1.9"} },
+		DHCPName: func(mac string) (string, string, bool) {
+			if mac == "aa:bb:cc:00:00:05" {
+				return "Galaxy-A52", "android-dhcp-14", true
+			}
+			return "", "", false
+		},
+		LocalMACs: func() map[string]string {
+			return map[string]string{"192.168.1.10": "aa:bb:cc:00:00:10", "192.168.1.12": "aa:bb:cc:00:00:12", "10.0.0.1": "aa:bb:cc:00:00:99"}
+		},
 		ReverseName: func(_ context.Context, ip string) string {
 			if ip == "192.168.1.1" {
 				return "gw.lan"
@@ -61,14 +72,22 @@ func TestSweepFindsHostsAndMergesNeighbourTable(t *testing.T) {
 	if !res.Complete || res.HostsProbed != 14 {
 		t.Fatalf("complete=%v probed=%d, want true/14", res.Complete, res.HostsProbed)
 	}
-	if len(res.Hosts) != 3 {
-		t.Fatalf("expected 3 hosts, got %+v", res.Hosts)
+	if len(res.Hosts) != 4 {
+		t.Fatalf("expected 4 hosts, got %+v", res.Hosts)
+	}
+	// The collector host's own second address did not answer ICMP in this fake network, but it is
+	// present by definition and carries the MAC of its own interface.
+	if own := res.Hosts[3]; own.IP != "192.168.1.12" || own.MAC != "aa:bb:cc:00:00:12" || own.Sources[0] != "local_interface" {
+		t.Errorf("own interface wrong: %+v", own)
 	}
 	gw, silent, pc := res.Hosts[0], res.Hosts[1], res.Hosts[2]
 	if gw.IP != "192.168.1.1" || gw.MAC != "00:11:22:33:44:55" || gw.Hostname != "gw.lan" || len(gw.Sources) != 3 {
 		t.Errorf("gateway wrong: %+v", gw)
 	}
-	if silent.IP != "192.168.1.5" || len(silent.Sources) != 1 || silent.Sources[0] != "arp_cache" || silent.RTTMs != nil {
+	if len(silent.Names) != 1 || silent.Names[0].Source != "dhcp" || silent.Names[0].Name != "Galaxy-A52" || silent.Hints["dhcp_vendor_class"] != "android-dhcp-14" {
+		t.Errorf("DHCP name not attached: %+v", silent)
+	}
+	if silent.IP != "192.168.1.5" || len(silent.Sources) != 2 || silent.Sources[0] != "arp_cache" || silent.RTTMs != nil {
 		t.Errorf("ARP-only host wrong: %+v", silent)
 	}
 	if pc.IP != "192.168.1.10" || pc.MAC != "aa:bb:cc:00:00:10" {

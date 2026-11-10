@@ -4,12 +4,13 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { DEVICE_TYPES, type DeviceDetail } from '@lan-detective/shared-types';
+import { ConfidenceBadge } from '@/components/diagnosis';
 import { EventList } from '@/components/event-list';
 import { Async, Button, Card, EmptyState, ErrorNote, Fact, Field, Input, PageHeader, Select, StatusBadge, Tag, Textarea, statusTone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, duration, relativeTime } from '@/lib/format';
-import { useI18n } from '@/lib/i18n';
+import { type Key, useI18n } from '@/lib/i18n';
 
 const WEEK_MS = 7 * 86_400_000;
 const BAR = { ok: 'bg-ok', crit: 'bg-crit', idle: 'bg-idle', warn: 'bg-warn', info: 'bg-accent' } as const;
@@ -55,6 +56,64 @@ function AvailabilityStrip({ device }: { device: DeviceDetail }) {
         ))}
         {known > 0 && <span className="tnum ms-auto font-medium text-fg">{((totals.online / known) * 100).toFixed(2)}%</span>}
       </div>
+    </div>
+  );
+}
+
+/** What the device announced about itself, and the rule that turned it into a type. */
+function Identification({ device: d, typeLabel }: { device: DeviceDetail; typeLabel: string }) {
+  const { t } = useI18n();
+  const fp = d.fingerprint ?? {};
+  const model = fp.hints?.model ?? fp.hints?.product ?? fp.ssdp?.model;
+  const manufacturer = fp.hints?.manufacturer ?? fp.ssdp?.manufacturer;
+  const announced = Boolean(fp.names?.length || fp.services?.length || model || manufacturer || fp.ssdp);
+  return (
+    <div className="space-y-3">
+      {d.type_source === 'inferred' && d.type_evidence && (
+        <div className="rounded-md border border-line-strong bg-raised px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+            {t('device.identRule')}: {typeLabel}
+          </p>
+          <ul className="mt-1.5 list-disc space-y-1 ps-5 text-[13px] leading-relaxed text-fg" dir="auto">
+            {d.type_evidence.split(' · ').map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+          {d.type_confidence === 'low' && <p className="mt-2 text-xs text-warn">{t('device.identLowHint')}</p>}
+        </div>
+      )}
+      {!announced ? (
+        <p className="text-[13px] leading-relaxed text-muted">{t('device.identNone')}</p>
+      ) : (
+        <dl>
+          {fp.names && fp.names.length > 0 && (
+            <Fact label={t('device.identNames')}>
+              {fp.names.map((n) => (
+                <span key={n.source + n.name} className="block" dir="auto">
+                  {n.name} <span className="text-[11px] text-faint">· {n.source}</span>
+                </span>
+              ))}
+            </Fact>
+          )}
+          {model && <Fact label={t('device.identModel')}>{model}</Fact>}
+          {manufacturer && <Fact label={t('device.identManufacturer')}>{manufacturer}</Fact>}
+          {fp.ssdp?.device_types && fp.ssdp.device_types.length > 0 && <Fact label={t('device.identUpnp')}>{fp.ssdp.device_types.join(', ')}</Fact>}
+          {fp.ssdp?.server && (
+            <Fact label={t('device.identSoftware')}>
+              <span className="mono text-xs">{fp.ssdp.server}</span>
+            </Fact>
+          )}
+          {fp.services && fp.services.length > 0 && (
+            <Fact label={t('device.identServices')}>
+              <span className="flex flex-wrap gap-1">
+                {fp.services.map((s) => (
+                  <Tag key={s}>{s}</Tag>
+                ))}
+              </span>
+            </Fact>
+          )}
+        </dl>
+      )}
     </div>
   );
 }
@@ -182,7 +241,7 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                       <Fact label={t('device.vendor')} source={d.vendor ? t('device.vendorSource') : undefined}>
                         {d.vendor ?? <span className="text-muted">{d.mac_randomized ? t('device.vendorNone') : '—'}</span>}
                       </Fact>
-                      <Fact label={t('device.hostname')} source={d.hostname ? t('device.hostnameSource') : undefined}>
+                      <Fact label={t('device.hostname')} source={d.hostname ? t(`device.nameSource.${d.name_source ?? 'rdns'}` as Key) : undefined}>
                         {d.hostname ? <span className="mono">{d.hostname}</span> : '—'}
                       </Fact>
                       <Fact
@@ -198,6 +257,9 @@ export default function DevicePage({ params }: { params: Promise<{ id: string }>
                         {relativeTime(d.last_seen_at, locale)} <span className="text-muted">· {absoluteTime(d.last_seen_at, locale)}</span>
                       </Fact>
                     </dl>
+                  </Card>
+                  <Card title={t('device.identification')} action={d.type_source === 'inferred' && d.type_confidence ? <ConfidenceBadge confidence={d.type_confidence} /> : undefined}>
+                    <Identification device={d} typeLabel={typeLabel} />
                   </Card>
                   <Card title={t('device.availability')}>
                     <AvailabilityStrip device={d} />

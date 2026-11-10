@@ -19,6 +19,10 @@ webhooks, audit log, English + Arabic (RTL).
 | Incident replay | Before / during / after timeline of everything at the site around an incident | incident detail |
 | Topology | Internet → gateway → subnet segments → devices, built from the collector routing table, neighbour table, scopes and checks; every edge labelled observed / inferred with evidence, confidence and last-verified time; search, filters, drag, zoom, JSON export | `modules/topology` |
 
+**Device identification (added after Phase 2):** the collector asks devices what they are over mDNS/DNS-SD, SSDP/UPnP and NetBIOS; the API stores what each device announced and classifies it with deterministic rules (`modules/devices/classify.ts`) that carry evidence and a high / medium / low confidence. The collector host itself is classified from its own report. A randomized MAC with no other evidence is shown as "Phone / tablet — low confidence".
+
+On the real test network (5 phones with randomized MACs) **no phone answered any of the three protocols**, so they are typed by the low-confidence hint only and have no names. The parsers and rules are covered by tests, but mDNS/SSDP/NetBIOS answers from real devices have not been observed yet. To name them, the collector now **passively listens for DHCP client broadcasts** (`internal/dhcp`, UDP 67, receive-only — never sends or answers). When a device joins it broadcasts its hostname (option 12) and vendor class (option 60, e.g. `android-dhcp-14`, `MSFT 5.0`); these are matched by MAC to discovered devices, shown with name source "DHCP", and `android-dhcp*` classifies a phone with high confidence. On the Windows dev host the port bound successfully ("passive DHCP name learning is on"). Limits: a name is only learned when a device joins or rebinds (normal lease renewals are unicast to the router and are not seen), the learned table lives in collector memory (lost on restart), and some phones send no hostname. Whether real phone names arrive on the test network is not yet confirmed — it needs a phone to reconnect while the collector runs. Reading the router's client table remains an alternative (not built).
+
 ## Verified in the development environment
 
 | What | How |
@@ -26,6 +30,7 @@ webhooks, audit log, English + Arabic (RTL).
 | API, phases 1 + 2 | 33 integration tests against real PostgreSQL (`pnpm test`), including Doctor rules, incident lifecycle, Time Machine reconstruction, topology evidence, roll-ups, tenant isolation of the new endpoints |
 | Collector | Go tests (`pnpm test:collector`), including the new command path |
 | Real collector ↔ API ↔ database | `scripts/e2e-smoke.mjs` (loopback range, real ICMP, real internet/DNS checks) — run for Phase 1; not re-run after the Phase 2 collector change |
+| Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |
 | Web app | Type-check, production build, manual check of every Phase 2 page in a browser using `scripts/seed-simulated.mjs` |
 
 `scripts/seed-simulated.mjs` creates an organization named **"SIMULATED demo (not real data)"** and
@@ -35,7 +40,8 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 
 - Phase 2 on real hardware: incidents, diagnoses and topology were exercised with test and simulated
   telemetry, not with a real outage on a real LAN.
-- A real LAN sweep with MAC addresses (the smoke test uses loopback).
+- A real outage on the real LAN (discovery and checks ran there; no fault occurred, so incident and diagnosis paths were not triggered by real data).
+- Larger or wired networks, managed switches, multiple subnets.
 - `docker-compose.yml`, the collector `Dockerfile`, the systemd unit; the collector at runtime on Linux.
 - Go race detector (needs cgo); automated browser tests; load and scale.
 - Topology with several hundred devices (layout is designed for it; only ~20 simulated devices were viewed).

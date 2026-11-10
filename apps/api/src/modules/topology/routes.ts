@@ -87,7 +87,8 @@ topologyRouter.get('/topology', async (req, res) => {
       });
       if (isGateway) continue; // the gateway is linked to its segment by the gateway_of edge below
       const local = segment ? collectorIn(segment) : null;
-      const viaArp = d.discovery_sources.includes('arp_cache') && local !== null;
+      const own = d.discovery_sources.includes('local_interface') && local !== null;
+      const viaArp = (own || d.discovery_sources.includes('arp_cache')) && local !== null;
       edges.push({
         id: `e:${id}:member`,
         source: id,
@@ -95,12 +96,14 @@ topologyRouter.get('/topology', async (req, res) => {
         relation: 'member_of',
         basis: viaArp ? 'observed' : 'inferred',
         confidence: viaArp ? 'high' : local ? 'medium' : 'low',
-        evidence: viaArp
+        evidence: own
+          ? `This is the collector host itself ("${local}"): its address and MAC were read from its own network interface in this segment.`
+          : viaArp
           ? `Its MAC address was read from the neighbour (ARP) table of collector "${local}", which is only possible inside the same layer-2 segment.`
           : segment
             ? `Its IP address lies inside this authorized range and it answered ICMP${local ? '' : '; no collector has an interface in this range, so traffic to it is routed'}. The layer-2 path was not observed.`
             : 'Its last known address is not inside any currently authorized scope.',
-        evidence_source: viaArp ? 'Collector neighbour table' : 'ICMP reply + scope membership',
+        evidence_source: own ? 'Collector network interface' : viaArp ? 'Collector neighbour table' : 'ICMP reply + scope membership',
         last_verified_at: d.last_seen_at.toISOString(),
       });
     }

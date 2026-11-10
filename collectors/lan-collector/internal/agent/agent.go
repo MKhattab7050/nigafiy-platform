@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,7 +19,9 @@ import (
 
 	"github.com/lan-detective/lan-collector/internal/cloud"
 	"github.com/lan-detective/lan-collector/internal/config"
+	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
+	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/scope"
@@ -42,6 +45,11 @@ type Deps struct {
 	Neighbors   func(ctx context.Context) (map[string]netinfo.Neighbor, error)
 	Gateway     func(ctx context.Context) string
 	ReverseName func(ctx context.Context, ip string) string
+	LocalMACs   func() map[string]string
+	LocalDown   func() []string
+	// DHCPListen is the address for passive DHCP name learning (":67"); empty disables it.
+	DHCPListen  string
+	Identify    func(ctx context.Context, prefix netip.Prefix, hosts []string) map[string]*identify.Info
 	ResolveIPv4 func(ctx context.Context, host string) (string, error)
 }
 
@@ -57,6 +65,10 @@ func SystemDeps() Deps {
 		TCPCheck:    probe.TCP,
 		DNSCheck:    probe.DNS,
 		Neighbors:   netinfo.Neighbors,
+		LocalMACs:   netinfo.LocalMACs,
+		LocalDown:   netinfo.LocalDownAddrs,
+		DHCPListen:  ":67",
+		Identify:    identify.Run,
 		ReverseName: probe.ReverseName,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
@@ -117,6 +129,7 @@ type Agent struct {
 	seenCmds  map[string]bool
 	refused   map[string]bool
 
+	dhcp     *dhcp.Table
 	scan     chan string
 	checkNow chan string
 	wake     chan struct{}
@@ -137,7 +150,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	return &Agent{
 		cfg: cfg, client: client, spool: sp, deps: deps, log: log, version: version, started: time.Now(), tuning: tuning,
 		policy:   scope.Policy{MinPrefixBits: config.MinScopePrefixBits, Allowed: cfg.Allowed(), AllowLoopback: cfg.AllowLoopbackScopes},
-		seenCmds: map[string]bool{}, refused: map[string]bool{},
+		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: dhcp.NewTable(),
 		scan: make(chan string, 4), checkNow: make(chan string, 4), wake: make(chan struct{}, 1),
 	}, nil
 }
@@ -149,6 +162,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	a.loadCachedConfig()
+	if a.deps.DHCPListen != "" {
+		// Passive only: listens for the names devices broadcast when they join. Never sends.
+		err := dhcp.Listen(ctx, a.deps.DHCPListen, a.dhcp, func(r dhcp.Request) {
+			a.log.Info("learned a device name from DHCP", "mac", r.MAC, "hostname", r.Hostname, "vendor_class", r.VendorClass)
+		})
+		if err != nil {
+			a.log.Warn("passive DHCP name learning is off: cannot listen on the DHCP port (needs CAP_NET_BIND_SERVICE on Linux; on Windows no local DHCP server and an inbound firewall rule for UDP 67)", "error", err.Error())
+		} else {
+			a.log.Info("passive DHCP name learning is on", "listen", a.deps.DHCPListen)
+		}
+	}
 
 	var wg sync.WaitGroup
 	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop} {
@@ -422,6 +446,13 @@ func (a *Agent) runDiscovery(ctx context.Context, trigger string) {
 			Timeout:     time.Duration(a.cfg.Limits.PingTimeoutMs) * time.Millisecond,
 			Neighbors:   a.deps.Neighbors,
 			ReverseName: a.deps.ReverseName,
+			LocalMACs:   a.deps.LocalMACs,
+			LocalDown:   a.deps.LocalDown,
+			DHCPName: func(mac string) (string, string, bool) {
+				l, ok := a.dhcp.Lookup(mac)
+				return l.Hostname, l.VendorClass, ok
+			},
+			Identify: a.deps.Identify,
 		})
 		if !res.Complete {
 			return // interrupted: reporting a partial sweep would make present devices look offline

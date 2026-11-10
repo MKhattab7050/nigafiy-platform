@@ -9,12 +9,12 @@ import { EVENT_SELECT } from '../events/routes.ts';
 
 export const devicesRouter: Router = Router();
 
-const DEVICE_TYPES = ['windows_computer', 'linux_computer', 'server', 'router', 'switch', 'firewall', 'printer', 'access_point', 'camera', 'nas', 'iot', 'unknown'] as const;
+const DEVICE_TYPES = ['windows_computer', 'linux_computer', 'server', 'router', 'switch', 'firewall', 'printer', 'access_point', 'camera', 'nas', 'iot', 'mobile', 'apple_computer', 'media_player', 'unknown'] as const;
 
 const DEVICE_SELECT = `
   SELECT d.id, d.site_id, s.name AS site_name, d.display_name, d.hostname, host(d.current_ip) AS current_ip,
          d.primary_mac::text AS primary_mac, d.mac_randomized, d.identity_basis, d.vendor, d.device_type, d.type_source,
-         d.type_evidence, d.status, d.is_critical, d.owner, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
+         d.type_evidence, d.type_confidence, d.name_source, d.fingerprint, d.status, d.is_critical, d.owner, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
          coalesce((SELECT array_agg(t.tag ORDER BY t.tag) FROM device_tags t WHERE t.device_id = d.id), '{}') AS tags
     FROM devices d JOIN sites s ON s.id = d.site_id`;
 
@@ -118,7 +118,7 @@ devicesRouter.patch('/devices/:id', requireRole('technician'), async (req, res) 
     if (body.is_critical !== undefined) set('is_critical', body.is_critical);
     if (body.device_type !== undefined) {
       set('device_type', body.device_type);
-      sets.push(`type_source = 'manual'`, `type_evidence = NULL`);
+      sets.push(`type_source = 'manual'`, `type_evidence = NULL`, `type_confidence = NULL`);
     }
     if (sets.length) {
       const updated = await db.query(`UPDATE devices SET ${sets.join(', ')} WHERE id = $1`, values);

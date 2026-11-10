@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/scope"
 )
@@ -31,6 +32,15 @@ type Options struct {
 	Timeout     time.Duration // per-probe timeout
 	Neighbors   func(ctx context.Context) (map[string]netinfo.Neighbor, error)
 	ReverseName func(ctx context.Context, ip string) string
+	// LocalMACs returns this host's own IPv4 → MAC pairs (optional).
+	LocalMACs func() map[string]string
+	// LocalDown returns addresses of this host's own disconnected interfaces (optional): they are
+	// not on the network and are removed from the result.
+	LocalDown func() []string
+	// DHCPName returns the name / vendor class a client with this MAC announced over DHCP (optional).
+	DHCPName func(mac string) (hostname, vendorClass string, ok bool)
+	// Identify asks devices what they are (mDNS, SSDP, NetBIOS). Optional.
+	Identify func(ctx context.Context, prefix netip.Prefix, hosts []string) map[string]*identify.Info
 }
 
 type Host struct {
@@ -39,6 +49,11 @@ type Host struct {
 	Hostname string   `json:"hostname,omitempty"`
 	RTTMs    *float64 `json:"rtt_ms,omitempty"`
 	Sources  []string `json:"sources"`
+	// What the device said about itself (see package identify).
+	Names    []identify.Name   `json:"names,omitempty"`
+	Services []string          `json:"services,omitempty"`
+	Hints    map[string]string `json:"hints,omitempty"`
+	SSDP     *identify.SSDP    `json:"ssdp,omitempty"`
 }
 
 type Result struct {
@@ -122,6 +137,74 @@ launch:
 					found[ip] = &Host{IP: ip, MAC: n.MAC, Sources: []string{"arp_cache"}}
 				}
 			}
+		}
+	}
+
+	if opt.LocalDown != nil {
+		for _, ip := range opt.LocalDown() {
+			delete(found, ip)
+		}
+	}
+
+	if opt.LocalMACs != nil {
+		// The collector host itself: it is certainly present, and its MAC is read from its own interface.
+		for ip, mac := range opt.LocalMACs() {
+			addr, err := netip.ParseAddr(ip)
+			if err != nil || !prefix.Contains(addr) || mac == "" {
+				continue
+			}
+			if h, ok := found[ip]; ok {
+				if h.MAC == "" {
+					h.MAC = mac
+				}
+				h.Sources = append(h.Sources, "local_interface")
+			} else {
+				found[ip] = &Host{IP: ip, MAC: mac, Sources: []string{"local_interface"}}
+			}
+		}
+	}
+
+	if opt.Identify != nil {
+		ips := make([]string, 0, len(found))
+		for ip := range found {
+			ips = append(ips, ip)
+		}
+		for ip, info := range opt.Identify(ctx, prefix, ips) {
+			if len(info.Sources) == 0 {
+				continue
+			}
+			h, ok := found[ip]
+			if !ok {
+				// It answered a discovery protocol from inside the scope, so it is present even
+				// though it ignored ICMP and has no fresh neighbour entry.
+				h = &Host{IP: ip}
+				found[ip] = h
+			}
+			h.Names, h.Services, h.Hints, h.SSDP = info.Names, info.Services, info.Hints, info.SSDP
+			h.Sources = append(h.Sources, info.Sources...)
+		}
+	}
+
+	if opt.DHCPName != nil {
+		// Names learned by passively listening to DHCP, matched by MAC to devices found in this scope.
+		for _, h := range found {
+			if h.MAC == "" {
+				continue
+			}
+			hostname, vendor, ok := opt.DHCPName(h.MAC)
+			if !ok {
+				continue
+			}
+			if hostname != "" {
+				h.Names = append(h.Names, identify.Name{Source: "dhcp", Name: hostname})
+			}
+			if vendor != "" {
+				if h.Hints == nil {
+					h.Hints = map[string]string{}
+				}
+				h.Hints["dhcp_vendor_class"] = vendor
+			}
+			h.Sources = append(h.Sources, "dhcp")
 		}
 	}
 

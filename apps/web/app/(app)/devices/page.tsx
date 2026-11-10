@@ -132,7 +132,12 @@ function DevicesView() {
                           </td>
                           <td className="px-3 py-2.5 text-muted">
                             {DEVICE_TYPE_LABEL[d.device_type]?.[locale] ?? d.device_type}
-                            {d.type_source === 'inferred' && <span className="block text-[11px] text-faint">{t('common.inferred')}</span>}
+                            {d.type_source === 'inferred' && (
+                              <span className="block text-[11px] text-faint">
+                                {t('common.inferred')}
+                                {d.type_confidence ? ` · ${t(`dx.confidence.${d.type_confidence}`)}` : ''}
+                              </span>
+                            )}
                           </td>
                           <td className="whitespace-nowrap px-4 py-2.5 text-muted" title={absoluteTime(d.last_seen_at, locale)}>
                             {relativeTime(d.last_seen_at, locale)}

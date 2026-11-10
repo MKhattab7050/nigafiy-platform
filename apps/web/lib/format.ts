@@ -53,6 +53,9 @@ export const DEVICE_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   camera: { en: 'Camera', ar: 'كاميرا' },
   nas: { en: 'NAS', ar: 'تخزين شبكي' },
   iot: { en: 'IoT device', ar: 'جهاز IoT' },
+  mobile: { en: 'Phone / tablet', ar: 'هاتف / لوحي' },
+  apple_computer: { en: 'Mac computer', ar: 'حاسوب Mac' },
+  media_player: { en: 'TV / media player', ar: 'تلفاز / مشغّل وسائط' },
   unknown: { en: 'Unclassified', ar: 'غير مصنّف' },
 };
 

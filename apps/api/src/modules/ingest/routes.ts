@@ -82,8 +82,10 @@ async function requireCollector(req: Request, _res: Response, next: NextFunction
     credential_hash: string | null;
     connection_state: CollectorContext['connectionState'];
     gateway_ip: string | null;
+    os: string | null;
+    hostname: string | null;
   }>(
-    `SELECT id, organization_id, site_id, name, credential_hash, connection_state, host(gateway_ip) AS gateway_ip
+    `SELECT id, organization_id, site_id, name, credential_hash, connection_state, host(gateway_ip) AS gateway_ip, os, hostname
        FROM collectors WHERE id = $1 AND status = 'active'`,
     [match[1]],
   );
@@ -96,6 +98,8 @@ async function requireCollector(req: Request, _res: Response, next: NextFunction
     name: row.name,
     connectionState: row.connection_state,
     gatewayIp: row.gateway_ip,
+    os: row.os,
+    hostname: row.hostname,
   };
   next();
 }
