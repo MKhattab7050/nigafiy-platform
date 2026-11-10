@@ -46,5 +46,43 @@ func TestControlValidationAndExecution(t *testing.T) {
 	if res.OK {
 		t.Fatalf("expected unknown command kind to be refused")
 	}
+
+	// File manager roots via fs_op
+	res = r.Execute(ctx, Command{ID: "6", Kind: "fs_op", Payload: json.RawMessage(`{"op":"roots"}`)})
+	if !res.OK || len(res.Data) == 0 {
+		t.Fatalf("expected fs_op roots to succeed with data, got %+v", res)
+	}
+
+	// Remote desktop capture via rd_capture
+	res = r.Execute(ctx, Command{ID: "7", Kind: "rd_capture", Payload: json.RawMessage(`{"display_index":0,"quality":60,"scale":0.5}`)})
+	if !res.OK || len(res.Data) == 0 {
+		t.Fatalf("expected rd_capture to succeed with JPEG frame data, got %+v", res)
+	}
+
+	// Software action validation (refuses injection, accepts valid package ID)
+	res = r.Execute(ctx, Command{ID: "8", Kind: "software_action", Payload: json.RawMessage(`{"action":"install","package_id":"7zip.7zip; calc"}`)})
+	if res.OK {
+		t.Fatalf("expected invalid package_id to be refused")
+	}
+	res = r.Execute(ctx, Command{ID: "9", Kind: "software_action", Payload: json.RawMessage(`{"action":"install","package_id":"7zip.7zip"}`)})
+	if !res.OK {
+		t.Fatalf("expected valid software_action to succeed, got %+v", res)
+	}
+
+	// Diagnostic command allow-list (refuses arbitrary command, accepts ipconfig)
+	res = r.Execute(ctx, Command{ID: "10", Kind: "diagnostic_command", Payload: json.RawMessage(`{"tool":"powershell -enc"}`)})
+	if res.OK {
+		t.Fatalf("expected unapproved diagnostic tool to be refused")
+	}
+	res = r.Execute(ctx, Command{ID: "11", Kind: "diagnostic_command", Payload: json.RawMessage(`{"tool":"ipconfig"}`)})
+	if !res.OK {
+		t.Fatalf("expected ipconfig diagnostic_command to succeed, got %+v", res)
+	}
+
+	// Fetch logs
+	res = r.Execute(ctx, Command{ID: "12", Kind: "fetch_logs", Payload: json.RawMessage(`{"source":"system","lines":20}`)})
+	if !res.OK {
+		t.Fatalf("expected fetch_logs to succeed, got %+v", res)
+	}
 }
 

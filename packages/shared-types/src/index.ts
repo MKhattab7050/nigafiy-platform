@@ -773,11 +773,156 @@ export interface ToolRun {
   completed_at: string | null;
 }
 
-// ── Phase 3 & 4: Endpoint management & remote administration ────────────────
+// ── Phase 3 & 4: Universal Endpoint Management & Remote Administration ──────
 
 export type EndpointStatus = 'pending' | 'active' | 'revoked';
-export type EndpointCommandKind = 'refresh_inventory' | 'kill_process' | 'service_action' | 'power_action' | 'notify_user';
+export type EndpointPlatform = 'windows' | 'linux' | 'macos' | 'android' | 'ios';
+export type EndpointManagementMode =
+  | 'agent'
+  | 'android_device_owner'
+  | 'android_work_profile'
+  | 'android_companion'
+  | 'ios_supervised_mdm'
+  | 'ios_byod_mdm'
+  | 'macos_mdm';
+export type EndpointComplianceStatus = 'compliant' | 'non_compliant' | 'attention' | 'unknown';
+export type EndpointCommandKind =
+  | 'refresh_inventory'
+  | 'kill_process'
+  | 'service_action'
+  | 'power_action'
+  | 'notify_user'
+  | 'fs_op'
+  | 'rd_capture'
+  | 'rd_input'
+  | 'software_action'
+  | 'fetch_logs'
+  | 'diagnostic_command'
+  | 'apply_policy'
+  | 'mobile_action';
 export type EndpointCommandStatus = 'pending' | 'delivered' | 'completed' | 'failed' | 'expired';
+
+export type CapabilityState =
+  | 'supported'
+  | 'implemented'
+  | 'tested'
+  | 'partially_supported'
+  | 'requires_permissions'
+  | 'requires_enterprise_enrollment'
+  | 'requires_external_config'
+  | 'unsupported_by_os'
+  | 'not_tested';
+
+export interface EndpointCapabilityItem {
+  key: string;
+  category: 'inventory' | 'remote_control' | 'file_management' | 'software' | 'security_policy';
+  label_en: string;
+  label_ar: string;
+  state: CapabilityState;
+  enabled: boolean;
+  reason_en: string;
+  reason_ar: string;
+}
+
+export interface EndpointSecurityPosture {
+  firewall_enabled?: boolean;
+  antivirus_enabled?: boolean;
+  disk_encrypted?: boolean;
+  pending_updates?: number;
+  last_update_date?: string;
+  os_build?: string;
+  supervised?: boolean;
+  device_owner?: boolean;
+  work_profile?: boolean;
+  passcode_compliant?: boolean;
+  rooted_or_jailbroken?: boolean;
+  screen_recording_granted?: boolean;
+  accessibility_granted?: boolean;
+}
+
+export interface EndpointPolicy {
+  allowed_fs_roots?: string[];
+  remote_desktop_consent?: 'unattended' | 'prompt';
+  passcode_required?: boolean;
+  min_passcode_length?: number;
+  camera_disabled?: boolean;
+  usb_file_transfer_blocked?: boolean;
+  wifi_ssid?: string;
+  wifi_security?: 'WPA2' | 'WPA3' | 'EAP';
+  vpn_name?: string;
+  vpn_server?: string;
+  managed_apps?: string[];
+}
+
+export interface RemoteFileRoot {
+  name: string;
+  path: string;
+  label: string;
+}
+
+export interface RemoteFileEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  ext: string;
+  size: number;
+  mode: string;
+  mod_time: string;
+  is_hidden: boolean;
+  is_system: boolean;
+}
+
+export interface RemoteFileResponse {
+  op: string;
+  path?: string;
+  parent_path?: string;
+  roots?: RemoteFileRoot[];
+  entries?: RemoteFileEntry[];
+  total_size?: number;
+  offset?: number;
+  bytes_read?: number;
+  eof?: boolean;
+  data_base64?: string;
+  sha256?: string;
+  message?: string;
+}
+
+export interface RemoteDesktopDisplay {
+  index: number;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
+export interface RemoteDesktopFrame {
+  display_index: number;
+  displays: RemoteDesktopDisplay[];
+  width: number;
+  height: number;
+  source_width: number;
+  source_height: number;
+  quality: number;
+  scale: number;
+  capture_ms: number;
+  byte_length: number;
+  capture_mode: string;
+  jpeg_base64: string;
+  captured_at: string;
+}
+
+export interface RemoteDesktopSession {
+  id: string;
+  started_at: string;
+  operator_email: string;
+  display_index: number;
+  quality: number;
+  scale: number;
+  consent_mode: 'unattended' | 'prompt';
+  recording_enabled: boolean;
+}
 
 export interface EndpointDisk {
   mount: string;
@@ -834,8 +979,18 @@ export interface EndpointSummary {
   site_name: string;
   device_id: string | null;
   name: string;
+  platform: EndpointPlatform;
+  management_mode: EndpointManagementMode;
   status: EndpointStatus;
   connection_state: 'never' | 'online' | 'offline';
+  compliance_status: EndpointComplianceStatus;
+  compliance_reasons: string[];
+  manufacturer: string | null;
+  model: string | null;
+  serial_number: string | null;
+  security_patch_level: string | null;
+  battery_pct: number | null;
+  battery_charging: boolean | null;
   agent_version: string | null;
   hostname: string | null;
   os: string | null;
@@ -861,6 +1016,8 @@ export interface EndpointSummary {
 export interface EndpointCreated {
   endpoint: EndpointSummary;
   enrollment_token: string;
+  android_provisioning?: Record<string, unknown>;
+  apple_mdm_profile_url?: string;
 }
 
 export interface EndpointCommand {
@@ -871,6 +1028,7 @@ export interface EndpointCommand {
   status: EndpointCommandStatus;
   output: string | null;
   error: string | null;
+  result_data?: Record<string, unknown> | null;
   created_by_name: string | null;
   created_at: string;
   delivered_at: string | null;
@@ -878,6 +1036,11 @@ export interface EndpointCommand {
 }
 
 export interface EndpointDetail extends EndpointSummary {
+  security: EndpointSecurityPosture;
+  policy: EndpointPolicy;
+  rd_session: RemoteDesktopSession | null;
+  last_rd_frame: RemoteDesktopFrame | null;
+  capabilities: EndpointCapabilityItem[];
   disks: EndpointDisk[];
   interfaces: EndpointInterface[];
   processes: EndpointProcess[];

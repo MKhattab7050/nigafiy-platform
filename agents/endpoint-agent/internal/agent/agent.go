@@ -46,16 +46,18 @@ func SystemDeps() Deps {
 }
 
 type Tuning struct {
-	HeartbeatInterval time.Duration
-	InventoryInterval time.Duration
-	MaxBackoff        time.Duration
+	HeartbeatInterval   time.Duration
+	InventoryInterval   time.Duration
+	CommandPollInterval time.Duration
+	MaxBackoff          time.Duration
 }
 
 func DefaultTuning() Tuning {
 	return Tuning{
-		HeartbeatInterval: 20 * time.Second,
-		InventoryInterval: 2 * time.Minute,
-		MaxBackoff:        2 * time.Minute,
+		HeartbeatInterval:   20 * time.Second,
+		InventoryInterval:   2 * time.Minute,
+		CommandPollInterval: 500 * time.Millisecond,
+		MaxBackoff:          2 * time.Minute,
 	}
 }
 
@@ -132,7 +134,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in LAN Detective IT Operations (inventory, health, and authorized remote administration are active)")
 
 	var wg sync.WaitGroup
-	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop} {
+	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop} {
 		wg.Add(1)
 		go func(loop func(context.Context)) {
 			defer wg.Done()
@@ -177,6 +179,15 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 	}
 	if h.PrimaryMAC != "" {
 		payload["primary_mac"] = h.PrimaryMAC
+	}
+	if h.Manufacturer != "" {
+		payload["manufacturer"] = h.Manufacturer
+	}
+	if h.Model != "" {
+		payload["model"] = h.Model
+	}
+	if h.SerialNumber != "" {
+		payload["serial_number"] = h.SerialNumber
 	}
 
 	var resp struct {
@@ -253,6 +264,16 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	if len(h.Interfaces) > 0 {
 		body["interfaces"] = h.Interfaces
 	}
+	if h.Manufacturer != "" {
+		body["manufacturer"] = h.Manufacturer
+	}
+	if h.Model != "" {
+		body["model"] = h.Model
+	}
+	if h.SerialNumber != "" {
+		body["serial_number"] = h.SerialNumber
+	}
+	body["security"] = h.Security
 
 	var resp struct {
 		HeartbeatIntervalSeconds int               `json:"heartbeat_interval_seconds"`
@@ -299,22 +320,59 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	return a.tuning.HeartbeatInterval
 }
 
+func (a *Agent) commandPollLoop(ctx context.Context) {
+	interval := a.tuning.CommandPollInterval
+	if interval <= 0 {
+		interval = 600 * time.Millisecond
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+		var resp struct {
+			Commands []control.Command `json:"commands"`
+		}
+		if err := a.post(ctx, "/poll", map[string]any{}, true, &resp); err != nil {
+			continue
+		}
+		for _, cmd := range resp.Commands {
+			a.mu.Lock()
+			seen := a.seenCmds[cmd.ID]
+			a.seenCmds[cmd.ID] = true
+			a.mu.Unlock()
+			if seen {
+				continue
+			}
+			go a.runCommand(ctx, cmd)
+		}
+	}
+}
+
 func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
 	res := a.deps.ExecuteCommand(ctx, cmd)
-	a.mu.Lock()
-	a.results = append(a.results, res)
-	a.mu.Unlock()
 
-	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" {
+	// Deliver result immediately over /command-result if supported; fall back to heartbeat queue.
+	var ack struct {
+		OK bool `json:"ok"`
+	}
+	if err := a.post(ctx, "/command-result", map[string]any{"command_results": []control.Result{res}}, true, &ack); err != nil || !ack.OK {
+		a.mu.Lock()
+		a.results = append(a.results, res)
+		a.mu.Unlock()
+		select {
+		case a.wakeHeartbeat <- struct{}{}:
+		default:
+		}
+	}
+
+	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" || cmd.Kind == "software_action" {
 		select {
 		case a.wakeInventory <- struct{}{}:
 		default:
 		}
-	}
-	select {
-	case a.wakeHeartbeat <- struct{}{}:
-	default:
 	}
 }
 

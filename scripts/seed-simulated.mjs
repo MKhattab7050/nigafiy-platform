@@ -93,22 +93,132 @@ await call('PATCH', `/devices/${dev('core-switch.sim.lan').id}`, { device_type: 
 await call('PATCH', `/devices/${dev('erp.sim.lan').id}`, { device_type: 'server', tags: ['simulated'] });
 await call('PATCH', `/devices/${dev('ap-lobby.sim.lan').id}`, { device_type: 'access_point', tags: ['simulated'] });
 
-// Enroll a simulated managed endpoint (pc-1.sim.lan) so /endpoints and /devices/:id show endpoint telemetry.
-const createdEndpoint = await call('POST', '/endpoints', { site_id: site.id, name: 'pc-1.sim.lan' });
+// Enroll simulated managed endpoints across Windows, Linux, Android Enterprise, and Apple iOS MDM.
+const createdEndpoint = await call('POST', '/endpoints', { site_id: site.id, name: 'pc-1.sim.lan', platform: 'windows' });
 const enrolledEndpoint = await call('POST', '/agent/enroll', {
   enrollment_token: createdEndpoint.enrollment_token,
   hostname: 'pc-1.sim.lan',
-  version: '0.1.0-simulated',
+  version: '0.2.0-simulated',
   os: 'windows',
   os_version: 'Microsoft Windows 11 Pro 10.0.22631',
   arch: 'amd64',
+  manufacturer: 'Dell Inc.',
+  model: 'OptiPlex 7010',
+  serial_number: 'SIM-WIN-7010',
   cpu_model: 'Intel(R) Core(TM) i7-13700 (simulated)',
   cpu_cores: 16,
   ram_total_mb: 16384,
   primary_ip: '192.168.10.100',
   primary_mac: mac(100),
+  security: { firewall_enabled: true, antivirus_enabled: true, disk_encrypted: true, last_update_date: '2026-11-01' },
 });
 const agentCred = enrolledEndpoint.credential;
+
+// Enroll simulated Linux server (erp.sim.lan)
+const createdLinux = await call('POST', '/endpoints', { site_id: site.id, name: 'erp.sim.lan', platform: 'linux' });
+const enrolledLinux = await call('POST', '/agent/enroll', {
+  enrollment_token: createdLinux.enrollment_token,
+  hostname: 'erp.sim.lan',
+  version: '0.2.0-simulated',
+  platform: 'linux',
+  os: 'linux',
+  os_version: 'Ubuntu 24.04.1 LTS',
+  arch: 'amd64',
+  manufacturer: 'VMware, Inc.',
+  model: 'VMware Virtual Platform',
+  cpu_model: 'AMD EPYC 7763 64-Core (simulated)',
+  cpu_cores: 8,
+  ram_total_mb: 32768,
+  primary_ip: '192.168.10.20',
+  primary_mac: mac(20),
+  security: { firewall_enabled: true, disk_encrypted: true },
+});
+const linuxCred = enrolledLinux.credential;
+await call('POST', '/agent/heartbeat', {
+  version: '0.2.0-simulated',
+  hostname: 'erp.sim.lan',
+  platform: 'linux',
+  os: 'linux',
+  os_version: 'Ubuntu 24.04.1 LTS',
+  arch: 'amd64',
+  uptime_seconds: 864_000,
+  cpu_pct: 22.4,
+  ram_used_mb: 12400,
+  ram_pct: 37.8,
+  disk_used_pct: 58.1,
+  primary_ip: '192.168.10.20',
+  primary_mac: mac(20),
+  logged_in_users: ['root', 'deploy'],
+  disks: [{ mount: '/', filesystem: 'ext4', total_gb: 250, used_gb: 145.2, used_pct: 58.1 }],
+  processes: [
+    { pid: 1021, name: 'postgres', cpu_pct: 8.4, mem_mb: 4200, user: 'postgres' },
+    { pid: 1480, name: 'node', cpu_pct: 6.1, mem_mb: 980, user: 'deploy' },
+  ],
+  services: [
+    { name: 'postgresql', display_name: 'PostgreSQL RDBMS', state: 'running', start_mode: 'auto' },
+    { name: 'nginx', display_name: 'A high performance web server', state: 'running', start_mode: 'auto' },
+    { name: 'ssh', display_name: 'OpenBSD Secure Shell server', state: 'running', start_mode: 'auto' },
+  ],
+  software: [
+    { name: 'postgresql-16', version: '16.4-1', publisher: 'Ubuntu Developers' },
+    { name: 'nginx', version: '1.24.0', publisher: 'Ubuntu Developers' },
+  ],
+}, linuxCred);
+
+// Enroll simulated Android Enterprise device
+const createdAndroid = await call('POST', '/endpoints', {
+  site_id: site.id,
+  name: 'Field Tablet (Android)',
+  platform: 'android',
+  management_mode: 'android_device_owner',
+});
+await call('POST', '/agent/mdm/connect', {
+  enrollment_token: createdAndroid.enrollment_token,
+  device_name: 'Galaxy-Tab-Active4',
+  os: 'android',
+  os_version: 'Android 14',
+  manufacturer: 'Samsung',
+  model: 'SM-T636B',
+  serial_number: 'SIM-AND-9921',
+  security_patch_level: '2026-10-01',
+  battery_pct: 86,
+  battery_charging: true,
+  storage_total_gb: 128,
+  storage_used_gb: 41.5,
+  device_owner: true,
+  passcode_compliant: true,
+  apps: [
+    { name: 'LAN Detective DPC', version: '1.0.0', publisher: 'Internal IT' },
+    { name: 'Microsoft Teams', version: '1416/1.0.0', publisher: 'Microsoft Corporation' },
+  ],
+});
+
+// Enroll simulated Apple iOS Supervised MDM device
+const createdIos = await call('POST', '/endpoints', {
+  site_id: site.id,
+  name: 'Executive iPhone 16 Pro',
+  platform: 'ios',
+  management_mode: 'ios_supervised_mdm',
+});
+await call('POST', '/agent/mdm/connect', {
+  enrollment_token: createdIos.enrollment_token,
+  device_name: 'iPhone-16-Pro',
+  os: 'ios',
+  os_version: 'iOS 18.1',
+  manufacturer: 'Apple Inc.',
+  model: 'iPhone17,1',
+  serial_number: 'SIM-IOS-8841',
+  battery_pct: 94,
+  battery_charging: false,
+  storage_total_gb: 256,
+  storage_used_gb: 82.0,
+  supervised: true,
+  passcode_compliant: true,
+  apps: [
+    { name: 'Slack', version: '24.10.10', publisher: 'Slack Technologies' },
+    { name: 'Microsoft Authenticator', version: '6.8.15', publisher: 'Microsoft Corporation' },
+  ],
+});
 const beatAgent = () =>
   call(
     'POST',

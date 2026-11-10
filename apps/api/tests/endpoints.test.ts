@@ -210,5 +210,264 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     });
     expect(afterRevoke.status).toBe(401);
   });
+
+  it('supports Remote File Manager, Remote Desktop sessions, fast /poll + /command-result, and policy restrictions', async () => {
+    const a = await newAccount('ep-phase4');
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
+      site_id: a.siteId,
+      name: 'Engineering Workstation',
+      platform: 'windows',
+    });
+    const epId: string = created.body.endpoint.id;
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: created.body.enrollment_token,
+      hostname: 'ENG-WS-01',
+      agent_version: '0.2.0',
+      os: 'windows',
+      arch: 'amd64',
+      manufacturer: 'Dell Inc.',
+      model: 'Precision 5680',
+      serial_number: 'DL-5680-991',
+      security: { firewall_enabled: true, antivirus_enabled: true },
+    });
+    const cred: string = enrolled.body.credential;
+
+    await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.2.0',
+      hostname: 'ENG-WS-01',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 600,
+      cpu_pct: 12,
+      ram_used_mb: 4096,
+      ram_pct: 25,
+    });
+
+    // Configure policy with allowed_fs_roots
+    const policyRes = await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({
+      allowed_fs_roots: ['C:\\Users\\Public', 'D:\\Shared'],
+      remote_desktop_consent: 'unattended',
+    });
+    expect(policyRes.status).toBe(200);
+    expect(policyRes.body.policy.allowed_fs_roots).toEqual(['C:\\Users\\Public', 'D:\\Shared']);
+
+    // Destructive file delete without confirm_destructive is rejected with 400
+    const unconfirmedDel = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'fs_op',
+      op: 'delete',
+      path: 'C:\\Users\\Public\\old.log',
+      confirm_destructive: false,
+    });
+    expect(unconfirmedDel.status).toBe(400);
+
+    // Queue a file list command; policy allowed_fs_roots is automatically injected
+    const listCmd = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'fs_op',
+      op: 'list',
+      path: 'C:\\Users\\Public',
+    });
+    expect(listCmd.status).toBe(202);
+
+    // Agent polls via fast /poll endpoint
+    const fastPoll = await request(app).post('/api/v1/agent/poll').set('Authorization', `Bearer ${cred}`).send({});
+    expect(fastPoll.status).toBe(200);
+    expect(fastPoll.body.commands).toHaveLength(1);
+    expect(fastPoll.body.commands[0].payload.allowed_roots).toEqual(['C:\\Users\\Public', 'D:\\Shared']);
+
+    // Agent posts structured directory listing to /command-result
+    const cmdResult = await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({
+        command_results: [
+          {
+            id: listCmd.body.id,
+            ok: true,
+            output: 'File operation list completed',
+            data: {
+              op: 'list',
+              path: 'C:\\Users\\Public',
+              entries: [{ name: 'Documents', path: 'C:\\Users\\Public\\Documents', is_dir: true, ext: '', size: 0, mode: 'drwxr-xr-x', mod_time: new Date().toISOString(), is_hidden: false, is_system: false }],
+            },
+          },
+        ],
+      });
+    expect(cmdResult.status).toBe(200);
+
+    // Start a Remote Desktop session
+    const rdStart = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({
+      display_index: 0,
+      quality: 70,
+      scale: 0.75,
+      recording_enabled: false,
+    });
+    expect(rdStart.status).toBe(200);
+    expect(rdStart.body.session.operator_email).toBe(a.email);
+
+    // Agent polls and returns a captured JPEG frame
+    const rdPoll = await request(app).post('/api/v1/agent/poll').set('Authorization', `Bearer ${cred}`).send({});
+    const rdCmd = rdPoll.body.commands.find((c: { kind: string }) => c.kind === 'rd_capture');
+    expect(rdCmd).toBeDefined();
+
+    await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({
+        command_results: [
+          {
+            id: rdCmd.id,
+            ok: true,
+            output: 'Captured frame 1280x720',
+            data: {
+              display_index: 0,
+              displays: [{ index: 0, name: 'Primary Display (1)', x: 0, y: 0, width: 1920, height: 1080, primary: true }],
+              width: 1280,
+              height: 720,
+              source_width: 1920,
+              source_height: 1080,
+              quality: 70,
+              scale: 0.75,
+              capture_ms: 14,
+              byte_length: 1200,
+              capture_mode: 'native_gdi',
+              jpeg_base64: '/9j/4AAQSkZJRgABAQAAAQABAAD/',
+              captured_at: new Date().toISOString(),
+            },
+          },
+        ],
+      });
+
+    const detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.last_rd_frame?.width).toBe(1280);
+    expect(detail.body.rd_session?.operator_email).toBe(a.email);
+    expect(detail.body.capabilities.some((c: { key: string; enabled: boolean }) => c.key === 'remote_file_manager' && c.enabled)).toBe(true);
+
+    // Stop Remote Desktop session
+    const rdStop = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({});
+    expect(rdStop.status).toBe(200);
+  });
+
+  it('enforces platform capability boundaries for Android Enterprise and Apple iOS MDM devices', async () => {
+    const a = await newAccount('ep-mobile');
+
+    // 1. Create Android Enterprise Device Owner endpoint
+    const androidCreated = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
+      site_id: a.siteId,
+      name: 'Warehouse Scanner Galaxy',
+      platform: 'android',
+      management_mode: 'android_device_owner',
+    });
+    expect(androidCreated.status).toBe(201);
+    expect(androidCreated.body.android_provisioning).toBeDefined();
+    expect(androidCreated.body.android_provisioning['android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE'].enrollment_token).toBe(
+      androidCreated.body.enrollment_token,
+    );
+
+    const androidEnrolled = await request(app).post('/api/v1/agent/mdm/connect').send({
+      enrollment_token: androidCreated.body.enrollment_token,
+      device_name: 'Galaxy-Tab-Active4',
+      os: 'android',
+      os_version: 'Android 14',
+      manufacturer: 'Samsung',
+      model: 'SM-T636B',
+      serial_number: 'R52W90ABC',
+      security_patch_level: '2026-10-01',
+      battery_pct: 84,
+      battery_charging: true,
+      storage_total_gb: 128,
+      storage_used_gb: 42,
+      device_owner: true,
+      passcode_compliant: true,
+      apps: [{ name: 'Warehouse WMS', version: '4.2.1', publisher: 'Internal IT' }],
+    });
+    expect(androidEnrolled.status).toBe(201);
+
+    // Android rejects Windows-style service_action
+    const androidSvc = await a.agent.post(`/api/v1/endpoints/${androidCreated.body.endpoint.id}/commands`).set(CSRF).send({
+      kind: 'service_action',
+      service: 'Spooler',
+      action: 'restart',
+    });
+    expect(androidSvc.status).toBe(409);
+
+    // Android Device Owner accepts mobile_action lock_device
+    const androidLock = await a.agent.post(`/api/v1/endpoints/${androidCreated.body.endpoint.id}/commands`).set(CSRF).send({
+      kind: 'mobile_action',
+      action: 'lock_device',
+    });
+    expect(androidLock.status).toBe(202);
+
+    // 2. Create Apple iOS BYOD MDM endpoint (not supervised)
+    const iosCreated = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
+      site_id: a.siteId,
+      name: 'Executive iPhone 16',
+      platform: 'ios',
+      management_mode: 'ios_byod_mdm',
+    });
+    expect(iosCreated.status).toBe(201);
+    expect(iosCreated.body.apple_mdm_profile_url).toContain('.mobileconfig');
+
+    // Download .mobileconfig profile
+    const profileRes = await a.agent.get(iosCreated.body.apple_mdm_profile_url);
+    expect(profileRes.status).toBe(200);
+    expect(profileRes.text).toContain('PayloadType');
+    expect(profileRes.text).toContain('com.apple.security.passcode');
+
+    // Enroll iOS device via /mdm/connect
+    const iosEnrolled = await request(app).post('/api/v1/agent/mdm/connect').send({
+      enrollment_token: iosCreated.body.enrollment_token,
+      device_name: 'iPhone-16-Pro',
+      os: 'ios',
+      os_version: 'iOS 18.1',
+      manufacturer: 'Apple Inc.',
+      model: 'iPhone17,1',
+      serial_number: 'F2L99887766',
+      battery_pct: 91,
+      battery_charging: false,
+      storage_total_gb: 256,
+      storage_used_gb: 94,
+      supervised: false,
+      passcode_compliant: true,
+    });
+    expect(iosEnrolled.status).toBe(201);
+
+    const iosId: string = iosCreated.body.endpoint.id;
+    const iosDetail = await a.agent.get(`/api/v1/endpoints/${iosId}`);
+    expect(iosDetail.status).toBe(200);
+    const rdCap = iosDetail.body.capabilities.find((c: { key: string }) => c.key === 'remote_desktop');
+    expect(rdCap?.state).toBe('unsupported_by_os');
+    expect(rdCap?.enabled).toBe(false);
+
+    // iOS strictly rejects remote desktop, file manager, and process kill
+    expect(
+      (await a.agent.post(`/api/v1/endpoints/${iosId}/remote-desktop/start`).set(CSRF).send({})).status,
+    ).toBe(409);
+    expect(
+      (await a.agent.post(`/api/v1/endpoints/${iosId}/commands`).set(CSRF).send({ kind: 'fs_op', op: 'roots' })).status,
+    ).toBe(409);
+    expect(
+      (await a.agent.post(`/api/v1/endpoints/${iosId}/commands`).set(CSRF).send({ kind: 'kill_process', pid: 100 })).status,
+    ).toBe(409);
+
+    // Non-supervised iOS rejects Managed Lost Mode (409 requires_supervision), but accepts Device Lock (202)
+    expect(
+      (
+        await a.agent
+          .post(`/api/v1/endpoints/${iosId}/commands`)
+          .set(CSRF)
+          .send({ kind: 'mobile_action', action: 'enable_lost_mode', lost_message: 'Return to IT' })
+      ).status,
+    ).toBe(409);
+
+    expect(
+      (
+        await a.agent
+          .post(`/api/v1/endpoints/${iosId}/commands`)
+          .set(CSRF)
+          .send({ kind: 'mobile_action', action: 'lock_device' })
+      ).status,
+    ).toBe(202);
+  });
 });
 

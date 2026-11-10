@@ -66,24 +66,37 @@ type Connection struct {
 	ProcessName   string `json:"process_name,omitempty"`
 }
 
+type SecurityPosture struct {
+	FirewallEnabled  bool   `json:"firewall_enabled"`
+	AntivirusEnabled bool   `json:"antivirus_enabled"`
+	DiskEncrypted    bool   `json:"disk_encrypted"`
+	PendingUpdates   int    `json:"pending_updates"`
+	LastUpdateDate   string `json:"last_update_date,omitempty"`
+	OSBuild          string `json:"os_build,omitempty"`
+}
+
 type Health struct {
-	Hostname      string      `json:"hostname"`
-	OS            string      `json:"os"`
-	OSVersion     string      `json:"os_version,omitempty"`
-	Arch          string      `json:"arch"`
-	CPUModel      string      `json:"cpu_model,omitempty"`
-	CPUCores      int         `json:"cpu_cores"`
-	RAMTotalMB    int         `json:"ram_total_mb"`
-	RAMUsedMB     int         `json:"ram_used_mb"`
-	RAMPct        float64     `json:"ram_pct"`
-	CPUPct        float64     `json:"cpu_pct"`
-	DiskUsedPct   float64     `json:"disk_used_pct,omitempty"`
-	UptimeSeconds int64       `json:"uptime_seconds"`
-	LoggedInUsers []string    `json:"logged_in_users"`
-	PrimaryIP     string      `json:"primary_ip,omitempty"`
-	PrimaryMAC    string      `json:"primary_mac,omitempty"`
-	Disks         []Disk      `json:"disks,omitempty"`
-	Interfaces    []Interface `json:"interfaces,omitempty"`
+	Hostname      string          `json:"hostname"`
+	OS            string          `json:"os"`
+	OSVersion     string          `json:"os_version,omitempty"`
+	Arch          string          `json:"arch"`
+	Manufacturer  string          `json:"manufacturer,omitempty"`
+	Model         string          `json:"model,omitempty"`
+	SerialNumber  string          `json:"serial_number,omitempty"`
+	CPUModel      string          `json:"cpu_model,omitempty"`
+	CPUCores      int             `json:"cpu_cores"`
+	RAMTotalMB    int             `json:"ram_total_mb"`
+	RAMUsedMB     int             `json:"ram_used_mb"`
+	RAMPct        float64         `json:"ram_pct"`
+	CPUPct        float64         `json:"cpu_pct"`
+	DiskUsedPct   float64         `json:"disk_used_pct,omitempty"`
+	UptimeSeconds int64           `json:"uptime_seconds"`
+	LoggedInUsers []string        `json:"logged_in_users"`
+	PrimaryIP     string          `json:"primary_ip,omitempty"`
+	PrimaryMAC    string          `json:"primary_mac,omitempty"`
+	Disks         []Disk          `json:"disks,omitempty"`
+	Interfaces    []Interface     `json:"interfaces,omitempty"`
+	Security      SecurityPosture `json:"security,omitempty"`
 }
 
 type Inventory struct {
@@ -205,37 +218,74 @@ func currentUsers() []string {
 }
 
 func collectWindowsHealth(ctx context.Context, h *Health) {
-	c, cancel := context.WithTimeout(ctx, 6*time.Second)
+	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	script := `$os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue; ` +
+		`$cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue; ` +
+		`$bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue; ` +
 		`$cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1; ` +
-		`$disks = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue | ForEach-Object { @{ mount=$_.DeviceID; fs=$_.FileSystem; total=[math]::Round($_.Size/1GB,1); free=[math]::Round($_.FreeSpace/1GB,1) } }; ` +
-		`@{ caption=$os.Caption; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; disks=@($disks) } | ConvertTo-Json -Compress`
+		`$fwReg = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile' -Name EnableFirewall -ErrorAction SilentlyContinue; ` +
+		`$avCim = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpComputerStatus -ErrorAction SilentlyContinue; ` +
+		`$ntos = Get-Item "$env:SystemRoot\System32\ntoskrnl.exe" -ErrorAction SilentlyContinue; ` +
+		`$disks = @([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' } | ForEach-Object { @{ mount=$_.Name.TrimEnd('\'); fs=$_.DriveFormat; total=[math]::Round($_.TotalSize/1GB,1); free=[math]::Round($_.AvailableFreeSpace/1GB,1) } }); ` +
+		`@{ caption=$os.Caption; build=$os.BuildNumber; mfg=$cs.Manufacturer; model=$cs.Model; serial=$bios.SerialNumber; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; av=if($null -ne $avCim){[bool]$avCim.AntivirusEnabled}else{$true}; fw=if($null -ne $fwReg){[bool]($fwReg.EnableFirewall -eq 1)}else{$true}; last_hf=if($ntos){$ntos.LastWriteTime.ToString('yyyy-MM-dd')}else{''}; disks=$disks } | ConvertTo-Json -Depth 4 -Compress`
 	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return
 	}
+	type winDisk struct {
+		Mount string  `json:"mount"`
+		FS    string  `json:"fs"`
+		Total float64 `json:"total"`
+		Free  float64 `json:"free"`
+	}
 	var data struct {
-		Caption string  `json:"caption"`
-		TotalKB float64 `json:"total_kb"`
-		FreeKB  float64 `json:"free_kb"`
-		Boot    int64   `json:"boot"`
-		CPUName string  `json:"cpu_name"`
-		CPULoad float64 `json:"cpu_load"`
-		Disks   []struct {
-			Mount string  `json:"mount"`
-			FS    string  `json:"fs"`
-			Total float64 `json:"total"`
-			Free  float64 `json:"free"`
-		} `json:"disks"`
+		Caption string          `json:"caption"`
+		Build   string          `json:"build"`
+		Mfg     string          `json:"mfg"`
+		Model   string          `json:"model"`
+		Serial  string          `json:"serial"`
+		TotalKB float64         `json:"total_kb"`
+		FreeKB  float64         `json:"free_kb"`
+		Boot    int64           `json:"boot"`
+		CPUName string          `json:"cpu_name"`
+		CPULoad float64         `json:"cpu_load"`
+		AV      bool            `json:"av"`
+		FW      bool            `json:"fw"`
+		LastHF  string          `json:"last_hf"`
+		Disks   json.RawMessage `json:"disks"`
 	}
 	if json.Unmarshal(out, &data) != nil {
 		return
 	}
+	var disks []winDisk
+	if len(data.Disks) > 0 {
+		if json.Unmarshal(data.Disks, &disks) != nil {
+			var single winDisk
+			if json.Unmarshal(data.Disks, &single) == nil && single.Mount != "" {
+				disks = []winDisk{single}
+			}
+		}
+	}
 	if data.Caption != "" {
 		h.OSVersion = truncate(data.Caption, 120)
+	}
+	if data.Mfg != "" {
+		h.Manufacturer = truncate(data.Mfg, 120)
+	}
+	if data.Model != "" {
+		h.Model = truncate(data.Model, 120)
+	}
+	if data.Serial != "" {
+		h.SerialNumber = truncate(data.Serial, 120)
+	}
+	h.Security = SecurityPosture{
+		FirewallEnabled:  data.FW,
+		AntivirusEnabled: data.AV,
+		LastUpdateDate:   truncate(data.LastHF, 40),
+		OSBuild:          truncate(data.Build, 40),
 	}
 	if data.CPUName != "" {
 		h.CPUModel = truncate(data.CPUName, 160)
@@ -254,7 +304,7 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		h.UptimeSeconds = data.Boot
 	}
 	h.CPUPct = round1(data.CPULoad)
-	for _, d := range data.Disks {
+	for _, d := range disks {
 		if d.Total <= 0 {
 			continue
 		}
@@ -359,6 +409,7 @@ func CollectInventory(ctx context.Context) Inventory {
 	} else {
 		inv.Processes = collectUnixProcesses(ctx)
 		inv.Services = collectUnixServices(ctx)
+		inv.Software = collectUnixSoftware(ctx)
 	}
 	for _, p := range inv.Processes {
 		procByPID[p.PID] = p.Name
@@ -507,6 +558,36 @@ func collectWindowsServices(ctx context.Context) []Service {
 func collectUnixServices(ctx context.Context) []Service {
 	c, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	if runtime.GOOS == "darwin" {
+		out, err := exec.CommandContext(c, "launchctl", "list").Output()
+		if err != nil {
+			return []Service{}
+		}
+		var list []Service
+		for i, line := range strings.Split(string(out), "\n") {
+			if i == 0 {
+				continue
+			}
+			f := strings.Fields(line)
+			if len(f) < 3 {
+				continue
+			}
+			state := "stopped"
+			if f[0] != "-" {
+				state = "running"
+			}
+			name := truncate(f[2], 160)
+			list = append(list, Service{
+				Name:        name,
+				DisplayName: name,
+				State:       state,
+			})
+			if len(list) >= 250 {
+				break
+			}
+		}
+		return list
+	}
 	out, err := exec.CommandContext(c, "systemctl", "list-units", "--type=service", "--all", "--no-pager", "--no-legend").Output()
 	if err != nil {
 		return []Service{}
@@ -536,6 +617,79 @@ func collectUnixServices(ctx context.Context) []Service {
 		})
 		if len(list) >= 250 {
 			break
+		}
+	}
+	return list
+}
+
+func collectUnixSoftware(ctx context.Context) []Software {
+	c, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	var list []Software
+	if runtime.GOOS == "darwin" {
+		entries, err := os.ReadDir("/Applications")
+		if err == nil {
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".app") {
+					list = append(list, Software{
+						Name:      truncate(strings.TrimSuffix(e.Name(), ".app"), 200),
+						Publisher: "macOS Application Bundle",
+					})
+				}
+			}
+		}
+		if out, err := exec.CommandContext(c, "brew", "list", "--versions").Output(); err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				f := strings.Fields(line)
+				if len(f) >= 2 {
+					list = append(list, Software{
+						Name:      truncate(f[0], 200),
+						Version:   truncate(f[1], 80),
+						Publisher: "Homebrew",
+					})
+				}
+			}
+		}
+		return list
+	}
+	// Linux dpkg or rpm
+	if out, err := exec.CommandContext(c, "dpkg-query", "-W", "-f=${Package}\t${Version}\t${Maintainer}\n").Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			parts := strings.Split(line, "\t")
+			if len(parts) >= 2 && parts[0] != "" {
+				pub := ""
+				if len(parts) >= 3 {
+					pub = truncate(parts[2], 160)
+				}
+				list = append(list, Software{
+					Name:      truncate(parts[0], 200),
+					Version:   truncate(parts[1], 100),
+					Publisher: pub,
+				})
+				if len(list) >= 250 {
+					break
+				}
+			}
+		}
+		return list
+	}
+	if out, err := exec.CommandContext(c, "rpm", "-qa", "--queryformat", "%{NAME}\t%{VERSION}\t%{VENDOR}\n").Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			parts := strings.Split(line, "\t")
+			if len(parts) >= 2 && parts[0] != "" {
+				pub := ""
+				if len(parts) >= 3 {
+					pub = truncate(parts[2], 160)
+				}
+				list = append(list, Software{
+					Name:      truncate(parts[0], 200),
+					Version:   truncate(parts[1], 100),
+					Publisher: pub,
+				})
+				if len(list) >= 250 {
+					break
+				}
+			}
 		}
 	}
 	return list
