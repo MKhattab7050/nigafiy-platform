@@ -10,8 +10,9 @@
     "smoke": "electron . --smoke",
     "test": "node --test \"test/*.test.cjs\"",
     "icon": "node scripts/make-icon.mjs",
-    "pack": "electron-builder --win dir",
-    "dist": "electron-builder --win nsis"
+    "pack": "node scripts/bundle-backend.mjs && electron-builder --win dir",
+    "dist": "node scripts/bundle-backend.mjs && electron-builder --win nsis",
+    "bundle": "node scripts/bundle-backend.mjs"
   },
   "devDependencies": {
     "electron": "^39.0.0",
@@ -20,12 +21,34 @@
   "build": {
     "appId": "com.landetective.desktop",
     "productName": "LAN Detective",
-    "directories": { "output": "release" },
-    "files": ["src/**/*", "assets/**/*", "package.json"],
-    "extraResources": [
-      { "from": "../../collectors/lan-collector/bin/lan-collector.exe", "to": "collector/lan-collector.exe" }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
     ],
-    "win": { "icon": "assets/icon.png", "target": ["nsis"] },
-    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
+    "extraResources": [
+      {
+        "from": "../../collectors/lan-collector/bin/lan-collector.exe",
+        "to": "collector/lan-collector.exe"
+      },
+      {
+        "from": "build/backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

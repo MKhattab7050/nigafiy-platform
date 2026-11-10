@@ -13,3 +13,6 @@ collectors/lan-collector/collector.yaml
 release/
 *.tsbuildinfo
 next-env.d.ts
+
+# desktop installer staging (apps/desktop/scripts/bundle-backend.mjs)
+apps/desktop/build/

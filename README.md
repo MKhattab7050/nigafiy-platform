@@ -30,7 +30,56 @@ cloud platform.
 | Topology | Evidence-based map (internet → gateway → subnets → devices); every link marked observed or inferred |
 | Other | Audit log, English + Arabic (true RTL), responsive layout, retention job |
 
-## Run it locally (no Docker needed)
+## Use it on your home network: desktop app
+
+Install **LAN Detective** (`apps/desktop`, installer built with `pnpm --filter @lan-detective/desktop dist`) and
+open it. Nothing else is needed — the installer carries the database, API, web app and collector, and runs
+them with the app's own built-in Node.js.
+
+On first open it starts everything on this computer (loopback only, ports 47100/47130/47133, data in the
+user profile), signs in with a local account it creates for you (random password, encrypted with Windows
+DPAPI), finds the network you are connected to and **asks once whether to scan it**. Say yes and the
+dashboard opens with your devices appearing within about a minute. Every later open goes straight to the
+dashboard. Closing the window keeps monitoring in the tray; **Quit** from the tray stops everything.
+
+Building the installer needs Node.js 24, pnpm, Go 1.24 and this repository:
+
+```bash
+pnpm --filter @lan-detective/desktop dist
+```
+
+Running the desktop app from the repository (`pnpm --filter @lan-detective/desktop start`) does the same
+using the repository's code and your system Node.js 24, and shares `.data/` with `pnpm local`.
+
+## Use it on your home network: one command (no desktop app)
+
+Requirements: Node.js ≥ 24 and Go ≥ 1.24 (Go builds the collector; pnpm is installed for you if missing).
+
+On Windows, double-click **`Start LAN Detective.cmd`**. On any system:
+
+```bash
+pnpm local
+```
+
+The first time, it:
+
+1. installs dependencies and creates `.env` with fresh secrets,
+2. starts the database, API and web app on this computer,
+3. finds the network this computer is connected to (for example `192.168.1.0/24`) and **asks you to
+   confirm it is your network**,
+4. asks for an email and password (your account lives only in the local database),
+5. authorizes that one range and enrolls this computer as its collector, then opens http://localhost:3100.
+
+Every later run is just `pnpm local` (or the double-click): everything starts, the collector resumes, and the
+browser opens. Ctrl+C (or closing the window) stops it all. Data stays in `.data/` (database, collector
+identity, logs in `.data/logs`). Options: `--no-open`, `--no-collector`, `--prod` (optimized web build),
+`--token <token>` (enroll with a token created in the web app instead of the guided setup).
+
+Notes: everything runs on this computer and listens on localhost only. Phone names come from passive DHCP
+listening (UDP 67) and appear when a phone reconnects to Wi-Fi. On Linux, ICMP and port 67 need extra
+privileges (`CAP_NET_RAW`, `CAP_NET_BIND_SERVICE`).
+
+## Run the parts separately (development)
 
 Requirements: Node.js ≥ 24, pnpm ≥ 10, Go ≥ 1.24.
 
@@ -118,3 +167,4 @@ scripts/                 e2e smoke test
 - [Collector architecture & protocol v1](docs/collector/protocol.md)
 - [Security model](docs/security/model.md)
 - [Status, gaps, risks and roadmap](docs/roadmap/status.md)
+- [Desktop app (dashboard + bundled collector)](docs/desktop/README.md)

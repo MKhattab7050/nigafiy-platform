@@ -14,11 +14,13 @@ function TokenModal({ created, onClose }: { created: CollectorCreated; onClose: 
   const server = typeof window === 'undefined' ? '' : window.location.origin;
   const docker = `docker run -d --name lan-collector --restart unless-stopped \\\n  --network host --cap-add NET_RAW \\\n  -v lan-collector:/var/lib/lan-collector \\\n  -e LAN_COLLECTOR_SERVER_URL=${server} \\\n  -e LAN_COLLECTOR_ENROLLMENT_TOKEN=${created.enrollment_token} \\\n  lan-detective/lan-collector`;
   const binary = `LAN_COLLECTOR_SERVER_URL=${server} \\\nLAN_COLLECTOR_ENROLLMENT_TOKEN=${created.enrollment_token} \\\n./lan-collector -config collector.yaml`;
+  const local = /^(localhost|127.0.0.1|[::1])$/.test(typeof window === 'undefined' ? '' : window.location.hostname);
   return (
     <Modal title={`${t('discovery.tokenTitle')} — ${created.collector.name}`} onClose={onClose} wide>
       <div className="space-y-4">
         <p className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-[13px] text-fg">{t('discovery.tokenOnce')}</p>
         <CopyBlock label={t('discovery.tokenLabel')} value={created.enrollment_token} />
+        {local && <CopyBlock label={t('discovery.installLocal')} value={`pnpm local --token ${created.enrollment_token}`} />}
         <CopyBlock label={t('discovery.installDocker')} value={docker} multiline />
         <CopyBlock label={t('discovery.installBinary')} value={binary} multiline />
         <div className="flex justify-end">

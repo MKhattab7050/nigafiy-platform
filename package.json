@@ -8,6 +8,8 @@
     "node": ">=24"
   },
   "scripts": {
+    "local": "node scripts/local.mjs",
+    "start": "node scripts/local.mjs",
     "dev:db": "pnpm --filter @lan-detective/api dev:db",
     "dev:api": "pnpm --filter @lan-detective/api dev",
     "dev:web": "pnpm --filter @lan-detective/web dev",

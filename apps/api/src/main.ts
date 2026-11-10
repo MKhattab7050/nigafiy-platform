@@ -21,7 +21,8 @@ for (let attempt = 1; ; attempt++) {
 }
 
 const app = createApp();
-const server = app.listen(env.PORT, () => logger.info({ port: env.PORT, env: env.NODE_ENV }, 'LAN Detective API listening'));
+const onListening = () => logger.info({ port: env.PORT, host: env.HOST ?? 'all interfaces', env: env.NODE_ENV }, 'LAN Detective API listening');
+const server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening);
 await startRealtime();
 startJobs();
 

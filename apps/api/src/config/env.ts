@@ -8,6 +8,8 @@ const bool = z
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4100),
+  /** Interface to listen on; unset = all interfaces. The local launchers set 127.0.0.1. */
+  HOST: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   DATABASE_URL: z.string().min(1),
   APP_DATABASE_URL: z.string().min(1),
