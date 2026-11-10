@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists=../../.env --watch src/main.ts",
+    "dev": "node --env-file-if-exists=../../.env src/main.ts",
     "start": "node --env-file-if-exists=../../.env src/main.ts",
     "dev:db": "node --env-file-if-exists=../../.env scripts/dev-db.ts",
     "migrate": "node --env-file-if-exists=../../.env src/database/migrate-cli.ts",

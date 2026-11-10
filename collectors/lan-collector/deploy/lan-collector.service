@@ -1,0 +1,32 @@
+# systemd unit for the LAN Detective collector (Linux service deployment).
+# Not exercised in the development environment (Windows); review before production use.
+[Unit]
+Description=LAN Detective Collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/lan-collector -config /etc/lan-collector/collector.yaml
+# Put LAN_COLLECTOR_ENROLLMENT_TOKEN=... here for the first start, then remove it.
+EnvironmentFile=-/etc/lan-collector/collector.env
+User=lan-collector
+Group=lan-collector
+StateDirectory=lan-collector
+Restart=always
+RestartSec=5
+
+# ICMP without running as root.
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+MemoryMax=128M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target

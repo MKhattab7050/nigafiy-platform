@@ -1,0 +1,33 @@
+# Backing services for running LAN Detective with Docker.
+# NOT exercised in the environment this repository was built in (no Docker available there).
+# Without Docker, use `pnpm dev:db` instead.
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: lan_detective
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lan_detective"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Reserved for BullMQ job queues and shared rate limiting (Phase 2+). Phase 1 does not use Redis.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:

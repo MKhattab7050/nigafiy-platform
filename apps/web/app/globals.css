@@ -1,0 +1,79 @@
+@import 'tailwindcss';
+
+/* LAN Detective design tokens — a calm network-operations palette.
+   Colour carries meaning only: blue = interactive, green/amber/red/grey = state. */
+@theme {
+  --color-bg: #070d1a;
+  --color-surface: #0b1424;
+  --color-raised: #101c32;
+  --color-line: #1a2942;
+  --color-line-strong: #2a3d61;
+  --color-fg: #e6edf7;
+  --color-muted: #8b9bb6;
+  --color-faint: #5f7190;
+  --color-accent: #2f7bff;
+  --color-accent-hover: #4d8eff;
+  --color-cyan: #38cfe6;
+  --color-ok: #2fbf71;
+  --color-warn: #f0a429;
+  --color-crit: #f0524f;
+  --color-idle: #6b7a94;
+
+  --font-sans: var(--font-inter), var(--font-arabic), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-bg);
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Arabic reads better slightly larger and with more leading. */
+html[lang='ar'] body {
+  font-family: var(--font-arabic), var(--font-inter), system-ui, sans-serif;
+  line-height: 1.7;
+}
+
+/* Addresses and identifiers are always left-to-right, even inside RTL text. */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+* {
+  scrollbar-color: var(--color-line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

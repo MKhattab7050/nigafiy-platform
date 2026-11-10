@@ -3,6 +3,7 @@ import { logger } from '../infrastructure/logger.ts';
 import { watchCollectors } from './collector-watch.ts';
 import { dispatchNotifications } from './notification-dispatch.ts';
 import { applyRetention } from './retention.ts';
+import { rollupCheckResults } from './rollup.ts';
 
 interface Job {
   name: string;
@@ -18,6 +19,7 @@ interface Job {
 const JOBS: Job[] = [
   { name: 'collector-watch', everyMs: 15_000, lockKey: 727101, run: watchCollectors },
   { name: 'notification-dispatch', everyMs: 5_000, lockKey: 727102, run: dispatchNotifications },
+  { name: 'rollup', everyMs: 600_000, lockKey: 727104, run: rollupCheckResults },
   { name: 'retention', everyMs: 3600_000, lockKey: 727103, run: applyRetention },
 ];
 

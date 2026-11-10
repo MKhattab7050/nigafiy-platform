@@ -11,12 +11,15 @@ import { requireSession } from './modules/auth/session.ts';
 import { collectorsRouter } from './modules/collectors/routes.ts';
 import { devicesRouter } from './modules/devices/routes.ts';
 import { eventsRouter } from './modules/events/routes.ts';
+import { incidentsRouter } from './modules/incidents/routes.ts';
 import { collectorGatewayRouter } from './modules/ingest/routes.ts';
 import { monitoringRouter } from './modules/monitoring/routes.ts';
 import { notificationsRouter } from './modules/notifications/routes.ts';
 import { overviewRouter } from './modules/overview/routes.ts';
 import { realtimeRouter } from './modules/realtime/routes.ts';
 import { sitesRouter } from './modules/sites/routes.ts';
+import { timeMachineRouter } from './modules/timemachine/routes.ts';
+import { topologyRouter } from './modules/topology/routes.ts';
 
 function trustProxySetting(value: string): boolean | number | string {
   if (value === 'false') return false;
@@ -36,7 +39,7 @@ export function createApp(): Express {
     res.on('finish', () => {
       if (req.path === '/healthz') return;
       // Method, path and status only — never headers, cookies, query strings or bodies.
-      logger.info({ request_id: req.id, method: req.method, path: req.path, status: res.statusCode, ms: Math.round(performance.now() - started) }, 'request');
+      logger.info({ request_id: req.id, method: req.method, path: req.originalUrl.split('?')[0], status: res.statusCode, ms: Math.round(performance.now() - started) }, 'request');
     });
     next();
   });
@@ -71,7 +74,7 @@ export function createApp(): Express {
   api.use(express.json({ limit: '100kb' }));
   api.use('/auth', authRouter);
   api.use(requireSession); // everything below requires a valid session + membership
-  api.use(overviewRouter, sitesRouter, collectorsRouter, devicesRouter, monitoringRouter, eventsRouter, notificationsRouter, realtimeRouter);
+  api.use(overviewRouter, sitesRouter, collectorsRouter, devicesRouter, monitoringRouter, eventsRouter, notificationsRouter, realtimeRouter, incidentsRouter, timeMachineRouter, topologyRouter);
   app.use('/api/v1', api);
 
   app.use((_req, _res, next) => next(new AppError(404, 'not_found', 'No such endpoint')));

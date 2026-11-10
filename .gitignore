@@ -10,3 +10,6 @@ collectors/lan-collector/state/
 collectors/lan-collector/spool/
 collectors/lan-collector/collector.yaml
 .tools/
+release/
+*.tsbuildinfo
+next-env.d.ts

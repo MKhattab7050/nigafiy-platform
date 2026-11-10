@@ -183,6 +183,7 @@ export interface Overview {
   dns: { state: CheckState | null; avg_latency_ms: number | null; samples: number };
   availability_24h_pct: number | null;
   open_problems: number;
+  active_incidents: Incident[];
   recent_events: NetworkEvent[];
   problem_devices: { id: string; name: string; current_ip: string | null; status: DeviceStatus; offline_events_7d: number }[];
 }
@@ -208,4 +209,190 @@ export interface AuditEntry {
   target_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+// ───────────────────────── Phase 2 ─────────────────────────
+
+export type IncidentKind = 'network' | 'service' | 'collector' | 'device';
+export type IncidentStatus = 'open' | 'acknowledged' | 'resolved';
+export type Confidence = 'high' | 'medium' | 'low';
+export type FaultDomain =
+  | 'healthy'
+  | 'local_gateway'
+  | 'lan_segment'
+  | 'wan_isp'
+  | 'wan_quality'
+  | 'remote_target'
+  | 'dns'
+  | 'lan_quality'
+  | 'service'
+  | 'service_host'
+  | 'device'
+  | 'collector'
+  | 'site_internet'
+  | 'insufficient_data'
+  | 'undetermined';
+
+/** One piece of evidence. `observed` = measured directly; `derived` = computed from observations. */
+export interface EvidenceItem {
+  label: string;
+  value: string;
+  basis: 'observed' | 'derived';
+  source: string;
+  observed_at: string | null;
+}
+
+/** Output of the deterministic Network Doctor rule engine. Never an AI guess. */
+export interface Diagnosis {
+  engine: string;
+  rule: string;
+  fault_domain: FaultDomain;
+  title: string;
+  summary: string;
+  probable_cause: string;
+  confidence: Confidence;
+  confidence_reason: string;
+  evidence: EvidenceItem[];
+  /** Things that were checked and found healthy — what the problem is NOT. */
+  ruled_out: EvidenceItem[];
+  alternatives: string[];
+  investigation_steps: string[];
+  recommendations: string[];
+  affected: { devices_offline: number; devices_total: number; checks: { id: string; name: string; role: CheckRole; state: CheckState }[] };
+  related_incidents: { id: string; number: number; title: string; opened_at: string; resolved_at: string | null; resolution_note: string | null }[];
+  generated_at: string;
+}
+
+export interface Incident {
+  id: string;
+  number: number;
+  site_id: string | null;
+  site_name: string | null;
+  kind: IncidentKind;
+  status: IncidentStatus;
+  severity: Severity;
+  title: string;
+  fault_domain: FaultDomain | null;
+  confidence: Confidence | null;
+  opened_at: string;
+  acknowledged_at: string | null;
+  resolved_at: string | null;
+  resolution_kind: 'auto' | 'manual' | null;
+  resolution_note: string | null;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  event_count: number;
+}
+
+export interface IncidentActivity {
+  id: string;
+  kind: 'comment' | 'opened' | 'acknowledged' | 'assigned' | 'resolved' | 'diagnosis';
+  user_name: string | null;
+  body: string;
+  created_at: string;
+}
+
+export interface IncidentDetail extends Incident {
+  check_id: string | null;
+  device_id: string | null;
+  collector_id: string | null;
+  diagnosis: Diagnosis | null;
+  diagnosed_at: string | null;
+  activity: IncidentActivity[];
+  /** Replay window: every event at the site from 30 min before to 30 min after the incident. */
+  timeline: (NetworkEvent & { linked: boolean; phase: 'before' | 'during' | 'after' })[];
+  window: { from: string; to: string };
+}
+
+export interface Member {
+  id: string;
+  display_name: string;
+  email: string;
+  role: Role;
+}
+
+export interface DoctorReport {
+  site_id: string;
+  site_name: string;
+  diagnosis: Diagnosis;
+  active_incident: { id: string; number: number } | null;
+  collectors_online: number;
+}
+
+export interface TopologyNode {
+  id: string;
+  kind: 'internet' | 'gateway' | 'segment' | 'device';
+  label: string;
+  /** Present for device / gateway nodes that exist in the inventory. */
+  device_id: string | null;
+  ip: string | null;
+  mac: string | null;
+  vendor: string | null;
+  device_type: DeviceType | null;
+  status: DeviceStatus | null;
+  is_critical: boolean;
+  runs_collector: boolean;
+  segment: string | null;
+  last_seen_at: string | null;
+}
+
+export interface TopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: 'member_of' | 'gateway_of' | 'uplink';
+  basis: 'observed' | 'inferred';
+  confidence: Confidence;
+  evidence: string;
+  evidence_source: string;
+  last_verified_at: string | null;
+}
+
+export interface Topology {
+  site_id: string;
+  generated_at: string;
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+  /** What this map cannot know with the data sources currently available. */
+  limitations: string[];
+}
+
+export interface SnapshotDevice {
+  id: string;
+  name: string;
+  ip: string | null;
+  mac: string | null;
+  device_type: DeviceType;
+  status: DeviceStatus;
+  first_seen_at: string;
+}
+
+export interface Snapshot {
+  at: string;
+  devices: { total: number; online: number; offline: number; unknown: number; items: SnapshotDevice[] };
+  checks: { id: string; name: string; role: CheckRole; state: CheckState; latency_ms: number | null; loss_pct: number | null; samples: number }[];
+  incidents: Incident[];
+  events: NetworkEvent[];
+  /** How each part of the snapshot was reconstructed. */
+  method: string[];
+}
+
+export interface PeriodStats {
+  from: string;
+  to: string;
+  devices_seen: number;
+  new_devices: number;
+  incidents: number;
+  incident_minutes: number;
+  events: Record<string, number>;
+  checks: { role: CheckRole; samples: number; availability_pct: number | null; latency_ms: number | null; loss_pct: number | null }[];
+}
+
+export interface Comparison {
+  a: PeriodStats;
+  b: PeriodStats;
+  devices_only_in_a: SnapshotDevice[];
+  devices_only_in_b: SnapshotDevice[];
+  incidents_a: Incident[];
+  incidents_b: Incident[];
 }

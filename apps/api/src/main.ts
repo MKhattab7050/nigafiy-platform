@@ -6,7 +6,19 @@ import { logger } from './infrastructure/logger.ts';
 import { startJobs, stopJobs } from './jobs/scheduler.ts';
 import { startRealtime, stopRealtime } from './modules/realtime/routes.ts';
 
-await migrate(env.DATABASE_URL, env.APP_DATABASE_URL, (m) => logger.info({ migration: m }, 'migration'));
+// The database may still be starting (container order, crash recovery): wait for it instead of dying.
+for (let attempt = 1; ; attempt++) {
+  try {
+    await migrate(env.DATABASE_URL, env.APP_DATABASE_URL, (m) => logger.info({ migration: m }, 'migration'));
+    break;
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    const transient = code === '57P03' || code === 'ECONNREFUSED' || code === 'ECONNRESET';
+    if (!transient || attempt >= 30) throw err;
+    logger.warn({ attempt, code }, 'database not ready yet, retrying');
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+}
 
 const app = createApp();
 const server = app.listen(env.PORT, () => logger.info({ port: env.PORT, env: env.NODE_ENV }, 'LAN Detective API listening'));

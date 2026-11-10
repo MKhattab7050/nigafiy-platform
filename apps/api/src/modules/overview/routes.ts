@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CheckState, NetworkEvent, Overview } from '@lan-detective/shared-types';
+import type { CheckState, Incident, NetworkEvent, Overview } from '@lan-detective/shared-types';
 import { auth, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { EVENT_SELECT } from '../events/routes.ts';
+import { INCIDENT_SELECT } from '../incidents/routes.ts';
 
 export const overviewRouter: Router = Router();
 
@@ -71,6 +72,12 @@ overviewRouter.get('/overview', async (req, res) => {
       [site],
     );
 
+    const activeIncidents = await db.query<Incident>(
+      `${INCIDENT_SELECT} WHERE i.status <> 'resolved' AND ($1::uuid IS NULL OR i.site_id = $1)
+        ORDER BY array_position(ARRAY['critical','warning','info'], i.severity), i.opened_at DESC LIMIT 5`,
+      [site],
+    );
+
     const byRole = (role: string) => {
       const window = lastHour.rows.find((r) => r.role === role);
       return {
@@ -94,6 +101,7 @@ overviewRouter.get('/overview', async (req, res) => {
       dns: { state: dns.state, avg_latency_ms: dns.avg_latency_ms, samples: dns.samples },
       availability_24h_pct: ratio === null ? null : Math.round(ratio * 10_000) / 100,
       open_problems: count('down') + count('degraded') + criticalOffline.rows[0]!.n + collectors.rows[0]!.offline,
+      active_incidents: activeIncidents.rows,
       recent_events: events.rows,
       problem_devices: problemDevices.rows,
     };

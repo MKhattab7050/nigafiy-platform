@@ -6,6 +6,7 @@ import { env } from '../../config/env.ts';
 import { systemPool, withSystem, withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { emitEvent, notifyRealtime } from '../events/emit.ts';
+import { refineCollectorIncident } from '../incidents/engine.ts';
 import { processCheckResult } from './checks.ts';
 import { processDiscoveryRun } from './discovery.ts';
 import { type CollectorContext, ItemRejected, enrollSchema, heartbeatSchema, telemetryBatchSchema } from './schema.ts';
@@ -137,7 +138,7 @@ collectorGatewayRouter.post('/heartbeat', requireCollector, async (req, res) => 
       [c.siteId],
     );
     const checks = await db.query(
-      `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY created_at`,
+      `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
       [c.siteId],
     );
     // Commands stay "delivered" (and are re-sent) until the collector acknowledges completion.
@@ -204,6 +205,7 @@ collectorGatewayRouter.post('/telemetry', requireCollector, async (req, res) => 
       }
     }
     if (touchedDevices) await notifyRealtime(db, c.organizationId, 'devices');
+    if (accepted) await refineCollectorIncident(db, c.organizationId, c.id);
     return { duplicate: false, accepted, rejected };
   });
 

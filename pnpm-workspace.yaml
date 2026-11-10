@@ -5,6 +5,8 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - sharp
+  - electron
+  - electron-winstaller
   - embedded-postgres
   - "@embedded-postgres/windows-x64"
   - "@embedded-postgres/linux-x64"

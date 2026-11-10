@@ -122,14 +122,17 @@ const RANGES: Record<string, { seconds: number; bucket: number }> = {
   '24h': { seconds: 86_400, bucket: 300 },
   '7d': { seconds: 604_800, bucket: 3600 },
   '30d': { seconds: 2_592_000, bucket: 14_400 },
+  '90d': { seconds: 7_776_000, bucket: 43_200 },
 };
+// Ranges beyond raw retention are answered from hourly roll-ups.
+const ROLLUP_RANGES = new Set(['30d', '90d']);
 
 monitoringRouter.get('/checks/:id/series', async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   const q = parse(
     z.object({
-      range: z.enum(['15m', '1h', '24h', '7d', '30d']).default('1h'),
+      range: z.enum(['15m', '1h', '24h', '7d', '30d', '90d']).default('1h'),
       from: z.iso.datetime({ offset: true }).optional(),
       to: z.iso.datetime({ offset: true }).optional(),
     }),
@@ -151,6 +154,21 @@ monitoringRouter.get('/checks/:id/series', async (req, res) => {
   }
   const result = await withTenant(ctx.organizationId, async (db) => {
     if (!(await db.query(`SELECT 1 FROM monitoring_checks WHERE id = $1`, [id])).rowCount) throw notFound('Check');
+    if (!(q.from && q.to) && ROLLUP_RANGES.has(q.range)) {
+      return db.query<CheckSeriesPoint>(
+        `SELECT date_bin(make_interval(secs => $4), bucket, timestamptz '2000-01-01') AS ts,
+                sum(samples)::int AS samples,
+                (sum(ok_samples)::float8 / nullif(sum(samples), 0)) AS ok_ratio,
+                (sum(latency_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE latency_avg IS NOT NULL), 0))::float8 AS latency_ms,
+                max(latency_max)::float8 AS latency_max_ms,
+                (sum(loss_avg * samples) / nullif(sum(samples) FILTER (WHERE loss_avg IS NOT NULL), 0))::float8 AS loss_pct,
+                (sum(jitter_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE jitter_avg IS NOT NULL), 0))::float8 AS jitter_ms
+           FROM check_results_hourly
+          WHERE check_id = $1 AND bucket >= $2 AND bucket < $3
+          GROUP BY 1 ORDER BY 1`,
+        [id, from, to, bucket],
+      );
+    }
     return db.query<CheckSeriesPoint>(
       `SELECT date_bin(make_interval(secs => $4), ts, timestamptz '2000-01-01') AS ts,
               count(*)::int AS samples,

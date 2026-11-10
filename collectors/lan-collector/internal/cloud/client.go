@@ -1,0 +1,209 @@
+// Package cloud is the collector's only network path to the LAN Detective platform:
+// outbound HTTPS requests to three endpoints. The platform never connects to the collector.
+package cloud
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand/v2"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+)
+
+var (
+	// ErrUnauthorized: the credential or enrollment token was refused. Retrying will not help.
+	ErrUnauthorized = errors.New("rejected by the server: credential or token is not valid")
+	// ErrRejected: the server understood the request and refused its content. Do not resend.
+	ErrRejected = errors.New("rejected by the server: payload not accepted")
+)
+
+type Scope struct {
+	ID   string `json:"id"`
+	CIDR string `json:"cidr"`
+}
+
+type Check struct {
+	ID              string `json:"id"`
+	Kind            string `json:"kind"`
+	Target          string `json:"target"`
+	Port            *int   `json:"port"`
+	IntervalSeconds int    `json:"interval_seconds"`
+}
+
+type RemoteConfig struct {
+	HeartbeatIntervalSeconds int `json:"heartbeat_interval_seconds"`
+	Discovery                struct {
+		IntervalSeconds int     `json:"interval_seconds"`
+		Scopes          []Scope `json:"scopes"`
+	} `json:"discovery"`
+	Checks []Check `json:"checks"`
+}
+
+type Command struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+}
+
+type HeartbeatRequest struct {
+	Version           string   `json:"version"`
+	Hostname          string   `json:"hostname"`
+	OS                string   `json:"os"`
+	Arch              string   `json:"arch"`
+	UptimeSeconds     int64    `json:"uptime_seconds"`
+	GatewayIP         string   `json:"gateway_ip,omitempty"`
+	Interfaces        any      `json:"interfaces"`
+	SpoolDepth        int      `json:"spool_depth"`
+	CompletedCommands []string `json:"completed_commands"`
+}
+
+type HeartbeatResponse struct {
+	ServerTime string       `json:"server_time"`
+	Config     RemoteConfig `json:"config"`
+	Commands   []Command    `json:"commands"`
+}
+
+type EnrollRequest struct {
+	EnrollmentToken string `json:"enrollment_token"`
+	Hostname        string `json:"hostname"`
+	Version         string `json:"version"`
+	OS              string `json:"os"`
+	Arch            string `json:"arch"`
+}
+
+type EnrollResponse struct {
+	CollectorID string `json:"collector_id"`
+	Credential  string `json:"credential"`
+}
+
+type Client struct {
+	base       *url.URL
+	http       *http.Client
+	credential string
+	userAgent  string
+}
+
+func New(serverURL, caFile, version string) (*Client, error) {
+	base, err := url.Parse(strings.TrimRight(serverURL, "/"))
+	if err != nil {
+		return nil, err
+	}
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read ca_file: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, errors.New("ca_file contains no certificates")
+		}
+		tlsCfg.RootCAs = pool
+	}
+	return &Client{
+		base: base,
+		http: &http.Client{
+			Timeout:   20 * time.Second,
+			Transport: &http.Transport{TLSClientConfig: tlsCfg, MaxIdleConns: 4, IdleConnTimeout: 90 * time.Second, Proxy: http.ProxyFromEnvironment},
+			// The API never redirects. Refusing redirects keeps the credential from following one.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		userAgent: "lan-collector/" + version,
+	}, nil
+}
+
+func (c *Client) SetCredential(credential string) { c.credential = credential }
+
+func (c *Client) post(ctx context.Context, path string, body []byte, authenticated bool, out any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base.String()+"/api/v1/collector"+path, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	if authenticated {
+		req.Header.Set("Authorization", "Bearer "+c.credential)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		// url.Error would include the full URL; keep log lines short and free of anything sensitive.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			return fmt.Errorf("cloud unreachable: %w", ue.Err)
+		}
+		return fmt.Errorf("cloud unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		if out != nil {
+			if err := json.Unmarshal(data, out); err != nil {
+				return fmt.Errorf("unreadable server response: %w", err)
+			}
+		}
+		return nil
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return ErrUnauthorized
+	case resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusRequestEntityTooLarge || resp.StatusCode == http.StatusUnprocessableEntity:
+		return fmt.Errorf("%w (HTTP %d)", ErrRejected, resp.StatusCode)
+	default: // 429, 5xx, proxies … → transient
+		return fmt.Errorf("server returned HTTP %d", resp.StatusCode)
+	}
+}
+
+func (c *Client) Enroll(ctx context.Context, req EnrollRequest) (*EnrollResponse, error) {
+	body, _ := json.Marshal(req)
+	var out EnrollResponse
+	if err := c.post(ctx, "/enroll", body, false, &out); err != nil {
+		return nil, err
+	}
+	if out.Credential == "" || out.CollectorID == "" {
+		return nil, errors.New("server returned an empty credential")
+	}
+	return &out, nil
+}
+
+func (c *Client) Heartbeat(ctx context.Context, req HeartbeatRequest) (*HeartbeatResponse, error) {
+	if req.CompletedCommands == nil {
+		req.CompletedCommands = []string{}
+	}
+	body, _ := json.Marshal(req)
+	var out HeartbeatResponse
+	if err := c.post(ctx, "/heartbeat", body, true, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SendBatch uploads one already-serialised telemetry batch.
+func (c *Client) SendBatch(ctx context.Context, batch []byte) error {
+	return c.post(ctx, "/telemetry", batch, true, nil)
+}
+
+// Backoff produces exponentially growing, jittered delays.
+type Backoff struct {
+	Min, Max time.Duration
+	attempt  int
+}
+
+func (b *Backoff) Next() time.Duration {
+	d := b.Min << min(b.attempt, 20)
+	if d > b.Max || d <= 0 {
+		d = b.Max
+	}
+	b.attempt++
+	// Full jitter in the upper half: many collectors recovering from the same outage do not
+	// hit the cloud in lockstep.
+	return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
+}
+
+func (b *Backoff) Reset() { b.attempt = 0 }

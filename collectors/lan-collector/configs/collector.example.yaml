@@ -1,0 +1,32 @@
+# LAN Detective collector configuration.
+# Every key is optional except server_url. Unknown keys are rejected (protects against typos).
+
+# The LAN Detective cloud API. The collector only makes OUTBOUND https requests to this address.
+server_url: https://lan-detective.example.com
+
+# Needed once, on first start. Create it in LAN Detective → Collectors → Add collector.
+# Prefer the environment variable LAN_COLLECTOR_ENROLLMENT_TOKEN over writing it here.
+# enrollment_token: ""
+
+# Where the collector keeps its identity, cached configuration and offline buffer.
+state_dir: /var/lib/lan-collector
+
+# Optional local allow-list (defence in depth). When set, a scope delivered by the cloud is
+# probed only if it lies entirely inside one of these ranges — even a compromised cloud account
+# cannot point this collector at anything else.
+allowed_cidrs:
+  - 192.168.1.0/24
+
+# Probe budget. Hard ceilings built into the binary: 128 concurrent, 500 packets/s, scopes ≤ /20.
+limits:
+  max_concurrency: 32
+  max_pps: 50
+  ping_timeout_ms: 1000
+
+# Maximum telemetry batches buffered on disk while the cloud is unreachable (oldest dropped first).
+spool_max_batches: 5000
+
+# Trust a private CA for the cloud API (on-premise deployments).
+# ca_file: /etc/lan-collector/ca.pem
+
+log_level: info

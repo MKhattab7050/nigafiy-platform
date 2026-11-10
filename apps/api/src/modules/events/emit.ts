@@ -1,5 +1,6 @@
 import type { Severity } from '@lan-detective/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
+import { correlateEvent } from '../incidents/engine.ts';
 
 export interface NewEvent {
   siteId?: string | null;
@@ -61,6 +62,17 @@ export async function emitEvent(db: Db, organizationId: string, ev: NewEvent): P
      ON CONFLICT DO NOTHING`,
     [organizationId, eventId, ev.severity, ev.type],
   );
+  await correlateEvent(db, organizationId, {
+    id: eventId,
+    type: ev.type,
+    severity: ev.severity,
+    title: ev.title,
+    siteId: ev.siteId ?? null,
+    checkId: ev.checkId ?? null,
+    deviceId: ev.deviceId ?? null,
+    collectorId: ev.collectorId ?? null,
+    occurredAt: ev.occurredAt,
+  });
   await notifyRealtime(db, organizationId, 'events');
   return eventId;
 }

@@ -15,6 +15,10 @@ export async function applyRetention(): Promise<void> {
     `DELETE FROM network_events e USING organizations o
       WHERE o.id = e.organization_id AND e.occurred_at < now() - make_interval(days => o.event_retention_days)`,
   );
+  await systemPool.query(
+    `DELETE FROM check_results_hourly h USING organizations o
+      WHERE o.id = h.organization_id AND h.bucket < now() - make_interval(days => o.rollup_retention_days)`,
+  );
   await systemPool.query(`DELETE FROM ingest_batches WHERE received_at < now() - interval '14 days'`);
   await systemPool.query(`DELETE FROM sessions WHERE expires_at < now()`);
   if ((metrics.rowCount ?? 0) + (runs.rowCount ?? 0) + (events.rowCount ?? 0) > 0) {

@@ -1,0 +1,31 @@
+{
+  "name": "@lan-detective/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LAN Detective desktop app: the dashboard plus a bundled, managed collector",
+  "author": "LAN Detective",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "test": "node --test \"test/*.test.cjs\"",
+    "icon": "node scripts/make-icon.mjs",
+    "pack": "electron-builder --win dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.landetective.desktop",
+    "productName": "LAN Detective",
+    "directories": { "output": "release" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../../collectors/lan-collector/bin/lan-collector.exe", "to": "collector/lan-collector.exe" }
+    ],
+    "win": { "icon": "assets/icon.png", "target": ["nsis"] },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true }
+  }
+}
