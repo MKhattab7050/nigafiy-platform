@@ -22,7 +22,26 @@ for (const [name, pool] of [['system', systemPool], ['app', appPool]] as const) 
 
 export type Db = Pick<pg.PoolClient, 'query'>;
 
+const DEADLOCK_DETECTED = '40P01';
+const DEADLOCK_RETRIES = 2;
+
+/**
+ * Postgres resolves a deadlock by aborting one transaction; that one is simply run again (an
+ * agent's result upload and an operator's action can touch the same rows in different order).
+ * Callbacks passed here must therefore only have database side effects.
+ */
 async function inTransaction<T>(pool: pg.Pool, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await runTransaction(pool, setup, fn);
+    } catch (err) {
+      if ((err as { code?: string }).code !== DEADLOCK_DETECTED || attempt >= DEADLOCK_RETRIES) throw err;
+      logger.warn({ attempt: attempt + 1 }, 'transaction deadlocked; retrying');
+    }
+  }
+}
+
+async function runTransaction<T>(pool: pg.Pool, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

@@ -59,6 +59,9 @@ export function evaluateCompliance(params: {
 
   if (nonCompliant) return { status: 'non_compliant', reasons };
   if (attention) return { status: 'attention', reasons };
+  // Nothing reported, nothing to judge: "compliant" would be a claim without evidence.
+  const reported = Object.values(sec).some((v) => v !== undefined && v !== null) || typeof params.diskUsedPct === 'number';
+  if (!reported) return { status: 'unknown', reasons: [] };
   return { status: 'compliant', reasons: [] };
 }
 

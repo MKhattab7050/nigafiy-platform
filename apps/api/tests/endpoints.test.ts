@@ -24,6 +24,8 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
       name: 'Accounting PC 1',
     });
     expect(created.status).toBe(201);
+    // Nothing reported yet: posture is unknown, not "compliant".
+    expect(created.body.endpoint.compliance_status).toBe('unknown');
     const epId: string = created.body.endpoint.id;
     const token: string = created.body.enrollment_token;
     expect(token.startsWith('ldea_')).toBe(true);

@@ -246,7 +246,8 @@ export default function EndpointDetailPage({ params }: { params: Promise<{ id: s
                 </p>
               )}
 
-              <div className="mb-4 flex flex-wrap items-center gap-2">
+              {/* Up to a dozen tabs: they scroll sideways inside this strip instead of widening the page. */}
+              <div className="mb-4 max-w-full overflow-x-auto pb-1">
                 <Segmented<Tab> value={tab} label={tx.title} onChange={setTab} options={availableTabs} />
               </div>
 

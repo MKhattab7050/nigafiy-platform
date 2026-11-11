@@ -1082,13 +1082,14 @@ endpointsRouter.post('/endpoints/:id/remote-desktop/stop', requireRole('technici
   await withTenant(ctx.organizationId, async (db) => {
     const ep = (await db.query<{ id: string; active: boolean }>(`SELECT id, rd_session IS NOT NULL AS active FROM endpoints WHERE id = $1`, [id])).rows[0];
     if (!ep) throw notFound('Endpoint');
-    await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [id]);
-    // Pending frame requests must not outlive the session.
+    // Pending frame requests must not outlive the session. Command rows are locked before the
+    // endpoint row, the same order an agent's result upload uses (the reverse order deadlocks).
     await db.query(
       `UPDATE endpoint_commands SET status = 'expired', error = 'Remote desktop session ended', completed_at = now()
         WHERE endpoint_id = $1 AND kind IN ('rd_capture', 'rd_input') AND status IN ('pending', 'delivered')`,
       [id],
     );
+    await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [id]);
     if (ep.active) {
       await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session ended', `${ctx.userEmail} is no longer viewing this screen.`);
     }
