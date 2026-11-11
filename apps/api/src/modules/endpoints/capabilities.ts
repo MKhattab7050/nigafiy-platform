@@ -36,6 +36,9 @@ export function evaluateCompliance(params: {
   if (pol.passcode_required && sec.passcode_compliant === false) {
     nonCompliant = true;
     reasons.push('Passcode policy is not satisfied');
+  } else if (pol.passcode_required && sec.passcode_compliant === undefined) {
+    attention = true;
+    reasons.push('Passcode is required but the device has not reported whether it has one');
   }
   if ((params.platform === 'windows' || params.platform === 'linux' || params.platform === 'macos') && sec.firewall_enabled === false) {
     attention = true;

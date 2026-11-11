@@ -7,14 +7,17 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CSRF, app, newAccount } from './helpers.ts';
 
-describe('real Go endpoint-agent binary on Windows (end-to-end)', () => {
+const binPath = path.resolve(
+  import.meta.dirname,
+  '../../../agents/endpoint-agent/bin',
+  process.platform === 'win32' ? 'endpoint-agent.exe' : 'endpoint-agent',
+);
+
+// Needs an interactive Windows desktop and a binary built from the current source (`pnpm build:agent`).
+describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go endpoint-agent binary on Windows (end-to-end, run `pnpm build:agent` first)', () => {
   it(
     'spawns the compiled endpoint-agent binary, enrolls, collects real host telemetry/inventory, and executes live File Manager, Remote Desktop, and Diagnostic commands',
     async () => {
-      const binName = process.platform === 'win32' ? 'endpoint-agent.exe' : 'endpoint-agent';
-      const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', binName);
-      expect(existsSync(binPath)).toBe(true);
-
       const srv = http.createServer(app);
       await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
       const { port } = srv.address() as AddressInfo;
@@ -102,7 +105,10 @@ describe('real Go endpoint-agent binary on Windows (end-to-end)', () => {
         expect(delRes.status).toBe(200);
         expect(delRes.body.status).toBe('completed');
 
-        // 2. Live Remote Desktop screen frame capture from the real binary
+        // 2. Live Remote Desktop screen frame capture from the real binary, inside a session
+        //    (starting it shows the operator's name on this computer's screen).
+        const rdStart = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+        expect(rdStart.status).toBe(200);
         const rdRes = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=5000`).set(CSRF).send({
           kind: 'rd_capture',
           display_index: 0,
@@ -113,6 +119,7 @@ describe('real Go endpoint-agent binary on Windows (end-to-end)', () => {
         expect(rdRes.body.status).toBe('completed');
         expect(rdRes.body.result_data.width).toBeGreaterThan(0);
         expect(rdRes.body.result_data.jpeg_base64.length).toBeGreaterThan(100);
+        expect((await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({})).status).toBe(200);
 
         // 3. Live Authorized Diagnostic command (whoami)
         const diagRes = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=5000`).set(CSRF).send({

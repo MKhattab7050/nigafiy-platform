@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { systemPool } from '../src/infrastructure/db.ts';
 import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
 describe('endpoint management and remote administration (Phases 3 & 4)', () => {
@@ -178,6 +179,19 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     });
     expect(pollHb.body.commands.length).toBe(2);
 
+    // At most once: the restart is not handed out again (an agent restarted by it would reboot again).
+    const nextHb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
+      agent_version: '0.1.0',
+      hostname: 'RECEPTION',
+      os: 'windows',
+      arch: 'amd64',
+      uptime_seconds: 5,
+      cpu_pct: 5,
+      ram_used_mb: 1024,
+      ram_pct: 25,
+    });
+    expect(nextHb.body.commands).toHaveLength(0);
+
     await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({
       agent_version: '0.1.0',
       hostname: 'RECEPTION',
@@ -294,6 +308,20 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
       });
     expect(cmdResult.status).toBe(200);
 
+    // No silent screen capture or input: both need a started session.
+    const silentCapture = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_capture' });
+    expect(silentCapture.status).toBe(409);
+    expect(silentCapture.body.error.code).toBe('no_remote_session');
+    const silentInput = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'x' });
+    expect(silentInput.status).toBe(409);
+
+    // A policy that demands the user's consent is refused: the agent cannot ask for it.
+    await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'prompt' });
+    const refused = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('consent_unavailable');
+    await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'unattended' });
+
     // Start a Remote Desktop session
     const rdStart = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({
       display_index: 0,
@@ -308,6 +336,35 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     const rdPoll = await request(app).post('/api/v1/agent/poll').set('Authorization', `Bearer ${cred}`).send({});
     const rdCmd = rdPoll.body.commands.find((c: { kind: string }) => c.kind === 'rd_capture');
     expect(rdCmd).toBeDefined();
+    // The person at the screen is told who is viewing.
+    const notice = rdPoll.body.commands.find((c: { kind: string }) => c.kind === 'notify_user');
+    expect(notice?.payload.message).toContain(a.email);
+
+    // Typed text and uploaded file contents never reach the audit log, events or the command history.
+    const typed = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'hunter2-secret' });
+    expect(typed.status).toBe(202);
+    const upload = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({
+      kind: 'fs_op',
+      op: 'upload',
+      path: 'C:\\Users\\Public\\notes.txt',
+      data_base64: Buffer.from('confidential-file-body').toString('base64'),
+    });
+    expect(upload.status).toBe(202);
+    const leaks = await systemPool.query<{ n: number }>(
+      `SELECT (SELECT count(*) FROM audit_logs WHERE metadata::text LIKE '%hunter2%' OR metadata::text LIKE $1)::int
+            + (SELECT count(*) FROM network_events WHERE details::text LIKE '%hunter2%' OR details::text LIKE $1)::int AS n`,
+      [`%${Buffer.from('confidential-file-body').toString('base64')}%`],
+    );
+    expect(leaks.rows[0]!.n).toBe(0);
+    // …while the actions themselves are still audited (proves the query above can see these rows).
+    const audited = await systemPool.query<{ action: string; metadata: Record<string, unknown> }>(
+      `SELECT action, metadata FROM audit_logs WHERE target_id = $1 AND action IN ('endpoint.rd_input', 'endpoint.fs_op') ORDER BY created_at`,
+      [epId],
+    );
+    expect(audited.rows.find((r) => r.action === 'endpoint.rd_input')?.metadata.text).toBe('[14 characters redacted]');
+    expect(audited.rows.find((r) => r.metadata.op === 'upload')?.metadata.data_bytes).toBe(22);
+    const history = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(JSON.stringify(history.body.commands)).not.toContain('hunter2');
 
     await request(app)
       .post('/api/v1/agent/command-result')

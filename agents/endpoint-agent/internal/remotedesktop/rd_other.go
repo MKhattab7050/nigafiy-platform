@@ -46,21 +46,21 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 		} else if _, err := exec.LookPath("import"); err == nil {
 			cmd = exec.Command("import", "-window", "root", tmpFile)
 		} else {
-			return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+			return nil, "", errors.New("no screenshot tool found (install scrot, gnome-screenshot or ImageMagick)")
 		}
 	}
 
 	if err := cmd.Run(); err != nil {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", fmt.Errorf("%w: %v", errNoDesktop, err)
 	}
 
 	raw, err := os.ReadFile(tmpFile)
 	if err != nil {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", fmt.Errorf("%w: %v", errNoDesktop, err)
 	}
 	src, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", fmt.Errorf("screenshot could not be decoded: %v", err)
 	}
 	b := src.Bounds()
 	rgba := image.NewRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))

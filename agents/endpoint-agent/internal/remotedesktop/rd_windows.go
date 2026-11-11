@@ -120,21 +120,23 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 	if disp.Width <= 0 || disp.Height <= 0 {
 		return nil, "", errors.New("invalid display dimensions")
 	}
+	// Failures are reported, never papered over with a made-up picture. The usual cause is an
+	// agent running as a service in session 0, which has no interactive desktop to read.
 	hdcScreen, _, _ := procGetDC.Call(0)
 	if hdcScreen == 0 {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", errNoDesktop
 	}
 	defer procReleaseDC.Call(0, hdcScreen)
 
 	hdcMem, _, _ := procCreateCompatibleDC.Call(hdcScreen)
 	if hdcMem == 0 {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", errNoDesktop
 	}
 	defer procDeleteDC.Call(hdcMem)
 
 	hBitmap, _, _ := procCreateCompatibleBitmap.Call(hdcScreen, uintptr(disp.Width), uintptr(disp.Height))
 	if hBitmap == 0 {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", errNoDesktop
 	}
 	defer procDeleteObject.Call(hBitmap)
 
@@ -153,7 +155,7 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 		uintptr(srcCopy),
 	)
 	if ok == 0 {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", errNoDesktop
 	}
 
 	var bi bitmapInfo
@@ -175,7 +177,7 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 		dibRGBColors,
 	)
 	if lines == 0 {
-		return renderDiagnosticDesktopRGBA(disp), "session0_fallback", nil
+		return nil, "", errNoDesktop
 	}
 
 	// Convert BGRA to RGBA in-place.

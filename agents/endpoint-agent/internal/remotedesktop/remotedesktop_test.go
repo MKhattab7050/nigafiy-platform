@@ -2,6 +2,7 @@ package remotedesktop
 
 import (
 	"encoding/base64"
+	"image"
 	"testing"
 )
 
@@ -34,8 +35,7 @@ func TestEnumerateAndCaptureScreen(t *testing.T) {
 }
 
 func TestResizeNearest(t *testing.T) {
-	disp := DisplayInfo{Index: 0, Width: 640, Height: 360}
-	src := renderDiagnosticDesktopRGBA(disp)
+	src := image.NewRGBA(image.Rect(0, 0, 640, 360))
 	dst := resizeNearest(src, 320, 180)
 	if dst.Bounds().Dx() != 320 || dst.Bounds().Dy() != 180 {
 		t.Fatalf("unexpected resized dimensions: %v", dst.Bounds())

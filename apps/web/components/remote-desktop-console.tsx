@@ -5,7 +5,7 @@ import { Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, Square } f
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EndpointCommand, EndpointDetail, RemoteDesktopFrame } from '@lan-detective/shared-types';
 import { Badge, Button, Card, ErrorNote, Input, Select } from '@/components/ui';
-import { type ApiError, api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 
 export function RemoteDesktopConsole({
@@ -61,6 +61,12 @@ export function RemoteDesktopConsole({
       });
       const elapsed = Math.round(performance.now() - t0);
       setRttMs(elapsed);
+      if (cmd.status === 'failed') {
+        // The agent could not read the screen (e.g. no interactive desktop). Retrying would only repeat it.
+        setError(new ApiError(0, 'capture_failed', cmd.error ?? 'The screen could not be captured'));
+        setStreaming(false);
+        return;
+      }
       if (cmd.status === 'completed' && cmd.result_data) {
         const nextFrame = cmd.result_data as unknown as RemoteDesktopFrame;
         setFrame(nextFrame);
@@ -74,8 +80,13 @@ export function RemoteDesktopConsole({
           }
         }
       }
-    } catch {
-      // Network hiccup: next loop iteration will retry automatically
+    } catch (err) {
+      // A refused request (session ended elsewhere, endpoint offline, no permission) stops the stream;
+      // only network hiccups are retried by the next loop iteration.
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        setError(err);
+        setStreaming(false);
+      }
     } finally {
       inFlightRef.current = false;
     }
@@ -183,8 +194,8 @@ export function RemoteDesktopConsole({
           </Badge>
           <span className="text-muted">
             {isAr
-              ? 'شفافية الدعم الفني: يتم تسجيل بداية ونهاية الجلسة وهوية المشرف في سجل التدقيق (Audit Log).'
-              : 'User Transparency: Session start, termination, and operator identity are recorded in the enterprise audit log.'}
+              ? 'عند بدء الجلسة وانتهائها يظهر إشعار على شاشة الجهاز باسمك، وتُسجَّل الجلسة في سجل التدقيق.'
+              : 'Starting or ending a session shows a notice with your name on the endpoint’s screen, and the session is recorded in the audit log.'}
           </span>
         </div>
         {frame && (

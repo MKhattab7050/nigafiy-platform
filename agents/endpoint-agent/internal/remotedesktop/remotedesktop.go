@@ -39,7 +39,7 @@ type Frame struct {
 	Scale        float64       `json:"scale"`
 	CaptureMs    int64         `json:"capture_ms"`
 	ByteLength   int           `json:"byte_length"`
-	CaptureMode  string        `json:"capture_mode"` // native | session0_fallback
+	CaptureMode  string        `json:"capture_mode"` // native | native_gdi
 	JPEGBase64   string        `json:"jpeg_base64"`
 	CapturedAt   string        `json:"captured_at"`
 }
@@ -140,39 +140,6 @@ func resizeNearest(src *image.RGBA, dstW, dstH int) *image.RGBA {
 	return img
 }
 
-func renderDiagnosticDesktopRGBA(disp DisplayInfo) *image.RGBA {
-	w, h := disp.Width, disp.Height
-	if w <= 0 || w > 1920 {
-		w = 1280
-	}
-	if h <= 0 || h > 1080 {
-		h = 720
-	}
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	// Dark slate desktop background with subtle grid and top taskbar bar
-	for y := 0; y < h; y++ {
-		row := y * img.Stride
-		isHeader := y < 44
-		isGridY := y%48 == 0
-		for x := 0; x < w; x++ {
-			i := row + x*4
-			if isHeader {
-				img.Pix[i+0] = 15
-				img.Pix[i+1] = 23
-				img.Pix[i+2] = 42
-				img.Pix[i+3] = 255
-			} else if isGridY || x%48 == 0 {
-				img.Pix[i+0] = 30
-				img.Pix[i+1] = 41
-				img.Pix[i+2] = 59
-				img.Pix[i+3] = 255
-			} else {
-				img.Pix[i+0] = 17
-				img.Pix[i+1] = 24
-				img.Pix[i+2] = 39
-				img.Pix[i+3] = 255
-			}
-		}
-	}
-	return img
-}
+// errNoDesktop: there is no interactive desktop this process can read (for example a Windows
+// service in session 0, or no display server on Linux).
+var errNoDesktop = errors.New("the screen could not be captured: the agent has no access to an interactive desktop session")

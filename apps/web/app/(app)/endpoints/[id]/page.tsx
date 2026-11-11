@@ -971,11 +971,13 @@ function SecurityAndCapabilitiesTab({
                 >
                   <option value="unattended">
                     {isAr
-                      ? 'وصول مباشر للأجهزة المؤسسية المسجّلة ( مع إشعار وتدقيق)'
-                      : 'Unattended on enrolled corporate devices (with audit & banner)'}
+                      ? 'بدون انتظار موافقة (يظهر إشعار على الشاشة ويُسجَّل كل شيء)'
+                      : 'No approval needed (on-screen notice, every session logged)'}
                   </option>
                   <option value="prompt">
-                    {isAr ? 'طلب موافقة المستخدم أولاً' : 'Require explicit user consent prompt'}
+                    {isAr
+                      ? 'يتطلب موافقة المستخدم (غير مدعوم في الوكيل بعد: الجلسات تُرفض)'
+                      : 'Require user approval (agent cannot ask yet: sessions are refused)'}
                   </option>
                 </Select>
               )}

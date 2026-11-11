@@ -166,6 +166,47 @@ async function applyCommandResults(
   }
 }
 
+/** Hands each pending command to the agent exactly once, oldest first (a session notice before its first frame). */
+async function deliverPendingCommands(db: Db, endpointId: string, now: Date): Promise<Array<{ id: string; kind: string; payload: Record<string, unknown> }>> {
+  const { rows } = await db.query<{ id: string; kind: string; payload: Record<string, unknown>; created_at: Date }>(
+    `UPDATE endpoint_commands
+        SET status = 'delivered', delivered_at = $2
+      WHERE endpoint_id = $1 AND status = 'pending'
+      RETURNING id, kind, payload, created_at`,
+    [endpointId, now],
+  );
+  // Commands queued in one transaction share created_at; a notice then goes first.
+  const rank = (c: { kind: string; created_at: Date }) => c.created_at.getTime() * 2 + (c.kind === 'notify_user' ? 0 : 1);
+  return rows.sort((a, b) => rank(a) - rank(b)).map(({ id, kind, payload }) => ({ id, kind, payload }));
+}
+
+/** Shows a message on the endpoint's screen (agent `notify_user`). */
+async function queueUserNotice(db: Db, orgId: string, endpointId: string, userId: string, userEmail: string, title: string, message: string): Promise<void> {
+  await db.query(
+    `INSERT INTO endpoint_commands (organization_id, endpoint_id, kind, payload, created_by, created_by_name)
+     VALUES ($1,$2,'notify_user',$3,$4,$5)`,
+    [orgId, endpointId, JSON.stringify({ title, message }), userId, userEmail],
+  );
+}
+
+/**
+ * What of a command payload may be copied into the audit log and network events (which are
+ * forwarded to webhooks and email). File contents and typed remote-desktop text are never copied:
+ * the operator may be typing a password into the remote session.
+ */
+export function payloadForAudit(kind: string, payload: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...payload };
+  if (typeof out.data_base64 === 'string') {
+    out.data_bytes = Buffer.byteLength(out.data_base64, 'base64');
+    delete out.data_base64;
+  }
+  if (kind === 'rd_input') {
+    if (typeof out.text === 'string') out.text = `[${out.text.length} characters redacted]`;
+    if (typeof out.key === 'string') out.key = '[redacted]';
+  }
+  return out;
+}
+
 // ── Agent-facing gateway (/api/v1/agent/*) ──────────────────────────────────
 
 const enrollLimiter = rateLimit({
@@ -251,19 +292,12 @@ endpointAgentGatewayRouter.post('/enroll', enrollLimiter, async (req, res) => {
     const row = updated.rows[0];
     if (!row) return null;
 
-    if (!row.device_id && (mac || body.primary_ip)) {
-      const linked = await db.query<{ id: string }>(
-        `SELECT id FROM devices
-          WHERE organization_id = $1 AND site_id = $2
-            AND (($3::macaddr IS NOT NULL AND primary_mac = $3::macaddr)
-                 OR ($4::inet IS NOT NULL AND current_ip = $4::inet))
-          ORDER BY (primary_mac IS NOT NULL AND primary_mac = $3::macaddr) DESC, last_seen_at DESC
-          LIMIT 1`,
-        [row.organization_id, row.site_id, mac, body.primary_ip ?? null],
-      );
-      if (linked.rows[0]) {
-        await db.query(`UPDATE endpoints SET device_id = $2 WHERE id = $1`, [row.id, linked.rows[0].id]);
-        row.device_id = linked.rows[0].id;
+    if (!row.device_id) {
+      // Site ids are unique across organizations, so the site filter keeps this inside the tenant.
+      const linked = await resolveDeviceLink(db, row.site_id, mac ?? undefined, body.primary_ip);
+      if (linked) {
+        await db.query(`UPDATE endpoints SET device_id = $2 WHERE id = $1`, [row.id, linked]);
+        row.device_id = linked;
       }
     }
 
@@ -448,13 +482,10 @@ endpointAgentGatewayRouter.post('/heartbeat', requireEndpointAgent, async (req, 
       [ep.id, now],
     );
 
-    const commands = await db.query<{ id: string; kind: string; payload: Record<string, unknown> }>(
-      `UPDATE endpoint_commands
-          SET status = 'delivered', delivered_at = coalesce(delivered_at, $2)
-        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered')
-        RETURNING id, kind, payload`,
-      [ep.id, now],
-    );
+    // At most once: a command already handed out is never handed out again. Redelivery after an
+    // agent restart would repeat it, and for "restart this computer" that is a reboot loop.
+    // Undelivered results simply expire above.
+    const commands = await deliverPendingCommands(db, ep.id, now);
 
     if (ep.connectionState !== 'online' || cmdResults.length > 0) {
       await notifyRealtime(db, ep.organizationId, 'devices');
@@ -463,7 +494,7 @@ endpointAgentGatewayRouter.post('/heartbeat', requireEndpointAgent, async (req, 
     return {
       server_time: now.toISOString(),
       heartbeat_interval_seconds: HEARTBEAT_INTERVAL_SECONDS,
-      commands: commands.rows,
+      commands,
     };
   });
 
@@ -474,16 +505,7 @@ endpointAgentGatewayRouter.post('/heartbeat', requireEndpointAgent, async (req, 
 endpointAgentGatewayRouter.post('/poll', requireEndpointAgent, async (req, res) => {
   const ep = req.endpoint!;
   const now = new Date();
-  const commands = await withTenant(ep.organizationId, async (db) => {
-    const rows = await db.query<{ id: string; kind: string; payload: Record<string, unknown> }>(
-      `UPDATE endpoint_commands
-          SET status = 'delivered', delivered_at = coalesce(delivered_at, $2)
-        WHERE endpoint_id = $1 AND status = 'pending'
-        RETURNING id, kind, payload`,
-      [ep.id, now],
-    );
-    return rows.rows;
-  });
+  const commands = await withTenant(ep.organizationId, (db) => deliverPendingCommands(db, ep.id, now));
   res.json({ commands });
 });
 
@@ -592,12 +614,13 @@ endpointAgentGatewayRouter.post('/mdm/connect', enrollLimiter, async (req, res) 
       ).rows[0];
       if (!pending) return null;
 
+      // Only what the device reported. A missing answer stays unknown; it is never assumed safe.
       const sec: EndpointSecurityPosture = {
         supervised: body.supervised,
         device_owner: body.device_owner,
-        passcode_compliant: body.passcode_compliant ?? true,
-        disk_encrypted: body.disk_encrypted ?? true,
-        rooted_or_jailbroken: body.rooted_or_jailbroken ?? false,
+        passcode_compliant: body.passcode_compliant,
+        disk_encrypted: body.disk_encrypted,
+        rooted_or_jailbroken: body.rooted_or_jailbroken,
       };
       const usedPct =
         body.storage_total_gb && body.storage_total_gb > 0 && typeof body.storage_used_gb === 'number'
@@ -681,15 +704,9 @@ endpointAgentGatewayRouter.post('/mdm/connect', enrollLimiter, async (req, res) 
     if (body.command_results && body.command_results.length > 0) {
       await applyCommandResults(db, ep.id, body.command_results, now);
     }
-    const commands = await db.query<{ id: string; kind: string; payload: Record<string, unknown> }>(
-      `UPDATE endpoint_commands
-          SET status = 'delivered', delivered_at = coalesce(delivered_at, $2)
-        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered')
-        RETURNING id, kind, payload`,
-      [ep.id, now],
-    );
+    const commands = await deliverPendingCommands(db, ep.id, now);
     await db.query(`UPDATE endpoints SET last_heartbeat_at = $2, connection_state = 'online' WHERE id = $1`, [ep.id, now]);
-    return { commands: commands.rows };
+    return { commands };
   });
   res.json(out);
 });
@@ -912,7 +929,7 @@ endpointsRouter.get('/endpoints/:id', async (req, res) => {
         LIMIT 60`,
       [id],
     );
-    ep.commands = commands.rows;
+    ep.commands = commands.rows.map((c) => ({ ...c, payload: payloadForAudit(c.kind, c.payload) }));
     ep.capabilities = buildCapabilities(ep.platform, ep.management_mode, ep.security);
     return ep;
   });
@@ -1002,6 +1019,17 @@ endpointsRouter.post('/endpoints/:id/remote-desktop/start', requireRole('technic
       throw new AppError(409, 'endpoint_offline', 'This endpoint is not currently online');
     }
 
+    const consentMode = ep.policy?.remote_desktop_consent ?? 'unattended';
+    if (consentMode === 'prompt') {
+      // The agent has no way to ask the person at the screen yet. Refusing is the only honest
+      // answer for a policy that demands their consent.
+      throw new AppError(
+        409,
+        'consent_unavailable',
+        'This endpoint requires the user to accept each session, and the agent cannot ask for consent yet. Change the remote desktop policy or use another support tool.',
+      );
+    }
+
     const session: RemoteDesktopSession = {
       id: randomToken(12),
       started_at: new Date().toISOString(),
@@ -1009,11 +1037,14 @@ endpointsRouter.post('/endpoints/:id/remote-desktop/start', requireRole('technic
       display_index: body.display_index,
       quality: body.quality,
       scale: body.scale,
-      consent_mode: ep.policy?.remote_desktop_consent ?? 'unattended',
+      consent_mode: consentMode,
       recording_enabled: body.recording_enabled,
     };
 
     await db.query(`UPDATE endpoints SET rd_session = $2::jsonb WHERE id = $1`, [id, JSON.stringify(session)]);
+
+    // Never silent: the person at the endpoint is told who is viewing before the first frame is taken.
+    await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session started', `${ctx.userEmail} can now see and control this screen. The session is logged.`);
 
     // Queue an initial frame capture command
     await db.query(
@@ -1049,9 +1080,18 @@ endpointsRouter.post('/endpoints/:id/remote-desktop/stop', requireRole('technici
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {
-    const ep = (await db.query<{ id: string }>(`SELECT id FROM endpoints WHERE id = $1`, [id])).rows[0];
+    const ep = (await db.query<{ id: string; active: boolean }>(`SELECT id, rd_session IS NOT NULL AS active FROM endpoints WHERE id = $1`, [id])).rows[0];
     if (!ep) throw notFound('Endpoint');
     await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [id]);
+    // Pending frame requests must not outlive the session.
+    await db.query(
+      `UPDATE endpoint_commands SET status = 'expired', error = 'Remote desktop session ended', completed_at = now()
+        WHERE endpoint_id = $1 AND kind IN ('rd_capture', 'rd_input') AND status IN ('pending', 'delivered')`,
+      [id],
+    );
+    if (ep.active) {
+      await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session ended', `${ctx.userEmail} is no longer viewing this screen.`);
+    }
     await audit(db, req, 'endpoint.remote_desktop_stopped', { type: 'endpoint', id }, { operator: ctx.userEmail });
   });
   res.json({ ok: true });
@@ -1286,8 +1326,10 @@ endpointsRouter.post('/endpoints/:id/commands', requireRole('technician'), async
         last_heartbeat_at: Date | null;
         policy: EndpointPolicy;
         security: EndpointSecurityPosture;
+        rd_active: boolean;
       }>(
-        `SELECT id, site_id, device_id, name, platform, management_mode, status, last_heartbeat_at, policy, security
+        `SELECT id, site_id, device_id, name, platform, management_mode, status, last_heartbeat_at, policy, security,
+                rd_session IS NOT NULL AS rd_active
            FROM endpoints WHERE id = $1`,
         [id],
       )
@@ -1295,6 +1337,11 @@ endpointsRouter.post('/endpoints/:id/commands', requireRole('technician'), async
     if (!ep) throw notFound('Endpoint');
 
     validateCommandForPlatform(ep.platform, ep.management_mode, ep.security ?? {}, body, ctx.role);
+
+    // Screen capture and input only inside a started session: that is where the user is told.
+    if ((body.kind === 'rd_capture' || body.kind === 'rd_input') && !ep.rd_active) {
+      throw new AppError(409, 'no_remote_session', 'Start a remote desktop session first; the user is notified when it starts');
+    }
 
     if (ep.status !== 'active' || !ep.last_heartbeat_at || ep.last_heartbeat_at.getTime() < Date.now() - 120_000) {
       throw new AppError(409, 'endpoint_offline', 'This endpoint is not currently online');
@@ -1326,8 +1373,9 @@ endpointsRouter.post('/endpoints/:id/commands', requireRole('technician'), async
       (kind === 'rd_input' && body.event_kind === 'mouse_move') ||
       (kind === 'fs_op' && (body.op === 'roots' || body.op === 'list'));
 
+    const recorded = payloadForAudit(kind, payload);
     if (!isHighFreqStream) {
-      await audit(db, req, `endpoint.${kind}`, { type: 'endpoint', id }, { command_id: created.id, ...payload });
+      await audit(db, req, `endpoint.${kind}`, { type: 'endpoint', id }, { command_id: created.id, ...recorded });
     }
 
     if (kind !== 'refresh_inventory' && !isHighFreqStream) {
@@ -1341,7 +1389,7 @@ endpointsRouter.post('/endpoints/:id/commands', requireRole('technician'), async
             ? 'warning'
             : 'info',
         title: `Remote action "${kind}" sent to "${ep.name}" by ${ctx.userEmail}`,
-        details: { endpoint_id: ep.id, endpoint_name: ep.name, command_id: created.id, kind, ...payload, requested_by: ctx.userEmail },
+        details: { endpoint_id: ep.id, endpoint_name: ep.name, command_id: created.id, kind, ...recorded, requested_by: ctx.userEmail },
         source: 'platform',
         occurredAt: new Date(),
       });
