@@ -87,18 +87,19 @@ export async function dispatchNotifications(): Promise<void> {
         } catch (err) {
           error = (err as Error).message.replace(/[\r\n]+/g, ' ').slice(0, 200);
         }
-      } else
-      try {
-        const signature = hmacSha256(decryptSecret(d.secret_encrypted), `${timestamp}.${body}`);
-        const status = await post(d.url, body, {
-          'Content-Type': 'application/json',
-          'Content-Length': String(Buffer.byteLength(body)),
-          'User-Agent': 'LAN-Detective-Webhook/1',
-          'X-LAN-Detective-Signature': `t=${timestamp},v1=${signature}`,
-        });
-        if (status < 200 || status >= 300) error = `receiver responded with HTTP ${status}`;
-      } catch (err) {
-        error = (err as Error).message.slice(0, 200);
+      } else {
+        try {
+          const signature = hmacSha256(decryptSecret(d.secret_encrypted), `${timestamp}.${body}`);
+          const status = await post(d.url, body, {
+            'Content-Type': 'application/json',
+            'Content-Length': String(Buffer.byteLength(body)),
+            'User-Agent': 'LAN-Detective-Webhook/1',
+            'X-LAN-Detective-Signature': `t=${timestamp},v1=${signature}`,
+          });
+          if (status < 200 || status >= 300) error = `receiver responded with HTTP ${status}`;
+        } catch (err) {
+          error = (err as Error).message.slice(0, 200);
+        }
       }
       if (!error) {
         await systemPool.query(`UPDATE notification_deliveries SET status = 'delivered', delivered_at = now(), last_error = NULL WHERE id = $1`, [d.id]);
