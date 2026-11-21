@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Guard overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#A4262C}a:hover{color:#6E1A1E}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #D13438; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Guard</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; min-height: 740px">
+      <nav aria-label="Guard" style="flex: 1 1 200px; max-width: 230px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="6">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span>{{n.label}}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <main style="flex: 999 1 560px; min-width: 0; background: var(--layer); border-start-start-radius: 8px; border-top: 1px solid var(--stroke); border-inline-start: 1px solid var(--stroke); padding: 24px 28px; display: flex; flex-direction: column; gap: 20px">
+        <div>
+          <h1 style="margin: 0; font-size: 26px; font-weight: 600">{{t.title}}</h1>
+          <p style="margin: 4px 0 0; font-size: 14px; color: var(--fg2)">{{t.sub}}</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px">
+          <sc-for list="{{cards}}" as="c" hint-placeholder-count="4">
+            <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D13438" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.icon}}"></path></svg>
+                <span style="font-size: 15px; font-weight: 600; flex: 1">{{c.name}}</span>
+                <span style="font-size: 12px; font-weight: 600; color: {{c.stateColor}}">{{c.state}}</span>
+              </div>
+              <div style="font-size: 13px; color: var(--fg2); min-height: 36px">{{c.detail}}</div>
+              <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 32px; padding-inline: 12px; border-radius: 5px; {{c.btnStyle}} text-decoration: none; font-size: 13px">{{c.action}}</a>
+            </div>
+          </sc-for>
+        </div>
+        <section aria-labelledby="f-h" style="display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <h2 id="f-h" style="margin: 0; font-size: 18px; font-weight: 600; flex: 1">{{t.findings}}</h2>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 14px; border-radius: 5px; background: #C42B1C; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.runAll}}</a>
+          </div>
+          <div style="border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); overflow: hidden">
+            <sc-for list="{{findings}}" as="f" hint-placeholder-count="3">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--stroke)">
+                <span style="display: inline-flex; align-items: center; gap: 6px; min-width: 88px; font-size: 12px; font-weight: 600; color: {{f.color}}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="{{f.icon}}"></path></svg>{{f.sev}}
+                </span>
+                <div style="flex: 1 1 300px">
+                  <div style="font-size: 14px">{{f.text}}</div>
+                  <div style="font-size: 12px; color: var(--fg2)">{{f.how}}</div>
+                </div>
+                <a href="#" style="font-size: 13px; color: var(--accentText)">{{f.a1}}</a>
+                <a href="#" style="font-size: 13px; color: var(--fg2)">{{f.a2}}</a>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#211a1b', mica: '#261f20', layer: '#2c2526', card: '#332b2c', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c9c0c0', accentText: '#ff9a9a', ok: '#6ccb5f', warn: '#f7a64a', crit: '#ff8a8a', sel: 'rgba(255,154,154,0.12)' }
+      : { desk: '#efdfdf', mica: '#f8f1f1', layer: '#fcfafa', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#A4262C', ok: '#0E7A0D', warn: '#9D5300', crit: '#B3261E', sel: 'rgba(209,52,56,0.09)' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', title: 'نظرة على الحماية', sub: 'ما يحمي الشبكة الآن، وما يحتاج قرارك', findings: 'نتائج فحوص الأمان', runAll: 'تشغيل كل الفحوص الآن',
+    } : {
+      mockup: 'Design mockup, not real data', title: 'Protection overview', sub: 'What protects the network right now, and what needs your decision', findings: 'Security check findings', runAll: 'Run all checks now',
+    };
+    const navItems = [
+      [ar ? 'نظرة عامة' : 'Overview', 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z'],
+      [ar ? 'فلتر DNS والوصول' : 'DNS filter and access', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18M12 3a14 14 0 0 1 0 18'],
+      [ar ? 'الراوترات' : 'Routers', 'M4 14h16v5H4zM8 17h.5M12 14V9M8 6a6 6 0 0 1 8 0'],
+      [ar ? 'التحكم بالمنافذ' : 'Port control', 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2'],
+      [ar ? 'فحوص الأمان' : 'Security checks', 'M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4'],
+      [ar ? 'نسخ الإعدادات' : 'Config backup', 'M6 3h9l4 4v14H6zM9 13l2 2 4-4'],
+    ];
+    const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], style: i === 0 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #D13438;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
+    const primary = 'background: #C42B1C; color: #fff; font-weight: 600;';
+    const secondary = 'border: 1px solid var(--stroke); color: var(--fg);';
+    const cards = ar ? [
+      { icon: 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18', name: 'فلتر DNS', state: 'متوقف', stateColor: 'var(--fg2)', detail: 'لا يعمل حتى تشغّله أنت. يحتاج تغيير DNS في DHCP الراوتر.', action: 'تشغيل…', btnStyle: primary },
+      { icon: 'M4 14h16v5H4zM12 14V9M8 6a6 6 0 0 1 8 0', name: 'الراوترات', state: '[n] متصل', stateColor: 'var(--ok)', detail: '[n] حظر نشط · شهادة مثبّتة (TOFU)', action: 'عرض', btnStyle: secondary },
+      { icon: 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2', name: 'منافذ السويتش', state: '[n] معزول', stateColor: 'var(--warn)', detail: 'منفذ [x] على [سويتش] في VLAN العزل منذ [وقت]', action: 'مراجعة', btnStyle: secondary },
+      { icon: 'M6 3h9l4 4v14H6zM9 13l2 2 4-4', name: 'نسخ الإعدادات', state: 'تغيّر', stateColor: 'var(--warn)', detail: 'إعدادات [جهاز] تغيّرت منذ آخر نسخة', action: 'عرض الفرق', btnStyle: secondary },
+    ] : [
+      { icon: 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18', name: 'DNS filter', state: 'Off', stateColor: 'var(--fg2)', detail: 'Stays off until you turn it on. Needs the router’s DHCP DNS changed.', action: 'Turn on…', btnStyle: primary },
+      { icon: 'M4 14h16v5H4zM12 14V9M8 6a6 6 0 0 1 8 0', name: 'Routers', state: '[n] connected', stateColor: 'var(--ok)', detail: '[n] active blocks · certificate pinned (TOFU)', action: 'View', btnStyle: secondary },
+      { icon: 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2', name: 'Switch ports', state: '[n] quarantined', stateColor: 'var(--warn)', detail: 'Port [x] on [switch] in the quarantine VLAN since [time]', action: 'Review', btnStyle: secondary },
+      { icon: 'M6 3h9l4 4v14H6zM9 13l2 2 4-4', name: 'Config backup', state: 'Changed', stateColor: 'var(--warn)', detail: '[device] configuration changed since the last backup', action: 'Show diff', btnStyle: secondary },
+    ];
+    const crit = { color: 'var(--crit)', icon: 'M8 3h8l5 5v8l-5 5H8l-5-5V8zM12 8v5M12 16v.5', sev: ar ? 'حرج' : 'Critical' };
+    const warn = { color: 'var(--warn)', icon: 'M12 3l9 16H3zM12 10v4M12 17v.5', sev: ar ? 'تحذير' : 'Warning' };
+    const info = { color: 'var(--fg2)', icon: 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 11v6M12 7.5v.5', sev: ar ? 'للمعلومية' : 'Info' };
+    const findings = ar ? [
+      { ...crit, text: 'خادم DHCP ثانٍ يرد على [192.168.1.x]', how: 'مُلاحَظ: رد على طلب DHCPDISCOVER من المستشعر', a1: 'هذا متوقع', a2: 'حل' },
+      { ...warn, text: 'الراوتر يفتح المنفذ [n] عبر UPnP إلى [192.168.1.x]', how: 'مُلاحَظ: جدول UPnP في الراوتر', a1: 'مراجعة', a2: 'تأكيد الاستلام' },
+      { ...info, text: 'شبكة Wi-Fi قريبة على نفس القناة [n]', how: 'مُلاحَظ: محوّل Wi-Fi في جهاز المستشعر', a1: 'عرض', a2: 'تأكيد الاستلام' },
+    ] : [
+      { ...crit, text: 'A second DHCP server answers at [192.168.1.x]', how: 'Observed: it answered the Sensor’s DHCPDISCOVER', a1: 'This is expected', a2: 'Resolve' },
+      { ...warn, text: 'The router forwards port [n] to [192.168.1.x] via UPnP', how: 'Observed: the router’s UPnP mapping table', a1: 'Review', a2: 'Acknowledge' },
+      { ...info, text: 'A nearby Wi-Fi network shares channel [n]', how: 'Observed: the Sensor host’s Wi-Fi adapter', a1: 'View', a2: 'Acknowledge' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, cards, findings };
+  }
+}
+</script>
+</body>
+</html>

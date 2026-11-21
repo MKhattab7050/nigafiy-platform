@@ -54,6 +54,27 @@ a{color:#1466E6}a:hover{color:#0C3B5E}
           <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.engineLink}}</a>
         </section>
 
+        <section aria-labelledby="sites-h" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <h2 id="sites-h" style="margin: 0; font-size: 18px; font-weight: 600; flex: 1">{{t.sites}}</h2>
+            <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.addSite}}</a>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px">
+            <sc-for list="{{sites}}" as="s" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+                <div style="display: flex; align-items: center; gap: 8px">
+                  <span style="font-size: 15px; font-weight: 600; flex: 1">{{s.name}}</span>
+                  <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: {{s.color}}"><span style="width: 8px; height: 8px; border-radius: 4px; background: currentColor"></span>{{s.state}}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--fg2)">{{s.sensor}}</div>
+                <div style="display: flex; gap: 16px; font-size: 13px">
+                  <span>{{s.devices}}</span><span>{{s.computers}}</span><span>{{s.incidents}}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
         <section aria-labelledby="progs-h" style="display: flex; flex-direction: column; gap: 12px">
           <h2 id="progs-h" style="margin: 0; font-size: 18px; font-weight: 600">{{t.programs}}</h2>
           <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px">
@@ -150,7 +171,21 @@ class Component extends DCLogic {
       ['info', 'New unreviewed device: [device name]', 'Radar', '#0099BC', 'Identify'],
     ];
     const attention = A.map((a) => ({ ...sev[a[0]], text: a[1], program: 'Nigafiy ' + a[2], accent: a[3], action: a[4] }));
-    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, programs, nav, attention };
+    const site = (name, ok, sensorTxt) => ({
+      name,
+      state: ok ? (ar ? 'يعمل' : 'Healthy') : (ar ? 'حادثة مفتوحة' : 'Open incident'),
+      color: ok ? 'var(--ok)' : 'var(--crit)',
+      sensor: sensorTxt,
+      devices: ar ? '[n] جهاز' : '[n] devices',
+      computers: ar ? '[n] حاسوب' : '[n] computers',
+      incidents: ar ? '[n] حادثة' : '[n] incidents',
+    });
+    const sites = ar
+      ? [site('[المقر الرئيسي]', false, 'مستشعر محلي على هذا الجهاز · آخر اتصال [وقت]'), site('[الفرع 1]', true, 'مستشعر [اسم] · آخر اتصال [وقت]'), site('[المخزن]', true, 'مستشعر [اسم] · آخر اتصال [وقت]')]
+      : [site('[Head office]', false, 'Local Sensor on this PC · last seen [time]'), site('[Branch 1]', true, 'Sensor [name] · last seen [time]'), site('[Warehouse]', true, 'Sensor [name] · last seen [time]')];
+    T.sites = ar ? 'المواقع' : 'Sites';
+    T.addSite = ar ? 'إضافة موقع ومستشعر' : 'Add a site and Sensor';
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, programs, nav, attention, sites };
   }
 }
 </script>

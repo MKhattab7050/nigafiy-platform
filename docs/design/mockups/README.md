@@ -5,10 +5,15 @@ Live canvas: https://claude.ai/artifact/UgAvbazdgsCatGmPwfqQnd (private to the o
 
 | Artboard | Decides |
 | --- | --- |
-| Hub home (`Main.dc.html`) | Window shell (Mica title bar, sidebar with the active item marked on the inline-start edge), program tiles with "Open" or "Install", engine status, "Needs your attention" items tagged with their program's colour |
+| Hub home (`Main.dc.html`) | Sites with their Sensors and health, window shell (Mica title bar, sidebar with the active item marked on the inline-start edge), program tiles with "Open" or "Install", engine status, "Needs your attention" items tagged with their program's colour |
 | Radar devices (`Radar.dc.html`) | Program shell with its own accent, device table showing name source and confidence, and the **shared device card** with actions grouped by program ("Available in Nigafiy Mind: install" when a program is missing) |
 | Website home (`Site.dc.html`) | Hero, the three promises (local-first, transparent, works things out), the program family, "build your bundle" picker with SHA-256 note. Screenshots are slots for real screenshots |
 | Icons (`Icons.dc.html`) | Program glyphs in rounded accent squares at 72/24/16 px, logo options, status colours |
+| Watch (`Watch.dc.html`) | Incident with the Network Doctor path (LAN → gateway → internet → DNS), evidence tagged observed / inferred, ruled out, steps, before/during/after timeline |
+| Guard (`Guard.dc.html`) | Protection overview cards (DNS filter off until turned on, routers, quarantined ports, config changes) and security findings with how each was found |
+| Fleet (`Fleet.dc.html`) | Computer page with tabs; a remote session shows the on-screen notice, reason and audit line, an End session button, and compliance where unmeasured items say "not measured" |
+| Mind (`Mind.dc.html`) | Playbook run with an approval gate on the disruptive step, the two-person rule, a related knowledge article, and the assistant shown as off by default |
+| Toolbox (`Toolbox.dc.html`) | Tool tabs, Ping run from a chosen Sensor inside authorized scopes, and the subnet calculator |
 
 ## Decisions (owner, 2026-11-21)
 

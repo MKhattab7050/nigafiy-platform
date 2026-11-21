@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet computer</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5B32B5}a:hover{color:#3F2280}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Fleet</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <main style="background: var(--layer); border-top: 1px solid var(--stroke); padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 16px; min-height: 740px; box-sizing: border-box">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.back}}</a>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 600">[Computer name]</h1>
+        <span style="font-size: 13px; color: var(--fg2)">{{t.os}}</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ok)"><span style="width: 8px; height: 8px; border-radius: 4px; background: currentColor"></span>{{t.online}}</span>
+      </div>
+      <div role="tablist" style="display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--stroke)">
+        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="8">
+          <a href="#" role="tab" style="{{tb.style}} display: inline-flex; align-items: center; min-height: 38px; padding-inline: 12px; text-decoration: none; font-size: 14px">{{tb.label}}</a>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <section aria-label="{{t.rd}}" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+          <div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; background: var(--noticeBg); border: 1px solid var(--noticeBorder); font-size: 13px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A4FD6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0"></path></svg>
+            <span style="flex: 1 1 300px">{{t.notice}}</span>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 14px; border-radius: 5px; background: #B3261E; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.end}}</a>
+          </div>
+          <div style="aspect-ratio: 16 / 9; border-radius: 8px; background: #0f1115; display: flex; align-items: center; justify-content: center; color: #c5c5c5; font-size: 14px; text-align: center; padding: 16px">{{t.screen}}</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+            <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px"><input type="checkbox" checked style="width: 16px; height: 16px; accent-color: #6B3FC7">{{t.input}}</label>
+            <span style="flex: 1"></span>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 12px; border-radius: 5px; border: 1px solid var(--stroke); color: var(--fg); text-decoration: none; font-size: 13px">Ctrl+Alt+Del</a>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 12px; border-radius: 5px; border: 1px solid var(--stroke); color: var(--fg); text-decoration: none; font-size: 13px">{{t.message}}</a>
+          </div>
+        </section>
+        <aside aria-labelledby="cmp-h" style="flex: 1 1 280px; max-width: 360px; display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <h2 id="cmp-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.compliance}}</h2>
+          <div style="font-size: 13px; font-weight: 600; color: var(--fg2)">{{t.overall}}</div>
+          <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 13px">
+              <span style="flex: 1">{{c.name}}</span>
+              <span style="font-weight: 600; color: {{c.color}}">{{c.state}}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--fg2); margin-top: -6px">{{c.how}}</div>
+          </sc-for>
+          <div style="height: 1px; background: var(--stroke); margin-block: 4px"></div>
+          <div style="font-size: 13px; font-weight: 600">{{t.network}}</div>
+          <div style="font-size: 13px; color: var(--fg2)">{{t.networkText}}</div>
+          <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.openRadar}}</a>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1d1a24', mica: '#221f2a', layer: '#28252f', card: '#2f2b37', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c6c0d2', accentText: '#b9a2ff', ok: '#6ccb5f', warn: '#f7a64a', noticeBg: 'rgba(185,162,255,0.12)', noticeBorder: 'rgba(185,162,255,0.35)' }
+      : { desk: '#e5e0f0', mica: '#f3f0f9', layer: '#fbfafd', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#5B32B5', ok: '#0E7A0D', warn: '#9D5300', noticeBg: '#f1ecfc', noticeBorder: '#cdbdf2' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', back: '← الحواسيب', os: 'Windows 11 · الوكيل [إصدار]', online: 'متصل', rd: 'سطح المكتب البعيد',
+      notice: 'الجلسة ظاهرة على شاشة المستخدم الآن: «[اسم المشغّل] متصل بجهازك» · السبب: [السبب] · مسجّلة في سجل التدقيق', end: 'إنهاء الجلسة',
+      screen: '[الشاشة الحية للحاسوب، صور حقيقية من الوكيل فقط]', input: 'السماح بالفأرة ولوحة المفاتيح', message: 'إرسال رسالة للمستخدم',
+      compliance: 'الامتثال', overall: 'الحالة العامة: غير معروفة، لأن بعض البنود لم تُقَس', network: 'على الشبكة', networkText: 'نفس الجهاز في Radar: [192.168.1.x] · المنفذ [x] على [سويتش]', openRadar: 'فتح في Nigafiy Radar',
+    } : {
+      mockup: 'Design mockup, not real data', back: '← Computers', os: 'Windows 11 · agent [version]', online: 'Online', rd: 'Remote desktop',
+      notice: 'Visible on the user’s screen now: “[operator name] is connected to your computer” · Reason: [reason] · Recorded in the audit log', end: 'End session',
+      screen: '[Live screen of the computer, real frames from the agent only]', input: 'Allow mouse and keyboard', message: 'Send the user a message',
+      compliance: 'Compliance', overall: 'Overall: unknown, because some items were not measured', network: 'On the network', networkText: 'Same machine in Radar: [192.168.1.x] · port [x] on [switch]', openRadar: 'Open in Nigafiy Radar',
+    };
+    const tabNames = ar ? ['نظرة عامة', 'سطح المكتب البعيد', 'الملفات', 'العمليات', 'الخدمات', 'البرامج', 'السجلات', 'الأوامر'] : ['Overview', 'Remote desktop', 'Files', 'Processes', 'Services', 'Software', 'Logs', 'Commands'];
+    const tabs = tabNames.map((l, i) => ({ label: l, style: i === 1 ? 'color: var(--fg); font-weight: 600; border-bottom: 3px solid #7A4FD6;' : 'color: var(--fg2); border-bottom: 3px solid transparent;' }));
+    const checks = ar ? [
+      { name: 'جدار الحماية', state: 'يعمل', color: 'var(--ok)', how: 'قاسه الوكيل' },
+      { name: 'Microsoft Defender', state: 'يعمل', color: 'var(--ok)', how: 'قاسه الوكيل' },
+      { name: 'تشفير القرص', state: 'غير مُقاس', color: 'var(--fg2)', how: 'الوكيل لا يقيسه بعد' },
+      { name: 'التحديثات المعلّقة', state: 'غير مُقاس', color: 'var(--fg2)', how: 'الوكيل لا يقيسه بعد' },
+    ] : [
+      { name: 'Firewall', state: 'On', color: 'var(--ok)', how: 'Measured by the agent' },
+      { name: 'Microsoft Defender', state: 'On', color: 'var(--ok)', how: 'Measured by the agent' },
+      { name: 'Disk encryption', state: 'Not measured', color: 'var(--fg2)', how: 'The agent does not measure this yet' },
+      { name: 'Pending updates', state: 'Not measured', color: 'var(--fg2)', how: 'The agent does not measure this yet' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, tabs, checks };
+  }
+}
+</script>
+</body>
+</html>

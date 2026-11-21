@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Toolbox</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F6B30}a:hover{color:#14481F}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #2E8540; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5a4 4 0 0 0-5 5l-6 6 2 2 6-6a4 4 0 0 0 5-5l-2.5 2.5-2-2z"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Toolbox</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <main style="background: var(--layer); border-top: 1px solid var(--stroke); padding: 24px 28px 28px; display: flex; flex-direction: column; gap: 18px; min-height: 740px; box-sizing: border-box">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <sc-for list="{{tools}}" as="tl" hint-placeholder-count="7">
+          <a href="#" style="{{tl.style}} display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding-inline: 14px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tl.icon}}"></path></svg>{{tl.label}}
+          </a>
+        </sc-for>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+        <section aria-labelledby="ping-h" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <h1 id="ping-h" style="margin: 0; font-size: 20px; font-weight: 600">{{t.title}}</h1>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end">
+            <label style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 4px; font-size: 13px">{{t.target}}
+              <input type="text" value="192.168.1.x" dir="ltr" style="height: 36px; padding-inline: 10px; border-radius: 5px; border: 1px solid var(--stroke2); background: var(--card); color: var(--fg); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
+            </label>
+            <label style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 4px; font-size: 13px">{{t.from}}
+              <select style="height: 36px; padding-inline: 8px; border-radius: 5px; border: 1px solid var(--stroke2); background: var(--card); color: var(--fg); font: inherit"><option>{{t.sensor}}</option></select>
+            </label>
+            <a href="#" style="display: inline-flex; align-items: center; min-height: 36px; padding-inline: 18px; border-radius: 5px; background: #23743A; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.run}}</a>
+          </div>
+          <div style="font-size: 12px; color: var(--fg2)">{{t.scope}}</div>
+          <pre dir="ltr" style="margin: 0; padding: 14px; border-radius: 6px; background: var(--term); color: var(--termFg); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; text-align: left">{{out}}</pre>
+        </section>
+        <aside aria-labelledby="calc-h" style="flex: 1 1 280px; max-width: 380px; display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <h2 id="calc-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.calc}}</h2>
+          <label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px">{{t.network}}
+            <input type="text" value="192.168.1.0/24" dir="ltr" style="height: 36px; padding-inline: 10px; border-radius: 5px; border: 1px solid var(--stroke2); background: var(--card); color: var(--fg); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px">
+          </label>
+          <sc-for list="{{calc}}" as="r" hint-placeholder-count="5">
+            <div style="display: flex; gap: 8px; font-size: 13px"><span style="flex: 1; color: var(--fg2)">{{r.k}}</span><span dir="ltr" style="font-family: 'Cascadia Mono', Consolas, monospace">{{r.v}}</span></div>
+          </sc-for>
+          <div style="font-size: 12px; color: var(--fg2)">{{t.calcNote}}</div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#18201a', mica: '#1d251f', layer: '#232b25', card: '#29322b', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#bfcac1', sel: 'rgba(108,203,95,0.14)', term: '#0e1210', termFg: '#d7e6da' }
+      : { desk: '#dfe9e1', mica: '#f0f6f1', layer: '#fafcfa', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c', sel: 'rgba(46,133,64,0.12)', term: '#14181a', termFg: '#d7e6da' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', title: 'Ping', target: 'العنوان', from: 'التشغيل من', sensor: 'مستشعر [اسم الموقع]', run: 'تشغيل',
+      scope: 'يعمل فقط داخل النطاقات المصرّح بها للموقع، ويُسجَّل في سجل التدقيق.', calc: 'حاسبة الشبكات', network: 'الشبكة', calcNote: 'نفس الحاسبة الموجودة في عناوين IP داخل Radar.',
+    } : {
+      mockup: 'Design mockup, not real data', title: 'Ping', target: 'Target', from: 'Run from', sensor: '[Site name] Sensor', run: 'Run',
+      scope: 'Runs only inside the site’s authorized scopes, and is recorded in the audit log.', calc: 'Subnet calculator', network: 'Network', calcNote: 'The same calculator as in Radar’s IP addresses.',
+    };
+    const toolList = [
+      ['Ping', 'M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M8 8a6 6 0 0 0 0 8M16 8a6 6 0 0 1 0 8'],
+      [ar ? 'منفذ TCP' : 'TCP port', 'M4 7h16v10H4zM12 11v2'],
+      [ar ? 'المنافذ الشائعة' : 'Common ports', 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2'],
+      ['DNS', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M3 12h18'],
+      [ar ? 'DNS العكسي' : 'Reverse DNS', 'M4 12h16M14 6l6 6-6 6'],
+      [ar ? 'تتبع المسار' : 'Traceroute', 'M5 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M19 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M7 19h6a4 4 0 0 0 0-8h-2a4 4 0 0 1 0-8h6'],
+      [ar ? 'حاسبة الشبكات' : 'Subnet calculator', 'M5 3h14v18H5zM8 7h8M8 11h2M12 11h2M8 15h2M12 15h2'],
+    ];
+    const tools = toolList.map((x, i) => ({ label: x[0], icon: x[1], style: i === 0 ? 'background: #23743A; color: #fff; font-weight: 600;' : 'background: var(--card); border: 1px solid var(--stroke); color: var(--fg);' }));
+    const out = 'PING 192.168.1.x from [Sensor]\n[reply] seq=1 time=[n] ms\n[reply] seq=2 time=[n] ms\n[reply] seq=3 time=[n] ms\n--- [n] sent, [n] received, [n]% loss · min/avg/max [n]/[n]/[n] ms';
+    const calc = [
+      { k: ar ? 'القناع' : 'Mask', v: '255.255.255.0' },
+      { k: ar ? 'أول عنوان' : 'First host', v: '192.168.1.1' },
+      { k: ar ? 'آخر عنوان' : 'Last host', v: '192.168.1.254' },
+      { k: ar ? 'البث' : 'Broadcast', v: '192.168.1.255' },
+      { k: ar ? 'عدد الأجهزة' : 'Usable hosts', v: '254' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, tools, out, calc };
+  }
+}
+</script>
+</body>
+</html>

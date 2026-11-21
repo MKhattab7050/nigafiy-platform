@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Watch incident</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8A4B00}a:hover{color:#5C3200}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #C27C0E; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Watch</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; min-height: 740px">
+      <nav aria-label="Watch" style="flex: 1 1 200px; max-width: 230px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="7">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span style="flex: 1">{{n.label}}</span>
+            <span style="font-size: 12px; font-weight: 600">{{n.badge}}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <main style="flex: 999 1 560px; min-width: 0; background: var(--layer); border-start-start-radius: 8px; border-top: 1px solid var(--stroke); border-inline-start: 1px solid var(--stroke); padding: 24px 28px; display: flex; flex-wrap: wrap; gap: 20px; align-content: flex-start">
+        <div style="flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; background: var(--critBg); color: var(--crit); font-size: 12px; font-weight: 600">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8zM12 8v5M12 16v.5"></path></svg>{{t.critical}}
+          </span>
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; flex: 1 1 320px">{{t.title}}</h1>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 14px; border-radius: 5px; border: 1px solid var(--stroke); background: var(--card); color: var(--fg); text-decoration: none; font-size: 13px">{{t.assign}}</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 14px; border-radius: 5px; background: #A15C00; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.ack}}</a>
+        </div>
+
+        <section aria-labelledby="dx-h" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C27C0E" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v6a6 6 0 0 0 12 0V3M12 15v3a3 3 0 0 0 6 0v-1M18 15m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0"></path></svg>
+            <h2 id="dx-h" style="margin: 0; font-size: 17px; font-weight: 600; flex: 1">{{t.doctor}}</h2>
+            <span style="font-size: 12px; color: var(--fg2)">rules-v1</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+            <sc-for list="{{path}}" as="p" hint-placeholder-count="4">
+              <div style="display: flex; align-items: center; gap: 6px">
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 104px; padding: 10px 8px; border-radius: 8px; border: 1px solid {{p.border}}; background: {{p.bg}}">
+                  <span style="font-size: 13px; font-weight: 600">{{p.name}}</span>
+                  <span style="font-size: 12px; font-weight: 600; color: {{p.color}}">{{p.state}}</span>
+                </div>
+                <sc-if value="{{p.arrow}}" hint-placeholder-val="{{true}}"><span aria-hidden="true" style="color: var(--fg2)">{{arrow}}</span></sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div>
+            <div style="font-size: 15px; font-weight: 600">{{t.cause}}</div>
+            <div style="font-size: 13px; color: var(--fg2); margin-top: 4px">{{t.confidence}}</div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 20px">
+            <div style="flex: 1 1 260px; display: flex; flex-direction: column; gap: 8px">
+              <div style="font-size: 13px; font-weight: 600">{{t.evidence}}</div>
+              <sc-for list="{{evidence}}" as="e" hint-placeholder-count="3">
+                <div style="display: flex; gap: 8px; font-size: 13px">
+                  <span style="flex: none; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; background: {{e.tagBg}}; color: {{e.tagFg}}">{{e.tag}}</span>
+                  <span>{{e.text}}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex: 1 1 220px; display: flex; flex-direction: column; gap: 8px">
+              <div style="font-size: 13px; font-weight: 600">{{t.ruledOut}}</div>
+              <sc-for list="{{ruled}}" as="r" hint-placeholder-count="2"><div style="font-size: 13px; color: var(--fg2)">✕ {{r.text}}</div></sc-for>
+              <div style="font-size: 13px; font-weight: 600; margin-top: 6px">{{t.next}}</div>
+              <sc-for list="{{steps}}" as="s" hint-placeholder-count="2"><div style="font-size: 13px">{{s.n}}. {{s.text}}</div></sc-for>
+            </div>
+          </div>
+        </section>
+
+        <aside aria-labelledby="tl-h" style="flex: 1 1 280px; max-width: 360px; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); align-self: flex-start">
+          <h2 id="tl-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.timeline}}</h2>
+          <sc-for list="{{timeline}}" as="e" hint-placeholder-count="5">
+            <div style="display: flex; gap: 10px">
+              <div style="display: flex; flex-direction: column; align-items: center"><span style="width: 10px; height: 10px; border-radius: 5px; background: {{e.color}}; margin-top: 4px"></span><span style="flex: 1; width: 2px; background: var(--stroke)"></span></div>
+              <div style="padding-bottom: 8px"><div style="font-size: 12px; color: var(--fg2)">{{e.when}}</div><div style="font-size: 13px">{{e.text}}</div></div>
+            </div>
+          </sc-for>
+          <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.replay}}</a>
+        </aside>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1f1b16', mica: '#24211c', layer: '#2a2722', card: '#312d28', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c8c2ba', accentText: '#f2b45a', ok: '#6ccb5f', okBg: 'rgba(108,203,95,0.12)', crit: '#ff8a8a', critBg: 'rgba(255,138,138,0.14)', sel: 'rgba(242,180,90,0.13)', obsBg: 'rgba(98,171,245,0.16)', obsFg: '#8fc3ff', infBg: 'rgba(255,255,255,0.08)' }
+      : { desk: '#ece3d6', mica: '#f7f2ea', layer: '#fbf9f6', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#8A4B00', ok: '#0E7A0D', okBg: '#e9f5e8', crit: '#B3261E', critBg: '#fbeae9', sel: 'rgba(194,124,14,0.12)', obsBg: '#e6effa', obsFg: '#0F4FA0', infBg: '#eeeeee' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', critical: 'حرج · مفتوحة', title: 'الحادثة #[رقم]: البوابة في [اسم الموقع] لا تستجيب', assign: 'إسناد', ack: 'تأكيد الاستلام',
+      doctor: 'تشخيص طبيب الشبكة', cause: 'السبب المرجّح: الراوتر في الموقع مطفأ أو متوقف عن الاستجابة', confidence: 'الثقة: عالية، لأن قياسين مستقلين متفقان (ping البوابة وجدول الجيران)',
+      evidence: 'الأدلة', ruledOut: 'تم استبعاده', next: 'الخطوات المقترحة', timeline: 'قبل / أثناء / بعد', replay: 'إعادة عرض الحادثة كاملة',
+    } : {
+      mockup: 'Design mockup, not real data', critical: 'Critical · open', title: 'Incident #[number]: gateway at [site name] not responding', assign: 'Assign', ack: 'Acknowledge',
+      doctor: 'Network Doctor diagnosis', cause: 'Probable cause: the router at the site is powered off or hung', confidence: 'Confidence: high, because two independent measurements agree (gateway ping and the neighbour table)',
+      evidence: 'Evidence', ruledOut: 'Ruled out', next: 'Suggested steps', timeline: 'Before / during / after', replay: 'Replay the whole incident',
+    };
+    const navItems = [
+      [ar ? 'المراقبة' : 'Monitoring', 'M3 12h4l2-5 4 10 2-5h6', ''],
+      [ar ? 'الحوادث' : 'Incidents', 'M12 3l9 16H3zM12 10v4M12 17v.5', '[n]'],
+      [ar ? 'طبيب الشبكة' : 'Network Doctor', 'M6 3v6a6 6 0 0 0 12 0V3', ''],
+      [ar ? 'الأحداث' : 'Events', 'M4 6h16M4 12h16M4 18h10', ''],
+      [ar ? 'آلة الزمن' : 'Time Machine', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v5l3 2', ''],
+      [ar ? 'تحليل الأثر' : 'Impact', 'M5 12h4l3-7 3 14 3-7h1', ''],
+      [ar ? 'التقارير' : 'Reports', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7', ''],
+    ];
+    const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], badge: n[2], style: i === 1 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #C27C0E;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
+    const okS = { state: ar ? 'سليم' : 'OK', color: 'var(--ok)', border: 'var(--stroke)', bg: 'transparent' };
+    const badS = { state: ar ? 'لا يستجيب' : 'Not responding', color: 'var(--crit)', border: 'var(--crit)', bg: 'var(--critBg)' };
+    const unkS = { state: ar ? 'لا يمكن التحقق' : 'Cannot check', color: 'var(--fg2)', border: 'var(--stroke)', bg: 'transparent' };
+    const path = [
+      { name: ar ? 'الشبكة المحلية' : 'LAN', ...okS, arrow: true },
+      { name: ar ? 'البوابة' : 'Gateway', ...badS, arrow: true },
+      { name: ar ? 'الإنترنت' : 'Internet', ...unkS, arrow: true },
+      { name: 'DNS', ...unkS, arrow: false },
+    ];
+    const obs = { tag: ar ? 'مُلاحَظ' : 'Observed', tagBg: 'var(--obsBg)', tagFg: 'var(--obsFg)' };
+    const inf = { tag: ar ? 'مُستنتَج' : 'Inferred', tagBg: 'var(--infBg)', tagFg: 'var(--fg2)' };
+    const evidence = ar
+      ? [{ ...obs, text: 'ping البوابة: 0 من [n] ردود' }, { ...obs, text: 'البوابة اختفت من جدول الجيران' }, { ...inf, text: 'باقي الأجهزة المحلية تستجيب، إذن الشبكة المحلية سليمة' }]
+      : [{ ...obs, text: 'Gateway ping: 0 of [n] replies' }, { ...obs, text: 'Gateway gone from the neighbour table' }, { ...inf, text: 'Other local devices answer, so the LAN itself is fine' }];
+    const ruled = (ar ? ['عطل في المستشعر (يرسل بانتظام)', 'عطل DNS وحده'] : ['Sensor failure (it is reporting normally)', 'A DNS-only fault']).map((x) => ({ text: x }));
+    const steps = (ar ? ['تحقق من كهرباء الراوتر وأضوائه', 'أعد تشغيله إن كان متوقفاً'] : ['Check the router’s power and lights', 'Restart it if it is hung']).map((x, i) => ({ n: i + 1, text: x }));
+    const timeline = ar ? [
+      { when: '[وقت] · قبل', text: 'زمن استجابة البوابة يرتفع', color: 'var(--fg2)' },
+      { when: '[وقت] · بداية', text: 'فحص البوابة: متوقف', color: 'var(--crit)' },
+      { when: '[وقت]', text: 'فحص الإنترنت: متوقف', color: 'var(--crit)' },
+      { when: '[وقت]', text: 'تم فتح الحادثة تلقائياً', color: '#C27C0E' },
+      { when: '[وقت]', text: '[اسم المستخدم] كتب تعليقاً', color: 'var(--fg2)' },
+    ] : [
+      { when: '[time] · before', text: 'Gateway latency rising', color: 'var(--fg2)' },
+      { when: '[time] · start', text: 'Gateway check: down', color: 'var(--crit)' },
+      { when: '[time]', text: 'Internet check: down', color: 'var(--crit)' },
+      { when: '[time]', text: 'Incident opened automatically', color: '#C27C0E' },
+      { when: '[time]', text: '[user name] added a comment', color: 'var(--fg2)' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, path, evidence, ruled, steps, timeline, arrow: ar ? '←' : '→' };
+  }
+}
+</script>
+</body>
+</html>

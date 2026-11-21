@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Mind playbook approval</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#8E1F84}a:hover{color:#5E1457}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #C239B3; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Mind</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; min-height: 740px">
+      <nav aria-label="Mind" style="flex: 1 1 200px; max-width: 230px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span style="flex: 1">{{n.label}}</span>
+            <span style="font-size: 12px; font-weight: 600">{{n.badge}}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <main style="flex: 999 1 560px; min-width: 0; background: var(--layer); border-start-start-radius: 8px; border-top: 1px solid var(--stroke); border-inline-start: 1px solid var(--stroke); padding: 24px 28px; display: flex; flex-wrap: wrap; gap: 20px; align-content: flex-start">
+        <div style="flex: 1 1 100%">
+          <div style="font-size: 13px; color: var(--fg2)">{{t.kicker}}</div>
+          <h1 style="margin: 2px 0 0; font-size: 24px; font-weight: 600">{{t.title}}</h1>
+          <div style="font-size: 13px; color: var(--fg2); margin-top: 4px">{{t.trigger}}</div>
+        </div>
+        <section aria-label="{{t.steps}}" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+          <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+            <div style="display: flex; gap: 14px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid {{s.border}}">
+              <div style="flex: none; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; background: {{s.dotBg}}; color: {{s.dotFg}}">{{s.n}}</div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+                  <span style="font-size: 15px; font-weight: 600; flex: 1">{{s.name}}</span>
+                  <span style="font-size: 12px; font-weight: 600; color: {{s.stateColor}}">{{s.state}}</span>
+                </div>
+                <div style="font-size: 13px; color: var(--fg2)">{{s.detail}}</div>
+                <sc-if value="{{s.gate}}" hint-placeholder-val="{{false}}">
+                  <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px">
+                    <label style="display: flex; flex-direction: column; gap: 4px; font-size: 13px">{{t.comment}}
+                      <input type="text" style="height: 34px; padding-inline: 10px; border-radius: 5px; border: 1px solid var(--stroke2); background: var(--card); color: var(--fg); font: inherit">
+                    </label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center">
+                      <a href="#" style="display: inline-flex; align-items: center; min-height: 34px; padding-inline: 16px; border-radius: 5px; background: #A8279B; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.approve}}</a>
+                      <a href="#" style="display: inline-flex; align-items: center; min-height: 34px; padding-inline: 16px; border-radius: 5px; border: 1px solid var(--stroke2); color: var(--fg); text-decoration: none; font-size: 13px">{{t.reject}}</a>
+                      <span style="font-size: 12px; color: var(--fg2)">{{t.rule}}</span>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </section>
+        <aside style="flex: 1 1 280px; max-width: 360px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+            <div style="font-size: 15px; font-weight: 600">{{t.kbTitle}}</div>
+            <div style="font-size: 14px">[Knowledge article title]</div>
+            <div style="font-size: 12px; color: var(--fg2)">{{t.kbWhy}}</div>
+            <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.kbOpen}}</a>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px dashed var(--stroke2)">
+            <div style="font-size: 15px; font-weight: 600">{{t.aiTitle}}</div>
+            <div style="font-size: 13px; color: var(--fg2)">{{t.aiText}}</div>
+            <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.aiLink}}</a>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#221a21', mica: '#271f26', layer: '#2d252c', card: '#342b33', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#cbbfca', accentText: '#f39ae9', ok: '#6ccb5f', warn: '#f7a64a', sel: 'rgba(243,154,233,0.12)', pinkSoft: 'rgba(243,154,233,0.18)' }
+      : { desk: '#efdfec', mica: '#f9f1f8', layer: '#fdfafc', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#8E1F84', ok: '#0E7A0D', warn: '#9D5300', sel: 'rgba(194,57,179,0.10)', pinkSoft: '#f8e3f5' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', kicker: 'تشغيل إجراء · #[رقم]', title: '[اسم الإجراء]: جهاز غير مرغوب ظهر على الشبكة', trigger: 'المُشغِّل: حدث «جهاز غير مرغوب متصل» على [اسم الجهاز] · [وقت]', steps: 'الخطوات',
+      comment: 'تعليق (اختياري)', approve: 'موافقة وتنفيذ', reject: 'رفض', rule: 'قاعدة الشخصين مفعّلة: لا يوافق من أنشأ الإجراء · تنتهي الموافقة خلال [n] دقيقة',
+      kbTitle: 'إصلاح مشابه من قبل', kbWhy: 'لماذا: نفس القاعدة ونفس الشركة المصنعة · استُخدم [n] مرة', kbOpen: 'فتح المقال',
+      aiTitle: 'المساعد متوقف', aiText: 'المساعد اختياري ويعمل بمفتاحك أنت فقط. يعيد صياغة ما وجدته القواعد ولا يخترع أسباباً.', aiLink: 'الإعدادات',
+    } : {
+      mockup: 'Design mockup, not real data', kicker: 'Playbook run · #[number]', title: '[Playbook name]: unwanted device appeared', trigger: 'Trigger: “unwanted device online” for [device name] · [time]', steps: 'Steps',
+      comment: 'Comment (optional)', approve: 'Approve and run', reject: 'Reject', rule: 'Two-person rule is on: the author cannot approve · approval expires in [n] min',
+      kbTitle: 'A similar past fix', kbWhy: 'Why: same rule and same vendor · used [n] times', kbOpen: 'Open article',
+      aiTitle: 'Assistant is off', aiText: 'The assistant is optional and runs only with your own key. It rephrases what the rules found and never invents causes.', aiLink: 'Settings',
+    };
+    const navItems = [
+      [ar ? 'الإجراءات' : 'Playbooks', 'M6 3v12M18 9v12M6 15a3 3 0 0 0 3 3h6M18 9a3 3 0 0 0-3-3H9', ''],
+      [ar ? 'بانتظار الموافقة' : 'Waiting for approval', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v5l3 2', '[n]'],
+      [ar ? 'المعرفة' : 'Knowledge', 'M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM8 7h6', ''],
+      [ar ? 'الأتمتة' : 'Automation', 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3', ''],
+      [ar ? 'المساعد' : 'Assistant', 'M12 3v4M12 17v4M3 12h4M17 12h4', ''],
+    ];
+    const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], badge: n[2], style: i === 1 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #C239B3;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
+    const done = { dotBg: 'var(--ok)', dotFg: '#fff', border: 'var(--stroke)', stateColor: 'var(--ok)', gate: false };
+    const wait = { dotBg: '#A8279B', dotFg: '#fff', border: '#C239B3', stateColor: '#C239B3', gate: true };
+    const pend = { dotBg: 'var(--pinkSoft)', dotFg: 'var(--fg2)', border: 'var(--stroke)', stateColor: 'var(--fg2)', gate: false };
+    const steps = ar ? [
+      { ...done, n: 1, name: 'إشعار المسؤولين', state: 'تم', detail: 'أُرسل بريد إلى [n] مسؤول · [وقت]' },
+      { ...wait, n: 2, name: 'إيقاف إنترنت الجهاز لساعة', state: 'بانتظار موافقتك', detail: 'خطوة مُعطِّلة، لذلك تحتاج موافقة. الأثر المتوقع: يعمل فقط إن كان الجهاز يستخدم فلتر DNS (يستخدمه الآن).' },
+      { ...pend, n: 3, name: 'فتح حادثة في Watch', state: 'لم تبدأ', detail: 'تبدأ بعد الخطوة 2' },
+    ] : [
+      { ...done, n: 1, name: 'Notify administrators', state: 'Done', detail: 'Email sent to [n] administrators · [time]' },
+      { ...wait, n: 2, name: 'Pause the device’s internet for 1 hour', state: 'Waiting for you', detail: 'Disruptive, so it needs approval. Expected effect: works only if the device uses the DNS filter (it does now).' },
+      { ...pend, n: 3, name: 'Open an incident in Watch', state: 'Not started', detail: 'Starts after step 2' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, steps };
+  }
+}
+</script>
+</body>
+</html>
