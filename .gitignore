@@ -21,3 +21,7 @@ next-env.d.ts
 
 # desktop installer staging (apps/desktop/scripts/bundle-backend.mjs)
 apps/desktop/build/
+
+# web browser smoke tests (apps/web/e2e)
+apps/web/test-results/
+apps/web/playwright-report/

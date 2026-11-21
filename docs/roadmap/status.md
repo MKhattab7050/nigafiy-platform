@@ -101,6 +101,8 @@ Milestone 0b finished the rows that were missing or partial at the baseline (col
 
 Milestone 0b verification (2026-11-21): `pnpm typecheck`, 161 API tests, collector and agent Go tests, web build and desktop tests pass. Real run on 192.168.1.0/24 against the dev stack: "run now" for rogue DHCP (one offer, from the router 192.168.1.2), UPnP (no gateway answered), Wi-Fi (host on Ethernet, 10 networks listed) and banners (7 devices probed) all returned ok and cleared their requests; the DHCP fingerprint check ran on schedule. **Not yet done:** the packaged-app smoke test with the new screens (`pnpm run pack` + `--local-smoke`).
 
+Track B, Step B1 (2026-11-21): the endpoint agent and collector now both declare Go 1.27.3; the web app sends a per-request nonce-based Content-Security-Policy from `apps/web/proxy.ts` (`lib/csp.ts`: nonce + `'strict-dynamic'` scripts, no `eval` in production, same-origin connections, `frame-ancestors 'none'`); `pnpm lint` runs Biome (`biome.json`: recommended rules, 0 errors; the remaining warnings are advisory: non-null assertions are allowed, and several a11y rules are warnings because they misfire on the app's own `Input`/`Select` wrappers); `.github/workflows/ci.yml` runs the whole gate on `windows-latest`; and `pnpm test:web` (Playwright, `apps/web/e2e`) builds the web app for production, starts a throw-away PostgreSQL and the real API, registers an account through the UI and walks Dashboard, Devices, Routers, Monitoring, Incidents, Endpoints and Settings in English and Arabic (RTL), failing on any uncaught page error, error boundary or CSP violation. It uses the installed Edge (`E2E_BROWSER_CHANNEL` to change). **Not yet done:** the CI workflow has not run on GitHub (nothing pushed), and the packaged desktop app has not been re-checked with the CSP proxy.
+
 ## Verified in the development environment
 
 **Baseline 2026-11-21 (before the Nigafiy restructuring):** `pnpm typecheck` clean; `pnpm test` 21 files / 161 tests passing; `pnpm test:collector`, `pnpm test:agent` and `go vet` clean; web production build; desktop unit tests (11); `pnpm run pack` in `apps/desktop`, and the unpacked app run with a scratch `--user-data-dir --local-smoke`: database, API and web started on 127.0.0.1, account created and signed in, collector enrolled and swept 192.168.1.0/24 (7 devices), clean quit. Fixed on the way: the packaged API could not start (`@lan-detective/shared-types` runtime values are now compiled into the bundle by `bundle-backend.mjs`), a knowledge candidate's detail page did not pick up later incident comments, and two stale test expectations.
@@ -114,7 +116,7 @@ Milestone 0b verification (2026-11-21): `pnpm typecheck`, 161 API tests, collect
 | Real LAN | The collector binary swept a real home/office Wi-Fi network (192.168.1.0/24, Windows host): 7 devices with MAC addresses, router vendor from the IEEE registry, randomized MACs flagged, the collector host's own MAC read from its interface, real gateway / internet / DNS checks, topology with observed layer-2 edges |
 | Desktop app, self-contained | Packaged app (`electron-builder --win dir`, copied outside the repository) opened in local mode with a fresh profile: started the bundled database, API and web server on 127.0.0.1 with Electron's own Node 22, created and signed in to the local account, authorized 192.168.1.0/24, enrolled the bundled collector (first sweep: 8 devices) and showed the dashboard; Quit stopped every process. The scan consent was given through the non-interactive test switch, not by clicking the dialog. The NSIS installer itself was built but not installed over the existing installation |
 | One-command home use | `pnpm local` on Windows from a clean stop: started database, API and web, detected 192.168.1.0/24, created the account, authorized the range, enrolled the collector (passive DHCP on) and the devices appeared in the web app; a second run resumed without setup. The interactive prompts were exercised through their non-interactive path (`LD_SETUP_*` + `--yes`); the double-click `.cmd` file and macOS/Linux were not run |
-| Web app | Type-check, production build, manual check of every Phase 2 page in a browser using `scripts/seed-simulated.mjs` |
+| Web app | Type-check, Biome lint, production build, Playwright smoke tests of the main screens in EN + AR against a real stack (`pnpm test:web`), manual check of every Phase 2 page in a browser using `scripts/seed-simulated.mjs` |
 
 `scripts/seed-simulated.mjs` creates an organization named **"SIMULATED demo (not real data)"** and
 feeds it invented telemetry through the real API. It is for looking at the UI only.
@@ -126,7 +128,7 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 - A real outage on the real LAN (discovery and checks ran there; no fault occurred, so incident and diagnosis paths were not triggered by real data).
 - Larger or wired networks, managed switches, multiple subnets.
 - `docker-compose.yml`, the collector `Dockerfile`, the systemd unit; the collector at runtime on Linux.
-- Go race detector (needs cgo); automated browser tests; load and scale.
+- Go race detector (needs cgo); load and scale. Browser tests cover the main screens only, not every action on them.
 - Topology with several hundred devices (layout is designed for it; only ~20 simulated devices were viewed).
 
 ## Known limitations
@@ -168,7 +170,7 @@ six phases. Status against it:
 | 6 Intelligence | knowledge memory, incident replay, digital twin, reports, multi-site / MSP | **Built (AI removed per owner decision).** Incident replay, multi-tenant data model, trigram global search (`020`), printable summary reports (`/reports`), knowledge memory (`025`), digital twin impact analysis (`/impact`), and multi-site MSP portfolio (`/portfolio`) are built |
 
 **Next, in order:**
-1. Complete Track B hardening & security foundations (Go toolchain alignment, CSP, Biome linting, GitHub Actions CI, frontend tests, multi-instance `commandEvents` via Postgres LISTEN/NOTIFY, optional Redis rate-limit store, `APP_ENCRYPTION_KEY` rotation CLI, DB backup/restore CLI, Remote Desktop frame transport & resize upgrade, DNS Access Control enforcement mode visibility).
+1. Complete Track B hardening (B1 done except the `master` branch clean-up, which needs the owner's OK): multi-instance `commandEvents` via Postgres LISTEN/NOTIFY, optional Redis rate-limit store, `APP_ENCRYPTION_KEY` rotation CLI, DB backup/restore CLI, Remote Desktop frame transport & resize upgrade, DNS Access Control enforcement mode visibility).
 2. Continue the Nigafiy restructuring milestones from Milestone 2 (rename & brand) onward — see `docs/superpowers/plans/2026-11-21-nigafiy-hardening-and-routers.md`.
 
 **Decisions the brief forces** (to make when Phases 3–4 start):

@@ -17,10 +17,15 @@
     "dev:web": "pnpm --filter @lan-detective/web dev",
     "migrate": "pnpm --filter @lan-detective/api migrate",
     "typecheck": "pnpm -r typecheck",
+    "lint": "biome lint .",
     "test": "pnpm --filter @lan-detective/api test",
+    "test:web": "pnpm --filter @lan-detective/web test:e2e",
     "test:collector": "cd collectors/lan-collector && go test ./...",
     "build:collector": "cd collectors/lan-collector && go build -o bin/ ./cmd/lan-collector",
     "test:agent": "cd agents/endpoint-agent && go test ./...",
     "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/endpoint-agent"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8"
   }
 }

@@ -1,0 +1,62 @@
+{
+	"$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+	"vcs": {
+		"enabled": true,
+		"clientKind": "git",
+		"useIgnoreFile": true
+	},
+	"files": {
+		"includes": [
+			"apps/**",
+			"packages/**",
+			"scripts/**",
+			"!**/node_modules",
+			"!**/.next",
+			"!**/dist",
+			"!**/out",
+			"!**/bin",
+			"!**/*.dc.html",
+			"!apps/desktop/build"
+		]
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"assist": {
+		"enabled": false
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"style": {
+				"noNonNullAssertion": "off"
+			},
+			"suspicious": {
+				"noControlCharactersInRegex": "off",
+				"noThenProperty": "off",
+				"noArrayIndexKey": "warn",
+				"noExplicitAny": "warn",
+				"noAssignInExpressions": "warn"
+			},
+			"correctness": {
+				"useExhaustiveDependencies": "warn"
+			},
+			"complexity": {
+				"noImportantStyles": "off"
+			},
+			"a11y": {
+				"noLabelWithoutControl": "warn",
+				"useSemanticElements": "warn",
+				"noStaticElementInteractions": "warn",
+				"useKeyWithClickEvents": "warn",
+				"noNoninteractiveTabindex": "warn"
+			}
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	}
+}

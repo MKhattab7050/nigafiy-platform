@@ -9,7 +9,7 @@ import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { controlText } from '../control-text';
-import type { DeviceQuarantine, Quarantine } from '../control-types';
+import type { DeviceQuarantine as DeviceQuarantineState, Quarantine } from '../control-types';
 import { RiskList } from './port-actions';
 
 const TONE: Record<Quarantine['status'], Tone> = { requested: 'info', active: 'warn', failed: 'crit', releasing: 'info', released: 'idle' };
@@ -20,7 +20,7 @@ export function DeviceQuarantine({ deviceId }: { deviceId: string }) {
   const cx = controlText(locale);
   const { can } = useApp();
   const admin = can('admin');
-  const q = useQuery<DeviceQuarantine>(`/devices/${deviceId}/quarantine`, ['devices'], 15_000);
+  const q = useQuery<DeviceQuarantineState>(`/devices/${deviceId}/quarantine`, ['devices'], 15_000);
   const [dialog, setDialog] = useState<'quarantine' | 'release' | null>(null);
   if (!q.data) return null;
   const d = q.data;
@@ -110,7 +110,7 @@ export function DeviceQuarantine({ deviceId }: { deviceId: string }) {
   );
 }
 
-function QuarantineDialog({ mode, deviceId, data, onClose, onDone }: { mode: 'quarantine' | 'release'; deviceId: string; data: DeviceQuarantine; onClose: () => void; onDone: () => void }) {
+function QuarantineDialog({ mode, deviceId, data, onClose, onDone }: { mode: 'quarantine' | 'release'; deviceId: string; data: DeviceQuarantineState; onClose: () => void; onDone: () => void }) {
   const { locale } = useI18n();
   const cx = controlText(locale);
   const [reason, setReason] = useState('');

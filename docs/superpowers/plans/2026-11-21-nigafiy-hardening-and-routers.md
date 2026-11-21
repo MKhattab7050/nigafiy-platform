@@ -77,11 +77,11 @@ Target vendor drivers (added incrementally, one vendor or clean group per commit
 ### Track B — Architecture, Security & Quality Hardening
 
 #### Step B1: Foundations (CI, Linting, CSP, Go Alignment, Frontend Tests, Git Hygiene)
-- [ ] Align Go toolchain version across `collectors/lan-collector/go.mod` and `agents/endpoint-agent/go.mod`.
-- [ ] Add `Content-Security-Policy` header in `apps/web/next.config.ts` and verify zero CSP console errors across EN/AR pages.
-- [ ] Add Biome (`biome.json`) + `pnpm lint` across the monorepo.
-- [ ] Add GitHub Actions CI (`.github/workflows/ci.yml`) running `typecheck`, `lint`, API integration tests, Go tests (`collector` + `agent`), desktop tests, and `web` build.
-- [ ] Add frontend E2E / component smoke tests in `apps/web` covering Auth, Dashboard, Devices, Routers, Monitoring, Incidents, Endpoints, and Settings (EN + AR/RTL).
+- [x] Align Go toolchain version across `collectors/lan-collector/go.mod` and `agents/endpoint-agent/go.mod`.
+- [x] Add `Content-Security-Policy` header in `apps/web/next.config.ts` and verify zero CSP console errors across EN/AR pages.
+- [x] Add Biome (`biome.json`) + `pnpm lint` across the monorepo.
+- [x] Add GitHub Actions CI (`.github/workflows/ci.yml`) running `typecheck`, `lint`, API integration tests, Go tests (`collector` + `agent`), desktop tests, and `web` build.
+- [x] Add frontend E2E / component smoke tests in `apps/web` covering Auth, Dashboard, Devices, Routers, Monitoring, Incidents, Endpoints, and Settings (EN + AR/RTL).
 - [ ] Clean up `master` vs `phase-2-network-intelligence` divergence (with owner approval before merging/fast-forwarding `master`).
 
 #### Step B2: Multi-Instance Reliability, Secrets Lifecycle & Remote Desktop Pre-WebRTC Fixes
@@ -112,5 +112,5 @@ Resuming right after Milestone 0b (`3501abe`) following `docs/superpowers/plans/
 - [ ] **Milestone 4b — Fleet Pro** (DXGI + H.264 WebRTC via `pion/webrtc` + TURN relay, secure desktop/Winlogon, Quick Support, recording, clipboard, PowerShell, scripts, patches)
 - [ ] **Milestone 5 — Installers + LAN Detective Upgrade Path** *(owner gate: code-signing certificate)*
 - [ ] **Milestone 6 — Parity Audit** (EN + AR/RTL across all programs, minus removed AI Assistant)
-- [ ] **Milestone 7 — Website (`apps/site`)** *(owner gate: domain & download host)*
+- [ ] **Milestone 7 — Website (`apps/site`)** *(owner gate: domain & download host)* — **on hold (owner, 2026-11-21): the app comes first; do not work on the website until the owner asks.**
 - [ ] **Milestone 8 — Remaining Roadmap**

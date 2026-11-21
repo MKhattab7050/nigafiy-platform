@@ -42,6 +42,8 @@ function InlineView({ nodes }: { nodes: Inline[] }) {
                 <InlineView nodes={n.children} />
               </Link>
             );
+          default:
+            return null;
         }
       })}
     </>
