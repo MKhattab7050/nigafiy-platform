@@ -1,15 +1,15 @@
 'use client';
 
-import { MonitorSmartphone } from 'lucide-react';
-import Link from 'next/link';
-import { useState } from 'react';
 import type { AccessPage } from '@lan-detective/shared-types';
+import { MonitorSmartphone } from 'lucide-react';
+import { useState } from 'react';
 import { ProportionBar } from '@/components/charts';
+import { DeviceLink } from '@/components/device-link';
 import { Badge, Card, EmptyState, ErrorNote, Select, StatusBadge } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
-import { PauseControl } from './pause-control';
+import { fill, useI18n } from '@/lib/i18n';
 import { accessText } from '../text';
+import { PauseControl } from './pause-control';
 
 export function Devices({ data, admin, canPause, onChanged }: { data: AccessPage; admin: boolean; canPause: boolean; onChanged: () => void }) {
   const { t, locale } = useI18n();
@@ -41,16 +41,44 @@ export function Devices({ data, admin, canPause, onChanged }: { data: AccessPage
         {data.devices.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
-              <Link href={`/devices/${d.id}`} className="block truncate font-medium hover:text-accent-hover" dir="auto">
+              <DeviceLink id={d.id} className="block truncate font-medium hover:text-accent-hover" dir="auto">
                 {d.name}
-              </Link>
+              </DeviceLink>
               <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
                 <StatusBadge status={d.status as 'online'} />
                 <span className="mono">{d.ip ?? '—'}</span>
-                {data.settings.enabled && (
-                  <Badge tone={d.protected ? 'ok' : 'idle'} dot>
-                    {d.protected ? tx.protected : tx.notProtected}
+                {d.enforcement_mode && (
+                  <Badge
+                    tone={
+                      d.enforcement_mode === 'router_and_dns'
+                        ? 'ok'
+                        : d.enforcement_mode === 'router_only'
+                          ? 'info'
+                          : d.enforcement_mode === 'dns_only'
+                            ? 'warn'
+                            : 'idle'
+                    }
+                    dot
+                  >
+                    {tx.enforcement.mode[d.enforcement_mode]}
                   </Badge>
+                )}
+                {d.router_blocked && (
+                  <Badge tone="crit" dot={false}>
+                    {tx.enforcement.deviceRouterBlocked}
+                  </Badge>
+                )}
+                {d.router_scheduled && (
+                  <Badge tone="info" dot={false}>
+                    {tx.enforcement.deviceRouterScheduled}
+                  </Badge>
+                )}
+                {d.doh_bypass_24h > 0 && (
+                  <span title={d.doh_domains_24h.join(', ')}>
+                    <Badge tone="warn" dot={false}>
+                      {fill(tx.enforcement.deviceDohBadge, { n: d.doh_bypass_24h })}
+                    </Badge>
+                  </span>
                 )}
                 {(d.queries_24h > 0 || d.blocked_24h > 0) && (
                   <span className="tnum">

@@ -7,10 +7,12 @@ import { withTenant } from '../../../infrastructure/db.ts';
 import { emitEvent } from '../../events/index.ts';
 import { buildCapabilities } from '../capabilities.ts';
 import { ONLINE_WITHIN_MS, queueUserNotice } from '../repo.ts';
+import { dropFrames, publishFramesCleared } from './frames.ts';
 import type { RdStart } from './schema.ts';
 
 // Live Remote Desktop session management. Frames and input travel as rd_capture / rd_input
-// commands (commands/service.ts), which are only accepted while a session is started here.
+// commands (commands/service.ts), which are only accepted while a session is started here. The
+// images themselves are transient (frames.ts); the session's start and stop are audited.
 // `req` is passed only for the audit trail.
 
 export async function startSession(req: Request, ctx: AuthContext, id: string, body: RdStart): Promise<{ session: RemoteDesktopSession; last_frame: RemoteDesktopFrame | null }> {
@@ -25,9 +27,8 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
         status: string;
         last_heartbeat_at: Date | null;
         policy: EndpointPolicy;
-        last_rd_frame: RemoteDesktopFrame | null;
       }>(
-        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, last_rd_frame
+        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy
            FROM endpoints WHERE id = $1`,
         [id],
       )
@@ -66,6 +67,9 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
     };
 
     await db.query(`UPDATE endpoints SET rd_session = $2::jsonb WHERE id = $1`, [id, JSON.stringify(session)]);
+    // A new session never shows a frame of an earlier one.
+    dropFrames(id);
+    await publishFramesCleared(db, id);
 
     // Never silent: the person at the endpoint is told who is viewing before the first frame is taken.
     await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session started', `${ctx.userEmail} can now see and control this screen. The session is logged.`);
@@ -94,7 +98,7 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       source: 'platform',
       occurredAt: new Date(),
     });
-    return { session, last_frame: ep.last_rd_frame };
+    return { session, last_frame: null };
   });
 }
 
@@ -109,7 +113,10 @@ export async function stopSession(req: Request, ctx: AuthContext, id: string): P
         WHERE endpoint_id = $1 AND kind IN ('rd_capture', 'rd_input') AND status IN ('pending', 'delivered')`,
       [id],
     );
-    await db.query(`UPDATE endpoints SET rd_session = NULL, last_rd_frame = NULL WHERE id = $1`, [id]);
+    await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [id]);
+    // The frames are dropped from memory on every API instance.
+    dropFrames(id);
+    await publishFramesCleared(db, id);
     if (ep.active) {
       await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session ended', `${ctx.userEmail} is no longer viewing this screen.`);
     }

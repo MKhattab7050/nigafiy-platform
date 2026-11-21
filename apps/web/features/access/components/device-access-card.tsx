@@ -8,7 +8,7 @@ import type { AccessDevice, AccessPage } from '@lan-detective/shared-types';
 import { Badge, Button, Card, ErrorNote, Field, Select, Spinner, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
-import { useI18n } from '@/lib/i18n';
+import { fill, useI18n } from '@/lib/i18n';
 import { PauseControl } from './pause-control';
 import { linesToList } from './rule-editors';
 import { accessText } from '../text';
@@ -44,7 +44,7 @@ function DeviceAccessCardBody({ deviceId, siteId }: { deviceId: string; siteId: 
     return (
       <div className="space-y-2 text-sm text-muted">
         <p>{tx.deviceCardOff}</p>
-        <Link href="/access" className="text-accent hover:underline">
+        <Link href="/guard/access" className="text-accent hover:underline">
           {tx.setUp}
         </Link>
       </div>
@@ -64,8 +64,26 @@ function DeviceAccessCardBody({ deviceId, siteId }: { deviceId: string; siteId: 
   return (
     <div className="space-y-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={d.protected ? 'ok' : 'idle'}>{d.protected ? tx.protected : tx.notProtected}</Badge>
-        {!d.internet_off && !d.paused_until && <Badge tone="ok">{tx.internetOn}</Badge>}
+        <Badge
+          tone={
+            d.enforcement_mode === 'router_and_dns'
+              ? 'ok'
+              : d.enforcement_mode === 'router_only'
+                ? 'info'
+                : d.enforcement_mode === 'dns_only'
+                  ? 'warn'
+                  : 'idle'
+          }
+        >
+          {tx.enforcement.mode[d.enforcement_mode ?? (d.protected ? 'dns_only' : 'unprotected')]}
+        </Badge>
+        {d.router_blocked && <Badge tone="crit">{tx.enforcement.deviceRouterBlocked}</Badge>}
+        {d.doh_bypass_24h > 0 && (
+          <span title={d.doh_domains_24h.join(', ')}>
+            <Badge tone="warn">{fill(tx.enforcement.deviceDohBadge, { n: d.doh_bypass_24h })}</Badge>
+          </span>
+        )}
+        {!d.internet_off && !d.paused_until && !d.router_blocked && <Badge tone="ok">{tx.internetOn}</Badge>}
       </div>
       <PauseControl path={`/devices/${deviceId}/pause`} pausedUntil={d.paused_until} internetOff={d.internet_off} canPause={can('technician')} onChanged={page.reload} />
       <label className="block text-xs text-muted">

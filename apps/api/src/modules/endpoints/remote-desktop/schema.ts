@@ -19,6 +19,8 @@ export const rdCaptureCommandSchema = z
     display_index: z.number().int().min(0).max(8).default(0),
     quality: z.number().int().min(25).max(95).default(65),
     scale: z.number().min(0.25).max(1.0).default(0.75),
+    // Send the image even if the screen did not change (the viewer has no frame yet).
+    full_frame: z.boolean().optional(),
   })
   .strict();
 

@@ -86,16 +86,16 @@ Target vendor drivers (added incrementally, one vendor or clean group per commit
 
 #### Step B2: Multi-Instance Reliability, Secrets Lifecycle & Remote Desktop Pre-WebRTC Fixes
 
-> **Parked (owner, 2026-11-21): "do the desktop app first".** Only the `commandEvents` item is done; the rest of B2 resumes after the desktop milestones (Track C, Milestones 2–4).
+> **Parked (owner, 2026-11-21): "do the desktop app first".** Resumed 2026-11-22: Redis store, key rotation, backup/restore and the remote desktop items are done (verification and what is not verified: `docs/roadmap/status.md`, Track B / B2). The DNS item is being done separately.
 
 - [x] Replace in-memory `commandEvents` (`EventEmitter` in `apps/api/src/modules/endpoints/repo.ts`) with PostgreSQL `LISTEN/NOTIFY` so interactive endpoint commands work across multiple API instances.
-- [ ] Add optional `REDIS_URL` store for `express-rate-limit` in `apps/api/src/app.ts` (falling back cleanly to memory store in single-node/local mode).
-- [ ] Add `APP_ENCRYPTION_KEY` key rotation CLI (`rotate-key`) re-encrypting all sealed columns in a single transaction + integration test.
-- [ ] Add documented DB Backup / Restore CLI (`pg_dump` / `pg_restore`) working with both `embedded-postgres` and external PostgreSQL.
-- [ ] Improve current Remote Desktop fallback path before Milestone 4b WebRTC:
+- [x] Add optional `REDIS_URL` store for `express-rate-limit` in `apps/api/src/app.ts` (falling back cleanly to memory store in single-node/local mode).
+- [x] Add `APP_ENCRYPTION_KEY` key rotation CLI (`rotate-key`) re-encrypting all sealed columns in a single transaction + integration test (`tests/rotate-key.test.ts`, 9 tests).
+- [x] Add documented DB Backup / Restore CLI (`pg_dump` / `pg_restore`) working with both `embedded-postgres` and external PostgreSQL (`docs/operations/backup-restore-and-key-rotation.md`; `tests/backup-restore.test.ts`: 8 guard/swap tests pass, the 5 pg_dump/pg_restore tests were skipped on the dev machine — no client tools installed).
+- [x] Improve current Remote Desktop fallback path before Milestone 4b WebRTC:
   - Stop persisting full Base64 JPEG frame payloads in PostgreSQL `endpoint_commands` (stream binary frames over WebSocket or keep transient in-memory/stream channel while preserving session audit logs).
   - Replace `resizeNearest` in `agents/endpoint-agent/internal/remotedesktop/remotedesktop.go` with higher-quality downscaling + unchanged-frame skipping.
-- [ ] Harden DNS Access Control UX: show explicit protection mode (`DNS-only` vs `Router-enforced`) and flag known DoH bypass indicators when observed.
+- [x] Harden DNS Access Control UX: show explicit protection mode (`DNS-only` vs `Router-enforced`) and flag known DoH bypass indicators when observed. (2026-11-22: site mode `router_and_dns` / `router_only` / `dns_only` / `none` counts only routers whose driver reports `block` as supported; a device is router-enforced only while a block or product schedule for it is on the router; DoH counts are encrypted-DNS queries the filter actually blocked, from `dns_stats`. `tests/access-control.test.ts` 8 tests. Not checked in a browser yet.)
 
 ---
 

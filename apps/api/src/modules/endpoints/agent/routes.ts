@@ -7,11 +7,13 @@ import { HEARTBEAT_INTERVAL_SECONDS } from '../repo.ts';
 import { agentCommandResultsSchema, agentEnrollSchema, agentHeartbeatSchema, agentInventorySchema } from '../schema.ts';
 import { requireEndpointAgent } from './auth.ts';
 import { enrollAgent, pollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
+import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 
 /** Agent-facing gateway, mounted at /api/v1/agent. Agents only ever make outbound HTTPS requests to it. */
 export const agentGatewayRouter: Router = Router();
 
 const enrollLimiter = rateLimit({
+  store: limiterStore('agent:enroll'),
   windowMs: 60_000,
   limit: env.NODE_ENV === 'test' ? 10_000 : 20,
   standardHeaders: 'draft-7',

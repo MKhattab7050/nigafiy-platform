@@ -30,7 +30,11 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             <span>
               {frame.width}×{frame.height} (<span dir="auto">{isAr ? 'المصدر' : 'src'}</span> {frame.source_width}×{frame.source_height})
             </span>
-            <span>· {(frame.byte_length / 1024).toFixed(1)} KB</span>
+            {frame.unchanged ? (
+              <span dir="auto">· {isAr ? 'الشاشة لم تتغيّر (لم تُرسل صورة)' : 'screen unchanged (no image sent)'}</span>
+            ) : (
+              <span>· {(frame.byte_length / 1024).toFixed(1)} KB</span>
+            )}
             <span dir="auto">· {isAr ? `التقاط ${frame.capture_ms}ms` : `capture ${frame.capture_ms}ms`}</span>
             {rttMs !== null && <span>· RTT {rttMs}ms</span>}
             <Badge tone={frame.capture_mode === 'native_gdi' || frame.capture_mode === 'native' ? 'ok' : 'info'}>

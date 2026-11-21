@@ -24,12 +24,14 @@
 | Audit | Append-only `audit_logs` (the app role has no `UPDATE`/`DELETE`), recording `actor` (`user`, `system`, `collector`) in the same transaction as the action |
 | Monitoring safety | Scopes: private IPv4 only, ≤ /20, explicit attestation recorded with the administrator's identity; collector re-validates and has compiled-in ceilings |
 
+| Encryption-key rotation | `pnpm --filter ./apps/api rotate-key` re-encrypts every sealed column (`apps/api/src/ops/sealed-columns.ts`) from the old to a new `APP_ENCRYPTION_KEY` in one transaction; refuses on a wrong old key, an unknown sealed-looking column or a connected API; keys only from files/env, never printed; audited with key ids (docs/operations/backup-restore-and-key-rotation.md) |
+| Rate limits across instances | Optional `REDIS_URL`: counters shared through Redis; while Redis is unreachable each instance counts in its own memory (never fails open or closed). Unset: per-instance memory |
+| Remote desktop frames | Screen images are never written to PostgreSQL: only frame metadata is kept on `endpoint_commands`; images pass through memory and `pg_notify` between API instances and are dropped when the session ends. Session start/stop stay audited |
+
 ## Not implemented yet
 
 - External SSO (SAML / OIDC)
 - Mutual TLS for collectors and endpoint agents (path described in the protocol document)
-- Key rotation tooling for `APP_ENCRYPTION_KEY`
-- Rate limits are in-memory per API instance (move to a shared store with multiple instances)
 - A Content-Security-Policy header on the Next.js web app (the desktop panel page has a strict CSP)
 - Independent security review / penetration test
 

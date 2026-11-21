@@ -6,6 +6,7 @@ import { withTenant } from '../../../infrastructure/db.ts';
 import { emitEvent } from '../../events/index.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { ONLINE_WITHIN_MS, commandEvents, payloadForAudit } from '../repo.ts';
+import { frameForCommand } from '../remote-desktop/frames.ts';
 import { validateCommandForPlatform } from './guards.ts';
 import type { CommandInput } from './schema.ts';
 
@@ -113,8 +114,9 @@ export function waitForCommandSignal(commandId: string, timeoutMs: number): Prom
 /**
  * Waits on `commandEvents` (woken on every API instance through COMMAND_DONE_CHANNEL; a 400 ms
  * re-check covers a lost notification, up to `waitMs`)
- * for the command to complete or fail. Once a frame capture or file download chunk is read and
- * returned to the caller, its base64 payload is stripped from `endpoint_commands`.
+ * for the command to complete or fail. A file download chunk's base64 payload is stripped from
+ * `endpoint_commands` once it has been read and returned. A remote desktop frame was never stored:
+ * its image is taken from the transient frame relay (remote-desktop/frames.ts).
  */
 export async function waitForCommandResult(organizationId: string, endpointId: string, commandId: string, waitMs: number): Promise<EndpointCommand | null> {
   const deadline = Date.now() + waitMs;
@@ -129,20 +131,33 @@ export async function waitForCommandResult(organizationId: string, endpointId: s
           [commandId, endpointId],
         )
       ).rows[0];
-      if (
-        row &&
-        (row.status === 'completed' || row.status === 'failed') &&
-        row.result_data &&
-        (row.kind === 'rd_capture' || (row.kind === 'fs_op' && (row.payload?.op === 'download' || row.payload?.op === 'download_chunk')))
-      ) {
-        await db.query(
-          `UPDATE endpoint_commands SET result_data = result_data - 'jpeg_base64' - 'data_base64' WHERE id = $1`,
-          [commandId],
-        );
+      if (row && (row.status === 'completed' || row.status === 'failed') && row.result_data && row.kind === 'fs_op' && (row.payload?.op === 'download' || row.payload?.op === 'download_chunk')) {
+        await db.query(`UPDATE endpoint_commands SET result_data = result_data - 'data_base64' WHERE id = $1`, [commandId]);
       }
       return row;
     });
-    if (latest && (latest.status === 'completed' || latest.status === 'failed')) return latest;
+    if (latest && (latest.status === 'completed' || latest.status === 'failed')) {
+      return latest.kind === 'rd_capture' && latest.status === 'completed' ? withRelayedFrame(latest, endpointId, deadline) : latest;
+    }
   }
   return null;
+}
+
+/**
+ * Puts the frame's image back into an rd_capture result. On another API instance than the one the
+ * agent uploaded to, the image may arrive (pg_notify) a moment after the completion is visible: wait
+ * for it briefly. An unchanged screen carries no image (the viewer keeps the previous one).
+ */
+async function withRelayedFrame(cmd: EndpointCommand, endpointId: string, deadline: number): Promise<EndpointCommand> {
+  const meta = (cmd.result_data ?? {}) as Record<string, unknown>;
+  if (meta.unchanged === true || !(Number(meta.byte_length) > 0)) return cmd;
+  const until = Math.min(deadline, Date.now() + 1_500);
+  for (;;) {
+    const frame = frameForCommand(endpointId, cmd.id);
+    if (frame?.jpeg_base64) return { ...cmd, result_data: { ...meta, jpeg_base64: frame.jpeg_base64 } };
+    if (Date.now() >= until) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  // The image is gone (session ended, or a newer frame replaced it): the metadata alone, flagged.
+  return { ...cmd, result_data: { ...meta, image_unavailable: true } };
 }

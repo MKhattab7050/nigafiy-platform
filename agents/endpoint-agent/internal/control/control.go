@@ -250,10 +250,14 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 			return Result{ID: cmd.ID, OK: false, Error: err.Error()}
 		}
 		raw, _ := json.Marshal(frame)
+		out := fmt.Sprintf("Captured frame %dx%d (%d bytes, %s)", frame.Width, frame.Height, frame.ByteLength, frame.CaptureMode)
+		if frame.Unchanged {
+			out = fmt.Sprintf("Screen unchanged %dx%d (no image sent, %s)", frame.Width, frame.Height, frame.CaptureMode)
+		}
 		return Result{
 			ID:     cmd.ID,
 			OK:     true,
-			Output: fmt.Sprintf("Captured frame %dx%d (%d bytes, %s)", frame.Width, frame.Height, frame.ByteLength, frame.CaptureMode),
+			Output: out,
 			Data:   raw,
 		}
 

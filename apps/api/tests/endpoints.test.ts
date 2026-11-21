@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { latestFrame } from '../src/modules/endpoints/remote-desktop/frames.ts';
 import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
 describe('endpoint management and remote administration (Phases 3 & 4)', () => {
@@ -399,12 +400,89 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     const detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
     expect(detail.status).toBe(200);
     expect(detail.body.last_rd_frame?.width).toBe(1280);
+    expect(detail.body.last_rd_frame?.jpeg_base64).toBe('/9j/4AAQSkZJRgABAQAAAQABAAD/');
     expect(detail.body.rd_session?.operator_email).toBe(a.email);
     expect(detail.body.capabilities.some((c: { key: string; enabled: boolean }) => c.key === 'remote_file_manager' && c.enabled)).toBe(true);
 
-    // Stop Remote Desktop session
+    // The image is never written to PostgreSQL: the command row keeps the frame's metadata only,
+    // and endpoints no longer has a last_rd_frame column.
+    const stored = await systemPool.query<{ has_image: boolean; width: number; bytes: number }>(
+      `SELECT result_data ? 'jpeg_base64' AS has_image, (result_data->>'width')::int AS width, (result_data->>'byte_length')::int AS bytes FROM endpoint_commands WHERE id = $1`,
+      [rdCmd.id],
+    );
+    expect(stored.rows[0]).toEqual({ has_image: false, width: 1280, bytes: 1200 });
+    const column = await systemPool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'endpoints' AND column_name = 'last_rd_frame'`);
+    expect(column.rowCount).toBe(0);
+
+    // A technician waiting on a capture gets the image from the transient relay.
+    const frameData = (extra: Record<string, unknown>) => ({
+      display_index: 0,
+      displays: [{ index: 0, name: 'Primary Display (1)', x: 0, y: 0, width: 1920, height: 1080, primary: true }],
+      width: 1280,
+      height: 720,
+      source_width: 1920,
+      source_height: 1080,
+      quality: 70,
+      scale: 0.75,
+      capture_ms: 9,
+      capture_mode: 'native_gdi',
+      captured_at: new Date().toISOString(),
+      ...extra,
+    });
+    async function answerNextCapture(data: Record<string, unknown>): Promise<string> {
+      for (let i = 0; i < 40; i++) {
+        const poll = await request(app).post('/api/v1/agent/poll').set('Authorization', `Bearer ${cred}`).send({});
+        const cap = poll.body.commands.find((c: { kind: string }) => c.kind === 'rd_capture');
+        if (cap) {
+          await request(app).post('/api/v1/agent/command-result').set('Authorization', `Bearer ${cred}`).send({ command_results: [{ id: cap.id, ok: true, data }] });
+          return cap.id as string;
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error('no rd_capture was queued');
+    }
+    const bigImage = Buffer.alloc(30_000, 7).toString('base64'); // several pg_notify chunks
+    const [waited, liveId] = await Promise.all([
+      a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=4000`).set(CSRF).send({ kind: 'rd_capture', full_frame: true }),
+      answerNextCapture(frameData({ byte_length: 30_000, jpeg_base64: bigImage })),
+    ]);
+    expect(waited.status).toBe(200);
+    expect(waited.body.id).toBe(liveId);
+    expect(waited.body.payload.full_frame).toBe(true);
+    expect(waited.body.result_data.jpeg_base64).toBe(bigImage);
+    const liveRow = await systemPool.query(`SELECT result_data ? 'jpeg_base64' AS has_image FROM endpoint_commands WHERE id = $1`, [liveId]);
+    expect(liveRow.rows[0].has_image).toBe(false);
+
+    // An unchanged screen: no image travels, the viewer keeps its picture.
+    const [same] = await Promise.all([
+      a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=4000`).set(CSRF).send({ kind: 'rd_capture' }),
+      answerNextCapture(frameData({ byte_length: 0, unchanged: true })),
+    ]);
+    expect(same.status).toBe(200);
+    expect(same.body.result_data).toMatchObject({ unchanged: true, width: 1280 });
+    expect(same.body.result_data).not.toHaveProperty('jpeg_base64');
+
+    // Viewers never get frames.
+    await setRole(a.email, a.organizationId, 'viewer');
+    expect((await a.agent.get(`/api/v1/endpoints/${epId}`)).body.last_rd_frame).toBeNull();
+    await setRole(a.email, a.organizationId, 'admin');
+
+    // Stop Remote Desktop session: the frames are dropped, the session stays audited.
     const rdStop = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({});
     expect(rdStop.status).toBe(200);
+    expect(latestFrame(epId)).toBeNull();
+    expect((await a.agent.get(`/api/v1/endpoints/${epId}`)).body.last_rd_frame).toBeNull();
+    const sessionAudit = await systemPool.query<{ action: string }>(
+      `SELECT action FROM audit_logs WHERE target_id = $1 AND action LIKE 'endpoint.remote_desktop_%' ORDER BY created_at`,
+      [epId],
+    );
+    expect(sessionAudit.rows.map((r) => r.action)).toEqual(['endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped']);
+    // A result arriving after the session ended (stop expired its capture) is not relayed.
+    await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({ command_results: [{ id: rdCmd.id, ok: true, data: frameData({ byte_length: 10, jpeg_base64: 'late' }) }] });
+    expect(latestFrame(epId)).toBeNull();
   });
 
   it('supports only agent platforms, refuses option-like arguments, and keeps unmeasured security unknown', async () => {

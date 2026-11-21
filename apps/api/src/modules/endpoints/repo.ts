@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events';
+import type { RemoteDesktopFrame } from '@lan-detective/shared-types';
 import type { z } from 'zod';
 import { randomToken, sha256 } from '../../common/crypto.ts';
 import { normalizeMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
+import { holdFrame, publishFrame } from './remote-desktop/frames.ts';
 import type { commandResultSchema } from './schema.ts';
 
 // Queries shared by several concerns of the endpoints module (fleet, enrollment, agent gateway,
@@ -78,7 +80,8 @@ export async function applyCommandResults(
           SET status = $3,
               output = $4,
               error = $5,
-              result_data = coalesce($6::jsonb, result_data),
+              -- Remote desktop images are never stored: only the frame's metadata (remote-desktop/frames.ts).
+              result_data = coalesce(CASE WHEN kind = 'rd_capture' THEN $6::jsonb - 'jpeg_base64' ELSE $6::jsonb END, result_data),
               payload = CASE WHEN kind = 'fs_op' AND payload->>'op' = 'upload' THEN payload - 'data_base64' ELSE payload END,
               completed_at = $7
         WHERE id = $1 AND endpoint_id = $2 AND status IN ('pending', 'delivered')
@@ -93,11 +96,15 @@ export async function applyCommandResults(
         now,
       ],
     );
-    if (resItem.ok && resItem.data && updated.rows[0]?.kind === 'rd_capture') {
-      await db.query(`UPDATE endpoints SET last_rd_frame = $2::jsonb WHERE id = $1`, [
-        endpointId,
-        JSON.stringify(resItem.data),
-      ]);
+    const image = resItem.data?.jpeg_base64;
+    if (resItem.ok && updated.rows[0]?.kind === 'rd_capture' && typeof image === 'string' && image.length > 0) {
+      // Relayed only while the session is open: a frame arriving after "stop" is discarded.
+      const open = await db.query(`SELECT 1 FROM endpoints WHERE id = $1 AND rd_session IS NOT NULL`, [endpointId]);
+      if (open.rowCount) {
+        const frame = resItem.data as unknown as RemoteDesktopFrame;
+        holdFrame(endpointId, resItem.id, frame);
+        await publishFrame(db, endpointId, resItem.id, frame);
+      }
     }
     if (updated.rowCount) {
       completedIds.push(resItem.id);

@@ -76,6 +76,33 @@ const en = {
   activity: 'What it used (last 24 h)',
   noActivity: 'No DNS activity seen from this device. It may not use the filter yet.',
   reasons: { paused: 'paused', schedule: 'bedtime', domain: 'blocked site', category: 'category', encrypted_dns: 'encrypted DNS' },
+  enforcement: {
+    title: 'Enforcement & bypass protection',
+    mode: {
+      router_and_dns: 'Router-enforced + DNS',
+      router_only: 'Router-enforced',
+      dns_only: 'DNS-only (can be bypassed)',
+      none: 'No enforcement active',
+      unprotected: 'Not enforced',
+    },
+    modeDesc: {
+      router_and_dns:
+        'DNS filtering is running and router control is connected. Blocks and schedules applied on the router cannot be bypassed by changing DNS. Category and domain rules are still DNS-level: a device using a VPN or its own DNS skips those.',
+      router_only:
+        'Router control is connected, so blocks and schedules applied on the router are enforced. DNS filtering is off, so category and domain rules are not applied.',
+      dns_only:
+        'Only DNS filtering is running. A device using a VPN, a fixed public DNS server or encrypted DNS that is not on the block list can bypass the rules. Connect router control to enforce blocks and schedules on the router.',
+      none: 'Neither DNS filtering nor router control is active on this site.',
+    },
+    routerCta: 'Connect router control',
+    routersActive: '{n} router(s) connected',
+    spofWarn: 'Single DNS host: only 1 collector is online for this site. If this machine goes offline or sleeps, devices using it as their sole DNS will lose name resolution.',
+    dohAlert: '{queries} encrypted-DNS (DoH/Private Relay) bypass attempt(s) blocked across {devices} device(s) in the last 24 h:',
+    dohClean: 'No encrypted-DNS bypass attempts seen in the last 24 h.',
+    deviceRouterBlocked: 'Blocked on router',
+    deviceRouterScheduled: 'Router schedule',
+    deviceDohBadge: '{n} DoH bypass attempts (24 h)',
+  },
   cat: {
     ads_malware: 'Ads & malware',
     adult: 'Adult content',
@@ -167,6 +194,33 @@ const ar: Dict = {
   activity: 'ما استخدمه (آخر 24 ساعة)',
   noActivity: 'لا يوجد نشاط DNS من هذا الجهاز. ربما لا يستخدم الفلتر بعد.',
   reasons: { paused: 'موقوف', schedule: 'وقت النوم', domain: 'موقع محظور', category: 'فئة', encrypted_dns: 'DNS مشفّر' },
+  enforcement: {
+    title: 'قوة التنفيذ ومراقبة محاولات التخطّي',
+    mode: {
+      router_and_dns: 'تنفيذ من الراوتر + DNS',
+      router_only: 'تنفيذ من الراوتر',
+      dns_only: 'DNS فقط (يمكن تخطّيه)',
+      none: 'لا يوجد تنفيذ فعّال',
+      unprotected: 'غير مُنفَّذ',
+    },
+    modeDesc: {
+      router_and_dns:
+        'فلترة DNS تعمل والتحكم بالراوتر متصل. الحظر والجداول المطبّقة على الراوتر لا يمكن تخطّيها بتغيير DNS. أما قواعد الفئات والنطاقات فما زالت على مستوى DNS: الجهاز الذي يستخدم VPN أو DNS خاصًا به يتخطّاها.',
+      router_only:
+        'التحكم بالراوتر متصل، فالحظر والجداول المطبّقة على الراوتر مُنفَّذة. فلترة DNS متوقفة، لذلك قواعد الفئات والنطاقات لا تُطبَّق.',
+      dns_only:
+        'فلترة DNS وحدها تعمل. الجهاز الذي يستخدم VPN أو خادم DNS عامًا ثابتًا أو DNS مشفّرًا غير موجود في قائمة الحظر يمكنه تخطّي القواعد. اربط التحكم بالراوتر لتنفيذ الحظر والجداول من الراوتر نفسه.',
+      none: 'لا تعمل فلترة DNS ولا التحكم بالراوتر على هذا الموقع حاليًا.',
+    },
+    routerCta: 'ربط التحكم بالراوتر',
+    routersActive: '{n} راوتر متصل',
+    spofWarn: 'نقطة فشل وحيدة لـ DNS: يوجد مُجمِّع واحد فقط متصل لهذا الموقع. إذا انطفأ هذا الجهاز أو دخل وضع السكون، ستتوقف ترجمة الأسماء للأجهزة المعتمدة عليه وحده.',
+    dohAlert: 'تم صدّ {queries} محاولة تخطّي عبر DNS مشفّر (DoH / Private Relay) من {devices} جهازًا خلال آخر 24 ساعة:',
+    dohClean: 'لم تُرصَد محاولات تخطّي عبر DNS مشفّر خلال آخر 24 ساعة.',
+    deviceRouterBlocked: 'محظور من الراوتر',
+    deviceRouterScheduled: 'جدول على الراوتر',
+    deviceDohBadge: '{n} محاولة تخطّي DoH (24 س)',
+  },
   cat: {
     ads_malware: 'الإعلانات والبرمجيات الضارة',
     adult: 'محتوى للبالغين',

@@ -8,6 +8,9 @@
     "start": "node --env-file-if-exists=../../.env src/main.ts",
     "dev:db": "node --env-file-if-exists=../../.env scripts/dev-db.ts",
     "migrate": "node --env-file-if-exists=../../.env src/database/migrate-cli.ts",
+    "rotate-key": "node --env-file-if-exists=../../.env src/ops/rotate-key-cli.ts",
+    "db:backup": "node --env-file-if-exists=../../.env src/ops/backup-cli.ts backup",
+    "db:restore": "node --env-file-if-exists=../../.env src/ops/backup-cli.ts restore",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run"
   },
@@ -21,6 +24,8 @@
     "oui-data": "^1.1.0",
     "pg": "^8.16.0",
     "pino": "^9.7.0",
+    "rate-limit-redis": "^4.3.1",
+    "redis": "^5.12.4",
     "zod": "^4.0.0"
   },
   "devDependencies": {

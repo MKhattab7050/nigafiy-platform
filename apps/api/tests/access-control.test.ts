@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { internetOff, mergeRules, normalizeDomain } from '../src/modules/access/policy.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
+import { systemPool } from '../src/infrastructure/db.ts';
 
 const HOSTS = [
   { ip: '192.168.9.1', mac: '00:0c:29:99:00:01', hostname: 'gw.lan' },
@@ -172,6 +173,95 @@ describe('access control API', () => {
       accepted: 1,
       rejected: [],
     });
+  });
+
+  it('reports honest enforcement mode, single-host SPOF, and DoH bypass attempts per site and device', async () => {
+    const { a, c, tablet, laptop } = await home();
+    await a.agent.put('/api/v1/access/settings').set(CSRF).send({ site_id: a.siteId, enabled: true });
+    await heartbeat(c, { access_status: { enabled: true, listening: true, listen: ':53', upstreams: ['192.168.9.1'] } });
+
+    const end = new Date();
+    const start = new Date(end.getTime() - 5 * 60_000);
+    await telemetry(c, [
+      {
+        type: 'dns_stats',
+        ts: end.toISOString(),
+        window_start: start.toISOString(),
+        clients: [
+          {
+            ip: '192.168.9.30',
+            mac: '00:0c:29:99:00:30',
+            queries: 42,
+            blocked: 11,
+            top_domains: [
+              { domain: 'dns.google', count: 6, blocked: 6, reason: 'encrypted_dns', category: 'encrypted_dns' },
+              { domain: 'mozilla.cloudflare-dns.com', count: 5, blocked: 5, reason: 'encrypted_dns', category: 'encrypted_dns' },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const page = (await a.agent.get(`/api/v1/access?site_id=${a.siteId}`)).body;
+    expect(page.enforcement).toMatchObject({
+      mode: 'dns_only',
+      dns_active: true,
+      active_router_count: 0,
+      online_collector_count: 1,
+      single_point_of_failure: true,
+      doh_bypass_queries_24h: 11,
+      doh_bypass_devices_24h: 1,
+    });
+    expect(page.enforcement.top_doh_domains_24h[0]).toEqual({ domain: 'dns.google', count: 6 });
+
+    const tabletRow = page.devices.find((d: any) => d.id === tablet.id);
+    const laptopRow = page.devices.find((d: any) => d.id === laptop.id);
+    expect(tabletRow).toMatchObject({
+      enforcement_mode: 'dns_only',
+      router_blocked: false,
+      doh_bypass_24h: 11,
+      doh_domains_24h: ['dns.google', 'mozilla.cloudflare-dns.com'],
+    });
+    expect(laptopRow).toMatchObject({
+      enforcement_mode: 'unprotected',
+      doh_bypass_24h: 0,
+      doh_domains_24h: [],
+    });
+  });
+
+  it('counts a router as enforcement only when it supports blocking, and a device only when a router rule is on it', async () => {
+    const { a, c, tablet, laptop } = await home();
+    await a.agent.put('/api/v1/access/settings').set(CSRF).send({ site_id: a.siteId, enabled: true });
+    await heartbeat(c, { access_status: { enabled: true, listening: true, listen: ':53', upstreams: ['192.168.9.1'] } });
+    const addRouter = async (name: string, address: string, blockSupported: boolean) =>
+      (
+        await systemPool.query<{ id: string }>(
+          `INSERT INTO site_routers (organization_id, site_id, name, vendor, address, transport, secret_enc, status, capabilities)
+           VALUES ($1, $2, $3, 'zyxel', $4, 'https', 'test-only', 'ok', $5::jsonb) RETURNING id`,
+          [a.organizationId, a.siteId, name, address, JSON.stringify([{ capability: 'block', supported: blockSupported }])],
+        )
+      ).rows[0]!.id;
+
+    // A router that cannot block is not enforcement.
+    await addRouter('read-only', '192.168.9.2', false);
+    let page = (await a.agent.get(`/api/v1/access?site_id=${a.siteId}`)).body;
+    expect(page.enforcement).toMatchObject({ mode: 'dns_only', active_router_count: 0 });
+
+    // A router that can block: the site has router enforcement available, but a device without a
+    // rule on that router is not router-enforced.
+    const routerId = await addRouter('gw', '192.168.9.1', true);
+    page = (await a.agent.get(`/api/v1/access?site_id=${a.siteId}`)).body;
+    expect(page.enforcement).toMatchObject({ mode: 'router_and_dns', active_router_count: 1 });
+    expect(page.devices.find((d: any) => d.id === laptop.id)).toMatchObject({ enforcement_mode: 'unprotected', router_blocked: false });
+
+    // A block in effect on the router for the tablet.
+    await systemPool.query(
+      `INSERT INTO router_blocks (organization_id, site_id, router_id, mac, device_id, pre_existing, applied_at)
+       VALUES ($1, $2, $3, $4, $5, false, now())`,
+      [a.organizationId, a.siteId, routerId, '00:0c:29:99:00:30', tablet.id],
+    );
+    page = (await a.agent.get(`/api/v1/access?site_id=${a.siteId}`)).body;
+    expect(page.devices.find((d: any) => d.id === tablet.id)).toMatchObject({ enforcement_mode: 'router_only', router_blocked: true });
   });
 
   it('enforces roles and tenant isolation', async () => {

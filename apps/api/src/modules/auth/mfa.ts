@@ -9,10 +9,12 @@ import { env } from '../../config/env.ts';
 import { systemPool, withSystem } from '../../infrastructure/db.ts';
 import { SESSION_COOKIE, createSession, readCookie, requireSession } from './session.ts';
 import { newTotpSecret, otpauthUri, verifyTotp } from './totp.ts';
+import { limiterStore } from '../../infrastructure/rate-limit.ts';
 
 export const mfaRouter: Router = Router();
 
 const mfaLimiter = rateLimit({
+  store: limiterStore('auth:mfa'),
   windowMs: 60_000,
   limit: env.NODE_ENV === 'test' ? 10_000 : 10,
   standardHeaders: 'draft-7',

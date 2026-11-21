@@ -11,6 +11,7 @@ import { Setup } from '../components/setup';
 import { SiteRules } from '../components/site-rules';
 import { Profiles } from '../components/profiles';
 import { Devices } from '../components/access-devices';
+import { EnforcementBanner } from '../components/enforcement-banner';
 import { accessText } from '../text';
 
 export function AccessScreen() {
@@ -29,6 +30,7 @@ export function AccessScreen() {
           {(data) => (
             <div className="space-y-4">
               <MasterSwitch data={data} site={site} admin={admin} onChanged={query.reload} />
+              <EnforcementBanner data={data} />
               {data.settings.enabled && <Setup data={data} />}
               {/* Re-mount when the saved rules change elsewhere (e.g. enabling with ads & malware) so the form never saves stale values back. */}
               <SiteRules key={`${site}:${JSON.stringify(data.settings)}`} data={data} site={site} admin={admin} onChanged={query.reload} />

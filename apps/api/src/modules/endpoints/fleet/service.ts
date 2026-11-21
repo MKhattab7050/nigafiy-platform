@@ -4,6 +4,7 @@ import { notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { buildCapabilities } from '../capabilities.ts';
 import { ENDPOINT_SUMMARY_SELECT, payloadForAudit } from '../repo.ts';
+import { latestFrame } from '../remote-desktop/frames.ts';
 import type { SeriesRange, endpointListQuery } from '../schema.ts';
 
 // Fleet & inventory: the read side of the endpoints module.
@@ -36,7 +37,7 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
       await db.query<EndpointDetail>(
         `${ENDPOINT_SUMMARY_SELECT.replace(
           'FROM endpoints e',
-          ', e.security, e.policy, e.rd_session, e.last_rd_frame, e.disks, e.interfaces, e.processes, e.services, e.software, e.connections FROM endpoints e',
+          ', e.security, e.policy, e.rd_session, e.disks, e.interfaces, e.processes, e.services, e.software, e.connections FROM endpoints e',
         )}
           WHERE e.id = $1`,
         [id],
@@ -57,9 +58,8 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
       payload: payloadForAudit(c.kind, c.payload),
       result_data: isViewer && (c.kind === 'fs_op' || c.kind === 'rd_capture') ? null : c.result_data,
     }));
-    if (isViewer) {
-      ep.last_rd_frame = null;
-    }
+    // The latest frame of an open session, from the transient relay (never stored); not for viewers.
+    ep.last_rd_frame = !isViewer && ep.rd_session ? (latestFrame(ep.id)?.frame ?? null) : null;
     ep.capabilities = buildCapabilities(ep.platform);
     return ep;
   });

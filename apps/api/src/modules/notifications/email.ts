@@ -20,6 +20,21 @@ export interface NotificationEvent {
   details: Record<string, unknown>;
   occurred_at: string;
   site_name?: string | null;
+  device_id?: string | null;
+  check_id?: string | null;
+}
+
+/**
+ * The page that shows an event (Milestone 4 URLs): the device card in Radar for a device event, the
+ * monitoring page in Watch for a check event, otherwise Watch's event timeline. Base = the web app's
+ * address (PUBLIC_URL, else WEB_ORIGIN), the same one invitation and reset e-mails use.
+ */
+export function eventPageUrl(event: Pick<NotificationEvent, 'device_id' | 'check_id' | 'type'>, base: string = env.PUBLIC_URL || env.WEB_ORIGIN): string {
+  const root = base.replace(/\/+$/, '');
+  const uuid = /^[0-9a-f-]{36}$/i;
+  if (event.device_id && uuid.test(event.device_id)) return `${root}/radar/devices/${event.device_id}`;
+  if (event.check_id && uuid.test(event.check_id)) return `${root}/watch/monitoring`;
+  return `${root}/watch/events?type=${encodeURIComponent(event.type)}`;
 }
 
 const TIMEOUT_MS = 10_000;
@@ -51,6 +66,8 @@ export function renderEmail(event: NotificationEvent, organizationName: string):
     '',
     'What was observed:',
     ...Object.entries(event.details).map(([k, v]) => `  ${k.replaceAll('_', ' ')}: ${renderValue(v, '  ')}`),
+    '',
+    `Open in Nigafiy: ${eventPageUrl(event)}`,
     '',
     'Sent by LAN Detective. Open the event timeline for the full context.',
   ];

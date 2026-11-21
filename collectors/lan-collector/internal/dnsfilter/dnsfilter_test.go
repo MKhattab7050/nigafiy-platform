@@ -57,8 +57,12 @@ func TestDecide(t *testing.T) {
 		"shop.example.org":         {Blocked: true, Reason: "domain"},
 		"notexample.org":           {},
 		"wikipedia.org":            {},
-		"use-application-dns.net.": {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
-		"dns.google":               {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"use-application-dns.net.":  {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"dns.google":                {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"mozilla.cloudflare-dns.com": {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"doh.dns.apple.com":         {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"dns.controld.com":          {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
+		"doh.pub":                   {Blocked: true, Reason: "encrypted_dns", Category: "encrypted_dns"},
 	}
 	for name, want := range cases {
 		if got := Decide(r, name, now, lists); got != want {

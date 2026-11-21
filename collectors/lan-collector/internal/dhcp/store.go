@@ -225,13 +225,14 @@ func writeAtomic(path string, data []byte) error {
 
 // renameReplacing renames tmp over path. On Windows the rename fails with "access denied" while
 // another handle has path open (an antivirus scan, the search indexer, or a reader loading the
-// table), so it retries for up to about half a second before giving up.
+// table), or with a sharing violation, which Go does not map to os.ErrPermission. It retries any
+// error except a missing temp file for up to about two seconds before giving up.
 func renameReplacing(tmp, path string) error {
 	err := os.Rename(tmp, path)
 	if runtime.GOOS != "windows" {
 		return err
 	}
-	for i := 0; err != nil && errors.Is(err, os.ErrPermission) && i < 10; i++ {
+	for i := 0; err != nil && !errors.Is(err, os.ErrNotExist) && i < 40; i++ {
 		time.Sleep(50 * time.Millisecond)
 		err = os.Rename(tmp, path)
 	}

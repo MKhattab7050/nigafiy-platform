@@ -1,24 +1,39 @@
+import type { LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
-import type { LookupAddress } from 'node:dns';
 import { decryptSecret, hmacSha256 } from '../../common/crypto.ts';
 import { isPublicAddress } from '../../common/net.ts';
 import { env } from '../../config/env.ts';
 import { systemPool } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
+import {
+  type NotificationChannelKind,
+  renderDiscordPayload,
+  renderNtfyMessage,
+  renderSlackPayload,
+  renderTelegramPayload,
+} from './channels.ts';
 import { type NotificationEvent, type SmtpConfig, renderEmail, sendEmail } from './email.ts';
 
 const MAX_ATTEMPTS = 6;
 const LEASE_SECONDS = 120;
 const TIMEOUT_MS = 8000;
 
+interface ChannelConfig extends SmtpConfig {
+  chat_id?: string;
+  message_thread_id?: number;
+  api_base?: string;
+  server_url?: string;
+  topic?: string;
+}
+
 interface DueDelivery {
   id: string;
   attempts: number;
-  kind: 'webhook' | 'email';
+  kind: NotificationChannelKind;
   url: string;
-  config: SmtpConfig;
+  config: ChannelConfig;
   secret_encrypted: string;
   organization_id: string;
   organization_name: string;
@@ -26,8 +41,8 @@ interface DueDelivery {
 }
 
 /**
- * POST to a customer-supplied URL from our cloud = classic SSRF surface. Mitigations:
- *  - resolve the host ourselves and refuse non-public addresses,
+ * POST to an external destination with SSRF mitigations:
+ *  - resolve the host ourselves and refuse non-public addresses (unless ALLOW_PRIVATE_WEBHOOKS),
  *  - connect to exactly the address we vetted (pinned lookup → no DNS-rebinding window),
  *  - never follow redirects, short timeout, response body discarded.
  */
@@ -54,8 +69,16 @@ async function post(rawUrl: string, body: string, headers: Record<string, string
   });
 }
 
+function sanitizeError(err: unknown, secrets: string[]): string {
+  let msg = (err instanceof Error ? err.message : String(err)).replace(/[\r\n]+/g, ' ');
+  for (const s of secrets) {
+    if (s && s.length >= 6) msg = msg.replaceAll(s, '[redacted]');
+  }
+  return msg.slice(0, 200);
+}
+
 export async function dispatchNotifications(): Promise<void> {
-  // Claim a batch with a lease so the HTTP calls happen outside any transaction.
+  // Claim a batch with a lease so the HTTP/SMTP calls happen outside any transaction.
   const due = await systemPool.query<DueDelivery>(
     `WITH claimed AS (
        SELECT id FROM notification_deliveries
@@ -76,20 +99,72 @@ export async function dispatchNotifications(): Promise<void> {
 
   await Promise.all(
     due.rows.map(async (d) => {
-      const timestamp = Math.floor(Date.now() / 1000);
-      const body = JSON.stringify({ delivery_id: d.id, organization_id: d.organization_id, sent_at: new Date().toISOString(), event: d.event });
+      const ev = d.event as unknown as NotificationEvent;
       let error: string | null = null;
-      if (d.kind === 'email') {
-        try {
+      const secretsToRedact: string[] = [];
+
+      try {
+        if (d.kind === 'email') {
           const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { password?: string };
+          if (secret.password) secretsToRedact.push(secret.password);
           const recipients = d.url.replace(/^mailto:/, '').split(',');
-          await sendEmail(d.config, secret.password ?? null, recipients, renderEmail(d.event as unknown as NotificationEvent, d.organization_name));
-        } catch (err) {
-          error = (err as Error).message.replace(/[\r\n]+/g, ' ').slice(0, 200);
-        }
-      } else {
-        try {
-          const signature = hmacSha256(decryptSecret(d.secret_encrypted), `${timestamp}.${body}`);
+          await sendEmail(d.config, secret.password ?? null, recipients, renderEmail(ev, d.organization_name));
+        } else if (d.kind === 'telegram') {
+          const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { bot_token: string };
+          secretsToRedact.push(secret.bot_token);
+          const base = (d.config.api_base || 'https://api.telegram.org').replace(/\/+$/, '');
+          const payload = JSON.stringify(renderTelegramPayload(ev, d.organization_name, d.config.chat_id ?? '', d.config.message_thread_id));
+          const status = await post(`${base}/bot${secret.bot_token}/sendMessage`, payload, {
+            'Content-Type': 'application/json',
+            'Content-Length': String(Buffer.byteLength(payload)),
+            'User-Agent': 'Nigafiy-Notifications/1',
+          });
+          if (status < 200 || status >= 300) error = `Telegram responded with HTTP ${status}`;
+        } else if (d.kind === 'slack') {
+          const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { webhook_url: string };
+          secretsToRedact.push(secret.webhook_url);
+          const payload = JSON.stringify(renderSlackPayload(ev, d.organization_name));
+          const status = await post(secret.webhook_url, payload, {
+            'Content-Type': 'application/json',
+            'Content-Length': String(Buffer.byteLength(payload)),
+            'User-Agent': 'Nigafiy-Notifications/1',
+          });
+          if (status < 200 || status >= 300) error = `Slack responded with HTTP ${status}`;
+        } else if (d.kind === 'discord') {
+          const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { webhook_url: string };
+          secretsToRedact.push(secret.webhook_url);
+          const payload = JSON.stringify(renderDiscordPayload(ev, d.organization_name));
+          const status = await post(secret.webhook_url, payload, {
+            'Content-Type': 'application/json',
+            'Content-Length': String(Buffer.byteLength(payload)),
+            'User-Agent': 'Nigafiy-Notifications/1',
+          });
+          if (status < 200 || status >= 300) error = `Discord responded with HTTP ${status}`;
+        } else if (d.kind === 'ntfy') {
+          const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { token?: string; password?: string };
+          if (secret.token) secretsToRedact.push(secret.token);
+          if (secret.password) secretsToRedact.push(secret.password);
+          const base = (d.config.server_url || 'https://ntfy.sh').replace(/\/+$/, '');
+          const topic = d.config.topic ?? '';
+          const msg = renderNtfyMessage(ev, d.organization_name);
+          const headers: Record<string, string> = {
+            ...msg.headers,
+            'Content-Length': String(Buffer.byteLength(msg.body)),
+            'User-Agent': 'Nigafiy-Notifications/1',
+          };
+          if (secret.token) {
+            headers.Authorization = `Bearer ${secret.token}`;
+          } else if (d.config.username && secret.password) {
+            headers.Authorization = `Basic ${Buffer.from(`${d.config.username}:${secret.password}`).toString('base64')}`;
+          }
+          const status = await post(`${base}/${encodeURIComponent(topic)}`, msg.body, headers);
+          if (status < 200 || status >= 300) error = `ntfy responded with HTTP ${status}`;
+        } else {
+          const timestamp = Math.floor(Date.now() / 1000);
+          const body = JSON.stringify({ delivery_id: d.id, organization_id: d.organization_id, sent_at: new Date().toISOString(), event: d.event });
+          const signingKey = decryptSecret(d.secret_encrypted);
+          secretsToRedact.push(signingKey);
+          const signature = hmacSha256(signingKey, `${timestamp}.${body}`);
           const status = await post(d.url, body, {
             'Content-Type': 'application/json',
             'Content-Length': String(Buffer.byteLength(body)),
@@ -97,10 +172,11 @@ export async function dispatchNotifications(): Promise<void> {
             'X-LAN-Detective-Signature': `t=${timestamp},v1=${signature}`,
           });
           if (status < 200 || status >= 300) error = `receiver responded with HTTP ${status}`;
-        } catch (err) {
-          error = (err as Error).message.slice(0, 200);
         }
+      } catch (err) {
+        error = sanitizeError(err, secretsToRedact);
       }
+
       if (!error) {
         await systemPool.query(`UPDATE notification_deliveries SET status = 'delivered', delivered_at = now(), last_error = NULL WHERE id = $1`, [d.id]);
         return;

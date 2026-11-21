@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { dispatchNotifications } from '../src/modules/notifications/index.ts';
-import { renderEmail } from '../src/modules/notifications/email.ts';
+import { eventPageUrl, renderEmail } from '../src/modules/notifications/email.ts';
 import { CSRF, newAccount } from './helpers.ts';
 
 interface Mail {
@@ -68,6 +68,15 @@ describe('email notifications', () => {
     expect(mail.text).toContain('ip: 10.0.0.5');
     expect(mail.text).toContain('evidence: a, b');
     expect(mail.text).toContain('last seen: x');
+    // The link opens the Milestone 4 URL (Watch's event timeline for an event without a device).
+    expect(mail.text).toMatch(/Open in Nigafiy: https?:\/\/[^\s]+\/watch\/events\?type=device_offline/);
+  });
+
+  it('links a device event to the device card in Radar and a check event to Watch', () => {
+    const id = '3f2c7a1e-0000-4000-8000-000000000001';
+    expect(eventPageUrl({ type: 'device_offline', device_id: id }, 'https://nms.example/')).toBe(`https://nms.example/radar/devices/${id}`);
+    expect(eventPageUrl({ type: 'check_down', check_id: id }, 'https://nms.example')).toBe('https://nms.example/watch/monitoring');
+    expect(eventPageUrl({ type: 'x y', device_id: 'not-a-uuid' }, 'https://nms.example')).toBe('https://nms.example/watch/events?type=x%20y');
   });
 
   it('sends matching events by email, stores the password encrypted and reports failures', async () => {

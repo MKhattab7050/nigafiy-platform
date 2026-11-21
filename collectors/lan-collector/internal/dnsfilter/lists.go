@@ -37,11 +37,32 @@ var builtin = map[string][]string{
 		"igamecj.com", "activision.com", "callofduty.com", "miniclip.com"},
 	"chat": {"whatsapp.com", "whatsapp.net", "telegram.org", "t.me", "telegram.me", "discord.com", "discord.gg", "discordapp.com",
 		"discordapp.net", "discord.media", "messenger.com", "signal.org", "viber.com", "imo.im"},
-	// Encrypted-DNS endpoints and the "canary" names browsers and phones check before bypassing
-	// the network resolver. Blocking them keeps devices on the network's rules where possible.
-	alwaysCategory: {"use-application-dns.net", "mask.icloud.com", "mask-h2.icloud.com", "dns.google", "cloudflare-dns.com",
-		"one.one.one.one", "doh.opendns.com", "dns.quad9.net", "dns.adguard.com", "dns.adguard-dns.com", "doh.cleanbrowsing.org",
-		"dns.nextdns.io", "doh.dns.sb", "dns.mullvad.net"},
+	// Encrypted-DNS (DoH/DoT/ODoH/Private Relay) endpoints and browser/OS canary names that
+	// clients check before bypassing the network resolver. Blocking them with NXDOMAIN keeps
+	// compliant clients on the site's DNS policy and exposes bypass attempts in per-device stats.
+	alwaysCategory: {
+		// Browser & OS bypass canaries / relay relays
+		"use-application-dns.net", "mask.icloud.com", "mask-h2.icloud.com", "mask-api.icloud.com", "doh.dns.apple.com",
+		// Cloudflare DoH / ODoH / Chrome & Mozilla partner endpoints
+		"cloudflare-dns.com", "one.one.one.one", "mozilla.cloudflare-dns.com", "chrome.cloudflare-dns.com",
+		"family.cloudflare-dns.com", "security.cloudflare-dns.com", "odoh.cloudflare-dns.com", "dns.cloudflare.com",
+		// Google Public DNS
+		"dns.google", "dns.google.com", "dns64.dns.google",
+		// Quad9
+		"dns.quad9.net", "dns9.quad9.net", "dns10.quad9.net", "dns11.quad9.net",
+		// OpenDNS / Cisco Umbrella
+		"doh.opendns.com", "doh.familyshield.opendns.com", "doh.sandbox.opendns.com", "dns.umbrella.com", "doh.umbrella.com",
+		// AdGuard & NextDNS & Control D & RethinkDNS
+		"dns.adguard.com", "dns.adguard-dns.com", "family.adguard-dns.com", "unfiltered.adguard-dns.com",
+		"dns.nextdns.io", "dns.controld.com", "freedns.controld.com",
+		"dns.rethinkdns.com", "sky.rethinkdns.com", "max.rethinkdns.com",
+		// Mullvad / CleanBrowsing / DNS.SB / regional public DoH providers
+		"dns.mullvad.net", "doh.mullvad.net", "base.dns.mullvad.net", "adblock.dns.mullvad.net",
+		"extended.dns.mullvad.net", "family.dns.mullvad.net", "all.dns.mullvad.net",
+		"doh.cleanbrowsing.org", "doh.dns.sb", "doh.libredns.gr", "dns.switch.ch",
+		"dns.digitale-gesellschaft.ch", "doh.ffmuc.net", "doh.pub", "dns.alidns.com",
+		"dns.twnic.tw", "doh.tiar.app", "dns.yandex.ru", "common.dot.dns.yandex.net", "doh.360.cn",
+	},
 }
 
 // Known reports whether a category name exists.

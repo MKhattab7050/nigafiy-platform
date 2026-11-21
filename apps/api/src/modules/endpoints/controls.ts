@@ -23,7 +23,7 @@ export async function deviceEndpointControl(db: Db, device: { id: string; device
       link: 'inferred' as const,
       link_evidence: 'the agent reported this device’s MAC or IP address',
       endpoint: ep,
-      href: `/endpoints/${ep.id}`,
+      href: `/fleet/endpoints/${ep.id}`,
       capabilities: buildCapabilities(ep.platform),
     };
   }
@@ -31,7 +31,7 @@ export async function deviceEndpointControl(db: Db, device: { id: string; device
   return {
     linked: false,
     suggestion: platform
-      ? { action: 'enroll_agent', platform, href: '/endpoints', reason: 'This looks like a computer; an endpoint agent adds inventory and remote administration.' }
+      ? { action: 'enroll_agent', platform, href: '/fleet/endpoints', reason: 'This looks like a computer; an endpoint agent adds inventory and remote administration.' }
       : null,
   };
 }

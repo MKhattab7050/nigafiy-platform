@@ -28,20 +28,20 @@ export default function AccessWidget() {
     !site ? { state: 'ready', items: [] } : attentionFrom([query], (data) => {
       if (!data.settings.enabled) return [];
       const s = data.setup;
-      if (!s.collector?.online) return [{ id: 'access-collector', tone: 'crit' as const, text: t('access.attn.offline'), action: { label: t('access.attn.check'), href: '/access' } }];
-      if (s.status?.listening === false) return [{ id: 'access-listening', tone: 'crit' as const, text: t('access.attn.notListening'), action: { label: t('access.attn.check'), href: '/access' } }];
+      if (!s.collector?.online) return [{ id: 'access-collector', tone: 'crit' as const, text: t('access.attn.offline'), action: { label: t('access.attn.check'), href: '/guard/access' } }];
+      if (s.status?.listening === false) return [{ id: 'access-listening', tone: 'crit' as const, text: t('access.attn.notListening'), action: { label: t('access.attn.check'), href: '/guard/access' } }];
       return [];
     }),
   );
 
   return (
-    <Widget title={tx.title} icon={ShieldCheck} href="/access">
+    <Widget title={tx.title} icon={ShieldCheck} href="/guard/access">
       {!site ? (
-        <NextStep text={tx.subtitle} label={t('overview.setupCta')} href="/discovery" />
+        <NextStep text={tx.subtitle} label={t('overview.setupCta')} href="/radar/discovery" />
       ) : (
         <Async query={query}>
           {(data) => {
-            if (!data.settings.enabled) return <NextStep text={tx.subtitle} label={tx.enable} href="/access" />;
+            if (!data.settings.enabled) return <NextStep text={tx.subtitle} label={tx.enable} href="/guard/access" />;
             const s = data.setup;
             const online = !!s.collector?.online;
             const running = online && s.status?.listening !== false;

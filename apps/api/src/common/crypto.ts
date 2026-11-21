@@ -1,5 +1,6 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { env } from '../config/env.ts';
+import { openWithKey, sealWithKey } from './secret-box.ts';
 
 export const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 export const randomToken = (bytes = 32): string => randomBytes(bytes).toString('base64url');
@@ -38,20 +39,8 @@ export async function verifyPassword(password: string, stored: string): Promise<
 /** Used to keep login timing uniform when the account does not exist. */
 export const DUMMY_PASSWORD_HASH = await hashPassword(randomToken());
 
-// ── Secrets at rest: AES-256-GCM with the application key ──
+// ── Secrets at rest: AES-256-GCM with the application key (format: common/secret-box.ts) ──
 const KEY = Buffer.from(env.APP_ENCRYPTION_KEY, 'hex');
 
-export function encryptSecret(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', KEY, iv);
-  const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), ct.toString('base64')].join(':');
-}
-
-export function decryptSecret(stored: string): string {
-  const [version, iv, tag, ct] = stored.split(':');
-  if (version !== 'v1' || !iv || !tag || !ct) throw new Error('unsupported secret format');
-  const decipher = createDecipheriv('aes-256-gcm', KEY, Buffer.from(iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(ct, 'base64')), decipher.final()]).toString('utf8');
-}
+export const encryptSecret = (plain: string): string => sealWithKey(KEY, plain);
+export const decryptSecret = (stored: string): string => openWithKey(KEY, stored);

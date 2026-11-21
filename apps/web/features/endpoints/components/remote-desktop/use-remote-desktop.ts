@@ -33,6 +33,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const inFlightRef = useRef(false);
+  const hasImageRef = useRef(false);
+  hasImageRef.current = Boolean(frame?.jpeg_base64);
   const streamingRef = useRef(streaming);
   streamingRef.current = streaming;
   const inputTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -64,6 +66,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
           display_index: displayIndex,
           quality,
           scale,
+          // Without an image on screen, ask for one even if the agent's screen has not changed.
+          ...(hasImageRef.current ? {} : { full_frame: true }),
         },
       });
       const elapsed = Math.round(performance.now() - t0);
@@ -76,7 +80,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
       }
       if (cmd.status === 'completed' && cmd.result_data) {
         const nextFrame = cmd.result_data as unknown as RemoteDesktopFrame;
-        setFrame(nextFrame);
+        // Unchanged screen (or an image no longer available): keep showing the current picture.
+        setFrame((prev) => (nextFrame.jpeg_base64 ? nextFrame : prev ? { ...nextFrame, jpeg_base64: prev.jpeg_base64 } : prev));
         // Adaptive quality adjustment based on round-trip latency
         if (adaptive) {
           if (elapsed > 1400 && quality > 45) {

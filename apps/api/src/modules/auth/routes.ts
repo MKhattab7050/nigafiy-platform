@@ -13,8 +13,10 @@ import { accountMailConfigured, anyAccountMailConfigured, sendAccountEmail } fro
 import { mfaRouter } from './mfa.ts';
 import { SESSION_COOKIE, clearSessionCookie, createSession, readCookie, requireSession } from './session.ts';
 import { webAppUrl } from './team.ts';
+import { limiterStore } from '../../infrastructure/rate-limit.ts';
 
 const credentialLimiter = rateLimit({
+  store: limiterStore('auth:credentials'),
   windowMs: 60_000,
   limit: env.NODE_ENV === 'test' ? 10_000 : 10,
   standardHeaders: 'draft-7',

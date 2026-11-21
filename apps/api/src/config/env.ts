@@ -46,6 +46,11 @@ const schema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 90).default(168),
   ALLOW_REGISTRATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
   TRUST_PROXY: z.string().default('loopback'),
+  /**
+   * Optional shared store for rate-limit counters (redis:// or rediss://), so limits hold across API
+   * instances. Unset: per-instance memory, as before (infrastructure/rate-limit-store.ts).
+   */
+  REDIS_URL: z.preprocess((v) => (v === '' ? undefined : v), z.url({ protocol: /^rediss?$/ }).optional()),
   ALLOW_LOOPBACK_SCOPES: bool,
   ALLOW_PRIVATE_WEBHOOKS: bool,
   /** Allow notification email through a mail relay on a private address. Meant for on-premise installs; keep off when hosting for others. */
@@ -62,6 +67,17 @@ const schema = z.object({
   NIGAFIY_UPDATE_MANIFEST_URL: z.preprocess((v) => (v === '' ? undefined : v), z.url({ protocol: /^https?$/ }).optional()),
   /** Ed25519 public key (base64 of the 32 raw bytes) that release manifests must be signed with. */
   NIGAFIY_UPDATE_PUBLIC_KEY: optionalNonEmpty,
+  /**
+   * Which Nigafiy programs this install offers (GET /platform/programs): "all" (default: one desktop
+   * install carries every program until Milestone 5 ships one installer per program) or a comma list
+   * such as "hub,radar,watch". Hub is always installed. Only decides which UI is offered, never which
+   * data is collected (spec §6.1).
+   */
+  NIGAFIY_PROGRAMS: z
+    .string()
+    .default('all')
+    .transform((v) => v.trim().toLowerCase())
+    .refine((v) => v === 'all' || v.split(',').every((id) => ['hub', 'radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox'].includes(id.trim())), 'must be "all" or a comma list of hub, radar, watch, guard, fleet, mind, toolbox'),
 });
 
 export type Env = z.infer<typeof schema>;
