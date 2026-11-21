@@ -26,6 +26,7 @@ Live canvas: https://claude.ai/artifact/UgAvbazdgsCatGmPwfqQnd (private to the o
 - **Logo: option D**, the owner's two-tone rounded lowercase **n** with the lowercase wordmark `nigafiy`, and the app
   icon as the n on a navy rounded square. Mark and wordmark only: no mascot or character.
   The vector in the mockups is a draft; the final SVG/ICO set is produced in Milestone 2.
+- **Fleet Pro approved** (the five `Fleet*.dc.html` screens and `docs/features/fleet-pro.md`): built in Milestone 4b.
 
 ## Tokens
 
