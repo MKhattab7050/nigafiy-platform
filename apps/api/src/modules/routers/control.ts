@@ -154,7 +154,7 @@ export function changeBlocks(req: Request, ctx: AuthContext, routerId: string, d
   });
 }
 
-async function oneDevice(db: Db, r: RouterRow, deviceId: string): Promise<DeviceRef & { mac: string }> {
+export async function oneDevice(db: Db, r: RouterRow, deviceId: string): Promise<DeviceRef & { mac: string }> {
   const d = (await loadDevices(db, [deviceId])).get(deviceId);
   if (!d || d.site_id !== r.site_id) throw new AppError(404, 'not_found', 'Device not found on this router’s site');
   if (!d.mac) throw new AppError(409, 'no_mac', 'The device’s MAC address has not been observed');

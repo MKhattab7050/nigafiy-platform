@@ -37,10 +37,17 @@ const (
 	CapBlock      Capability = "block"       // Block / Unblock / Blocked
 	CapRateLimit  Capability = "rate_limit"  // the driver implements RateLimiter
 	CapSchedule   Capability = "schedule"    // the driver implements Scheduler
+
+	CapOverview     Capability = "overview"     // SettingsReader reports Settings.Overview (uptime, WAN links)
+	CapWiFi         Capability = "wifi"         // SettingsReader lists Wi-Fi networks; the driver implements WiFiController
+	CapReservations Capability = "reservations" // SettingsReader lists DHCP reservations; the driver implements ReservationManager
+	CapPortForward  Capability = "port_forward" // SettingsReader lists port forwards; the driver implements PortForwarder
+	CapRename       Capability = "rename"       // the driver implements Renamer
+	CapReboot       Capability = "reboot"       // the driver implements Rebooter
 )
 
 // AllCapabilities in display order.
-var AllCapabilities = []Capability{CapClients, CapDHCPLeases, CapBlock, CapRateLimit, CapSchedule}
+var AllCapabilities = []Capability{CapClients, CapDHCPLeases, CapBlock, CapRateLimit, CapSchedule, CapOverview, CapWiFi, CapReservations, CapPortForward, CapRename, CapReboot}
 
 // CapabilityStatus says whether this router, with this firmware, can do one thing, and why not.
 type CapabilityStatus struct {

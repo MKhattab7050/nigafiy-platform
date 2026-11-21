@@ -1,4 +1,5 @@
-import { type CollectorContext, ItemRejected, type RouterResultItem } from '../../common/collector-protocol.ts';
+import { type CollectorContext, ItemRejected, type RouterResultItem, type RouterSettings } from '../../common/collector-protocol.ts';
+import { normalizeMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
@@ -71,6 +72,8 @@ export async function processRouterResult(db: Db, c: CollectorContext, item: Rou
   if (item.action === 'refresh' && (item.identity || item.capabilities || item.clients || item.blocked)) {
     await applyRefresh(db, c, r, item, at);
   }
+  // Settings: from a refresh, and re-read after any control that succeeded.
+  if (item.settings && (item.action === 'refresh' || item.ok)) await applySettings(db, r, item.settings, at);
   if (item.ok && (item.action === 'block' || item.action === 'unblock') && request && item.change) {
     await applyBlockChange(db, c, r, item, request, at);
   }
@@ -84,6 +87,7 @@ export async function processRouterResult(db: Db, c: CollectorContext, item: Rou
       result.clients = item.clients?.length ?? null;
       result.blocked = item.blocked?.length ?? null;
     }
+    if (item.settings) result.settings = Object.keys(item.settings);
     await db.query(
       `UPDATE router_requests SET status = $2, result = $3, error = $4, error_kind = $5, completed_at = $6 WHERE id = $1`,
       [request.id, item.ok ? 'completed' : 'failed', JSON.stringify(result), item.error?.message ?? null, item.error?.kind ?? null, at],
@@ -150,6 +154,24 @@ async function applyHealth(db: Db, c: CollectorContext, r: Target, item: RouterR
       details: { ...details, recovered_from: r.status },
     });
   }
+}
+
+/**
+ * Stores the router's settings. Each part the result carries replaces the stored part; a part it
+ * does not carry (not offered, not read this time, or not re-read after a change) keeps its last
+ * known value. A result older than what is stored is ignored.
+ */
+async function applySettings(db: Db, r: Target, settings: RouterSettings, at: Date): Promise<void> {
+  const s: RouterSettings = {
+    ...settings,
+    ...(settings.wifi ? { wifi: settings.wifi.map((w) => (w.client_macs ? { ...w, client_macs: w.client_macs.map(normalizeMac) } : w)) } : {}),
+    ...(settings.reservations ? { reservations: settings.reservations.map((x) => ({ ...x, mac: normalizeMac(x.mac) })) } : {}),
+  };
+  await db.query(
+    `UPDATE site_routers SET settings = coalesce(settings, '{}'::jsonb) || $2::jsonb, settings_at = $3
+      WHERE id = $1 AND (settings_at IS NULL OR settings_at <= $3)`,
+    [r.id, JSON.stringify(s), at],
+  );
 }
 
 async function applyRefresh(db: Db, c: CollectorContext, r: Target, item: RouterResultItem, at: Date): Promise<void> {

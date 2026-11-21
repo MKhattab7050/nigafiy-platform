@@ -1,16 +1,18 @@
 'use client';
 
-import { Ban, CheckCircle2, Clock, Gauge, Router, ShieldOff } from 'lucide-react';
+import { Ban, CheckCircle2, Clock, Gauge, Network, Pencil, Pin, PinOff, Router, ShieldOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { ActionButton } from '@/components/control-action';
 import { Badge, Button, Card, CopyBlock, Fact, Field, Input } from '@/components/ui';
 import { api } from '@/lib/api';
+import { type ControlAction, apiPath } from '@/lib/controls';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { DeviceRef, DeviceRouterControls, QueuedRequest } from '../types';
 import { BlockDialog } from './block-dialog';
 import { RequestProgress } from './request-progress';
+import { type Confirm, ConfirmModal, PortForwardForm, PortForwardTable } from './router-settings-panel';
 import { ConnectionLabel, DELIVERY_TONE, HEALTH_TONE, RouterErrorNote, leaseText } from './text';
 
 const DAYS = [0, 1, 2, 3, 4, 5, 6] as const;
@@ -102,8 +104,33 @@ function RouterDeviceRow({
   const [fromTime, setFromTime] = useState('22:00');
   const [toTime, setToTime] = useState('07:00');
   const [busy, setBusy] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [newName, setNewName] = useState(device.label);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+  /** Which part of the card started the latest request: its progress and errors show there. */
+  const [origin, setOrigin] = useState<'top' | 'settings'>('top');
+
+  /** Runs one action exactly as GET /devices/:id/controls described it. */
+  async function runAction(action: ControlAction | undefined, body?: Record<string, unknown>): Promise<boolean> {
+    if (!action?.possible || !action.href) return false;
+    setOrigin('settings');
+    setBusy(true);
+    setError(null);
+    try {
+      const method = action.method ?? 'POST';
+      const q = await api<QueuedRequest>(apiPath(action.href), { method, body: method === 'DELETE' ? undefined : { ...action.body, ...body } });
+      setActiveReq(q);
+      return true;
+    } catch (err) {
+      setError(err);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function applyLimit(limit: { down_kbps: number; up_kbps: number } | null) {
+    setOrigin('top');
     setBusy(true);
     setError(null);
     try {
@@ -121,6 +148,7 @@ function RouterDeviceRow({
   }
 
   async function applySchedule(windows: { days: number[]; start: string; end: string }[] | null) {
+    setOrigin('top');
     setBusy(true);
     setError(null);
     try {
@@ -209,16 +237,20 @@ function RouterDeviceRow({
         </div>
       )}
 
-      {activeReq && (
-        <RequestProgress
-          requestId={activeReq.request_id}
-          routerId={entry.router_id}
-          collector={activeReq.collector}
-          onSettled={() => onChanged()}
-        />
+      {origin === 'top' && (
+        <>
+          {activeReq && (
+            <RequestProgress
+              key={activeReq.request_id}
+              requestId={activeReq.request_id}
+              routerId={entry.router_id}
+              collector={activeReq.collector}
+              onSettled={() => onChanged()}
+            />
+          )}
+          <RouterErrorNote error={error} routerId={entry.router_id} />
+        </>
       )}
-
-      <RouterErrorNote error={error} routerId={entry.router_id} />
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {bs.state === 'blocked' ? (
@@ -383,6 +415,52 @@ function RouterDeviceRow({
         </form>
       )}
 
+      {entry.actions.rename && (
+        <RouterSettingsForDevice
+          entry={entry}
+          busy={busy}
+          showRename={showRename}
+          setShowRename={setShowRename}
+          newName={newName}
+          setNewName={setNewName}
+          runAction={runAction}
+          setConfirm={setConfirm}
+          feedback={
+            origin === 'settings' ? (
+              <>
+                {activeReq && (
+                  <RequestProgress
+                    key={activeReq.request_id}
+                    requestId={activeReq.request_id}
+                    routerId={entry.router_id}
+                    collector={activeReq.collector}
+                    onSettled={() => onChanged()}
+                  />
+                )}
+                <RouterErrorNote error={error} routerId={entry.router_id} />
+              </>
+            ) : null
+          }
+        />
+      )}
+
+      {confirm && (
+        <ConfirmModal
+          confirm={confirm}
+          routerName={entry.name}
+          busy={busy}
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => {
+            const c = confirm;
+            const action =
+              c.kind === 'unreserve' ? entry.actions.unreserve : c.kind === 'remove_forward' ? entry.port_forwards?.find((x) => x.id === c.rule.id)?.actions.remove : undefined;
+            const ok = await runAction(action);
+            setConfirm(null);
+            return ok;
+          }}
+        />
+      )}
+
       {dialogAction && (
         <BlockDialog
           routerId={entry.router_id}
@@ -391,6 +469,127 @@ function RouterDeviceRow({
           onClose={() => setDialogAction(null)}
           onDone={onChanged}
         />
+      )}
+    </div>
+  );
+}
+
+/** Router controls for this device beyond blocking: its name on the router, its address reservation, port forwards to it. */
+function RouterSettingsForDevice({
+  entry,
+  busy,
+  showRename,
+  setShowRename,
+  newName,
+  setNewName,
+  runAction,
+  setConfirm,
+  feedback,
+}: {
+  entry: DeviceRouterControls['routers'][number];
+  busy: boolean;
+  showRename: boolean;
+  setShowRename: (v: boolean) => void;
+  newName: string;
+  setNewName: (v: string) => void;
+  runAction: (action: ControlAction | undefined, body?: Record<string, unknown>) => Promise<boolean>;
+  setConfirm: (c: Confirm) => void;
+  /** Progress and errors of the latest request started from these controls. */
+  feedback: React.ReactNode;
+}) {
+  const { t } = useI18n();
+  const a = entry.actions;
+  const res = entry.reservation ?? null;
+  const settingsRead = a.unreserve?.reason !== 'settings_unknown';
+  return (
+    <div className="space-y-3 border-t border-line pt-3">
+      {feedback}
+      {settingsRead && a.reserve && (
+        <p className="text-xs text-muted">
+          {res ? (
+            <>
+              {t('routers.res.ip')}: <bdi className="mono text-fg">{res.ip}</bdi>
+            </>
+          ) : (
+            t('routers.res.notReserved')
+          )}
+        </p>
+      )}
+      <div className="flex flex-wrap items-start gap-2">
+        {a.rename && (
+          <ActionButton action={a.rename} size="sm" onRun={() => setShowRename(!showRename)}>
+            <Pencil className="size-3.5" aria-hidden />
+            {t('routers.rename.button')}
+          </ActionButton>
+        )}
+        {res && a.unreserve && (
+          <ActionButton action={a.unreserve} size="sm" busy={busy} onRun={() => setConfirm({ kind: 'unreserve', res })}>
+            <PinOff className="size-3.5" aria-hidden />
+            {t('routers.action.unreserve')}
+          </ActionButton>
+        )}
+        {a.reserve && a.reserve.reason !== 'already_reserved' && (
+          <ActionButton action={a.reserve} size="sm" busy={busy} onRun={() => void runAction(a.reserve)}>
+            <Pin className="size-3.5" aria-hidden />
+            {t('routers.action.reserve')}
+            {a.reserve.body?.ip ? (
+              <bdi className="mono">{String(a.reserve.body.ip)}</bdi>
+            ) : null}
+          </ActionButton>
+        )}
+      </div>
+
+      {showRename && a.rename?.possible && (
+        <form
+          className="space-y-2 rounded-[var(--radius-control)] border border-line bg-surface p-3"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (await runAction(a.rename, { name: newName.trim() })) setShowRename(false);
+          }}
+        >
+          <Field label={t('routers.rename.title')} hint={t('routers.rename.hint')}>
+            {(id) => <Input id={id} value={newName} maxLength={63} required dir="auto" onChange={(e) => setNewName(e.target.value)} />}
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setShowRename(false)}>
+              {t('routers.cancel')}
+            </Button>
+            <Button type="submit" size="sm" variant="primary" busy={busy} disabled={!newName.trim()}>
+              {t('routers.rename.save')}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {a.port_forward && (
+        <div className="space-y-2">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-muted">
+            <Network className="size-3.5" aria-hidden />
+            {t('routers.pf.toDevice')}
+          </p>
+          {entry.port_forwards && entry.port_forwards.length > 0 ? (
+            <div className="rounded-[var(--radius-control)] border border-line bg-surface">
+              <PortForwardTable
+                rules={entry.port_forwards}
+                canAdmin={entry.port_forwards.some((x) => x.actions.remove.possible)}
+                busy={busy}
+                hideDevice
+                onRemove={(rule) => setConfirm({ kind: 'remove_forward', rule })}
+              />
+            </div>
+          ) : entry.port_forwards ? (
+            <p className="text-xs text-faint">{t('routers.pf.noneToDevice')}</p>
+          ) : null}
+          {a.port_forward.possible ? (
+            <div className="rounded-[var(--radius-control)] border border-line bg-surface">
+              <PortForwardForm deviceId={String(a.port_forward.body?.device_id ?? '')} busy={busy} onSubmit={(body) => runAction(a.port_forward, body)} />
+            </div>
+          ) : (
+            <ActionButton action={a.port_forward} size="sm" onRun={() => undefined}>
+              {t('routers.pf.add')}
+            </ActionButton>
+          )}
+        </div>
       )}
     </div>
   );

@@ -108,7 +108,22 @@ export interface LedgerEntry {
   released_via: 'product' | 'router' | null;
 }
 
-export type RequestAction = 'refresh' | 'fetch_certificate' | 'block' | 'unblock' | 'rate_limit' | 'clear_rate_limit' | 'schedule' | 'clear_schedule';
+export type RequestAction =
+  | 'refresh'
+  | 'fetch_certificate'
+  | 'block'
+  | 'unblock'
+  | 'rate_limit'
+  | 'clear_rate_limit'
+  | 'schedule'
+  | 'clear_schedule'
+  | 'rename'
+  | 'wifi'
+  | 'reserve'
+  | 'unreserve'
+  | 'add_port_forward'
+  | 'remove_port_forward'
+  | 'reboot';
 
 export interface RouterRequest {
   id: string;
@@ -224,8 +239,81 @@ export interface DeviceRouterControls {
       router_entries: { mac: string; owner: string; mechanism: string; partial?: boolean; detail?: string }[];
     };
     capabilities: Capability[] | null;
-    actions: { block: ControlAction; unblock: ControlAction; rate_limit: ControlAction; schedule: ControlAction };
+    /** As the router last reported them; null when not read yet or not offered. */
+    reservation?: RouterReservation | null;
+    port_forwards?: (PortForwardRule & { actions: { remove: ControlAction } })[] | null;
+    lan?: { cidr: string; source: 'collector_interface' | 'assumed_24' };
+    actions: {
+      block: ControlAction;
+      unblock: ControlAction;
+      rate_limit: ControlAction;
+      schedule: ControlAction;
+      rename?: ControlAction;
+      reserve?: ControlAction;
+      unreserve?: ControlAction;
+      port_forward?: ControlAction;
+    };
   }[];
   protected: { code: string; message: string } | null;
   setup: { reason: string; href: string; note: string } | null;
+}
+
+// Router settings (docs/features/router-controls.md): GET /routers/:id/settings.
+export interface WanLink {
+  name: string;
+  status: 'up' | 'down' | 'connecting' | 'unknown';
+  type?: string;
+  ipv4?: string;
+  dns?: string[];
+  uptime_seconds?: number;
+}
+
+export interface WifiNetwork {
+  id: string;
+  band?: string;
+  ssid: string;
+  enabled: boolean;
+  main: boolean;
+  guest: boolean;
+  hidden?: boolean;
+  security?: string;
+  client_macs?: string[];
+  client_count: number | null;
+}
+
+export interface RouterReservation {
+  id: string;
+  mac: string;
+  ip: string;
+  enabled?: boolean;
+  device_id?: string | null;
+  device_label?: string | null;
+}
+
+export type PortProtocol = 'tcp' | 'udp' | 'both';
+
+export interface PortForwardRule {
+  id: string;
+  enabled: boolean;
+  description: string;
+  protocol: PortProtocol;
+  external_start: number;
+  external_end: number;
+  internal_start: number;
+  internal_end: number;
+  internal_ip: string;
+  owner: 'lan-detective' | 'administrator';
+  device_id?: string | null;
+  device_label?: string | null;
+}
+
+export interface RouterSettingsView {
+  router_id: string;
+  settings_at: string | null;
+  lan: { cidr: string; source: 'collector_interface' | 'assumed_24'; router_ips: string[] };
+  overview: { uptime_seconds?: number; lan_ip?: string; wan?: WanLink[] } | null;
+  wifi: WifiNetwork[] | null;
+  reservations: RouterReservation[] | null;
+  port_forwards: PortForwardRule[] | null;
+  pending: { id: string; action: RequestAction; mac: string | null; device_id: string | null; params: Record<string, unknown>; created_by_email: string | null; created_at: string }[];
 }

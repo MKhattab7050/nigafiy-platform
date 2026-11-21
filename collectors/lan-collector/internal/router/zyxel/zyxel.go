@@ -534,6 +534,46 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		if !leases {
 			lease.Note = "the host list carries no lease source or remaining time on this firmware"
 		}
+		probe := func(c router.Capability, oid, mechanism, note string) (router.CapabilityStatus, error) {
+			_, err := d.dal(ctx, "capabilities", http.MethodGet, oid, nil)
+			switch {
+			case err == nil:
+				return router.CapabilityStatus{Capability: c, Supported: true, Mechanism: mechanism, Note: note}, nil
+			case isExpired(err):
+				return router.CapabilityStatus{}, err
+			}
+			return router.CapabilityStatus{Capability: c, Mechanism: mechanism, Note: "this firmware does not answer DAL " + oid}, nil
+		}
+		extra := make([]router.CapabilityStatus, 0, 6)
+		for _, p := range []struct {
+			c                    router.Capability
+			oid, mechanism, note string
+		}{
+			{router.CapOverview, "status", "DAL status (uptime, WAN links)", ""},
+			{router.CapWiFi, "wlan", mechanismWiFi, "turn a main or guest Wi-Fi network on or off; Wi-Fi keys are never read"},
+			{router.CapReservations, "static_dhcp", mechanismReservation, "the router keeps no owner for a reservation"},
+			{router.CapPortForward, "nat", mechanismPortForward, "rules made by LAN Detective are named \"LAN Detective: …\""},
+		} {
+			cs, err := probe(p.c, p.oid, p.mechanism, p.note)
+			if err != nil {
+				return err
+			}
+			if p.c == router.CapOverview && !cs.Supported {
+				if c2, err := probe(p.c, "cardpage_status", "DAL cardpage_status (uptime, WAN links)", ""); err != nil {
+					return err
+				} else if c2.Supported {
+					cs = c2
+				}
+			}
+			extra = append(extra, cs)
+		}
+		rename := router.CapabilityStatus{Capability: router.CapRename, Supported: len(hosts) > 0, Mechanism: mechanismRename,
+			Note: "sets the name the router shows for the device; the device itself is not renamed"}
+		if len(hosts) == 0 {
+			rename.Note = "the router lists no devices yet"
+		}
+		extra = append(extra, rename, router.CapabilityStatus{Capability: router.CapReboot, Supported: true, Mechanism: mechanismReboot,
+			Note: "the router is unreachable for a few minutes and every device reconnects"})
 		caps = router.Capabilities{
 			{Capability: router.CapClients, Supported: true, Mechanism: "DAL lanhosts"},
 			lease,
@@ -543,6 +583,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 			{Capability: router.CapSchedule, Supported: false,
 				Note: "not offered: schedules exist only as parental-control profiles (allowed-time windows) that the administrator owns; not implemented"},
 		}
+		caps = append(caps, extra...)
 		if d.info != nil && !TestedModels[d.info.Model] {
 			for i := range caps {
 				if caps[i].Supported {

@@ -100,3 +100,46 @@ export const scheduleSchema = z
       .nullable(),
   })
   .strict();
+
+// Router controls beyond blocking (docs/features/router-controls.md). The collector re-checks every rule.
+
+/** Ports the router itself is managed on (web UI, SSH, Telnet, TR-069): never forwarded. */
+export const MANAGEMENT_PORTS = [22, 23, 80, 443, 7547] as const;
+export const MAX_PORTS_PER_RULE = 1000;
+export const PORT_FORWARD_PREFIX = 'LAN Detective: ';
+
+// Control characters (C0, DEL, C1) are refused in anything written to the router.
+const NO_CONTROL = /^[^\u0000-\u001f\u007f-\u009f]*$/;
+const routerText = (max: number) => z.string().trim().min(1).max(max).regex(NO_CONTROL, 'control characters are not allowed');
+const portNumber = z.number().int().min(1).max(65535);
+
+export const renameSchema = z.object({ device_id: z.uuid(), name: routerText(63) }).strict();
+
+export const wifiSchema = z
+  .object({
+    wifi_id: z.string().min(1).max(40),
+    enabled: z.boolean(),
+    // Required to turn off a main network: every device on it disconnects.
+    confirm: z.boolean().optional(),
+  })
+  .strict();
+
+export const reservationSchema = z.object({ device_id: z.uuid(), ip: z.ipv4() }).strict();
+
+export const portForwardSchema = z
+  .object({
+    device_id: z.uuid(),
+    description: routerText(60),
+    protocol: z.enum(['tcp', 'udp', 'both']),
+    external_start: portNumber,
+    external_end: portNumber.optional(),
+    internal_start: portNumber.optional(),
+    internal_end: portNumber.optional(),
+  })
+  .strict();
+export type PortForwardBody = z.infer<typeof portForwardSchema>;
+
+export const rebootSchema = z.object({ confirm: z.literal('reboot') }).strict();
+
+export const deviceParams = z.object({ id: z.uuid(), device_id: z.uuid() });
+export const ruleParams = z.object({ id: z.uuid(), rule_id: z.string().min(1).max(40) });

@@ -9,7 +9,22 @@ import { MAX_ROUTERS_PER_SITE, REQUEST_TTL_MINUTES, type RouterCreate, type Rout
 // Router management and administrator requests. Every write is audited; credentials are never
 // returned, logged or audited (only "credentials changed: true"). `req` is passed for the audit trail.
 
-export type RouterAction = 'refresh' | 'fetch_certificate' | 'block' | 'unblock' | 'rate_limit' | 'clear_rate_limit' | 'schedule' | 'clear_schedule';
+export type RouterAction =
+  | 'refresh'
+  | 'fetch_certificate'
+  | 'block'
+  | 'unblock'
+  | 'rate_limit'
+  | 'clear_rate_limit'
+  | 'schedule'
+  | 'clear_schedule'
+  | 'rename'
+  | 'wifi'
+  | 'reserve'
+  | 'unreserve'
+  | 'add_port_forward'
+  | 'remove_port_forward'
+  | 'reboot';
 
 const COMMAND_KIND: Record<RouterAction, string> = {
   refresh: 'router_refresh',
@@ -20,7 +35,17 @@ const COMMAND_KIND: Record<RouterAction, string> = {
   clear_rate_limit: 'router_rate_limit',
   schedule: 'router_schedule',
   clear_schedule: 'router_schedule',
+  rename: 'router_rename',
+  wifi: 'router_wifi',
+  reserve: 'router_reservation',
+  unreserve: 'router_reservation',
+  add_port_forward: 'router_port_forward',
+  remove_port_forward: 'router_port_forward',
+  reboot: 'router_reboot',
 };
+
+/** Actions whose command carries `clear: true` (the same command kind removes instead of sets). */
+const CLEARING: ReadonlySet<RouterAction> = new Set(['clear_rate_limit', 'clear_schedule', 'unreserve', 'remove_port_forward']);
 
 export interface CapabilityStatus {
   capability: string;
@@ -319,7 +344,7 @@ export async function queueRequest(db: Db, ctx: AuthContext, r: RouterRow, actio
   ).rows[0]!;
   const payload: Record<string, unknown> = { request_id: request.id, router_id: r.id, ...params };
   if (opts.mac) payload.mac = opts.mac;
-  if (action === 'clear_rate_limit' || action === 'clear_schedule') payload.clear = true;
+  if (CLEARING.has(action)) payload.clear = true;
   await db.query(`INSERT INTO collector_commands (organization_id, collector_id, kind, payload, created_by) VALUES ($1,$2,$3,$4,$5)`, [
     ctx.organizationId,
     collector.id,

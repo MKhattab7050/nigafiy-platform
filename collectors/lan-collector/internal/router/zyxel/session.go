@@ -166,7 +166,7 @@ func loginBody(user string, password []byte, lang string) []byte {
 
 // do performs one HTTP request with the session cookie (and CSRF token when csrf is set).
 // It returns the status and the (possibly decrypted) body; the caller zeroes body when done.
-func (d *Driver) do(ctx context.Context, op, method, path string, body []byte, csrf bool) (int, []byte, error) {
+func (d *Driver) do(ctx context.Context, op, method, path string, body []byte, csrf bool) (_ int, out []byte, _ error) {
 	req, err := http.NewRequestWithContext(ctx, method, d.base+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, router.Errorf(router.ErrInvalidArgument, op, "bad request")
@@ -198,6 +198,7 @@ func (d *Driver) do(ctx context.Context, op, method, path string, body []byte, c
 	for _, c := range resp.Cookies() {
 		d.setCookie(c.Name, c.Value)
 	}
+	defer func() { d.adoptSessionKey(resp.StatusCode, out) }()
 	// Decrypt an encrypted envelope (UserLogin and /cgi-bin responses) with the session key.
 	if len(d.sess.aesKey) == 32 && bytes.Contains(raw, []byte(`"content"`)) && bytes.Contains(raw, []byte(`"iv"`)) {
 		var env envelope
@@ -211,6 +212,22 @@ func (d *Driver) do(ctx context.Context, op, method, path string, body []byte, c
 		}
 	}
 	return resp.StatusCode, raw, nil
+}
+
+// adoptSessionKey takes a new CSRF token from any reply that carries one, as the router's own web UI
+// does (it stores every reply's "sessionkey"). Some firmware rotates the token on each change; without
+// this the next change, and the closing logout, would be refused and the session left open.
+func (d *Driver) adoptSessionKey(status int, plain []byte) {
+	if status != http.StatusOK || !d.sess.loggedIn || !bytes.Contains(plain, []byte(`"sessionkey"`)) {
+		return
+	}
+	var r struct {
+		SessionKey string `json:"sessionkey"`
+	}
+	if json.Unmarshal(plain, &r) == nil && r.SessionKey != "" && r.SessionKey != string(d.sess.csrf) {
+		router.Zero(d.sess.csrf)
+		d.sess.csrf = []byte(r.SessionKey)
+	}
 }
 
 func (d *Driver) setCookie(name, value string) {
@@ -337,9 +354,13 @@ func (d *Driver) logout(ctx context.Context) error {
 		d.sess.wipe()
 		return nil
 	}
-	_, raw, err := d.do(ctx, "logout", http.MethodPost, "/cgi-bin/UserLogout", nil, true)
+	st, raw, err := d.do(ctx, "logout", http.MethodPost, "/cgi-bin/UserLogout", nil, true)
 	router.Zero(raw)
 	d.sess.wipe()
+	if err == nil && (st < 200 || st > 299) {
+		// The router kept the session; a single-session router refuses the next login until it times out.
+		return router.Errorf(router.ErrRejected, "logout", "the router refused the logout (HTTP %d)", st)
+	}
 	return err
 }
 

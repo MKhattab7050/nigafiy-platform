@@ -8,6 +8,7 @@ import { deviceEndpointControl } from '../endpoints/index.ts';
 import { devicePortLocation } from '../ports/index.ts';
 import { capability, protectedDevice, requesterAddress } from './control.ts';
 import { ROUTER_SELECT, type RouterRow, delivery, loginPause } from './service.ts';
+import { lanAddressProblem, lanSubnet, loadSettings } from './settings.ts';
 
 // GET /devices/:id/controls — ONE description of everything that can be done to a device, and why
 // or why not. Each section comes from the owning module's public index.ts and is computed inside its
@@ -86,6 +87,51 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
     const passThrough = (name: string, path: string) =>
       capCheck(name) ?? notReady ?? (!d.mac ? { possible: false, reason: 'no_mac' } : { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/${path}` });
 
+    // Router controls beyond blocking: rename, reservation, port forwards (from the settings as last read).
+    const { settings } = await loadSettings(db, r.id);
+    const reservation = d.mac ? (settings?.reservations?.find((x) => x.mac.toLowerCase() === d.mac) ?? null) : null;
+    const forwards = d.ip ? (settings?.port_forwards?.filter((x) => x.internal_ip === d.ip) ?? []) : [];
+    const lan = await lanSubnet(db, r, settings);
+    const base = `/api/v1/routers/${r.id}`;
+    const unknownPart = (part: unknown) => (part ? null : { possible: false, reason: 'settings_unknown' });
+    const noMac = !d.mac ? { possible: false, reason: 'no_mac' } : null;
+    const renameAction =
+      capCheck('rename') ??
+      notReady ??
+      noMac ??
+      (!client ? { possible: false, reason: 'not_on_router' } : { possible: true, min_role: 'admin', method: 'POST', href: `${base}/rename`, body: { device_id: d.id } });
+    const addressProblem = d.ip ? lanAddressProblem(lan, d.ip) : null;
+    const reserveAction =
+      capCheck('reservations') ??
+      notReady ??
+      noMac ??
+      unknownPart(settings?.reservations) ??
+      (!d.ip
+        ? { possible: false, reason: 'no_address' }
+        : reservation?.ip === d.ip
+          ? { possible: false, reason: 'already_reserved' }
+          : addressProblem
+            ? { possible: false, reason: addressProblem.code, note: addressProblem.message }
+            : { possible: true, min_role: 'admin', method: 'POST', href: `${base}/reservations`, body: { device_id: d.id, ip: d.ip } });
+    const unreserveAction =
+      capCheck('reservations') ??
+      notReady ??
+      noMac ??
+      unknownPart(settings?.reservations) ??
+      (!reservation ? { possible: false, reason: 'not_reserved' } : { possible: true, min_role: 'admin', method: 'DELETE', href: `${base}/reservations/${d.id}` });
+    const exposeGuard = guard && guard.code !== 'own_machine' ? guard : null;
+    const portForwardAction =
+      capCheck('port_forward') ??
+      notReady ??
+      unknownPart(settings?.port_forwards) ??
+      (!d.ip
+        ? { possible: false, reason: 'no_address' }
+        : exposeGuard
+          ? { possible: false, reason: exposeGuard.code, note: exposeGuard.message }
+          : { possible: true, min_role: 'admin', method: 'POST', href: `${base}/port-forwards`, body: { device_id: d.id } });
+    const removeForward = (id: string) =>
+      capCheck('port_forward') ?? notReady ?? { possible: true, min_role: 'admin', method: 'DELETE', href: `${base}/port-forwards/${encodeURIComponent(id)}` };
+
     items.push({
       router_id: r.id,
       name: r.name,
@@ -106,7 +152,20 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
         router_entries: onRouter,
       },
       capabilities: r.capabilities,
-      actions: { block: blockAction, unblock: unblockAction, rate_limit: passThrough('rate_limit', 'rate-limit'), schedule: passThrough('schedule', 'schedule') },
+      // As the router last reported them (null: not read yet / not offered).
+      reservation: settings?.reservations ? reservation : null,
+      port_forwards: settings?.port_forwards ? forwards.map((x) => ({ ...x, actions: { remove: removeForward(x.id) } })) : null,
+      lan: { cidr: lan.cidr, source: lan.source },
+      actions: {
+        block: blockAction,
+        unblock: unblockAction,
+        rate_limit: passThrough('rate_limit', 'rate-limit'),
+        schedule: passThrough('schedule', 'schedule'),
+        rename: renameAction,
+        reserve: reserveAction,
+        unreserve: unreserveAction,
+        port_forward: portForwardAction,
+      },
     });
   }
   return {

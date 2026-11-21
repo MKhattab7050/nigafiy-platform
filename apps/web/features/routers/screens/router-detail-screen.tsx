@@ -12,10 +12,11 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { BlockDialog } from '../components/block-dialog';
 import { RequestProgress } from '../components/request-progress';
 import { CertTrustModal, DeleteRouterModal, EditRouterModal } from '../components/router-modals';
+import { RouterSettingsPanel } from '../components/router-settings-panel';
 import { ConnectionLabel, DELIVERY_TONE, Fingerprint, HEALTH_TONE, RouterErrorNote, deliveryText, leaseText } from '../components/text';
 import type { DeviceRef, QueuedRequest, RouterClient, RouterDetail } from '../types';
 
-type DetailTab = 'clients' | 'blocks' | 'identity' | 'requests';
+type DetailTab = 'clients' | 'settings' | 'blocks' | 'identity' | 'requests';
 
 function RouterDetailView({ id }: { id: string }) {
   const { t, locale } = useI18n();
@@ -278,6 +279,7 @@ function RouterDetailBody({
         label={r.name}
         options={[
           { value: 'clients', label: t('routers.clients'), count: clients.length },
+          { value: 'settings', label: t('routers.tab.settings') },
           { value: 'blocks', label: t('routers.blocksOnRouter'), count: r.blocked_entries?.length ?? 0 },
           { value: 'identity', label: t('routers.identity') },
           { value: 'requests', label: t('routers.requests'), count: r.recent_requests.length },
@@ -460,6 +462,8 @@ function RouterDetailBody({
           </Card>
         </div>
       )}
+
+      {tab === 'settings' && <RouterSettingsPanel router={r} clients={clients} canAdmin={canAdmin} onChanged={onReload} />}
 
       {tab === 'blocks' && (
         <div className="space-y-5">

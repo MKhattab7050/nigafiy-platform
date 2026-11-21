@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +26,11 @@ const (
 	cmdRouterUnblock          = "router_unblock"
 	cmdRouterRateLimit        = "router_rate_limit"
 	cmdRouterSchedule         = "router_schedule"
+	cmdRouterRename           = "router_rename"
+	cmdRouterWiFi             = "router_wifi"
+	cmdRouterReservation      = "router_reservation"
+	cmdRouterPortForward      = "router_port_forward"
+	cmdRouterReboot           = "router_reboot"
 
 	routerTick            = 5 * time.Second
 	minRouterInterval     = 2 * time.Minute
@@ -70,6 +76,12 @@ type routerPayload struct {
 	Clear     bool              `json:"clear,omitempty"`   // rate limit / schedule: remove instead of set
 	Limit     *router.RateLimit `json:"limit,omitempty"`
 	Windows   []router.Window   `json:"windows,omitempty"`
+	// Router controls (docs/features/router-controls.md).
+	Name        string              `json:"name,omitempty"`    // router_rename
+	WiFiID      string              `json:"wifi_id,omitempty"` // router_wifi
+	Enabled     *bool               `json:"enabled,omitempty"` // router_wifi
+	IP          string              `json:"ip,omitempty"`      // router_reservation
+	PortForward *router.PortForward `json:"port_forward,omitempty"`
 }
 
 type loginSuspension struct {
@@ -311,11 +323,16 @@ func (a *Agent) routerLoop(ctx context.Context) {
 }
 
 var routerActions = map[string]string{
-	cmdRouterRefresh:   "refresh",
-	cmdRouterBlock:     "block",
-	cmdRouterUnblock:   "unblock",
-	cmdRouterRateLimit: "rate_limit",
-	cmdRouterSchedule:  "schedule",
+	cmdRouterRefresh:     "refresh",
+	cmdRouterBlock:       "block",
+	cmdRouterUnblock:     "unblock",
+	cmdRouterRateLimit:   "rate_limit",
+	cmdRouterSchedule:    "schedule",
+	cmdRouterRename:      "rename",
+	cmdRouterWiFi:        "wifi",
+	cmdRouterReservation: "reserve",
+	cmdRouterPortForward: "add_port_forward",
+	cmdRouterReboot:      "reboot",
 }
 
 // routerCommand runs one administrator-requested router operation. Acknowledged either way; the
@@ -337,6 +354,12 @@ func (a *Agent) routerCommand(ctx context.Context, cmd cloud.Command) {
 	}
 	if action == "schedule" && p.Clear {
 		action = "clear_schedule"
+	}
+	if action == "reserve" && p.Clear {
+		action = "unreserve"
+	}
+	if action == "add_port_forward" && p.Clear {
+		action = "remove_port_forward"
 	}
 	t, ok := a.routerTarget(p.RouterID)
 	if !ok {
@@ -420,7 +443,11 @@ func (a *Agent) runRouterOp(ctx context.Context, t routerTarget, action, trigger
 	defer func() {
 		// Always log out, even when the operation's context ended.
 		cctx, cancel := context.WithTimeout(context.Background(), routerCloseBudget)
-		_ = d.Close(cctx)
+		if cerr := d.Close(cctx); cerr != nil {
+			// A failed logout can leave a session open on the router; single-session routers then
+			// refuse the next login ("Duplicated login") until that session times out.
+			a.log.Warn("router logout failed", "router_id", t.ID, "address", t.Address, "action", action, "error", cerr.Error())
+		}
 		cancel()
 	}()
 	opCtx, cancel := context.WithTimeout(ctx, routerOpBudget)
@@ -510,8 +537,250 @@ func (a *Agent) routerOperation(ctx context.Context, d router.Driver, action str
 			item["change"] = wireChange(ch)
 		}
 		return err
+	case "rename", "wifi", "reserve", "unreserve", "add_port_forward", "remove_port_forward", "reboot":
+		ch, err := a.routerControl(ctx, d, action, p, mac)
+		if err != nil {
+			return err
+		}
+		item["change"] = wireChange(ch)
+		if action != "reboot" {
+			// Report what the router shows now, so the UI reflects the router, not the request.
+			attachSettings(ctx, d, item)
+		}
+		return nil
 	}
 	return router.Errorf(router.ErrInvalidArgument, "command", "unknown router action")
+}
+
+func unsupported(op, what string) error {
+	return router.Errorf(router.ErrUnsupported, op, "this router driver cannot %s", what)
+}
+
+// routerControl runs one of the router controls (docs/features/router-controls.md).
+func (a *Agent) routerControl(ctx context.Context, d router.Driver, action string, p routerPayload, mac func() (string, error)) (router.Change, error) {
+	switch action {
+	case "rename":
+		r, ok := d.(router.Renamer)
+		if !ok {
+			return router.Change{}, unsupported(action, "rename a device")
+		}
+		m, err := mac()
+		if err != nil {
+			return router.Change{}, err
+		}
+		return r.RenameClient(ctx, m, p.Name)
+	case "wifi":
+		w, ok := d.(router.WiFiController)
+		if !ok {
+			return router.Change{}, unsupported(action, "turn Wi-Fi networks on or off")
+		}
+		if p.WiFiID == "" || p.Enabled == nil {
+			return router.Change{}, router.Errorf(router.ErrInvalidArgument, action, "no Wi-Fi network or state given")
+		}
+		if !*p.Enabled {
+			if err := a.guardOwnWiFi(ctx, d, p.WiFiID); err != nil {
+				return router.Change{}, err
+			}
+		}
+		return w.SetWiFiEnabled(ctx, p.WiFiID, *p.Enabled)
+	case "reserve", "unreserve":
+		r, ok := d.(router.ReservationManager)
+		if !ok {
+			return router.Change{}, unsupported(action, "manage DHCP reservations")
+		}
+		m, err := mac()
+		if err != nil {
+			return router.Change{}, err
+		}
+		if action == "unreserve" {
+			return r.RemoveReservation(ctx, m)
+		}
+		return r.AddReservation(ctx, m, p.IP)
+	case "add_port_forward", "remove_port_forward":
+		f, ok := d.(router.PortForwarder)
+		if !ok {
+			return router.Change{}, unsupported(action, "manage port forwarding")
+		}
+		if p.PortForward == nil {
+			return router.Change{}, router.Errorf(router.ErrInvalidArgument, action, "no port-forward rule given")
+		}
+		if action == "remove_port_forward" {
+			return f.RemovePortForward(ctx, *p.PortForward)
+		}
+		return f.AddPortForward(ctx, *p.PortForward)
+	case "reboot":
+		r, ok := d.(router.Rebooter)
+		if !ok {
+			return router.Change{}, unsupported(action, "restart the router")
+		}
+		return r.Reboot(ctx)
+	}
+	return router.Change{}, router.Errorf(router.ErrInvalidArgument, "command", "unknown router action")
+}
+
+// guardOwnWiFi refuses to turn off a Wi-Fi network this collector's own computer is connected to:
+// the collector would lose the router and could not turn it back on.
+func (a *Agent) guardOwnWiFi(ctx context.Context, d router.Driver, id string) error {
+	sr, ok := d.(router.SettingsReader)
+	if !ok || a.deps.LocalMACs == nil {
+		return nil
+	}
+	s, err := sr.Settings(ctx)
+	if err != nil {
+		return err
+	}
+	local := map[string]bool{}
+	for _, m := range a.deps.LocalMACs() {
+		if n, err := router.NormalizeMAC(m); err == nil {
+			local[n] = true
+		}
+	}
+	for _, w := range s.WiFi {
+		if w.ID != id {
+			continue
+		}
+		for _, m := range w.ClientMACs {
+			if local[m] {
+				return router.Errorf(router.ErrInvalidArgument, "wifi",
+					"the computer running this collector is connected to %q; turning it off would cut LAN Detective off from the router", w.SSID)
+			}
+		}
+	}
+	return nil
+}
+
+// attachSettings adds the router-wide settings to a result item. A failure to read them never fails
+// the operation they accompany; the next refresh tries again.
+func attachSettings(ctx context.Context, d router.Driver, item map[string]any) {
+	sr, ok := d.(router.SettingsReader)
+	if !ok {
+		return
+	}
+	s, err := sr.Settings(ctx)
+	if err != nil {
+		return
+	}
+	if w := wireSettings(s); len(w) > 0 {
+		item["settings"] = w
+	}
+}
+
+// portRangeOK: both ends are real ports (the API refuses a result with any other value).
+func portRangeOK(start, end int) bool {
+	return start >= 1 && start <= 65535 && end >= 1 && end <= 65535
+}
+
+func wireSettings(s router.Settings) map[string]any {
+	out := map[string]any{}
+	ipOK := func(v string) bool {
+		a, err := netip.ParseAddr(v)
+		return err == nil && a.Is4()
+	}
+	if o := s.Overview; o != nil {
+		ov := map[string]any{}
+		if o.UptimeSeconds != nil && *o.UptimeSeconds >= 0 {
+			ov["uptime_seconds"] = *o.UptimeSeconds
+		}
+		if ipOK(o.LANIP) {
+			ov["lan_ip"] = o.LANIP
+		}
+		wan := make([]map[string]any, 0, len(o.WAN))
+		for _, l := range o.WAN {
+			if len(wan) >= 8 {
+				break
+			}
+			name := clip(strings.TrimSpace(l.Name), 60)
+			if name == "" {
+				name = "WAN"
+			}
+			e := map[string]any{"name": name, "status": l.Status}
+			switch l.Status {
+			case "up", "down", "connecting", "unknown":
+			default:
+				e["status"] = "unknown"
+			}
+			if l.Type != "" {
+				e["type"] = clip(l.Type, 20)
+			}
+			if ipOK(l.IPv4) {
+				e["ipv4"] = l.IPv4
+			}
+			var dns []string
+			for _, x := range l.DNS {
+				if ipOK(x) && len(dns) < 4 {
+					dns = append(dns, x)
+				}
+			}
+			if len(dns) > 0 {
+				e["dns"] = dns
+			}
+			if l.UptimeSeconds != nil && *l.UptimeSeconds >= 0 {
+				e["uptime_seconds"] = *l.UptimeSeconds
+			}
+			wan = append(wan, e)
+		}
+		ov["wan"] = wan
+		out["overview"] = ov
+	}
+	if s.WiFi != nil {
+		list := make([]map[string]any, 0, len(s.WiFi))
+		for _, w := range s.WiFi {
+			if len(list) >= 32 {
+				break
+			}
+			if w.ID == "" || len(w.ID) > 40 {
+				continue // an entry the API could not address
+			}
+			macs := []string{}
+			for _, m := range w.ClientMACs {
+				if n, err := router.NormalizeMAC(m); err == nil && len(macs) < 256 {
+					macs = append(macs, n)
+				}
+			}
+			e := map[string]any{"id": clip(w.ID, 40), "ssid": clip(w.SSID, 64), "enabled": w.Enabled, "main": w.Main, "guest": w.Guest, "hidden": w.Hidden, "client_macs": macs}
+			if w.Band != "" {
+				e["band"] = clip(w.Band, 20)
+			}
+			if w.Security != "" {
+				e["security"] = clip(w.Security, 40)
+			}
+			list = append(list, e)
+		}
+		out["wifi"] = list
+	}
+	if s.Reservations != nil {
+		list := make([]map[string]any, 0, len(s.Reservations))
+		for _, r := range s.Reservations {
+			m, err := router.NormalizeMAC(r.MAC)
+			if err != nil || !ipOK(r.IP) || r.ID == "" || len(r.ID) > 40 || len(list) >= 256 {
+				continue
+			}
+			list = append(list, map[string]any{"id": clip(r.ID, 40), "mac": m, "ip": r.IP, "enabled": r.Enabled})
+		}
+		out["reservations"] = list
+	}
+	if s.PortForwards != nil {
+		list := make([]map[string]any, 0, len(s.PortForwards))
+		for _, f := range s.PortForwards {
+			if len(list) >= 256 || !ipOK(f.InternalIP) || f.ID == "" || len(f.ID) > 40 || !portRangeOK(f.ExternalStart, f.ExternalEnd) || !portRangeOK(f.InternalStart, f.InternalEnd) {
+				continue
+			}
+			owner := router.OwnerAdmin
+			if f.Owner == router.OwnerProduct {
+				owner = router.OwnerProduct
+			}
+			proto, ok := router.NormalizeProtocol(f.Protocol)
+			if !ok {
+				proto = router.ProtoBoth
+			}
+			e := map[string]any{"id": clip(f.ID, 40), "enabled": f.Enabled, "description": clip(f.Description, 120), "protocol": proto,
+				"external_start": f.ExternalStart, "external_end": f.ExternalEnd, "internal_start": f.InternalStart, "internal_end": f.InternalEnd,
+				"internal_ip": f.InternalIP, "owner": string(owner)}
+			list = append(list, e)
+		}
+		out["port_forwards"] = list
+	}
+	return out
 }
 
 // refreshRouter reads identity, capabilities, the client list and the blocks in effect. What was
@@ -565,6 +834,9 @@ func refreshRouter(ctx context.Context, d router.Driver, item map[string]any) er
 			wire = append(wire, e)
 		}
 		item["blocked"] = wire
+	}
+	if caps.Supports(router.CapOverview) || caps.Supports(router.CapWiFi) || caps.Supports(router.CapReservations) || caps.Supports(router.CapPortForward) {
+		attachSettings(ctx, d, item)
 	}
 	return nil
 }

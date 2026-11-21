@@ -213,6 +213,86 @@ export const ROUTER_ERROR_KINDS = [
   'not_configured', 'login_suspended', 'internal',
 ] as const;
 const shortText = (n: number) => z.string().max(n);
+export const ROUTER_RESULT_ACTIONS = [
+  'refresh', 'fetch_certificate', 'block', 'unblock', 'rate_limit', 'clear_rate_limit', 'schedule', 'clear_schedule',
+  'rename', 'wifi', 'reserve', 'unreserve', 'add_port_forward', 'remove_port_forward', 'reboot',
+] as const;
+const port = z.number().int().min(1).max(65535);
+// The router's own identifier of a list entry (opaque; only valid until the router's list changes).
+const routerEntryId = z.string().min(1).max(40);
+/**
+ * Router settings as read by the driver (docs/features/router-controls.md). Each part is optional:
+ * absent when the router does not offer it or it could not be read. Never a Wi-Fi key, RADIUS
+ * secret or password: there is no field for one, and unknown fields are rejected.
+ */
+export const routerSettingsSchema = z
+  .object({
+    overview: z
+      .object({
+        uptime_seconds: z.number().int().min(0).max(1e10).optional(),
+        lan_ip: ipv4.optional(),
+        wan: z
+          .array(
+            z
+              .object({
+                name: z.string().min(1).max(60),
+                status: z.enum(['up', 'down', 'connecting', 'unknown']),
+                type: shortText(20).optional(),
+                ipv4: ipv4.optional(),
+                dns: z.array(shortText(45)).max(8).optional(),
+                uptime_seconds: z.number().int().min(0).max(1e10).optional(),
+              })
+              .strict(),
+          )
+          .max(8)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    wifi: z
+      .array(
+        z
+          .object({
+            id: routerEntryId,
+            band: shortText(20).optional(),
+            ssid: shortText(64),
+            enabled: z.boolean(),
+            main: z.boolean(),
+            guest: z.boolean(),
+            hidden: z.boolean().optional(),
+            security: shortText(60).optional(),
+            client_macs: z.array(mac).max(1024).optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
+    reservations: z
+      .array(z.object({ id: routerEntryId, mac, ip: ipv4, enabled: z.boolean().optional() }).strict())
+      .max(256)
+      .optional(),
+    port_forwards: z
+      .array(
+        z
+          .object({
+            id: routerEntryId,
+            enabled: z.boolean(),
+            description: shortText(120),
+            protocol: z.enum(['tcp', 'udp', 'both']),
+            external_start: port,
+            external_end: port,
+            internal_start: port,
+            internal_end: port,
+            internal_ip: ipv4,
+            owner: z.enum(['lan-detective', 'administrator']),
+          })
+          .strict(),
+      )
+      .max(256)
+      .optional(),
+  })
+  .strict();
+export type RouterSettings = z.infer<typeof routerSettingsSchema>;
 const routerResultSchema = z
   .object({
     type: z.literal('router_result'),
@@ -220,7 +300,7 @@ const routerResultSchema = z
     router_id: z.uuid(),
     // Present for administrator-requested operations; absent for the collector's scheduled refresh.
     request_id: z.uuid().optional(),
-    action: z.enum(['refresh', 'fetch_certificate', 'block', 'unblock', 'rate_limit', 'clear_rate_limit', 'schedule', 'clear_schedule']),
+    action: z.enum(ROUTER_RESULT_ACTIONS),
     trigger: z.enum(['scheduled', 'command']),
     ok: z.boolean(),
     duration_ms: z.number().int().min(0).max(3_600_000).optional(),
@@ -277,6 +357,7 @@ const routerResultSchema = z
     change: z
       .object({
         action: shortText(40),
+        // The device's MAC, or "" for a router-wide change (Wi-Fi, port forward, reboot).
         mac: shortText(17),
         mechanism: shortText(200),
         applied: z.boolean(),
@@ -299,6 +380,8 @@ const routerResultSchema = z
       })
       .strict()
       .optional(),
+    // Refresh, and any control result with ok: true (re-read after the change).
+    settings: routerSettingsSchema.optional(),
   })
   .strict();
 

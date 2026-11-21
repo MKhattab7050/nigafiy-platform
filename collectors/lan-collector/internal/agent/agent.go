@@ -493,7 +493,8 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			default:
 				a.markCompleted(cmd.ID)
 			}
-		case cmdRouterRefresh, cmdRouterFetchCertificate, cmdRouterBlock, cmdRouterUnblock, cmdRouterRateLimit, cmdRouterSchedule:
+		case cmdRouterRefresh, cmdRouterFetchCertificate, cmdRouterBlock, cmdRouterUnblock, cmdRouterRateLimit, cmdRouterSchedule,
+			cmdRouterRename, cmdRouterWiFi, cmdRouterReservation, cmdRouterPortForward, cmdRouterReboot:
 			a.cmdWG.Add(1)
 			go func(cmd cloud.Command) {
 				defer a.cmdWG.Done()
