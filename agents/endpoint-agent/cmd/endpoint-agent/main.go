@@ -27,6 +27,7 @@ func main() {
 	flag.StringVar(&cfg.EnrollmentToken, "token", cfg.EnrollmentToken, "single-use enrollment token (or LAN_ENDPOINT_ENROLLMENT_TOKEN)")
 	flag.StringVar(&cfg.StateDir, "state-dir", cfg.StateDir, "directory for endpoint credential state")
 	flag.StringVar(&cfg.CAFile, "ca-file", cfg.CAFile, "optional PEM CA bundle")
+	flag.StringVar(&cfg.TLSPinSHA256, "tls-pin", cfg.TLSPinSHA256, "optional server leaf certificate SHA-256 fingerprint pin (or LAN_ENDPOINT_TLS_PIN_SHA256)")
 	flag.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug, info, warn, error")
 	flag.BoolVar(&cfg.AllowInsecureHTTP, "allow-insecure-http", cfg.AllowInsecureHTTP, "allow http:// server URL (local development only)")
 	showVersion := flag.Bool("version", false, "print version and exit")

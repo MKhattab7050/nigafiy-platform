@@ -57,15 +57,16 @@ interface SessionRow {
   email: string;
   organization_id: string;
   role: Role | null;
+  status: 'active' | 'deactivated' | null;
 }
 
-/** Resolves the session cookie to user + active organization + role (membership re-checked on every request). */
+/** Resolves the session cookie to user + active organization + role (active membership re-checked on every request). */
 export async function requireSession(req: Request, _res: Response, next: NextFunction): Promise<void> {
   assertNotCrossSite(req);
   const token = readCookie(req, SESSION_COOKIE);
   if (!token) throw new AppError(401, 'unauthenticated', 'Sign in required');
   const { rows } = await systemPool.query<SessionRow>(
-    `SELECT s.id AS session_id, u.id AS user_id, u.email, s.active_organization_id AS organization_id, m.role
+    `SELECT s.id AS session_id, u.id AS user_id, u.email, s.active_organization_id AS organization_id, m.role, m.status
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN memberships m ON m.user_id = s.user_id AND m.organization_id = s.active_organization_id
@@ -74,7 +75,13 @@ export async function requireSession(req: Request, _res: Response, next: NextFun
   );
   const row = rows[0];
   if (!row) throw new AppError(401, 'unauthenticated', 'Session expired, sign in again');
-  if (!row.role) throw new AppError(403, 'forbidden', 'You are no longer a member of this organization');
+  if (!row.role || row.status !== 'active') {
+    await systemPool.query(`DELETE FROM sessions WHERE id = $1`, [row.session_id]);
+    if (row.status === 'deactivated') {
+      throw new AppError(403, 'account_deactivated', 'Your account has been deactivated in this organization');
+    }
+    throw new AppError(403, 'forbidden', 'You are no longer a member of this organization');
+  }
   req.auth = { userId: row.user_id, userEmail: row.email, sessionId: row.session_id, organizationId: row.organization_id, role: row.role };
   // Best effort, throttled to once a minute per session.
   void systemPool

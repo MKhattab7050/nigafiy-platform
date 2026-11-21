@@ -93,7 +93,7 @@ await call('PATCH', `/devices/${dev('core-switch.sim.lan').id}`, { device_type: 
 await call('PATCH', `/devices/${dev('erp.sim.lan').id}`, { device_type: 'server', tags: ['simulated'] });
 await call('PATCH', `/devices/${dev('ap-lobby.sim.lan').id}`, { device_type: 'access_point', tags: ['simulated'] });
 
-// Enroll simulated managed endpoints across Windows, Linux, Android Enterprise, and Apple iOS MDM.
+// Enroll simulated managed endpoints (Windows and Linux agents).
 const createdEndpoint = await call('POST', '/endpoints', { site_id: site.id, name: 'pc-1.sim.lan', platform: 'windows' });
 const enrolledEndpoint = await call('POST', '/agent/enroll', {
   enrollment_token: createdEndpoint.enrollment_token,
@@ -165,60 +165,6 @@ await call('POST', '/agent/heartbeat', {
   ],
 }, linuxCred);
 
-// Enroll simulated Android Enterprise device
-const createdAndroid = await call('POST', '/endpoints', {
-  site_id: site.id,
-  name: 'Field Tablet (Android)',
-  platform: 'android',
-  management_mode: 'android_device_owner',
-});
-await call('POST', '/agent/mdm/connect', {
-  enrollment_token: createdAndroid.enrollment_token,
-  device_name: 'Galaxy-Tab-Active4',
-  os: 'android',
-  os_version: 'Android 14',
-  manufacturer: 'Samsung',
-  model: 'SM-T636B',
-  serial_number: 'SIM-AND-9921',
-  security_patch_level: '2026-10-01',
-  battery_pct: 86,
-  battery_charging: true,
-  storage_total_gb: 128,
-  storage_used_gb: 41.5,
-  device_owner: true,
-  passcode_compliant: true,
-  apps: [
-    { name: 'LAN Detective DPC', version: '1.0.0', publisher: 'Internal IT' },
-    { name: 'Microsoft Teams', version: '1416/1.0.0', publisher: 'Microsoft Corporation' },
-  ],
-});
-
-// Enroll simulated Apple iOS Supervised MDM device
-const createdIos = await call('POST', '/endpoints', {
-  site_id: site.id,
-  name: 'Executive iPhone 16 Pro',
-  platform: 'ios',
-  management_mode: 'ios_supervised_mdm',
-});
-await call('POST', '/agent/mdm/connect', {
-  enrollment_token: createdIos.enrollment_token,
-  device_name: 'iPhone-16-Pro',
-  os: 'ios',
-  os_version: 'iOS 18.1',
-  manufacturer: 'Apple Inc.',
-  model: 'iPhone17,1',
-  serial_number: 'SIM-IOS-8841',
-  battery_pct: 94,
-  battery_charging: false,
-  storage_total_gb: 256,
-  storage_used_gb: 82.0,
-  supervised: true,
-  passcode_compliant: true,
-  apps: [
-    { name: 'Slack', version: '24.10.10', publisher: 'Slack Technologies' },
-    { name: 'Microsoft Authenticator', version: '6.8.15', publisher: 'Microsoft Corporation' },
-  ],
-});
 const beatAgent = () =>
   call(
     'POST',

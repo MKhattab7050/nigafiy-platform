@@ -4,7 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -148,5 +151,61 @@ func TestFileManagerLifecycleAndSecurity(t *testing.T) {
 	if _, err := ValidateAndCleanPath(`C:\Windows\System32\cmd.exe`, nil, true); err == nil {
 		t.Fatal("expected mutating operation on System32 to be rejected")
 	}
+	if _, err := ValidateAndCleanPath(filepath.Join(tmp, ".ssh", "id_ed25519"), []string{tmp}, false); err == nil {
+		t.Fatal("expected .ssh key path to be rejected")
+	}
+	if _, err := ValidateAndCleanPath(filepath.Join(tmp, "credential.json"), []string{tmp}, false); err == nil {
+		t.Fatal("expected credential.json to be rejected")
+	}
 }
 
+
+func TestRejectsNetworkDevicePathsAndLinkEscapes(t *testing.T) {
+	for _, p := range []string{`\\server\share\file.txt`, `\\?\C:\Windows\System32\config\SAM`, `\\.\PhysicalDrive0`, `//server/share`, `C:\Windows\System32\config\SAM`} {
+		if _, err := ValidateAndCleanPath(p, nil, false); err == nil {
+			t.Fatalf("expected %q to be rejected", p)
+		}
+	}
+
+	root := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(root, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		// Windows without Developer Mode: a directory junction needs no privilege.
+		if runtime.GOOS != "windows" || exec.Command("cmd", "/c", "mklink", "/J", link, outside).Run() != nil {
+			t.Skipf("cannot create a link here (%v)", err)
+		}
+	}
+	if _, err := ValidateAndCleanPath(filepath.Join(link, "secret.txt"), []string{root}, false); err == nil {
+		t.Fatal("a symlink inside the allowed root must not lead outside it")
+	}
+	if _, err := ValidateAndCleanPath(filepath.Join(root, "inside.txt"), []string{root}, true); err != nil {
+		t.Fatalf("a plain file inside the allowed root must stay allowed: %v", err)
+	}
+}
+
+func TestNeverOverwrites(t *testing.T) {
+	root := t.TempDir()
+	file := filepath.Join(root, "report.txt")
+	if _, err := Execute(Request{Op: "touch", Path: file, DataBase64: base64.StdEncoding.EncodeToString([]byte("keep me")), AllowedRoots: []string{root}}); err != nil {
+		t.Fatalf("touch: %v", err)
+	}
+	other := filepath.Join(root, "other.txt")
+	_, _ = Execute(Request{Op: "touch", Path: other, AllowedRoots: []string{root}})
+
+	refused := []Request{
+		{Op: "touch", Path: file, AllowedRoots: []string{root}},
+		{Op: "copy", Path: file, TargetPath: root, AllowedRoots: []string{root}},
+		{Op: "move", Path: file, TargetPath: root, AllowedRoots: []string{root}},
+		{Op: "rename", Path: other, NewName: "report.txt", AllowedRoots: []string{root}},
+	}
+	for _, r := range refused {
+		if _, err := Execute(r); err == nil {
+			t.Fatalf("%s onto an existing file must be refused", r.Op)
+		}
+	}
+	got, err := os.ReadFile(file)
+	if err != nil || string(got) != "keep me" {
+		t.Fatalf("existing file changed: %q %v", got, err)
+	}
+}

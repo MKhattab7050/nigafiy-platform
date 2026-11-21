@@ -17,6 +17,23 @@
       <button id="lang" class="btn ghost" type="button">العربية</button>
     </header>
 
+    <section class="card" id="local-card" hidden>
+      <div class="row between">
+        <h2 data-i18n="localTitle">Local mode</h2>
+        <span class="badge ok" data-i18n="localBadge">Running on this computer</span>
+      </div>
+      <p class="muted small" data-i18n="localDesc">LAN Detective is running locally on this computer. To switch to a remote server, enter its https:// address below and save.</p>
+      <p id="local-urls" class="muted small" dir="ltr"></p>
+      <div id="local-scan-box" class="local-actions" hidden>
+        <p id="local-scan-declined" class="muted small" hidden data-i18n="localScanDeclined">The first-run home-network scan was skipped.</p>
+        <p id="local-msg" class="small ok-text" role="status" hidden></p>
+        <div class="row gap">
+          <button id="local-scan" class="btn primary" type="button" data-i18n="localScanBtn">Scan home network</button>
+          <button id="local-reset-prompt" class="btn ghost" type="button" hidden data-i18n="localResetPromptBtn">Ask again on next launch</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <div class="row between">
         <h2 data-i18n="status">Status</h2>

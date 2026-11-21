@@ -7,20 +7,25 @@ import (
 	"fmt"
 	"image"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 )
 
 var (
-	user32               = syscall.NewLazyDLL("user32.dll")
-	gdi32                = syscall.NewLazyDLL("gdi32.dll")
-	procGetSystemMetrics = user32.NewProc("GetSystemMetrics")
+	user32                = syscall.NewLazyDLL("user32.dll")
+	gdi32                 = syscall.NewLazyDLL("gdi32.dll")
+	procSetProcessDPIAware = user32.NewProc("SetProcessDPIAware")
+	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
+	dpiOnce               sync.Once
 	procGetDC            = user32.NewProc("GetDC")
 	procReleaseDC        = user32.NewProc("ReleaseDC")
 	procSetCursorPos     = user32.NewProc("SetCursorPos")
 	procMouseEvent       = user32.NewProc("mouse_event")
 	procKeybdEvent       = user32.NewProc("keybd_event")
+	procSendInput        = user32.NewProc("SendInput")
 	procVkKeyScanW       = user32.NewProc("VkKeyScanW")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
@@ -43,9 +48,11 @@ const (
 
 	srcCopy        = 0x00CC0020
 	captureBlt     = 0x40000000
-	biRGB          = 0
-	dibRGBColors   = 0
-	keyeventfKeyUp = 0x0002
+	biRGB            = 0
+	dibRGBColors     = 0
+	inputKeyboard    = 1
+	keyeventfKeyUp   = 0x0002
+	keyeventfUnicode = 0x0004
 
 	mouseeventfLeftDown   = 0x0002
 	mouseeventfLeftUp     = 0x0004
@@ -75,7 +82,29 @@ type bitmapInfo struct {
 	BmiColors [1]uint32
 }
 
+type keybdInput struct {
+	wVk         uint16
+	wScan       uint16
+	dwFlags     uint32
+	time        uint32
+	dwExtraInfo uintptr
+}
+
+// winInput matches the Win32 INPUT struct layout on both 32-bit (28 bytes) and 64-bit (40 bytes) Windows.
+type winInput struct {
+	typ uint32
+	ki  keybdInput
+	pad [8]byte
+}
+
+func ensureDPIAware() {
+	dpiOnce.Do(func() {
+		_, _, _ = procSetProcessDPIAware.Call()
+	})
+}
+
 func getMetric(index int) int {
+	ensureDPIAware()
 	r, _, _ := procGetSystemMetrics.Call(uintptr(index))
 	return int(int32(r))
 }
@@ -117,6 +146,7 @@ func EnumerateDisplays() ([]DisplayInfo, error) {
 }
 
 func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
+	ensureDPIAware()
 	if disp.Width <= 0 || disp.Height <= 0 {
 		return nil, "", errors.New("invalid display dimensions")
 	}
@@ -302,14 +332,55 @@ func mouseButtons(btn string) (uint32, uint32) {
 	}
 }
 
+func buildUnicodeInputs(r rune) []winInput {
+	units := utf16.Encode([]rune{r})
+	inputs := make([]winInput, 0, len(units)*2)
+	for _, u := range units {
+		inputs = append(inputs,
+			winInput{
+				typ: inputKeyboard,
+				ki: keybdInput{
+					wScan:   u,
+					dwFlags: keyeventfUnicode,
+				},
+			},
+			winInput{
+				typ: inputKeyboard,
+				ki: keybdInput{
+					wScan:   u,
+					dwFlags: keyeventfUnicode | keyeventfKeyUp,
+				},
+			},
+		)
+	}
+	return inputs
+}
+
+func sendUnicodeRune(r rune) {
+	inputs := buildUnicodeInputs(r)
+	if len(inputs) == 0 {
+		return
+	}
+	_, _, _ = procSendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		unsafe.Sizeof(inputs[0]),
+	)
+}
+
 func sendRune(r rune) {
+	if r < 0 || r > 0xffff {
+		sendUnicodeRune(r)
+		return
+	}
 	res, _, _ := procVkKeyScanW.Call(uintptr(uint16(r)))
 	v := int16(res)
-	if v == -1 {
+	shiftState := byte((v >> 8) & 0xff)
+	if v == -1 || (shiftState&6) != 0 {
+		sendUnicodeRune(r)
 		return
 	}
 	vk := byte(v & 0xff)
-	shiftState := byte((v >> 8) & 0xff)
 	if shiftState&1 != 0 {
 		procKeybdEvent.Call(0x10, 0, 0, 0)
 	}
@@ -374,6 +445,28 @@ func mapKeyToVK(k string) byte {
 		return 0x7A
 	case "f12":
 		return 0x7B
+	case ";":
+		return 0xBA
+	case "=":
+		return 0xBB
+	case ",":
+		return 0xBC
+	case "-":
+		return 0xBD
+	case ".":
+		return 0xBE
+	case "/":
+		return 0xBF
+	case "`":
+		return 0xC0
+	case "[":
+		return 0xDB
+	case `\`:
+		return 0xDC
+	case "]":
+		return 0xDD
+	case "'":
+		return 0xDE
 	}
 	if len(k) == 1 {
 		ch := strings.ToUpper(k)[0]

@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DEVICE_TRUSTS, type Device, type DeviceDetail, type NetworkEvent, type Paginated } from '@lan-detective/shared-types';
+import { DEVICE_TRUSTS, type Device, type DeviceDetail, type DeviceMonitorBulk, type NetworkEvent, type Paginated } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
-import { notifyRealtime } from '../events/emit.ts';
-import { EVENT_SELECT } from '../events/routes.ts';
+import { EVENT_SELECT } from '../events/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
+import { resetDeviceType } from './identify.ts';
+import { monitorDevice, monitorDevices } from './monitor.ts';
 
 export const devicesRouter: Router = Router();
 
@@ -95,7 +97,8 @@ devicesRouter.get('/devices/:id', async (req, res) => {
 const patchSchema = z
   .object({
     display_name: z.string().trim().max(80).nullable(),
-    device_type: z.enum(DEVICE_TYPES),
+    // null: back to automatic — the manual type is dropped and the device is classified again from its evidence.
+    device_type: z.enum(DEVICE_TYPES).nullable(),
     owner: z.string().trim().max(80).nullable(),
     notes: z.string().trim().max(4000).nullable(),
     is_critical: z.boolean(),
@@ -126,7 +129,7 @@ devicesRouter.patch('/devices/:id', requireRole('technician'), async (req, res) 
       set('trust', body.trust);
       sets.push('trust_changed_at = now()');
     }
-    if (body.device_type !== undefined) {
+    if (body.device_type) {
       set('device_type', body.device_type);
       sets.push(`type_source = 'manual'`, `type_evidence = NULL`, `type_confidence = NULL`);
     }
@@ -136,6 +139,7 @@ devicesRouter.patch('/devices/:id', requireRole('technician'), async (req, res) 
     } else if (!(await db.query(`SELECT 1 FROM devices WHERE id = $1`, [id])).rowCount) {
       throw notFound('Device');
     }
+    if (body.device_type === null) await resetDeviceType(db, id);
     if (body.tags) {
       const tags = [...new Set(body.tags)];
       await db.query(`DELETE FROM device_tags WHERE device_id = $1 AND NOT (tag = ANY($2))`, [id, tags]);
@@ -158,6 +162,7 @@ const bulkTrustSchema = z
     trust: z.enum(DEVICE_TRUSTS),
     ids: z.array(z.uuid()).min(1).max(500).optional(),
     all_unreviewed: z.literal(true).optional(),
+    site_id: z.uuid().optional(),
   })
   .strict()
   .refine((b) => Boolean(b.ids) !== Boolean(b.all_unreviewed), 'Give either ids or all_unreviewed');
@@ -168,8 +173,11 @@ devicesRouter.post('/devices/trust', requireRole('technician'), async (req, res)
   const updated = await withTenant(ctx.organizationId, async (db) => {
     const result = body.ids
       ? await db.query(`UPDATE devices SET trust = $2, trust_changed_at = now() WHERE id = ANY($1) AND trust <> $2`, [body.ids, body.trust])
-      : await db.query(`UPDATE devices SET trust = $1, trust_changed_at = now() WHERE trust = 'unreviewed'`, [body.trust]);
-    await audit(db, req, 'device.trust_bulk', { type: 'device', id: null }, { trust: body.trust, count: result.rowCount, all_unreviewed: Boolean(body.all_unreviewed) });
+      : await db.query(
+          `UPDATE devices SET trust = $1, trust_changed_at = now() WHERE trust = 'unreviewed' AND ($2::uuid IS NULL OR site_id = $2)`,
+          [body.trust, body.site_id ?? null],
+        );
+    await audit(db, req, 'device.trust_bulk', { type: 'device', id: null }, { trust: body.trust, count: result.rowCount, all_unreviewed: Boolean(body.all_unreviewed), site_id: body.site_id ?? null });
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return result.rowCount ?? 0;
   });
@@ -181,27 +189,30 @@ devicesRouter.post('/devices/:id/monitor', requireRole('admin'), async (req, res
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   const result = await withTenant(ctx.organizationId, async (db) => {
-    const device = (
-      await db.query<{ site_id: string; ip: string | null; label: string }>(
-        `SELECT site_id, host(current_ip) AS ip, coalesce(display_name, hostname, host(current_ip)) AS label FROM devices WHERE id = $1`,
-        [id],
-      )
-    ).rows[0];
-    if (!device) throw notFound('Device');
-    if (!device.ip) throw new AppError(409, 'no_address', 'This device has no known IP address to monitor');
-    const existing = await db.query<{ id: string }>(`SELECT id FROM monitoring_checks WHERE device_id = $1 LIMIT 1`, [id]);
-    if (existing.rowCount) return { check_id: existing.rows[0]!.id, created: false };
-    const inserted = await db.query<{ id: string }>(
-      `INSERT INTO monitoring_checks (organization_id, site_id, device_id, name, kind, role, target, interval_seconds, failure_threshold, latency_warn_ms, loss_warn_pct)
-       VALUES ($1,$2,$3,$4,'icmp','service',$5,60,3,200,20) RETURNING id`,
-      [ctx.organizationId, device.site_id, id, `Ping ${device.label}`.slice(0, 80), device.ip],
-    );
-    const checkId = inserted.rows[0]!.id;
-    await audit(db, req, 'check.created', { type: 'monitoring_check', id: checkId }, { from_device: id, target: device.ip });
-    await notifyRealtime(db, ctx.organizationId, 'checks');
-    return { check_id: checkId, created: true };
+    const r = await monitorDevice(db, req, ctx.organizationId, id);
+    if (r.created) await notifyRealtime(db, ctx.organizationId, 'checks');
+    return r;
   });
   res.status(result.created ? 201 : 200).json(result);
+});
+
+/**
+ * Bulk one-click monitoring (e.g. accepting the "monitor your infrastructure" suggestion): the same
+ * rules and permission as POST /devices/:id/monitor, applied per id. Always 200 with one result per
+ * distinct id: created | exists | not_found | no_address.
+ */
+const bulkMonitorSchema = z.object({ ids: z.array(z.uuid()).min(1).max(200) }).strict();
+
+devicesRouter.post('/devices/monitor', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const body = parse(bulkMonitorSchema, req.body);
+  const response = await withTenant(ctx.organizationId, async (db): Promise<DeviceMonitorBulk> => {
+    const results = await monitorDevices(db, req, ctx.organizationId, body.ids);
+    const created = results.filter((r) => r.status === 'created').length;
+    if (created) await notifyRealtime(db, ctx.organizationId, 'checks');
+    return { created, results };
+  });
+  res.json(response);
 });
 
 /**

@@ -92,15 +92,66 @@ func ValidateAndCleanPath(raw string, allowedRoots []string, mutating bool) (str
 			return "", errors.New("directory traversal (..) is not permitted")
 		}
 	}
+	// Device namespaces (\\?\ and \\.\ prefixes) and UNC shares would let a request bypass the checks below or
+	// reach other machines with the agent's own network identity.
+	if strings.HasPrefix(normalized, "//") {
+		return "", errors.New("network (UNC) and device paths are not permitted")
+	}
 	clean := filepath.Clean(trimmed)
 	if !filepath.IsAbs(clean) {
 		return "", errors.New("path must be absolute")
 	}
+	if err := checkGuards(clean, allowedRoots, mutating); err != nil {
+		return "", err
+	}
+	// A symlink or junction inside an allowed folder must not lead outside it, or into a
+	// protected location: check the real target too (for a new file, its parent folder).
+	if real, ok := resolveExisting(clean); ok && real != clean {
+		if strings.HasPrefix(filepath.ToSlash(real), "//") {
+			return "", errors.New("path resolves to a network or device location")
+		}
+		// Roots are compared in their resolved form too (8.3 short names, linked folders).
+		realRoots := make([]string, 0, len(allowedRoots))
+		for _, r := range allowedRoots {
+			if rr, ok := resolveExisting(filepath.Clean(strings.TrimSpace(r))); ok {
+				realRoots = append(realRoots, rr)
+			} else {
+				realRoots = append(realRoots, r)
+			}
+		}
+		if err := checkGuards(real, realRoots, mutating); err != nil {
+			return "", fmt.Errorf("path resolves through a link: %w", err)
+		}
+	}
+	return clean, nil
+}
+
+// resolveExisting follows links in the longest existing prefix of p.
+func resolveExisting(p string) (string, bool) {
+	rest := ""
+	cur := p
+	for {
+		if real, err := realPath(cur); err == nil {
+			if rest == "" {
+				return real, true
+			}
+			return filepath.Join(real, rest), true
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return "", false
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
+}
+
+func checkGuards(clean string, allowedRoots []string, mutating bool) error {
 	if isForbiddenCredentialPath(clean) {
-		return "", errors.New("access to protected credential or security store is forbidden")
+		return errors.New("access to protected credential or security store is forbidden")
 	}
 	if mutating && isProtectedSystemPath(clean) {
-		return "", errors.New("modification or deletion of protected operating system path is forbidden")
+		return errors.New("modification or deletion of protected operating system path is forbidden")
 	}
 	if len(allowedRoots) > 0 {
 		allowed := false
@@ -115,10 +166,21 @@ func ValidateAndCleanPath(raw string, allowedRoots []string, mutating bool) (str
 			}
 		}
 		if !allowed {
-			return "", errors.New("path is outside the allowed management policy directories")
+			return errors.New("path is outside the allowed management policy directories")
 		}
 	}
-	return clean, nil
+	return nil
+}
+
+// mustNotExist refuses to replace anything already at dst: copy, move and rename never overwrite
+// (copying a file into its own folder would otherwise truncate it).
+func mustNotExist(dst string) error {
+	if _, err := os.Lstat(dst); err == nil {
+		return fmt.Errorf("%s already exists at the destination", filepath.Base(dst))
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
 
 func isSameOrSubpath(child, root string) bool {
@@ -135,15 +197,21 @@ func isSameOrSubpath(child, root string) bool {
 
 func isForbiddenCredentialPath(clean string) bool {
 	lower := strings.ToLower(filepath.ToSlash(clean))
+	if strings.HasSuffix(lower, "/.ssh") || strings.Contains(lower, "/.ssh/") ||
+		strings.HasSuffix(lower, "/credential.json") || lower == "credential.json" {
+		return true
+	}
 	forbidden := []string{
 		"/etc/shadow",
 		"/etc/gshadow",
 		"/etc/master.passwd",
 		"/library/keychains",
 		"/private/var/db/dslocal",
-		"c:/windows/system32/config/sam",
-		"c:/windows/system32/config/security",
-		"c:/windows/system32/config/system",
+		"/root/.ssh",
+		"/var/db/sudo",
+	}
+	for _, w := range windowsDirs() {
+		forbidden = append(forbidden, w+"/system32/config") // SAM, SECURITY, SYSTEM hives and RegBack
 	}
 	for _, f := range forbidden {
 		if lower == f || strings.HasPrefix(lower, f+"/") {
@@ -160,12 +228,9 @@ func isProtectedSystemPath(clean string) bool {
 		return true
 	}
 	protected := []string{
-		"c:/windows/system32",
-		"c:/windows/syswow64",
-		"c:/windows/winsxs",
-		"c:/windows/boot",
 		"c:/system volume information",
 		"/boot",
+		"/etc",
 		"/proc",
 		"/sys",
 		"/dev",
@@ -175,12 +240,27 @@ func isProtectedSystemPath(clean string) bool {
 		"/bin",
 		"/sbin",
 	}
+	for _, w := range windowsDirs() {
+		protected = append(protected, w+"/system32", w+"/syswow64", w+"/winsxs", w+"/boot")
+	}
 	for _, p := range protected {
 		if lower == p || strings.HasPrefix(lower, p+"/") {
 			return true
 		}
 	}
 	return false
+}
+
+// windowsDirs is the Windows directory (wherever it is installed) plus the usual C:\Windows.
+func windowsDirs() []string {
+	dirs := []string{"c:/windows"}
+	if root := strings.TrimSpace(os.Getenv("SystemRoot")); root != "" {
+		r := strings.TrimSuffix(strings.ToLower(filepath.ToSlash(filepath.Clean(root))), "/")
+		if r != dirs[0] {
+			dirs = append(dirs, r)
+		}
+	}
+	return dirs
 }
 
 func Execute(req Request) (Response, error) {
@@ -239,8 +319,20 @@ func Execute(req Request) (Response, error) {
 				return Response{}, errors.New("invalid base64 file content")
 			}
 		}
-		if err := os.WriteFile(clean, content, 0o644); err != nil {
+		// Creates only: an existing file of the same name is never truncated (that is an upload).
+		f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return Response{}, fmt.Errorf("%s already exists", filepath.Base(clean))
+			}
 			return Response{}, fmt.Errorf("create file failed: %w", err)
+		}
+		_, werr := f.Write(content)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return Response{}, fmt.Errorf("create file failed: %w", werr)
 		}
 		return Response{Op: "touch", Path: clean, Message: "Created file " + filepath.Base(clean)}, nil
 
@@ -255,6 +347,9 @@ func Execute(req Request) (Response, error) {
 		}
 		dest := filepath.Join(filepath.Dir(clean), newName)
 		if _, err := ValidateAndCleanPath(dest, req.AllowedRoots, true); err != nil {
+			return Response{}, err
+		}
+		if err := mustNotExist(dest); err != nil {
 			return Response{}, err
 		}
 		if err := os.Rename(clean, dest); err != nil {
@@ -280,6 +375,9 @@ func Execute(req Request) (Response, error) {
 				return Response{}, err
 			}
 			dst := filepath.Join(destDir, filepath.Base(src))
+			if err := mustNotExist(dst); err != nil {
+				return Response{}, err
+			}
 			if err := copyRecursive(src, dst); err != nil {
 				return Response{}, fmt.Errorf("copy %s failed: %w", filepath.Base(src), err)
 			}
@@ -304,6 +402,9 @@ func Execute(req Request) (Response, error) {
 				return Response{}, err
 			}
 			dst := filepath.Join(destDir, filepath.Base(src))
+			if err := mustNotExist(dst); err != nil {
+				return Response{}, err
+			}
 			if err := moveItem(src, dst); err != nil {
 				return Response{}, fmt.Errorf("move %s failed: %w", filepath.Base(src), err)
 			}
@@ -581,9 +682,15 @@ func uploadChunk(clean string, offset int64, appendMode bool, dataB64 string, ex
 }
 
 func copyRecursive(src, dst string) error {
-	info, err := os.Stat(src)
+	if isForbiddenCredentialPath(src) || isForbiddenCredentialPath(dst) {
+		return errors.New("access to protected credential or security store is forbidden")
+	}
+	info, err := os.Lstat(src)
 	if err != nil {
 		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("refusing to copy symbolic link")
 	}
 	if info.IsDir() {
 		if isSameOrSubpath(dst, src) {

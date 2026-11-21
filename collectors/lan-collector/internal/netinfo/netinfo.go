@@ -78,7 +78,7 @@ func ParseIPNeigh(out string) map[string]Neighbor {
 	return res
 }
 
-// ParseProcARP parses /proc/net/arp (Linux fallback; carries no freshness information).
+// ParseProcARP parses /proc/net/arp (Linux fallback).
 func ParseProcARP(content string) map[string]Neighbor {
 	res := map[string]Neighbor{}
 	sc := bufio.NewScanner(strings.NewReader(content))
@@ -92,7 +92,7 @@ func ParseProcARP(content string) map[string]Neighbor {
 			continue
 		}
 		if mac := NormalizeMAC(f[3]); mac != "" {
-			res[f[0]] = Neighbor{MAC: mac}
+			res[f[0]] = Neighbor{MAC: mac, Reachable: true}
 		}
 	}
 	return res
@@ -118,12 +118,12 @@ func ParseStateTable(out string) map[string]Neighbor {
 
 var arpARe = regexp.MustCompile(`\(?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)?\s+(?:at\s+)?([0-9a-fA-F]{1,2}(?:[:-][0-9a-fA-F]{1,2}){5})`)
 
-// ParseArpA parses `arp -a` / `arp -an` output (macOS, BSD, Windows). No freshness information.
+// ParseArpA parses `arp -a` / `arp -an` output (macOS, BSD, Windows).
 func ParseArpA(out string) map[string]Neighbor {
 	res := map[string]Neighbor{}
 	for _, m := range arpARe.FindAllStringSubmatch(out, -1) {
 		if mac := NormalizeMAC(m[2]); mac != "" && isIPv4(m[1]) {
-			res[m[1]] = Neighbor{MAC: mac}
+			res[m[1]] = Neighbor{MAC: mac, Reachable: true}
 		}
 	}
 	return res
@@ -132,7 +132,9 @@ func ParseArpA(out string) map[string]Neighbor {
 func run(ctx context.Context, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, name, args...).Output()
+	cmd := exec.CommandContext(ctx, name, args...)
+	hideWindow(cmd)
+	out, err := cmd.Output()
 	return string(out), err
 }
 
@@ -192,14 +194,25 @@ func ParseProcRoute(content string) string {
 
 // ParseRoutePrint extracts the default gateway from Windows `route print -4`.
 func ParseRoutePrint(out string) string {
+	bestGW := ""
+	bestMetric := int(^uint(0) >> 1)
 	sc := bufio.NewScanner(strings.NewReader(out))
 	for sc.Scan() {
 		f := strings.Fields(sc.Text())
 		if len(f) >= 4 && f[0] == "0.0.0.0" && f[1] == "0.0.0.0" && isIPv4(f[2]) {
-			return f[2]
+			metric := int(^uint(0) >> 1)
+			if len(f) >= 5 {
+				if m, err := strconv.Atoi(f[4]); err == nil && m >= 0 {
+					metric = m
+				}
+			}
+			if bestGW == "" || metric < bestMetric {
+				bestGW = f[2]
+				bestMetric = metric
+			}
 		}
 	}
-	return ""
+	return bestGW
 }
 
 // ParseRouteGet extracts the default gateway from macOS/BSD `route -n get default`.

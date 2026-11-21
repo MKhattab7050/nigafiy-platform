@@ -3,10 +3,14 @@ import { z } from 'zod';
 import type { CheckState, Incident, NetworkEvent, Overview } from '@lan-detective/shared-types';
 import { auth, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
-import { EVENT_SELECT } from '../events/routes.ts';
-import { INCIDENT_SELECT } from '../incidents/routes.ts';
+import { EVENT_SELECT } from '../events/index.ts';
+import { INCIDENT_SELECT } from '../incidents/index.ts';
+import { reportsRouter } from './reports.ts';
+import { searchRouter } from './search.ts';
 
 export const overviewRouter: Router = Router();
+overviewRouter.use(searchRouter);
+overviewRouter.use(reportsRouter);
 
 const WORST: CheckState[] = ['down', 'degraded', 'ok', 'unknown'];
 const worstState = (states: CheckState[]): CheckState | null => WORST.find((s) => states.includes(s)) ?? null;

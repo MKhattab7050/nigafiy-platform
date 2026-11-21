@@ -80,3 +80,36 @@ export async function applyIdentification(
     if (sets.length) await db.query(`UPDATE devices SET ${sets.join(', ')} WHERE id = $1`, values);
   }
 }
+
+/**
+ * Return a device's type to automatic: forget the manual type and classify it again right away from
+ * the evidence already stored (what it announced, its vendor, whether a collector uses it as gateway).
+ * With no evidence it is "unknown" until the next sweep brings some.
+ */
+export async function resetDeviceType(db: Db, deviceId: string): Promise<boolean> {
+  const d = (
+    await db.query<Row & { site_id: string }>(
+      `SELECT id, site_id, host(current_ip) AS ip, hostname, name_source, vendor, mac_randomized, device_type, type_source, type_confidence, type_evidence, fingerprint
+         FROM devices WHERE id = $1 FOR UPDATE`,
+      [deviceId],
+    )
+  ).rows[0];
+  if (!d) return false;
+  const gatewayOf = d.ip
+    ? ((
+        await db.query<{ name: string }>(
+          `SELECT name FROM collectors WHERE site_id = $1 AND status = 'active' AND gateway_ip = $2::inet ORDER BY last_heartbeat_at DESC NULLS LAST LIMIT 1`,
+          [d.site_id, d.ip],
+        )
+      ).rows[0]?.name ?? null)
+    : null;
+  const result = classify({ fingerprint: d.fingerprint ?? {}, hostname: d.hostname, vendor: d.vendor, macRandomized: d.mac_randomized, gatewayOf });
+  await db.query(`UPDATE devices SET device_type = $2, type_source = $3, type_confidence = $4, type_evidence = $5 WHERE id = $1`, [
+    deviceId,
+    result?.type ?? 'unknown',
+    result ? 'inferred' : 'none',
+    result?.confidence ?? null,
+    result ? result.evidence.join(' · ') : null,
+  ]);
+  return true;
+}

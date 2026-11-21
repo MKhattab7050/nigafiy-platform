@@ -44,12 +44,14 @@ class LocalStack {
     this.onStatus = onStatus ?? (() => undefined);
     this.child = null;
     this.urls = null;
+    this.startingPromise = null;
   }
 
   /** Starts (or reuses) database, API and web app. Resolves with { webUrl, apiUrl }. */
   start() {
     if (this.urls) return Promise.resolve(this.urls);
-    return new Promise((resolve, reject) => {
+    if (this.startingPromise) return this.startingPromise;
+    this.startingPromise = new Promise((resolve, reject) => {
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
       Object.assign(env, this.extraEnv);
@@ -62,21 +64,35 @@ class LocalStack {
       });
       this.child = child;
       let lastError = null;
+      const timeout = setTimeout(() => {
+        this.startingPromise = null;
+        void this.stop();
+        reject(new Error(lastError ?? 'Timed out waiting for LAN Detective to start (60s).'));
+      }, 60_000);
       child.on('message', (msg) => {
         if (msg?.type === 'status') this.onStatus(String(msg.message));
         if (msg?.type === 'error') lastError = String(msg.message);
         if (msg?.type === 'ready') {
+          clearTimeout(timeout);
+          this.startingPromise = null;
           this.urls = { webUrl: msg.webUrl, apiUrl: msg.apiUrl };
           resolve(this.urls);
         }
       });
-      child.on('error', (err) => reject(err));
+      child.on('error', (err) => {
+        clearTimeout(timeout);
+        this.startingPromise = null;
+        reject(err);
+      });
       child.on('exit', (code) => {
+        clearTimeout(timeout);
+        this.startingPromise = null;
         this.child = null;
         if (!this.urls) reject(new Error(lastError ?? `LAN Detective could not start (exit code ${code}). The logs folder has details.`));
         this.urls = null;
       });
     });
+    return this.startingPromise;
   }
 
   /** Stops what start() launched (services that were already running are left alone by the launcher). */
@@ -84,8 +100,14 @@ class LocalStack {
     const child = this.child;
     if (!child) return Promise.resolve();
     return new Promise((resolve) => {
-      const force = setTimeout(() => {
+      const killTree = () => {
+        if (process.platform === 'win32' && child.pid) {
+          spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+        }
         child.kill();
+      };
+      const force = setTimeout(() => {
+        killTree();
         resolve();
       }, 25_000);
       child.once('exit', () => {
@@ -93,7 +115,7 @@ class LocalStack {
         resolve();
       });
       if (child.connected) child.send('stop');
-      else child.kill();
+      else killTree();
     });
   }
 }
@@ -106,6 +128,7 @@ function apiClient(apiUrl, webUrl) {
       method,
       headers: { 'Content-Type': 'application/json', 'X-LD-CSRF': '1', Origin: webUrl, ...(cookie ? { Cookie: cookie } : {}) },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(15_000),
     });
     const set = res.headers.getSetCookie?.().find((x) => x.startsWith('ld_session='));
     if (set) cookie = set.split(';')[0];
@@ -118,7 +141,7 @@ function apiClient(apiUrl, webUrl) {
     }
     return { status: res.status, json };
   }
-  return { call, session: () => cookie.split('=')[1] ?? '' };
+  return { call, session: () => (cookie.includes('=') ? cookie.slice(cookie.indexOf('=') + 1) : '') };
 }
 
 /**
@@ -132,6 +155,7 @@ async function signIn(apiUrl, webUrl, store) {
   if (account) {
     const r = await api.call('POST', '/auth/login', account);
     if (r.status === 200) return { api, created: false };
+    if (r.status !== 401) throw new Error(`Could not sign in to the local account: ${r.json?.error?.message ?? r.status}`);
   }
   // First run (or the local database was reset): create the owner account for this computer.
   account = { email: `owner-${crypto.randomBytes(4).toString('hex')}@lan-detective.local`, password: crypto.randomBytes(24).toString('base64url') };
@@ -149,7 +173,7 @@ const isPrivate = (ip) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip
 
 function networkFor(address, interfaces = os.networkInterfaces()) {
   for (const [name, addrs] of Object.entries(interfaces)) {
-    const hit = addrs?.find((a) => a.family === 'IPv4' && a.address === address);
+    const hit = addrs?.find((a) => (a.family === 'IPv4' || a.family === 4) && a.address === address);
     if (!hit) continue;
     let prefix = Number(hit.cidr?.split('/')[1] ?? 24);
     if (prefix < 20) prefix = 24; // LAN Detective scans at most a /20; a home LAN is almost always a /24
@@ -159,17 +183,50 @@ function networkFor(address, interfaces = os.networkInterfaces()) {
   return null;
 }
 
-/** The IPv4 network of the interface that carries the default route. */
-function homeNetwork() {
+function fallbackHomeNetwork(interfaces = os.networkInterfaces()) {
+  for (const addrs of Object.values(interfaces)) {
+    for (const a of addrs ?? []) {
+      if ((a.family === 'IPv4' || a.family === 4) && !a.internal && isPrivate(a.address)) {
+        const net = networkFor(a.address, interfaces);
+        if (net) return net;
+      }
+    }
+  }
+  return null;
+}
+
+/** The IPv4 network of the interface that carries the default route, falling back to the first active private IPv4 interface when offline. */
+function homeNetwork(interfaces) {
   return new Promise((resolve) => {
-    const s = dgram.createSocket('udp4');
-    s.on('error', () => (s.close(), resolve(null)));
-    // connect() on UDP only selects a route; no packet is sent.
-    s.connect(53, '1.1.1.1', () => {
-      const address = s.address().address;
-      s.close();
-      resolve(networkFor(address));
-    });
+    let s;
+    let done = false;
+    const finish = (net) => {
+      if (done) return;
+      done = true;
+      try {
+        s?.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(net ?? fallbackHomeNetwork(interfaces ?? os.networkInterfaces()));
+    };
+    try {
+      s = dgram.createSocket('udp4');
+      s.on('error', () => finish(null));
+      // connect() on UDP only selects a route; no packet is sent.
+      s.connect(53, '1.1.1.1', (err) => {
+        if (err) return finish(null);
+        try {
+          const address = s.address().address;
+          if (!address || address === '0.0.0.0') return finish(null);
+          finish(networkFor(address, interfaces ?? os.networkInterfaces()));
+        } catch {
+          finish(null);
+        }
+      });
+    } catch {
+      finish(null);
+    }
   });
 }
 

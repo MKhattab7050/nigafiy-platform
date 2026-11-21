@@ -19,12 +19,14 @@ import (
 
 	"github.com/lan-detective/lan-collector/internal/cloud"
 	"github.com/lan-detective/lan-collector/internal/config"
+	"github.com/lan-detective/lan-collector/internal/configbackup"
 	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
 	"github.com/lan-detective/lan-collector/internal/dnsfilter"
 	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
+	"github.com/lan-detective/lan-collector/internal/router"
 	"github.com/lan-detective/lan-collector/internal/scope"
 	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
@@ -62,6 +64,14 @@ type Deps struct {
 	SNMPPoll func(ctx context.Context, t snmp.Target, timeout time.Duration) (*snmp.Result, error)
 	// Tool runs one IT-toolbox request; nil disables the toolbox.
 	Tool func(ctx context.Context, req tools.Request) (map[string]any, error)
+	// RouterOpen opens a router driver (router.Open); nil disables router control.
+	RouterOpen func(t router.Target, creds router.CredentialSource, opts router.Options) (router.Driver, error)
+	// RouterCertificate fetches a router's TLS certificate for trust on first use (router.FetchCertificate).
+	RouterCertificate func(ctx context.Context, addr netip.Addr, port int, opts router.Options) (router.CertificateInfo, error)
+	// ConfigBackup reads one device's running configuration over SSH (configbackup.Run); nil disables configuration backup.
+	ConfigBackup func(ctx context.Context, t configbackup.Target, opts configbackup.Options) (*configbackup.Result, error)
+	// SSHProbe checks whether an address answers SSH, without logging in (configbackup.Probe); nil disables the check.
+	SSHProbe func(ctx context.Context, address string, port int, opts configbackup.Options) configbackup.ProbeResult
 }
 
 // SystemDeps returns the real implementations.
@@ -84,6 +94,11 @@ func SystemDeps() Deps {
 		SNMPPoll:    snmp.Poll,
 		Tool:        tools.Runner{ICMP: icmp.Check, TCP: probe.TCP}.Run,
 		ReverseName: probe.ReverseName,
+		// Vendor drivers register themselves; the binary blank-imports the ones it ships.
+		RouterOpen:        router.Open,
+		RouterCertificate: router.FetchCertificate,
+		ConfigBackup:      configbackup.Run,
+		SSHProbe:          configbackup.Probe,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
 			defer mu.Unlock()
@@ -142,6 +157,7 @@ type Agent struct {
 	completed []string
 	seenCmds  map[string]bool
 	refused   map[string]bool
+	cmdWG     sync.WaitGroup
 
 	dhcp      *dhcp.Table
 	access    accessState
@@ -150,10 +166,11 @@ type Agent struct {
 	snmpNow   chan string
 	toolSlots chan struct{}
 	wake      chan struct{}
+	routers   routerState
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
-	client, err := cloud.New(cfg.ServerURL, cfg.CAFile, version)
+	client, err := cloud.New(cfg.ServerURL, cfg.CAFile, version, cfg.TLSPinSHA256)
 	if err != nil {
 		return nil, err
 	}
@@ -165,14 +182,20 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		return nil, err
 	}
 	lists := dnsfilter.NewLists()
+	// Names learned passively from DHCP survive restarts; a damaged file only costs the old names.
+	names, err := dhcp.LoadTable(filepath.Join(cfg.StateDir, dhcp.FileName), time.Now())
+	if err != nil {
+		log.Warn("could not restore DHCP-learned device names; starting with none", "error", err.Error())
+	}
 	ag := &Agent{
 		cfg: cfg, client: client, spool: sp, deps: deps, log: log, version: version, started: time.Now(), tuning: tuning,
 		policy:   scope.Policy{MinPrefixBits: config.MinScopePrefixBits, Allowed: cfg.Allowed(), AllowLoopback: cfg.AllowLoopbackScopes},
-		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: dhcp.NewTable(),
+		seenCmds: map[string]bool{}, refused: map[string]bool{}, dhcp: names,
 		scan: make(chan string, 4), checkNow: make(chan string, 4), snmpNow: make(chan string, 4), toolSlots: make(chan struct{}, maxConcurrentTools), wake: make(chan struct{}, 1),
 	}
 	ag.access.lists = lists
 	ag.access.server = dnsfilter.NewServer(lists, log)
+	ag.routers = newRouterState()
 	return ag, nil
 }
 
@@ -183,7 +206,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	a.loadCachedConfig()
+	namesSaved := closedChan()
 	if a.deps.DHCPListen != "" {
+		// Written after changes settle (debounced) and once more on shutdown, never per packet.
+		namesSaved = a.dhcp.Persist(ctx, filepath.Join(a.cfg.StateDir, dhcp.FileName), dhcp.SaveDebounce, func(err error) {
+			a.log.Warn("could not save DHCP-learned device names", "error", err.Error())
+		})
 		// Passive only: listens for the names devices broadcast when they join. Never sends.
 		err := dhcp.Listen(ctx, a.deps.DHCPListen, a.dhcp, func(r dhcp.Request) {
 			a.log.Info("learned a device name from DHCP", "mac", r.MAC, "hostname", r.Hostname, "vendor_class", r.VendorClass)
@@ -196,7 +224,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -204,8 +232,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		}(loop)
 	}
 	wg.Wait()
+	a.cmdWG.Wait()
 	// Graceful shutdown: whatever was measured but not yet uploaded goes to disk for the next start.
 	a.flushQueueToSpool()
+	<-namesSaved
 	a.log.Info("collector stopped", "buffered_batches", a.spool.Depth())
 	return nil
 }
@@ -218,6 +248,12 @@ type credentialFile struct {
 }
 
 func (a *Agent) credentialPath() string { return filepath.Join(a.cfg.StateDir, "credential.json") }
+
+func closedChan() <-chan struct{} {
+	c := make(chan struct{})
+	close(c)
+	return c
+}
 
 func (a *Agent) ensureEnrolled(ctx context.Context) error {
 	if raw, err := os.ReadFile(a.credentialPath()); err == nil {
@@ -370,8 +406,10 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 	a.mu.Unlock()
 	// The disk cache never contains SNMP credentials: after a restart without the cloud, switch
 	// reads wait for the next heartbeat; everything else resumes from the cache.
+	// Router administrator credentials are never cached either; router control resumes with the next heartbeat.
 	cached := rc
 	cached.SNMP = nil
+	cached.Routers = nil
 	if raw, err := json.Marshal(cached); err == nil {
 		_ = os.WriteFile(a.configPath(), raw, 0o600)
 	}
@@ -379,7 +417,12 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 	for _, cmd := range resp.Commands {
 		a.mu.Lock()
 		seen := a.seenCmds[cmd.ID]
-		a.seenCmds[cmd.ID] = true
+		if !seen {
+			if len(a.seenCmds) >= 2048 {
+				clear(a.seenCmds)
+			}
+			a.seenCmds[cmd.ID] = true
+		}
 		a.mu.Unlock()
 		if seen {
 			continue
@@ -399,15 +442,47 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 				a.markCompleted(cmd.ID)
 			}
 		case "wake_device":
-			go a.wakeDevice(cmd)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.wakeDevice(cmd)
+			}(cmd)
 		case "run_tool":
-			go a.runTool(ctx, cmd)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.runTool(ctx, cmd)
+			}(cmd)
 		case "poll_snmp":
 			select {
 			case a.snmpNow <- cmd.ID:
 			default:
 				a.markCompleted(cmd.ID)
 			}
+		case cmdRouterRefresh, cmdRouterFetchCertificate, cmdRouterBlock, cmdRouterUnblock, cmdRouterRateLimit, cmdRouterSchedule:
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.routerCommand(ctx, cmd)
+			}(cmd)
+		case cmdSetSwitchPort: // Port Detective port control (switchports.go)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.setSwitchPort(ctx, cmd)
+			}(cmd)
+		case cmdConfigBackup: // configuration backup over SSH (configbackup.go)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.configBackup(ctx, cmd)
+			}(cmd)
+		case cmdConfigBackupProbe:
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.configBackupProbe(ctx, cmd)
+			}(cmd)
 		default:
 			a.log.Warn("ignoring unsupported command", "kind", cmd.Kind)
 		}

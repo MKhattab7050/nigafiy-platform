@@ -47,6 +47,8 @@ type Server struct {
 
 	mu     sync.RWMutex
 	policy Policy
+	loc    *time.Location
+	tzOK   bool
 	byMAC  map[string]Rule
 	byIP   map[string]Rule
 
@@ -69,9 +71,34 @@ func (s *Server) SetPolicy(p Policy) {
 			byIP[c.IP] = c.Rule
 		}
 	}
+	loc, ok := p.Location()
 	s.mu.Lock()
-	s.policy, s.byMAC, s.byIP = p, byMAC, byIP
+	s.policy, s.byMAC, s.byIP, s.loc, s.tzOK = p, byMAC, byIP, loc, ok
 	s.mu.Unlock()
+}
+
+// TimezoneStatus reports the zone schedules are evaluated in and whether the configured zone
+// could be loaded (false: it fell back to host-local time).
+func (s *Server) TimezoneStatus() (name string, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.loc == nil {
+		return time.Local.String(), true
+	}
+	return s.loc.String(), s.tzOK
+}
+
+// now is the current time in the site's zone, so schedule windows ("22:00–07:00") mean the
+// site's wall clock even when the collector host runs in another zone (or UTC).
+func (s *Server) now() time.Time {
+	s.mu.RLock()
+	loc := s.loc
+	s.mu.RUnlock()
+	t := s.Now()
+	if loc != nil {
+		t = t.In(loc)
+	}
+	return t
 }
 
 func (s *Server) ruleFor(ip string) (Rule, string, []string) {
@@ -104,9 +131,12 @@ func (s *Server) Handle(ctx context.Context, ip string, msg []byte, tcp bool) []
 	}
 	name := Normalize(q.Name.String())
 	rule, mac, ups := s.ruleFor(ip)
-	d := Decide(rule, name, s.Now(), s.Lists)
+	d := Decide(rule, name, s.now(), s.Lists)
 	s.record(ip, mac, name, d)
 	if d.Blocked {
+		if d.Reason == alwaysCategory {
+			return errorAnswer(hdr, q, dnsmessage.RCodeNameError)
+		}
 		return blockedAnswer(hdr, q)
 	}
 	for _, up := range ups {
@@ -269,7 +299,7 @@ func forward(ctx context.Context, upstream string, msg []byte, tcp bool) ([]byte
 }
 
 func checkID(q, resp []byte) ([]byte, error) {
-	if len(resp) < 12 || len(q) < 2 || resp[0] != q[0] || resp[1] != q[1] {
+	if len(resp) < 12 || len(q) < 2 || resp[0] != q[0] || resp[1] != q[1] || resp[2]&0x80 == 0 {
 		return nil, errors.New("mismatched answer")
 	}
 	return resp, nil
@@ -307,26 +337,29 @@ func allowedClient(ip string) bool {
 // Listen serves DNS on addr (UDP and TCP) until ctx ends. It returns once both sockets are bound,
 // or with the bind error.
 func (s *Server) Listen(ctx context.Context, addr string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	pc, err := net.ListenPacket("udp", addr)
 	if err != nil {
 		return err
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		pc.Close()
+		_ = pc.Close()
 		return err
 	}
-	go func() {
-		<-ctx.Done()
-		pc.Close()
-		ln.Close()
-	}()
+	context.AfterFunc(ctx, func() {
+		_ = pc.Close()
+		_ = ln.Close()
+	})
 	go s.serveUDP(ctx, pc)
 	go s.serveTCP(ctx, ln)
 	return nil
 }
 
 func (s *Server) serveUDP(ctx context.Context, pc net.PacketConn) {
+	defer pc.Close()
 	sem := make(chan struct{}, 128)
 	for {
 		buf := make([]byte, 4096)
@@ -356,6 +389,8 @@ func (s *Server) serveUDP(ctx context.Context, pc net.PacketConn) {
 }
 
 func (s *Server) serveTCP(ctx context.Context, ln net.Listener) {
+	defer ln.Close()
+	sem := make(chan struct{}, 64)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -364,8 +399,17 @@ func (s *Server) serveTCP(ctx context.Context, ln net.Listener) {
 			}
 			continue
 		}
+		select {
+		case sem <- struct{}{}:
+		default:
+			_ = conn.Close()
+			continue
+		}
 		go func() {
-			defer conn.Close()
+			defer func() {
+				<-sem
+				_ = conn.Close()
+			}()
 			host, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
 			if !allowedClient(host) {
 				return

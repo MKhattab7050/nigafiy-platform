@@ -7,6 +7,7 @@ package control
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,12 +21,15 @@ import (
 
 	"github.com/lan-detective/endpoint-agent/internal/filemgr"
 	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
+	"github.com/lan-detective/endpoint-agent/internal/sysinfo"
 )
 
 var (
-	serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,160}$`)
-	packageIDPattern   = regexp.MustCompile(`^[A-Za-z0-9_.:+-]{1,160}$`)
-	dnsTargetPattern   = regexp.MustCompile(`^[A-Za-z0-9.-]{1,180}$`)
+	// Every value passed to a program as an argument must start with a letter or digit, so it can
+	// never be read as an option ("--allow-unauthenticated", "-o", ...).
+	serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]{0,159}$`)
+	packageIDPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:+-]{0,159}$`)
+	dnsTargetPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,179}$`)
 )
 
 type Command struct {
@@ -52,7 +56,9 @@ func DefaultRunner() Runner {
 		Exec: func(ctx context.Context, name string, args ...string) (string, error) {
 			c, cancel := context.WithTimeout(ctx, 25*time.Second)
 			defer cancel()
-			out, err := exec.CommandContext(c, name, args...).CombinedOutput()
+			cmd := exec.CommandContext(c, name, args...)
+			sysinfo.HideWindow(cmd)
+			out, err := cmd.CombinedOutput()
 			text := strings.TrimSpace(string(out))
 			if len(text) > 16000 {
 				text = text[:16000]
@@ -75,15 +81,27 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		if err := json.Unmarshal(cmd.Payload, &p); err != nil || p.PID <= 4 {
 			return Result{ID: cmd.ID, OK: false, Error: "A valid process PID (> 4) is required"}
 		}
+		if p.PID == os.Getpid() {
+			return Result{ID: cmd.ID, OK: false, Error: "The agent will not terminate itself; revoke the endpoint instead"}
+		}
+		pidStr := strconv.Itoa(p.PID)
+		if expectedName := strings.TrimSpace(p.Name); expectedName != "" {
+			if r.Exec == nil {
+				return Result{ID: cmd.ID, OK: false, Error: "Cannot verify process name: execution disabled"}
+			}
+			if err := r.verifyProcessName(ctx, pidStr, expectedName); err != nil {
+				return Result{ID: cmd.ID, OK: false, Error: err.Error()}
+			}
+		}
 		if runtime.GOOS == "windows" && r.Exec != nil {
-			out, err := r.Exec(ctx, "taskkill", "/PID", strconv.Itoa(p.PID), "/F")
+			out, err := r.Exec(ctx, "taskkill", "/PID", pidStr, "/F")
 			if err != nil {
 				return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
 			}
 			return Result{ID: cmd.ID, OK: true, Output: firstNonEmpty(out, fmt.Sprintf("Terminated PID %d", p.PID))}
 		}
 		if r.Exec != nil {
-			out, err := r.Exec(ctx, "kill", "-9", strconv.Itoa(p.PID))
+			out, err := r.Exec(ctx, "kill", "-9", pidStr)
 			if err != nil {
 				return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
 			}
@@ -119,12 +137,14 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		var err error
 		if runtime.GOOS == "windows" {
 			psCmd := map[string]string{"start": "Start-Service", "stop": "Stop-Service", "restart": "Restart-Service"}[p.Action]
-			out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", psCmd, "-Name", p.Service, "-Force")
+			safeName := strings.ReplaceAll(p.Service, "'", "''")
+			script := fmt.Sprintf("$ErrorActionPreference = 'Stop'; %s -Name '%s' -Force", psCmd, safeName)
+			out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 		} else if runtime.GOOS == "darwin" {
 			lcAction := map[string]string{"start": "start", "stop": "stop", "restart": "kickstart"}[p.Action]
 			out, err = r.Exec(ctx, "launchctl", lcAction, p.Service)
 		} else {
-			out, err = r.Exec(ctx, "systemctl", p.Action, p.Service)
+			out, err = r.Exec(ctx, "systemctl", p.Action, "--", p.Service)
 		}
 		if err != nil {
 			return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
@@ -273,10 +293,10 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 			}
 			out, err = r.Exec(ctx, "winget", args...)
 		} else if runtime.GOOS == "darwin" {
-			out, err = r.Exec(ctx, "brew", p.Action, p.PackageID)
+			out, err = r.Exec(ctx, "brew", p.Action, "--", p.PackageID)
 		} else {
 			aptCmd := map[string]string{"install": "install", "upgrade": "install", "uninstall": "remove"}[p.Action]
-			out, err = r.Exec(ctx, "apt-get", aptCmd, "-y", p.PackageID)
+			out, err = r.Exec(ctx, "apt-get", aptCmd, "-y", "--", p.PackageID)
 		}
 		if err != nil {
 			return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
@@ -408,4 +428,81 @@ func firstNonEmpty(a, b string) string {
 		return strings.TrimSpace(a)
 	}
 	return strings.TrimSpace(b)
+}
+
+func (r Runner) verifyProcessName(ctx context.Context, pidStr, expectedName string) error {
+	var actual string
+	if runtime.GOOS == "windows" {
+		out, err := r.Exec(ctx, "tasklist", "/FI", "PID eq "+pidStr, "/FO", "CSV", "/NH")
+		if err != nil {
+			return errors.New(firstNonEmpty(out, err.Error()))
+		}
+		var ok bool
+		actual, ok = extractTasklistProcessName(out, pidStr)
+		if !ok {
+			return fmt.Errorf("Process PID %s is not running", pidStr)
+		}
+	} else {
+		out, err := r.Exec(ctx, "ps", "-p", pidStr, "-o", "comm=")
+		if err != nil {
+			return errors.New(firstNonEmpty(out, fmt.Sprintf("Process PID %s is not running: %v", pidStr, err)))
+		}
+		actual = firstLine(out)
+		if actual == "" {
+			return fmt.Errorf("Process PID %s is not running", pidStr)
+		}
+	}
+	if !processNameMatches(actual, expectedName) {
+		return fmt.Errorf("PID %s belongs to %q, not %q", pidStr, actual, expectedName)
+	}
+	return nil
+}
+
+func extractTasklistProcessName(out, pidStr string) (string, bool) {
+	r := csv.NewReader(strings.NewReader(out))
+	r.FieldsPerRecord = -1
+	records, _ := r.ReadAll()
+	for _, rec := range records {
+		if len(rec) >= 2 && strings.TrimSpace(rec[1]) == pidStr {
+			if name := strings.TrimSpace(rec[0]); name != "" {
+				return name, true
+			}
+		}
+	}
+	return "", false
+}
+
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+	return ""
+}
+
+func baseProcessName(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndexAny(s, `/\`); i >= 0 {
+		s = s[i+1:]
+	}
+	return strings.ToLower(s)
+}
+
+func processNameMatches(actual, expected string) bool {
+	act := baseProcessName(actual)
+	exp := baseProcessName(expected)
+	if act == "" || exp == "" {
+		return false
+	}
+	actNoExt := strings.TrimSuffix(act, ".exe")
+	expNoExt := strings.TrimSuffix(exp, ".exe")
+	if act == exp || actNoExt == expNoExt {
+		return true
+	}
+	if strings.Contains(act, exp) {
+		return true
+	}
+	// Linux ps -o comm= truncates process names to 15 bytes (TASK_COMM_LEN - 1).
+	return len(act) >= 15 && strings.HasPrefix(exp, act)
 }

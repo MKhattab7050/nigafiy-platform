@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -38,6 +39,7 @@ type Config struct {
 	// SpoolMaxBatches bounds the on-disk buffer used while the cloud is unreachable.
 	SpoolMaxBatches int    `yaml:"spool_max_batches"`
 	CAFile          string `yaml:"ca_file"`
+	TLSPinSHA256    string `yaml:"tls_pin_sha256"`
 	LogLevel        string `yaml:"log_level"`
 	// DNSListen is where the access-control DNS filter answers once the owner turns it on in
 	// LAN Detective. Default ":53"; "off" disables the feature on this collector.
@@ -86,6 +88,9 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("LAN_COLLECTOR_STATE_DIR"); v != "" {
 		cfg.StateDir = v
 	}
+	if v := os.Getenv("LAN_COLLECTOR_TLS_PIN_SHA256"); v != "" {
+		cfg.TLSPinSHA256 = v
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -127,6 +132,12 @@ func (c *Config) Validate() error {
 	case "debug", "info", "warn", "error":
 	default:
 		problems = append(problems, "log_level must be one of debug, info, warn, error")
+	}
+	if strings.TrimSpace(c.TLSPinSHA256) != "" {
+		clean := strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(strings.TrimSpace(c.TLSPinSHA256)))
+		if b, err := hex.DecodeString(clean); err != nil || len(b) != 32 {
+			problems = append(problems, "tls_pin_sha256 must be a SHA-256 fingerprint (64 hex digits, optionally colon-separated)")
+		}
 	}
 	c.allowed = c.allowed[:0]
 	for _, raw := range c.AllowedCIDRs {

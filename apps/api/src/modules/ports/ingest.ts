@@ -1,7 +1,9 @@
 import type { Db } from '../../infrastructure/db.ts';
-import { emitEvent, notifyRealtime } from '../events/emit.ts';
-import { type CollectorContext, ItemRejected, type SnmpPollItem } from '../ingest/schema.ts';
+import { type CollectorContext, ItemRejected, type SnmpPollItem } from '../../common/collector-protocol.ts';
+import { emitEvent } from '../events/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
 import { portRole } from './locate.ts';
+import { classifySwitchFromSnmp } from './switches/detection.ts';
 
 const MAX_MOVE_EVENTS = 20;
 
@@ -47,8 +49,8 @@ export function rate(now: number, before: string, seconds: number, speedMbps: nu
 export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPollItem): Promise<void> {
   const at = new Date(item.ts);
   const target = (
-    await db.query<{ id: string; site_id: string; name: string | null; host: string; last_status: string; device_id: string | null }>(
-      `SELECT id, site_id, name, host(host) AS host, last_status, device_id FROM snmp_targets WHERE id = $1 AND site_id = $2 FOR UPDATE`,
+    await db.query<{ id: string; site_id: string; name: string | null; host: string; last_status: string; device_id: string | null; last_ok_at: Date | null }>(
+      `SELECT id, site_id, name, host(host) AS host, last_status, device_id, last_ok_at FROM snmp_targets WHERE id = $1 AND site_id = $2 FOR UPDATE`,
       [item.target_id, c.siteId],
     )
   ).rows[0];
@@ -103,6 +105,36 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
     neighborsOf.set(if_index, [...(neighborsOf.get(if_index) ?? []), rest]);
   }
 
+  const sampleIfIndex: number[] = [];
+  const sampleSeconds: number[] = [];
+  const sampleInBps: (number | null)[] = [];
+  const sampleOutBps: (number | null)[] = [];
+  const sampleErrors: (number | null)[] = [];
+  const sampleDiscards: (number | null)[] = [];
+  const sampleOperUp: boolean[] = [];
+
+  const portIfIndex: number[] = [];
+  const portNameArr: string[] = [];
+  const portDescr: (string | null)[] = [];
+  const portAlias: (string | null)[] = [];
+  const portAdminUp: boolean[] = [];
+  const portOperUp: boolean[] = [];
+  const portSpeedMbps: number[] = [];
+  const portInErrors: number[] = [];
+  const portOutErrors: number[] = [];
+  const portInDiscards: number[] = [];
+  const portOutDiscards: number[] = [];
+  const portInOctets: number[] = [];
+  const portOutOctets: number[] = [];
+  const portErrorsDelta: (number | null)[] = [];
+  const portDiscardsDelta: (number | null)[] = [];
+  const portDeltaSeconds: (number | null)[] = [];
+  const portMacCount: number[] = [];
+  const portNeighbors: string[] = [];
+  const portOperChangedAt: (Date | null)[] = [];
+  const portInBps: (number | null)[] = [];
+  const portOutBps: (number | null)[] = [];
+
   for (const p of ports) {
     const prev = prevPorts.get(p.if_index);
     const seconds = prev ? Math.round((at.getTime() - prev.updated_at.getTime()) / 1000) : null;
@@ -113,16 +145,58 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
     const outBps = fresh ? rate(p.out_octets, prev.out_octets, seconds, p.speed_mbps) : null;
     // History: one sample per read for ports that are (or just were) up. Idle down ports add nothing.
     if (fresh && (p.oper_up || prev.oper_up)) {
-      await db.query(
-        `INSERT INTO switch_port_samples (target_id, if_index, ts, organization_id, seconds, in_bps, out_bps, errors, discards, oper_up)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
-        [target.id, p.if_index, at, c.organizationId, seconds, inBps, outBps, errorsDelta, discardsDelta, p.oper_up],
-      );
+      sampleIfIndex.push(p.if_index);
+      sampleSeconds.push(seconds);
+      sampleInBps.push(inBps);
+      sampleOutBps.push(outBps);
+      sampleErrors.push(errorsDelta);
+      sampleDiscards.push(discardsDelta);
+      sampleOperUp.push(p.oper_up);
     }
+    portIfIndex.push(p.if_index);
+    portNameArr.push(p.name);
+    portDescr.push(p.descr ?? null);
+    portAlias.push(p.alias || null);
+    portAdminUp.push(p.admin_up);
+    portOperUp.push(p.oper_up);
+    portSpeedMbps.push(p.speed_mbps);
+    portInErrors.push(p.in_errors);
+    portOutErrors.push(p.out_errors);
+    portInDiscards.push(p.in_discards);
+    portOutDiscards.push(p.out_discards);
+    portInOctets.push(p.in_octets);
+    portOutOctets.push(p.out_octets);
+    portErrorsDelta.push(errorsDelta);
+    portDiscardsDelta.push(discardsDelta);
+    portDeltaSeconds.push(fresh ? seconds : null);
+    portMacCount.push(macCount.get(p.if_index)?.size ?? 0);
+    portNeighbors.push(JSON.stringify(neighborsOf.get(p.if_index) ?? []));
+    portOperChangedAt.push(prev ? (prev.oper_up === p.oper_up ? prev.oper_changed_at : at) : null);
+    portInBps.push(inBps);
+    portOutBps.push(outBps);
+  }
+
+  if (sampleIfIndex.length > 0) {
+    await db.query(
+      `INSERT INTO switch_port_samples (target_id, if_index, ts, organization_id, seconds, in_bps, out_bps, errors, discards, oper_up)
+       SELECT $1, u.if_index, $2, $3, u.seconds, u.in_bps, u.out_bps, u.errors, u.discards, u.oper_up
+         FROM unnest($4::int[], $5::int[], $6::float8[], $7::float8[], $8::int[], $9::int[], $10::boolean[])
+              AS u(if_index, seconds, in_bps, out_bps, errors, discards, oper_up)
+       ON CONFLICT DO NOTHING`,
+      [target.id, at, c.organizationId, sampleIfIndex, sampleSeconds, sampleInBps, sampleOutBps, sampleErrors, sampleDiscards, sampleOperUp],
+    );
+  }
+
+  if (ports.length > 0) {
     await db.query(
       `INSERT INTO switch_ports (target_id, if_index, organization_id, name, descr, alias, admin_up, oper_up, speed_mbps, in_errors, out_errors, in_discards,
                                  out_discards, in_octets, out_octets, errors_delta, discards_delta, delta_seconds, mac_count, neighbors, oper_changed_at, updated_at, in_bps, out_bps)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       SELECT $1, u.if_index, $2, u.name, u.descr, u.alias, u.admin_up, u.oper_up, u.speed_mbps, u.in_errors, u.out_errors, u.in_discards,
+              u.out_discards, u.in_octets, u.out_octets, u.errors_delta, u.discards_delta, u.delta_seconds, u.mac_count, u.neighbors, u.oper_changed_at, $3, u.in_bps, u.out_bps
+         FROM unnest($4::int[], $5::text[], $6::text[], $7::text[], $8::boolean[], $9::boolean[], $10::bigint[], $11::numeric[], $12::numeric[], $13::numeric[],
+                     $14::numeric[], $15::numeric[], $16::numeric[], $17::bigint[], $18::bigint[], $19::int[], $20::int[], $21::jsonb[], $22::timestamptz[], $23::float8[], $24::float8[])
+              AS u(if_index, name, descr, alias, admin_up, oper_up, speed_mbps, in_errors, out_errors, in_discards,
+                   out_discards, in_octets, out_octets, errors_delta, discards_delta, delta_seconds, mac_count, neighbors, oper_changed_at, in_bps, out_bps)
        ON CONFLICT (target_id, if_index) DO UPDATE SET
          name = EXCLUDED.name, descr = EXCLUDED.descr, alias = EXCLUDED.alias, admin_up = EXCLUDED.admin_up, oper_up = EXCLUDED.oper_up,
          speed_mbps = EXCLUDED.speed_mbps, in_errors = EXCLUDED.in_errors, out_errors = EXCLUDED.out_errors, in_discards = EXCLUDED.in_discards,
@@ -131,33 +205,35 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
          oper_changed_at = EXCLUDED.oper_changed_at, updated_at = EXCLUDED.updated_at, in_bps = EXCLUDED.in_bps, out_bps = EXCLUDED.out_bps`,
       [
         target.id,
-        p.if_index,
         c.organizationId,
-        p.name,
-        p.descr ?? null,
-        p.alias || null,
-        p.admin_up,
-        p.oper_up,
-        p.speed_mbps,
-        p.in_errors,
-        p.out_errors,
-        p.in_discards,
-        p.out_discards,
-        p.in_octets,
-        p.out_octets,
-        errorsDelta,
-        discardsDelta,
-        fresh ? seconds : null,
-        macCount.get(p.if_index)?.size ?? 0,
-        JSON.stringify(neighborsOf.get(p.if_index) ?? []),
-        prev ? (prev.oper_up === p.oper_up ? prev.oper_changed_at : at) : null,
         at,
-        inBps,
-        outBps,
+        portIfIndex,
+        portNameArr,
+        portDescr,
+        portAlias,
+        portAdminUp,
+        portOperUp,
+        portSpeedMbps,
+        portInErrors,
+        portOutErrors,
+        portInDiscards,
+        portOutDiscards,
+        portInOctets,
+        portOutOctets,
+        portErrorsDelta,
+        portDiscardsDelta,
+        portDeltaSeconds,
+        portMacCount,
+        portNeighbors,
+        portOperChangedAt,
+        portInBps,
+        portOutBps,
       ],
     );
   }
-  await db.query(`DELETE FROM switch_ports WHERE target_id = $1 AND NOT (if_index = ANY($2::int[]))`, [target.id, ports.map((p) => p.if_index)]);
+  if (item.ports !== undefined) {
+    await db.query(`DELETE FROM switch_ports WHERE target_id = $1 AND NOT (if_index = ANY($2::int[]))`, [target.id, ports.map((p) => p.if_index)]);
+  }
 
   // Forwarding table: upsert what was read, then drop what is no longer there.
   if (fdb.length) {
@@ -168,7 +244,9 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
       [target.id, c.organizationId, at, fdb.map((e) => e.mac.toLowerCase()), fdb.map((e) => e.vlan), fdb.map((e) => e.if_index)],
     );
   }
-  await db.query(`DELETE FROM switch_fdb WHERE target_id = $1 AND last_seen_at < $2`, [target.id, at]);
+  if (item.fdb !== undefined) {
+    await db.query(`DELETE FROM switch_fdb WHERE target_id = $1 AND last_seen_at < $2`, [target.id, at]);
+  }
 
   await db.query(
     `UPDATE snmp_targets
@@ -177,6 +255,15 @@ export async function processSnmpPoll(db: Db, c: CollectorContext, item: SnmpPol
       WHERE id = $1`,
     [target.id, at, item.sys_name ?? null, item.sys_descr ?? null, item.truncated ?? [], c.siteId],
   );
+
+  if (target.last_ok_at === null) {
+    await classifySwitchFromSnmp(db, c, target.id, label, {
+      sysName: item.sys_name ?? null,
+      sysDescr: item.sys_descr ?? null,
+      ports: ports.length,
+      addresses: fdb.length,
+    });
+  }
 
   if (target.last_status === 'error') {
     await emitEvent(db, c.organizationId, {

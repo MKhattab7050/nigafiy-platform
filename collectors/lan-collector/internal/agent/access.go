@@ -33,18 +33,23 @@ type AccessStatus struct {
 	Upstreams []string       `json:"upstreams,omitempty"`
 	Lists     map[string]int `json:"lists,omitempty"`
 	ListError string         `json:"list_error,omitempty"`
+	// Timezone is the zone schedules are evaluated in; TimezoneError is set when the zone the
+	// cloud named could not be loaded and host-local time is used instead.
+	Timezone      string `json:"timezone,omitempty"`
+	TimezoneError string `json:"timezone_error,omitempty"`
 }
 
 type accessState struct {
-	mu        sync.Mutex
-	server    *dnsfilter.Server
-	lists     *dnsfilter.Lists
-	stop      context.CancelFunc
-	status    AccessStatus
-	lastErrAt time.Time
-	macs      map[string]string
-	macsAt    time.Time
-	fetching  bool
+	mu            sync.Mutex
+	macsRefreshMu sync.Mutex
+	server        *dnsfilter.Server
+	lists         *dnsfilter.Lists
+	stop          context.CancelFunc
+	status        AccessStatus
+	lastErrAt     time.Time
+	macs          map[string]string
+	macsAt        time.Time
+	fetching      bool
 }
 
 func (a *Agent) accessStatus() *AccessStatus {
@@ -62,23 +67,32 @@ func (a *Agent) accessStatus() *AccessStatus {
 func (a *Agent) macOf(ip string) string {
 	a.access.mu.Lock()
 	stale := time.Since(a.access.macsAt) > 30*time.Second
-	if stale {
-		a.access.macsAt = time.Now()
-	}
 	a.access.mu.Unlock()
 	if stale && a.deps.Neighbors != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		n, err := a.deps.Neighbors(ctx)
-		cancel()
-		if err == nil {
-			m := make(map[string]string, len(n))
-			for ip, nb := range n {
-				m[ip] = strings.ToLower(nb.MAC)
-			}
+		a.access.macsRefreshMu.Lock()
+		a.access.mu.Lock()
+		stale = time.Since(a.access.macsAt) > 30*time.Second
+		a.access.mu.Unlock()
+		if stale {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			n, err := a.deps.Neighbors(ctx)
+			cancel()
 			a.access.mu.Lock()
-			a.access.macs = m
+			if err == nil {
+				m := make(map[string]string, len(n))
+				for k, nb := range n {
+					m[k] = strings.ToLower(nb.MAC)
+				}
+				a.access.macs = m
+				a.access.macsAt = time.Now()
+			} else {
+				// Short retry backoff on failure so concurrent queries don't hammer Neighbors,
+				// without suppressing lookups for a full 30 seconds.
+				a.access.macsAt = time.Now().Add(-25 * time.Second)
+			}
 			a.access.mu.Unlock()
 		}
+		a.access.macsRefreshMu.Unlock()
 	}
 	a.access.mu.Lock()
 	defer a.access.mu.Unlock()
@@ -171,6 +185,13 @@ func (a *Agent) applyAccess(ctx context.Context) {
 	st.mu.Unlock()
 
 	st.server.SetPolicy(p)
+	tzName, tzOK := st.server.TimezoneStatus()
+	st.mu.Lock()
+	st.status.Timezone, st.status.TimezoneError = tzName, ""
+	if !tzOK {
+		st.status.TimezoneError = "unknown timezone " + strings.TrimSpace(p.Timezone) + "; schedules use the collector host's local time"
+	}
+	st.mu.Unlock()
 	switch {
 	case p.Enabled && !running:
 		lctx, cancel := context.WithCancel(ctx)

@@ -4,19 +4,13 @@ import type { DoctorReport, Incident, IncidentActivity, IncidentDetail, Member, 
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';
-import { diagnoseSiteNetwork } from '../doctor/service.ts';
-import { notifyRealtime } from '../events/emit.ts';
-import { EVENT_SELECT } from '../events/routes.ts';
-import { addActivity, rediagnose } from './engine.ts';
+import { addActivity, rediagnose } from '../correlation/index.ts';
+import { diagnoseSiteNetwork, diagnoseSmartChecks } from '../doctor/index.ts';
+import { EVENT_SELECT } from '../events/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
+import { INCIDENT_SELECT } from './queries.ts';
 
 export const incidentsRouter: Router = Router();
-
-export const INCIDENT_SELECT = `
-  SELECT i.id, i.number, i.site_id, s.name AS site_name, i.kind, i.status, i.severity, i.title,
-         i.diagnosis ->> 'fault_domain' AS fault_domain, i.diagnosis ->> 'confidence' AS confidence,
-         i.opened_at, i.acknowledged_at, i.resolved_at, i.resolution_kind, i.resolution_note, i.assigned_to, i.assigned_to_name,
-         (SELECT count(*) FROM incident_events ie WHERE ie.incident_id = i.id)::int AS event_count
-    FROM incidents i LEFT JOIN sites s ON s.id = i.site_id`;
 
 const REPLAY_MARGIN_MS = 30 * 60_000;
 
@@ -91,7 +85,10 @@ async function actor(userId: string): Promise<{ id: string; name: string }> {
 incidentsRouter.get('/members', async (req, res) => {
   const ctx = auth(req);
   const rows = await systemPool.query<Member>(
-    `SELECT u.id, u.display_name, u.email, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = $1 ORDER BY u.display_name`,
+    `SELECT u.id, u.display_name, u.email, m.role
+       FROM memberships m JOIN users u ON u.id = m.user_id
+      WHERE m.organization_id = $1 AND m.status = 'active'
+      ORDER BY u.display_name`,
     [ctx.organizationId],
   );
   res.json({ items: rows.rows });
@@ -139,7 +136,7 @@ incidentsRouter.patch('/incidents/:id', requireRole('technician'), async (req, r
   if (body.assigned_to) {
     // Only members of this organization can be assigned.
     const member = await systemPool.query<{ id: string; display_name: string }>(
-      `SELECT u.id, u.display_name FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = $1 AND u.id = $2`,
+      `SELECT u.id, u.display_name FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.organization_id = $1 AND u.id = $2 AND m.status = 'active'`,
       [ctx.organizationId, body.assigned_to],
     );
     assignee = member.rows[0] ?? null;
@@ -215,6 +212,8 @@ incidentsRouter.get('/doctor', async (req, res) => {
         diagnosis: await diagnoseSiteNetwork(db, ctx.organizationId, site.id, active.rows[0]?.id ?? null),
         active_incident: active.rows[0] ?? null,
         collectors_online: site.collectors_online,
+        // Smart checks (DHCP, Wi-Fi) that need attention; healthy and not-measured ones are left out.
+        smart: await diagnoseSmartChecks(db, ctx.organizationId, site.id, new Date(), true),
       });
     }
     return out;

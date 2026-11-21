@@ -1,6 +1,10 @@
 // Package snmp reads what Port Detective needs from a managed switch or router, read-only:
 // its interfaces, its forwarding table (which MAC address was learned on which port) and its LLDP
-// neighbours. It only ever sends SNMP GET / GETNEXT / GETBULK; there is no SET anywhere.
+// neighbours, and the VLANs it defines (vlan.go). Poll only ever sends SNMP GET / GETNEXT / GETBULK.
+//
+// The only SNMP SET in the collector is in write.go (Port Detective port control): a closed list of
+// port operations, each on a fixed set of OIDs, run only on an administrator's request that the
+// collector re-validates. There is no generic "set an OID".
 package snmp
 
 import (
@@ -24,8 +28,10 @@ const (
 	oidIfSpeed       = ".1.3.6.1.2.1.2.2.1.5"
 	oidIfAdminStatus = ".1.3.6.1.2.1.2.2.1.7"
 	oidIfOperStatus  = ".1.3.6.1.2.1.2.2.1.8"
+	oidIfInOctets    = ".1.3.6.1.2.1.2.2.1.10"
 	oidIfInDiscards  = ".1.3.6.1.2.1.2.2.1.13"
 	oidIfInErrors    = ".1.3.6.1.2.1.2.2.1.14"
+	oidIfOutOctets   = ".1.3.6.1.2.1.2.2.1.16"
 	oidIfOutDiscards = ".1.3.6.1.2.1.2.2.1.19"
 	oidIfOutErrors   = ".1.3.6.1.2.1.2.2.1.20"
 	oidIfName        = ".1.3.6.1.2.1.31.1.1.1.1"
@@ -38,12 +44,14 @@ const (
 	oidDot1dFdbPort    = ".1.3.6.1.2.1.17.4.3.1.2"
 	oidDot1qFdbPort    = ".1.3.6.1.2.1.17.7.1.2.2.1.2"
 
-	oidLldpLocPortID   = ".1.0.8802.1.1.2.1.3.7.1.3"
-	oidLldpLocPortDesc = ".1.0.8802.1.1.2.1.3.7.1.4"
-	oidLldpRemChassis  = ".1.0.8802.1.1.2.1.4.1.1.5"
-	oidLldpRemPortID   = ".1.0.8802.1.1.2.1.4.1.1.7"
-	oidLldpRemPortDesc = ".1.0.8802.1.1.2.1.4.1.1.8"
-	oidLldpRemSysName  = ".1.0.8802.1.1.2.1.4.1.1.9"
+	oidLldpLocPortID         = ".1.0.8802.1.1.2.1.3.7.1.3"
+	oidLldpLocPortDesc       = ".1.0.8802.1.1.2.1.3.7.1.4"
+	oidLldpRemChassisSubtype = ".1.0.8802.1.1.2.1.4.1.1.4"
+	oidLldpRemChassis        = ".1.0.8802.1.1.2.1.4.1.1.5"
+	oidLldpRemPortSubtype    = ".1.0.8802.1.1.2.1.4.1.1.6"
+	oidLldpRemPortID         = ".1.0.8802.1.1.2.1.4.1.1.7"
+	oidLldpRemPortDesc       = ".1.0.8802.1.1.2.1.4.1.1.8"
+	oidLldpRemSysName        = ".1.0.8802.1.1.2.1.4.1.1.9"
 
 	// Hard ceilings: a misbehaving agent cannot make the collector read without end.
 	MaxPorts   = 1024
@@ -66,6 +74,9 @@ type Target struct {
 	PrivPass  string `json:"priv_password,omitempty"`
 	// IntervalSeconds between polls; the agent applies its own floor.
 	IntervalSeconds int `json:"interval_seconds"`
+	// Write holds the switch's SNMP write credentials. The API includes them only while a port
+	// change for this switch is pending; they are used for nothing but ApplyPortChange.
+	Write *Credentials `json:"write,omitempty"`
 }
 
 type Port struct {
@@ -99,13 +110,19 @@ type Neighbor struct {
 }
 
 type Result struct {
-	SysName  string     `json:"sys_name,omitempty"`
-	SysDescr string     `json:"sys_descr,omitempty"`
-	Ports    []Port     `json:"ports"`
-	FDB      []FDBEntry `json:"fdb"`
-	LLDP     []Neighbor `json:"lldp"`
+	SysName     string     `json:"sys_name,omitempty"`
+	SysDescr    string     `json:"sys_descr,omitempty"`
+	SysObjectID string     `json:"sys_object_id,omitempty"`
+	Ports       []Port     `json:"ports"`
+	FDB         []FDBEntry `json:"fdb"`
+	LLDP        []Neighbor `json:"lldp"`
 	// Truncated lists what hit a ceiling, so the UI never presents a partial table as complete.
 	Truncated []string `json:"truncated,omitempty"`
+	// VLANs the switch defines, the VLAN membership of its ports, and which VLAN write methods its
+	// tables support ("qbridge", "cisco"). Empty when the switch exposes neither MIB.
+	VLANs        []VLAN     `json:"vlans,omitempty"`
+	PortVLANs    []PortVLAN `json:"port_vlans,omitempty"`
+	WriteMethods []string   `json:"write_methods,omitempty"`
 }
 
 var errStop = errors.New("row limit reached")
@@ -211,6 +228,34 @@ func hexBytes(b []byte) string {
 	return strings.Join(parts, ":")
 }
 
+func isPortOrHostByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+		c == '/' || c == '-' || c == '_' || c == '.' || c == ':'
+}
+
+// macOrText formats a 6-byte binary value (e.g. an LLDP MAC address) as colon-separated hex
+// when it does not look like a plain ASCII port or host identifier, and as text otherwise.
+func macOrText(v any) string {
+	if b, ok := v.([]byte); ok && len(b) == 6 {
+		for _, c := range b {
+			if !isPortOrHostByte(c) {
+				return hexBytes(b)
+			}
+		}
+	}
+	return text(v)
+}
+
+func lldpID(v any, subtype, macSubtype int) string {
+	if b, ok := v.([]byte); ok && subtype == macSubtype && len(b) == 6 {
+		return hexBytes(b)
+	}
+	if subtype != 0 && subtype != macSubtype {
+		return text(v)
+	}
+	return macOrText(v)
+}
+
 func num(v any) uint64 {
 	n := gosnmp.ToBigInt(v)
 	if n == nil || n.Sign() < 0 {
@@ -291,7 +336,7 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 	defer g.Conn.Close()
 
 	res := &Result{Ports: []Port{}, FDB: []FDBEntry{}, LLDP: []Neighbor{}}
-	sys, err := g.Get([]string{oidSysDescr, oidSysName})
+	sys, err := g.Get([]string{oidSysDescr, oidSysName, oidSysObjectID})
 	if err != nil {
 		return nil, cleanErr(err)
 	}
@@ -301,14 +346,23 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 			res.SysDescr = clip(text(v.Value), 300)
 		case oidSysName:
 			res.SysName = clip(text(v.Value), 120)
+		case oidSysObjectID:
+			if oid, ok := v.Value.(string); ok {
+				res.SysObjectID = clip(oid, 120)
+			}
 		}
 	}
 
 	w := walker{g}
 	ports := map[int]*Port{}
+	portsTruncated := false
 	port := func(i int) *Port {
 		p := ports[i]
 		if p == nil {
+			if len(ports) >= MaxPorts {
+				portsTruncated = true
+				return nil
+			}
 			p = &Port{IfIndex: i}
 			ports[i] = p
 		}
@@ -318,7 +372,8 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 		oid string
 		set func(p *Port, v any)
 	}
-	first := true
+	var firstPortErr error
+	allPortWalksFailed := true
 	for _, c := range []col{
 		{oidIfDescr, func(p *Port, v any) { p.Descr = clip(text(v), 120) }},
 		{oidIfName, func(p *Port, v any) { p.Name = clip(text(v), 80) }},
@@ -341,25 +396,43 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 		{oidIfOutDiscards, func(p *Port, v any) { p.OutDiscards = num(v) }},
 		{oidIfHCInOctets, func(p *Port, v any) { p.InOctets = num(v) }},
 		{oidIfHCOutOctets, func(p *Port, v any) { p.OutOctets = num(v) }},
+		{oidIfInOctets, func(p *Port, v any) {
+			if p.InOctets == 0 {
+				p.InOctets = num(v)
+			}
+		}},
+		{oidIfOutOctets, func(p *Port, v any) {
+			if p.OutOctets == 0 {
+				p.OutOctets = num(v)
+			}
+		}},
 	} {
 		trunc, err := w.walk(c.oid, MaxPorts, func(idx []int, v any) {
-			if len(idx) == 1 && (first || ports[idx[0]] != nil) {
-				c.set(port(idx[0]), v)
+			if len(idx) == 1 {
+				if p := port(idx[0]); p != nil {
+					c.set(p, v)
+				}
 			}
 		})
 		if err != nil {
-			if first {
-				return nil, cleanErr(err)
-			}
 			if ctx.Err() != nil {
 				return nil, cleanErr(ctx.Err())
 			}
-			continue // optional column
+			if firstPortErr == nil {
+				firstPortErr = err
+			}
+			continue
 		}
-		if trunc && first {
-			res.Truncated = append(res.Truncated, "ports")
+		allPortWalksFailed = false
+		if trunc {
+			portsTruncated = true
 		}
-		first = false
+	}
+	if len(ports) == 0 && allPortWalksFailed && firstPortErr != nil {
+		return nil, cleanErr(firstPortErr)
+	}
+	if portsTruncated {
+		res.Truncated = append(res.Truncated, "ports")
 	}
 	for _, p := range ports {
 		if p.Name == "" {
@@ -458,31 +531,47 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 		}
 		return local
 	}
+	chassisSubtypes := map[[2]int]int{}
+	portSubtypes := map[[2]int]int{}
+	_, _ = w.walk(oidLldpRemChassisSubtype, MaxLLDP*4, func(idx []int, v any) {
+		if len(idx) == 3 {
+			chassisSubtypes[[2]int{idx[1], idx[2]}] = int(num(v))
+		}
+	})
+	_, _ = w.walk(oidLldpRemPortSubtype, MaxLLDP*4, func(idx []int, v any) {
+		if len(idx) == 3 {
+			portSubtypes[[2]int{idx[1], idx[2]}] = int(num(v))
+		}
+	})
+
 	nb := map[[2]int]*Neighbor{}
-	get := func(idx []int) *Neighbor {
+	get := func(idx []int) ([2]int, *Neighbor) {
 		if len(idx) != 3 {
-			return nil
+			return [2]int{}, nil
 		}
 		k := [2]int{idx[1], idx[2]}
 		n := nb[k]
 		if n == nil {
 			if len(nb) >= MaxLLDP {
-				return nil
+				return [2]int{}, nil
 			}
 			n = &Neighbor{IfIndex: lldpIf(idx[1])}
 			nb[k] = n
 		}
-		return n
+		return k, n
 	}
-	for oid, set := range map[string]func(n *Neighbor, v any){
-		oidLldpRemSysName:  func(n *Neighbor, v any) { n.SysName = clip(text(v), 120) },
-		oidLldpRemPortID:   func(n *Neighbor, v any) { n.PortID = clip(text(v), 80) },
-		oidLldpRemPortDesc: func(n *Neighbor, v any) { n.PortDescr = clip(text(v), 120) },
-		oidLldpRemChassis:  func(n *Neighbor, v any) { n.ChassisID = clip(text(v), 80) },
+	for _, col := range []struct {
+		oid string
+		set func(k [2]int, n *Neighbor, v any)
+	}{
+		{oidLldpRemSysName, func(_ [2]int, n *Neighbor, v any) { n.SysName = clip(text(v), 120) }},
+		{oidLldpRemPortID, func(k [2]int, n *Neighbor, v any) { n.PortID = clip(lldpID(v, portSubtypes[k], 3), 80) }},
+		{oidLldpRemPortDesc, func(_ [2]int, n *Neighbor, v any) { n.PortDescr = clip(text(v), 120) }},
+		{oidLldpRemChassis, func(k [2]int, n *Neighbor, v any) { n.ChassisID = clip(lldpID(v, chassisSubtypes[k], 4), 80) }},
 	} {
-		_, _ = w.walk(oid, MaxLLDP*4, func(idx []int, v any) {
-			if n := get(idx); n != nil {
-				set(n, v)
+		_, _ = w.walk(col.oid, MaxLLDP*4, func(idx []int, v any) {
+			if k, n := get(idx); n != nil {
+				col.set(k, n, v)
 			}
 		})
 	}
@@ -495,6 +584,7 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 		}
 		return res.LLDP[i].SysName < res.LLDP[j].SysName
 	})
+	readVLANs(w, base, res)
 	if ctx.Err() != nil {
 		return nil, cleanErr(ctx.Err())
 	}

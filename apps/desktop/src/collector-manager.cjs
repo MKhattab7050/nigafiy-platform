@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const MAX_LOG_LINES = 400;
-const SECRET_PATTERN = /ld[ce]_[A-Za-z0-9._-]{8,}/g;
+const SECRET_PATTERN = /ld(?:c|e|ea|a)_[A-Za-z0-9._-]{8,}/g;
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const CIDR = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/;
 
@@ -25,11 +25,23 @@ function normalizeServerUrl(input) {
   return url.origin;
 }
 
+/** True when the configured URL points to a plain HTTP server on this machine (local mode). */
+function isLocalServerUrl(input) {
+  if (!input || !String(input).trim()) return false;
+  try {
+    const url = new URL(String(input).trim());
+    return url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function parseCidrs(input) {
   const list = (Array.isArray(input) ? input : String(input ?? '').split(/[\s,،]+/)).map((s) => s.trim()).filter(Boolean);
   for (const cidr of list) {
     const m = CIDR.exec(cidr);
-    if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || Number(m[5]) > 32) throw new Error(`"${cidr}" is not a network range (example: 192.168.1.0/24)`);
+    const bits = m ? Number(m[5]) : -1;
+    if (!m || m.slice(1, 5).some((o) => Number(o) > 255) || bits < 8 || bits > 32) throw new Error(`"${cidr}" is not a network range (example: 192.168.1.0/24)`);
   }
   return [...new Set(list)];
 }
@@ -88,10 +100,10 @@ class CollectorManager extends EventEmitter {
   }
 
   /** Validates with the collector's own config checker before anything is saved. */
-  async saveSettings(input) {
+  async saveSettings(input, options = {}) {
     const next = { serverUrl: normalizeServerUrl(input.serverUrl), allowedCidrs: parseCidrs(input.allowedCidrs), autoStart: input.autoStart !== false };
     if (!this.binaryAvailable()) throw new Error('The collector program is missing from this installation');
-    const probe = path.join(this.dataDir, 'collector.check.yaml');
+    const probe = path.join(this.dataDir, `collector.check.${process.pid}.${Date.now()}.yaml`);
     fs.writeFileSync(probe, this.renderConfig(next), { mode: 0o600 });
     try {
       await new Promise((resolve, reject) => {
@@ -108,9 +120,11 @@ class CollectorManager extends EventEmitter {
     fs.writeFileSync(this.settingsPath, JSON.stringify(next, null, 2), { mode: 0o600 });
     fs.writeFileSync(this.configPath, this.renderConfig(next), { mode: 0o600 });
     const wasRunning = this.child !== null;
-    if (wasRunning) {
+    if (serverChanged && !options.preserveIdentity && (this.isEnrolled() || wasRunning)) {
+      await this.resetIdentity();
+    } else if (wasRunning) {
       await this.stop();
-      if (!serverChanged || this.isEnrolled()) this.start();
+      if (this.isEnrolled()) this.start();
     }
     this.emitState();
     return this.getState();
@@ -192,7 +206,15 @@ class CollectorManager extends EventEmitter {
       }
     }, 1200);
     child.on('error', (err) => {
+      clearTimeout(alive);
+      if (this.child === child) {
+        this.child = null;
+        this.pendingToken = null;
+        this.wanted = false;
+      }
+      this.status = 'error';
       this.lastError = `Could not start the collector: ${err.message}`;
+      this.emitState();
     });
     child.on('exit', (code) => {
       clearTimeout(alive);
@@ -208,6 +230,7 @@ class CollectorManager extends EventEmitter {
         // A collector that ran for a while and then died is restarted; one that fails immediately
         // (bad token, bad config) is not — retrying would only repeat the same failure.
         const ranFor = Date.now() - startedAt;
+        if (ranFor > 60_000) this.restarts = 0;
         if (ranFor > 30_000 && this.isEnrolled() && this.restarts < 5) {
           this.restarts += 1;
           const delay = Math.min(60_000, 2000 * 2 ** this.restarts);
@@ -281,4 +304,4 @@ class CollectorManager extends EventEmitter {
   }
 }
 
-module.exports = { CollectorManager, normalizeServerUrl, parseCidrs };
+module.exports = { CollectorManager, normalizeServerUrl, isLocalServerUrl, parseCidrs };

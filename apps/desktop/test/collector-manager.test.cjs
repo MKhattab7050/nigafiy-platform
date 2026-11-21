@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
-const { CollectorManager, normalizeServerUrl, parseCidrs } = require('../src/collector-manager.cjs');
+const { CollectorManager, normalizeServerUrl, isLocalServerUrl, parseCidrs } = require('../src/collector-manager.cjs');
 
 const BINARY = path.join(__dirname, '..', '..', '..', 'collectors', 'lan-collector', 'bin', process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector');
 const TOKEN = 'lde_desktop-test-token-0123456789abcdef';
@@ -56,12 +56,21 @@ test('server address and range validation', () => {
   assert.deepEqual(parseCidrs(''), []);
   assert.throws(() => parseCidrs('192.168.1.0'), /not a network range/);
   assert.throws(() => parseCidrs('999.1.1.0/24'), /not a network range/);
+  assert.throws(() => parseCidrs('0.0.0.0/0'), /not a network range/);
+  assert.throws(() => parseCidrs('10.0.0.0/7'), /not a network range/);
+  assert.equal(isLocalServerUrl('http://localhost:4100'), true);
+  assert.equal(isLocalServerUrl('http://127.0.0.1:47100'), true);
+  assert.equal(isLocalServerUrl('http://[::1]:4100'), true);
+  assert.equal(isLocalServerUrl('https://localhost:4100'), false);
+  assert.equal(isLocalServerUrl('https://ld.example.com'), false);
+  assert.equal(isLocalServerUrl(''), false);
 });
 
 test('manages the real collector: enroll, run, stop, restart without re-enrolling', { skip: !fs.existsSync(BINARY) && 'collector binary not built (pnpm build:collector)' }, async () => {
   const { server, seen, url } = await fakeServer();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ld-desktop-test-'));
   const manager = new CollectorManager({ binaryPath: BINARY, dataDir });
+  let again = null;
   try {
     assert.equal(manager.getState().enrolled, false);
     assert.throws(() => manager.start(), /server address/);
@@ -97,17 +106,34 @@ test('manages the real collector: enroll, run, stop, restart without re-enrollin
     assert.equal(manager.getState().connected, null);
 
     // Next launch: stored identity is reused, no token needed, no second enrollment.
-    const again = new CollectorManager({ binaryPath: BINARY, dataDir });
+    again = new CollectorManager({ binaryPath: BINARY, dataDir });
     const before = seen.heartbeats;
     again.start();
     await until('heartbeat after restart', () => seen.heartbeats > before);
     await again.stop();
     assert.equal(seen.enrollments, 1);
 
-    await again.resetIdentity();
+    // Adopting an enrolled collector when settings.serverUrl was blank can preserve identity,
+    // while changing serverUrl normally resets the stored collector identity.
+    await again.saveSettings({ serverUrl: 'http://localhost:49999', allowedCidrs: '192.168.1.0/24' });
     assert.equal(again.getState().enrolled, false);
+
+    // Re-enroll against fakeServer, clear serverUrl in memory to simulate CLI enrollment without settings.json, and verify preserveIdentity.
+    await again.saveSettings({ serverUrl: url, allowedCidrs: '192.168.1.0/24' });
+    again.start({ enrollmentToken: TOKEN });
+    await until('re-enrolled', () => again.getState().enrolled && again.getState().status === 'running');
+    await again.stop();
+    again.settings.serverUrl = '';
+    const adopted = await again.saveSettings({ serverUrl: url, allowedCidrs: '192.168.1.0/24' }, { preserveIdentity: true });
+    assert.equal(adopted.enrolled, true);
+    assert.equal(adopted.settings.serverUrl, url);
+
+    // Redaction covers collector and endpoint-agent tokens/credentials.
+    assert.equal(again.redact('token ldea_1234567890abcdef and lda_11111111-2222-4333-8444-555555555555.secret1234'), 'token [redacted] and [redacted]');
   } finally {
     await manager.stop();
+    await again?.stop();
+    server.closeAllConnections?.();
     server.close();
     fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }

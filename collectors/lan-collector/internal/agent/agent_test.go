@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/lan-detective/lan-collector/internal/cloud"
 	"github.com/lan-detective/lan-collector/internal/config"
+	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/tools"
@@ -370,5 +372,98 @@ func TestRunToolEnqueuesResultAndAcknowledgesCommand(t *testing.T) {
 	}
 	if item["type"] != "tool_result" || item["run_id"] != "run-1" || item["ok"] != true {
 		t.Fatalf("unexpected tool_result item: %+v", item)
+	}
+}
+
+func TestDHCPNamesPersistAcrossCollectorRestart(t *testing.T) {
+	fc := &fakeCloud{
+		batches: map[string]map[string]any{},
+		scopes:  []map[string]string{{"id": "scope-1", "cidr": "192.168.50.0/29"}},
+	}
+	srv := httptest.NewServer(fc.handler())
+	defer srv.Close()
+	stateDir := t.TempDir()
+	prober := &recordingProber{}
+
+	// Reserve an ephemeral UDP port for passive DHCP listening in the first collector run.
+	probeConn, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dhcpAddr := probeConn.LocalAddr().String()
+	_ = probeConn.Close()
+
+	ag1 := newTestAgent(t, srv.URL, stateDir, goodToken, prober)
+	ag1.deps.DHCPListen = dhcpAddr
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	done1 := make(chan error, 1)
+	go func() { done1 <- ag1.Run(ctx1) }()
+
+	waitFor(t, "first heartbeat before DHCP broadcast", func() bool {
+		fc.mu.Lock()
+		defer fc.mu.Unlock()
+		return fc.heartbeats > 0
+	})
+
+	// Record a DHCP-announced hostname while the first collector is running, then shut down
+	// before SaveDebounce (30s) expires so the shutdown path must flush dhcp-names.json.
+	ag1.dhcp.Record(dhcp.Request{
+		MAC: "00:11:22:33:44:55",
+		Lease: dhcp.Lease{
+			Hostname:    "Galaxy-S24-DHCP",
+			VendorClass: "android-dhcp-14",
+			RequestedIP: "192.168.50.1",
+		},
+	}, time.Now().UTC())
+
+	cancel1()
+	select {
+	case err := <-done1:
+		if err != nil {
+			t.Fatalf("first Run returned %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("first collector did not shut down")
+	}
+
+	// Verify state_dir/dhcp-names.json was written on shutdown.
+	dhcpPath := filepath.Join(stateDir, dhcp.FileName)
+	raw, err := os.ReadFile(dhcpPath)
+	if err != nil {
+		t.Fatalf("expected %s to exist after shutdown: %v", dhcpPath, err)
+	}
+	if !strings.Contains(string(raw), "Galaxy-S24-DHCP") {
+		t.Fatalf("expected %s to contain learned hostname, got %s", dhcpPath, string(raw))
+	}
+
+	// Construct a second collector with DHCPListen disabled; it must restore the learned name from disk.
+	ag2 := newTestAgent(t, srv.URL, stateDir, "", prober)
+	lease, ok := ag2.dhcp.Lookup("00:11:22:33:44:55")
+	if !ok || lease.Hostname != "Galaxy-S24-DHCP" || lease.VendorClass != "android-dhcp-14" {
+		t.Fatalf("expected DHCP table to be restored on New(), got %+v ok=%v", lease, ok)
+	}
+
+	// Run the second collector and trigger a discovery sweep to verify the restored DHCP name is used.
+	fc.mu.Lock()
+	fc.batches = map[string]map[string]any{}
+	fc.mu.Unlock()
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done2 := make(chan error, 1)
+	go func() { done2 <- ag2.Run(ctx2) }()
+
+	waitFor(t, "discovery run on second collector", func() bool {
+		return len(fc.items("discovery_run")) >= 1
+	})
+	cancel2()
+	<-done2
+
+	runs := fc.items("discovery_run")
+	hosts := runs[0]["hosts"].([]any)
+	firstHost := hosts[0].(map[string]any)
+	rawJSON, _ := json.Marshal(firstHost)
+	if firstHost["ip"] != "192.168.50.1" || !strings.Contains(string(rawJSON), "Galaxy-S24-DHCP") || !strings.Contains(string(rawJSON), "android-dhcp-14") {
+		t.Fatalf("expected discovered host 192.168.50.1 to carry restored DHCP hostname and vendor class, got %+v", firstHost)
 	}
 }

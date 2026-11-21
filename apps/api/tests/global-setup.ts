@@ -4,8 +4,10 @@ import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import { migrate } from '../src/database/migrate.ts';
 
-const OWNER_URL = 'postgres://postgres:postgres@127.0.0.1:5439/lan_detective_test';
-const APP_URL = 'postgres://lan_app:test-app-password@127.0.0.1:5439/lan_detective_test';
+// LD_TEST_PG_PORT lets several test runs (for example parallel worktrees) use their own server.
+const PORT = Number(process.env.LD_TEST_PG_PORT ?? 5439);
+const OWNER_URL = `postgres://postgres:postgres@127.0.0.1:${PORT}/lan_detective_test`;
+const APP_URL = `postgres://lan_app:test-app-password@127.0.0.1:${PORT}/lan_detective_test`;
 
 export default async function setup(): Promise<() => Promise<void>> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'ld-test-pg-'));
@@ -13,7 +15,7 @@ export default async function setup(): Promise<() => Promise<void>> {
     databaseDir: dir,
     user: 'postgres',
     password: 'postgres',
-    port: 5439,
+    port: PORT,
     persistent: false,
     initdbFlags: ['--encoding=UTF8', '--locale=C'],
     onLog: () => undefined,

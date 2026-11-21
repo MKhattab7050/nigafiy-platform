@@ -1,44 +1,127 @@
 @import 'tailwindcss';
 
-/* LAN Detective design tokens — a calm network-operations palette.
-   Colour carries meaning only: blue = interactive, green/amber/red/grey = state. */
-@theme {
-  --color-bg: #070d1a;
-  --color-surface: #0b1424;
-  --color-raised: #101c32;
-  --color-line: #1a2942;
-  --color-line-strong: #2a3d61;
-  --color-fg: #e6edf7;
-  --color-muted: #8b9bb6;
-  --color-faint: #5f7190;
-  --color-accent: #2f7bff;
-  --color-accent-hover: #4d8eff;
-  --color-cyan: #38cfe6;
-  --color-ok: #2fbf71;
-  --color-warn: #f0a429;
-  --color-crit: #f0524f;
-  --color-idle: #6b7a94;
+/* Desktop sidebar collapsed to an icon rail (set before paint by the boot script). */
+@custom-variant rail (:where(html[data-sidebar='rail']) &);
 
-  --font-sans: var(--font-inter), var(--font-arabic), ui-sans-serif, system-ui, sans-serif;
+/*
+ * LAN Detective design tokens.
+ *
+ * A calm network-operations palette: cool graphite surfaces, one blue accent for anything you can
+ * act on, and four reserved state colours (ok / warn / crit / idle) that always travel with an
+ * icon or a word. Dark is the default; the light theme redefines the same tokens below, so every
+ * utility (bg-surface, text-muted, border-line, bg-ok/10 …) follows the theme without changes.
+ */
+@theme {
+  /* surfaces, from the page back to the most raised layer */
+  --color-bg: #0b1016;
+  --color-sunken: #0d131a;
+  --color-surface: #11171f;
+  --color-raised: #18202a;
+  --color-line: #222c38;
+  --color-line-strong: #313d4c;
+
+  /* ink */
+  --color-fg: #e6ebf1;
+  --color-muted: #9ba7b5;
+  --color-faint: #788494;
+
+  /* the one accent: fill for primary actions, ink for links and selection */
+  --color-accent: #2f6fe0;
+  --color-accent-strong: #3d7cf0;
+  --color-accent-hover: #7aaaff;
+  --color-on-accent: #ffffff;
+  --color-cyan: #47c1d6;
+
+  /* state — reserved, never used as a chart series colour */
+  --color-ok: #36b37e;
+  --color-warn: #e2a23b;
+  --color-crit: #f0605d;
+  --color-idle: #7f8b9b;
+
+  /* chart series, fixed order (validated categorical slots 1–3, dark steps) */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+
+  --font-sans: var(--font-plex), var(--font-arabic), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --radius-card: 10px;
+  --radius-control: 7px;
+
+  --shadow-card: 0 0 0 0 transparent;
+  --shadow-overlay: 0 24px 48px -12px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.02);
+
+  --animate-enter: enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes shimmer {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+/* Light theme: same roles, chosen for a white working surface (every ink ≥ 4.5:1 on white). */
+:root[data-theme='light'] {
+  --color-bg: #f2f4f7;
+  --color-sunken: #f7f9fb;
+  --color-surface: #ffffff;
+  --color-raised: #eef1f5;
+  --color-line: #e0e5eb;
+  --color-line-strong: #c8d0da;
+  --color-fg: #111821;
+  --color-muted: #4b5867;
+  --color-faint: #657282;
+  --color-accent: #1f62d6;
+  --color-accent-strong: #1a55bb;
+  --color-accent-hover: #1a56bd;
+  --color-on-accent: #ffffff;
+  --color-cyan: #0f7f93;
+  --color-ok: #14784a;
+  --color-warn: #965a00;
+  --color-crit: #c53030;
+  --color-idle: #687586;
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 1px rgb(16 24 40 / 0.03);
+  --shadow-overlay: 0 24px 48px -12px rgb(16 24 40 / 0.22), 0 0 0 1px rgb(16 24 40 / 0.04);
 }
 
 html {
   color-scheme: dark;
   background: var(--color-bg);
 }
+:root[data-theme='light'] {
+  color-scheme: light;
+}
 
 body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  font-feature-settings: 'cv11', 'ss01';
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Arabic reads better slightly larger and with more leading. */
 html[lang='ar'] body {
-  font-family: var(--font-arabic), var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-arabic), var(--font-plex), system-ui, sans-serif;
   line-height: 1.7;
 }
 
@@ -55,13 +138,13 @@ html[lang='ar'] body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-accent-hover);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 35%, transparent);
 }
 
 * {
@@ -69,11 +152,159 @@ html[lang='ar'] body {
   scrollbar-width: thin;
 }
 
+/* ── tables: sticky header, row hover, and a stacked "card" layout on narrow screens ── */
+.data-table {
+  width: 100%;
+  font-size: 13px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.data-table thead th {
+  position: sticky;
+  top: 3.5rem;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-line);
+  padding: 0.6rem 0.75rem;
+  text-align: start;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.data-table tbody td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+  vertical-align: middle;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.data-table tbody tr {
+  transition: background-color 120ms ease;
+}
+.data-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-raised) 70%, transparent);
+}
+.data-table th:first-child,
+.data-table td:first-child {
+  padding-inline-start: 1rem;
+}
+.data-table th:last-child,
+.data-table td:last-child {
+  padding-inline-end: 1rem;
+}
+
+@media (max-width: 767px) {
+  .data-table.stack thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .data-table.stack,
+  .data-table.stack tbody,
+  .data-table.stack tr,
+  .data-table.stack td {
+    display: block;
+    width: 100%;
+  }
+  .data-table.stack tbody tr {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .data-table.stack tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .data-table.stack tbody td {
+    display: grid;
+    grid-template-columns: 7.5rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    row-gap: 0.15rem;
+    align-items: start;
+    padding: 0.2rem 0 !important;
+    border: 0;
+    max-width: none !important;
+  }
+  .data-table.stack tbody td::before {
+    content: attr(data-label);
+    grid-column: 1;
+    grid-row: 1;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--color-muted);
+  }
+  .data-table.stack tbody td[data-label]:not([data-label='']) > * {
+    grid-column: 2;
+  }
+  .data-table.stack tbody td[data-label='']::before,
+  .data-table.stack tbody td:not([data-label])::before {
+    display: none;
+  }
+  .data-table.stack tbody td:not([data-label]),
+  .data-table.stack tbody td[data-label=''] {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 0.35rem !important;
+  }
+}
+
+/* ── topology map (React Flow) follows the theme ── */
+.react-flow,
+.react-flow.dark,
+.react-flow.light {
+  --xy-background-color: var(--color-bg);
+  --xy-background-color-default: var(--color-bg);
+  --xy-node-background-color: transparent;
+  --xy-node-background-color-default: transparent;
+  --xy-node-group-background-color: transparent;
+  --xy-node-group-background-color-default: transparent;
+  --xy-node-border: none;
+  --xy-node-border-default: none;
+  --xy-controls-button-background-color: var(--color-surface);
+  --xy-controls-button-background-color-default: var(--color-surface);
+  --xy-controls-button-background-color-hover: var(--color-raised);
+  --xy-controls-button-background-color-hover-default: var(--color-raised);
+  --xy-controls-button-color: var(--color-muted);
+  --xy-controls-button-color-default: var(--color-muted);
+  --xy-controls-button-color-hover: var(--color-fg);
+  --xy-controls-button-color-hover-default: var(--color-fg);
+  --xy-controls-button-border-color: var(--color-line);
+  --xy-controls-button-border-color-default: var(--color-line);
+  --xy-minimap-background-color: var(--color-sunken);
+  --xy-minimap-background-color-default: var(--color-sunken);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  --xy-minimap-mask-background-color-default: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  --xy-minimap-mask-stroke-color: var(--color-line-strong);
+  --xy-minimap-mask-stroke-color-default: var(--color-line-strong);
+  --xy-attribution-background-color: transparent;
+  --xy-attribution-background-color-default: transparent;
+  --xy-edge-label-background-color: var(--color-raised);
+  --xy-edge-label-background-color-default: var(--color-raised);
+  --xy-edge-label-color: var(--color-fg);
+  --xy-edge-label-color-default: var(--color-fg);
+  --xy-background-pattern-dots-color: var(--color-line-strong);
+  --xy-background-pattern-dots-color-default: var(--color-line-strong);
+}
+.react-flow__controls {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.react-flow__minimap {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

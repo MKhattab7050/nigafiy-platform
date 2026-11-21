@@ -3,7 +3,7 @@ import pg from 'pg';
 import { auth } from '../../common/http.ts';
 import { env } from '../../config/env.ts';
 import { logger } from '../../infrastructure/logger.ts';
-import { REALTIME_CHANNEL } from '../events/emit.ts';
+import { REALTIME_CHANNEL } from './notify.ts';
 
 /**
  * Real-time updates over Server-Sent Events.
@@ -34,8 +34,12 @@ function fanOut(payload: string): void {
 export async function startRealtime(): Promise<void> {
   if (stopped) return;
   const client = new pg.Client({ connectionString: env.DATABASE_URL, application_name: 'ld-realtime' });
+  let retried = false;
   const retry = () => {
+    if (retried) return;
+    retried = true;
     if (listener === client) listener = null;
+    void client.end().catch(() => undefined);
     if (!stopped) setTimeout(() => void startRealtime().catch(() => undefined), 2000).unref();
   };
   client.on('error', (err) => {
@@ -45,7 +49,15 @@ export async function startRealtime(): Promise<void> {
   client.on('notification', (n) => n.payload && fanOut(n.payload));
   try {
     await client.connect();
+    if (stopped) {
+      await client.end().catch(() => undefined);
+      return;
+    }
     await client.query(`LISTEN ${REALTIME_CHANNEL}`);
+    if (stopped) {
+      await client.end().catch(() => undefined);
+      return;
+    }
     listener = client;
   } catch (err) {
     logger.warn({ err }, 'realtime listener failed to start, retrying');
@@ -58,7 +70,9 @@ export async function stopRealtime(): Promise<void> {
   stopped = true;
   for (const set of subscribers.values()) for (const res of set) res.end();
   subscribers.clear();
-  await listener?.end().catch(() => undefined);
+  const current = listener;
+  listener = null;
+  await current?.end().catch(() => undefined);
 }
 
 realtimeRouter.get('/stream', (req, res) => {

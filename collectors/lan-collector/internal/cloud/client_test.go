@@ -2,9 +2,12 @@ package cloud
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -99,5 +102,52 @@ func TestUnreachableServerErrorOmitsURL(t *testing.T) {
 	}
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrRejected) {
 		t.Fatal("connection failure must be transient")
+	}
+}
+
+func TestTLSPinning(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	leafSum := sha256.Sum256(srv.Certificate().Raw)
+	hexPin := hex.EncodeToString(leafSum[:])
+	var parts []string
+	for i := 0; i < len(hexPin); i += 2 {
+		parts = append(parts, strings.ToUpper(hexPin[i:i+2]))
+	}
+	colonPin := strings.Join(parts, ":")
+	wrongPin := strings.Repeat("aa", 32)
+
+	// 1. Without pin or CA, self-signed TLS server is rejected by system roots.
+	unpinned, err := New(srv.URL, "", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unpinned.SendBatch(context.Background(), []byte(`{}`)); err == nil {
+		t.Fatal("expected self-signed server to fail without pin")
+	}
+
+	// 2. Wrong pin is rejected.
+	badPinClient, err := New(srv.URL, "", "test", wrongPin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := badPinClient.SendBatch(context.Background(), []byte(`{}`)); err == nil || !strings.Contains(err.Error(), "tls pin mismatch") {
+		t.Fatalf("expected tls pin mismatch error, got %v", err)
+	}
+
+	// 3. Matching pin (both raw 64-hex and colon-separated) succeeds.
+	for _, pin := range []string{hexPin, colonPin} {
+		pinned, err := New(srv.URL, "", "test", pin)
+		if err != nil {
+			t.Fatalf("New with pin %q failed: %v", pin, err)
+		}
+		pinned.SetCredential("ldc_x.y")
+		if err := pinned.SendBatch(context.Background(), []byte(`{}`)); err != nil {
+			t.Fatalf("expected SendBatch with matching pin %q to succeed, got %v", pin, err)
+		}
 	}
 }

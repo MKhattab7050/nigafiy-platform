@@ -17,6 +17,17 @@ const TEXT = {
     autoStart: 'Start the collector when LAN Detective opens',
     save: 'Save',
     saved: 'Saved.',
+    switchedToRemote: 'Saved. Switched from local mode to remote server mode — enroll this computer below using a token from your remote dashboard.',
+    localTitle: 'Local mode',
+    localBadge: 'Running on this computer',
+    localDesc: 'LAN Detective is running locally on this computer. To switch to a remote server, enter its https:// address below and save.',
+    localStarting: 'Starting local LAN Detective server…',
+    localDashboard: 'Dashboard',
+    localApi: 'API',
+    localScanDeclined: 'The first-run home-network scan was skipped.',
+    localScanBtn: 'Scan home network',
+    localResetPromptBtn: 'Ask again on next launch',
+    localPromptReset: 'Home-network scan prompt will appear on next launch.',
     enroll: 'Enroll this computer',
     enrollHint: 'In the dashboard open Discovery & Collectors, add a collector, and paste its one-time enrollment token here.',
     token: 'Enrollment token',
@@ -54,6 +65,17 @@ const TEXT = {
     autoStart: 'تشغيل المجمِّع عند فتح LAN Detective',
     save: 'حفظ',
     saved: 'تم الحفظ.',
+    switchedToRemote: 'تم الحفظ. تم التبديل من الوضع المحلي إلى الخادم البعيد — سجّل هذا الحاسوب أدناه باستخدام رمز من لوحة التحكم البعيدة.',
+    localTitle: 'الوضع المحلي',
+    localBadge: 'يعمل على هذا الحاسوب',
+    localDesc: 'يعمل LAN Detective محليًا على هذا الحاسوب. للانتقال إلى خادم بعيد، أدخل عنوانه الذي يبدأ بـ https:// أدناه ثم احفظ.',
+    localStarting: 'جارٍ تشغيل خادم LAN Detective المحلي…',
+    localDashboard: 'لوحة التحكم',
+    localApi: 'واجهة API',
+    localScanDeclined: 'تم تخطي فحص الشبكة المنزلية عند بدء التشغيل.',
+    localScanBtn: 'فحص الشبكة المنزلية',
+    localResetPromptBtn: 'اسأل مجددًا عند التشغيل التالي',
+    localPromptReset: 'سيظهر سؤال فحص الشبكة عند التشغيل التالي.',
     enroll: 'تسجيل هذا الحاسوب',
     enrollHint: 'من لوحة التحكم افتح «الاكتشاف والمجمِّعات»، أضف مجمِّعًا، ثم الصق رمز التسجيل (يُستخدم مرة واحدة) هنا.',
     token: 'رمز التسجيل',
@@ -111,16 +133,33 @@ function render(next) {
     ? `${t('lastSweep')}: ${next.lastSweep.cidr} — ${next.lastSweep.found} ${t('found')} ${next.lastSweep.probed} ${t('probed')} · ${new Date(next.lastSweep.at).toLocaleTimeString()}`
     : '';
 
-  const ready = next.binaryAvailable && Boolean(next.settings.serverUrl);
+  $('local-card').hidden = !next.localMode;
+  if (next.localMode) {
+    $('local-urls').textContent = next.localWebUrl
+      ? `${t('localDashboard')}: ${next.localWebUrl} · ${t('localApi')}: ${next.localApiUrl}`
+      : t('localStarting');
+    const showScanBox = !next.enrolled && (next.localCanScan || next.scanDeclined);
+    $('local-scan-box').hidden = !showScanBox;
+    $('local-scan-declined').hidden = !next.scanDeclined;
+    $('local-scan').hidden = !next.localCanScan;
+    $('local-reset-prompt').hidden = !next.scanDeclined;
+    if (next.enrolled || next.scanDeclined) $('local-msg').hidden = true;
+  } else {
+    $('local-msg').hidden = true;
+  }
+
+  const effectiveServerUrl = next.settings.serverUrl || (next.localMode ? next.localApiUrl ?? '' : '');
+  const ready = next.binaryAvailable && Boolean(effectiveServerUrl);
+  const hasDashboard = Boolean(next.settings.serverUrl || (next.localMode && next.localWebUrl));
   $('start').disabled = running || !ready || !next.enrolled;
   $('stop').disabled = !running;
-  $('dashboard').disabled = !next.settings.serverUrl;
+  $('dashboard').disabled = !hasDashboard;
   $('enroll-card').hidden = next.enrolled;
   $('identity-card').hidden = !next.enrolled;
   for (const el of $('enroll').elements) el.disabled = !ready || running;
 
   if (!formDirty) {
-    $('serverUrl').value = next.settings.serverUrl;
+    $('serverUrl').value = effectiveServerUrl;
     $('cidrs').value = next.settings.allowedCidrs.join(', ');
     $('autoStart').checked = next.settings.autoStart;
   }
@@ -133,8 +172,9 @@ function render(next) {
       const time = document.createElement('time');
       time.textContent = new Date(entry.at).toLocaleTimeString([], { hour12: false });
       const lvl = document.createElement('span');
-      lvl.className = `lvl ${entry.level}`;
-      lvl.textContent = entry.level;
+      const validLevel = ['info', 'warn', 'error', 'debug'].includes(entry.level) ? entry.level : 'info';
+      lvl.className = `lvl ${validLevel}`;
+      lvl.textContent = validLevel;
       const msg = document.createElement('span');
       msg.textContent = entry.message; // textContent only: log text is never interpreted as HTML
       if (entry.extra) {
@@ -157,7 +197,11 @@ async function guarded(fn) {
   try {
     render(await fn());
   } catch (err) {
-    render({ ...state, lastError: message(err) });
+    if (state) render({ ...state, lastError: message(err) });
+    else {
+      $('error').hidden = false;
+      $('error').textContent = message(err);
+    }
   }
 }
 
@@ -171,16 +215,39 @@ $('settings').addEventListener('submit', async (event) => {
   event.preventDefault();
   const note = $('settings-msg');
   note.textContent = '';
+  const submitBtn = $('settings').querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
   try {
     const next = await desktop.saveSettings({ serverUrl: $('serverUrl').value, allowedCidrs: $('cidrs').value, autoStart: $('autoStart').checked });
     formDirty = false;
     render(next);
     note.className = 'small ok-text';
-    note.textContent = t('saved');
+    note.textContent = next.switchedFromLocal ? t('switchedToRemote') : t('saved');
   } catch (err) {
     note.className = 'small crit-text';
     note.textContent = message(err);
+  } finally {
+    submitBtn.disabled = false;
   }
+});
+$('local-scan').addEventListener('click', async () => {
+  const btn = $('local-scan');
+  btn.disabled = true;
+  $('local-msg').hidden = true;
+  try {
+    await guarded(() => desktop.setupLocalScan());
+  } finally {
+    btn.disabled = false;
+  }
+});
+$('local-reset-prompt').addEventListener('click', () => {
+  void guarded(async () => {
+    const next = await desktop.resetScanPrompt();
+    const note = $('local-msg');
+    note.hidden = false;
+    note.textContent = t('localPromptReset');
+    return next;
+  });
 });
 $('enroll').addEventListener('submit', (event) => {
   event.preventDefault();

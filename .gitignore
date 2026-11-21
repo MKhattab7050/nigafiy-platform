@@ -6,10 +6,14 @@ bin/
 .env
 *.log
 coverage/
+collectors/lan-collector/bin/
 collectors/lan-collector/state/
 collectors/lan-collector/spool/
 collectors/lan-collector/collector.yaml
+agents/endpoint-agent/bin/
 agents/endpoint-agent/state/
+apps/api/apps/
+apps/web/.next-*/
 .tools/
 release/
 *.tsbuildinfo

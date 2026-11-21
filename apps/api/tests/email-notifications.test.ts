@@ -2,7 +2,7 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
-import { dispatchNotifications } from '../src/jobs/notification-dispatch.ts';
+import { dispatchNotifications } from '../src/modules/notifications/index.ts';
 import { renderEmail } from '../src/modules/notifications/email.ts';
 import { CSRF, newAccount } from './helpers.ts';
 

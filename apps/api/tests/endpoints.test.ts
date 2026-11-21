@@ -407,126 +407,79 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     expect(rdStop.status).toBe(200);
   });
 
-  it('enforces platform capability boundaries for Android Enterprise and Apple iOS MDM devices', async () => {
-    const a = await newAccount('ep-mobile');
+  it('supports only agent platforms, refuses option-like arguments, and keeps unmeasured security unknown', async () => {
+    const a = await newAccount('ep-harden');
 
-    // 1. Create Android Enterprise Device Owner endpoint
-    const androidCreated = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
-      site_id: a.siteId,
-      name: 'Warehouse Scanner Galaxy',
-      platform: 'android',
-      management_mode: 'android_device_owner',
-    });
-    expect(androidCreated.status).toBe(201);
-    expect(androidCreated.body.android_provisioning).toBeDefined();
-    expect(androidCreated.body.android_provisioning['android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE'].enrollment_token).toBe(
-      androidCreated.body.enrollment_token,
-    );
+    // iOS/Android "MDM" was removed: neither the platforms nor the MDM routes exist.
+    for (const platform of ['android', 'ios']) {
+      const res = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Phone', platform });
+      expect(res.status).toBe(400);
+    }
+    const mdm = await request(app).post('/api/v1/agent/mdm/connect').send({ enrollment_token: 'x'.repeat(30) });
+    expect([403, 404]).toContain(mdm.status);
 
-    const androidEnrolled = await request(app).post('/api/v1/agent/mdm/connect').send({
-      enrollment_token: androidCreated.body.enrollment_token,
-      device_name: 'Galaxy-Tab-Active4',
-      os: 'android',
-      os_version: 'Android 14',
-      manufacturer: 'Samsung',
-      model: 'SM-T636B',
-      serial_number: 'R52W90ABC',
-      security_patch_level: '2026-10-01',
-      battery_pct: 84,
-      battery_charging: true,
-      storage_total_gb: 128,
-      storage_used_gb: 42,
-      device_owner: true,
-      passcode_compliant: true,
-      apps: [{ name: 'Warehouse WMS', version: '4.2.1', publisher: 'Internal IT' }],
-    });
-    expect(androidEnrolled.status).toBe(201);
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Build box', platform: 'linux' });
+    expect(created.status).toBe(201);
+    expect(created.body).not.toHaveProperty('android_provisioning');
+    expect(created.body).not.toHaveProperty('apple_mdm_profile_url');
+    expect(created.body.endpoint).not.toHaveProperty('management_mode');
+    const epId: string = created.body.endpoint.id;
+    expect((await a.agent.get(`/api/v1/endpoints/${epId}/apple-profile.mobileconfig`)).status).toBe(404);
 
-    // Android rejects Windows-style service_action
-    const androidSvc = await a.agent.post(`/api/v1/endpoints/${androidCreated.body.endpoint.id}/commands`).set(CSRF).send({
-      kind: 'service_action',
-      service: 'Spooler',
-      action: 'restart',
-    });
-    expect(androidSvc.status).toBe(409);
-
-    // Android Device Owner accepts mobile_action lock_device
-    const androidLock = await a.agent.post(`/api/v1/endpoints/${androidCreated.body.endpoint.id}/commands`).set(CSRF).send({
-      kind: 'mobile_action',
-      action: 'lock_device',
-    });
-    expect(androidLock.status).toBe(202);
-
-    // 2. Create Apple iOS BYOD MDM endpoint (not supervised)
-    const iosCreated = await a.agent.post('/api/v1/endpoints').set(CSRF).send({
-      site_id: a.siteId,
-      name: 'Executive iPhone 16',
+    // An agent cannot claim mobile-only posture or switch to a mobile platform.
+    const badEnroll = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: created.body.enrollment_token,
+      hostname: 'build-01',
+      os: 'linux',
+      arch: 'amd64',
       platform: 'ios',
-      management_mode: 'ios_byod_mdm',
     });
-    expect(iosCreated.status).toBe(201);
-    expect(iosCreated.body.apple_mdm_profile_url).toContain('.mobileconfig');
+    expect(badEnroll.status).toBe(400);
 
-    // Download .mobileconfig profile
-    const profileRes = await a.agent.get(iosCreated.body.apple_mdm_profile_url);
-    expect(profileRes.status).toBe(200);
-    expect(profileRes.text).toContain('PayloadType');
-    expect(profileRes.text).toContain('com.apple.security.passcode');
-
-    // Enroll iOS device via /mdm/connect
-    const iosEnrolled = await request(app).post('/api/v1/agent/mdm/connect').send({
-      enrollment_token: iosCreated.body.enrollment_token,
-      device_name: 'iPhone-16-Pro',
-      os: 'ios',
-      os_version: 'iOS 18.1',
-      manufacturer: 'Apple Inc.',
-      model: 'iPhone17,1',
-      serial_number: 'F2L99887766',
-      battery_pct: 91,
-      battery_charging: false,
-      storage_total_gb: 256,
-      storage_used_gb: 94,
-      supervised: false,
-      passcode_compliant: true,
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({
+      enrollment_token: created.body.enrollment_token,
+      hostname: 'build-01',
+      agent_version: '0.3.0',
+      os: 'linux',
+      arch: 'amd64',
     });
-    expect(iosEnrolled.status).toBe(201);
+    expect(enrolled.status).toBe(201);
+    const cred: string = enrolled.body.credential;
+    const hb = (extra: Record<string, unknown>) =>
+      request(app)
+        .post('/api/v1/agent/heartbeat')
+        .set('Authorization', `Bearer ${cred}`)
+        .send({ agent_version: '0.3.0', hostname: 'build-01', os: 'linux', arch: 'amd64', cpu_pct: 3, ram_used_mb: 512, ram_pct: 10, ...extra });
 
-    const iosId: string = iosCreated.body.endpoint.id;
-    const iosDetail = await a.agent.get(`/api/v1/endpoints/${iosId}`);
-    expect(iosDetail.status).toBe(200);
-    const rdCap = iosDetail.body.capabilities.find((c: { key: string }) => c.key === 'remote_desktop');
-    expect(rdCap?.state).toBe('unsupported_by_os');
-    expect(rdCap?.enabled).toBe(false);
+    expect((await hb({ security: { rooted_or_jailbroken: true } })).status).toBe(400);
 
-    // iOS strictly rejects remote desktop, file manager, and process kill
-    expect(
-      (await a.agent.post(`/api/v1/endpoints/${iosId}/remote-desktop/start`).set(CSRF).send({})).status,
-    ).toBe(409);
-    expect(
-      (await a.agent.post(`/api/v1/endpoints/${iosId}/commands`).set(CSRF).send({ kind: 'fs_op', op: 'roots' })).status,
-    ).toBe(409);
-    expect(
-      (await a.agent.post(`/api/v1/endpoints/${iosId}/commands`).set(CSRF).send({ kind: 'kill_process', pid: 100 })).status,
-    ).toBe(409);
+    // The firewall reported off is an attention item; once the agent stops reporting it, it is gone
+    // (the posture is replaced, not merged with an old answer).
+    expect((await hb({ security: { firewall_enabled: false } })).status).toBe(200);
+    let detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(detail.body.compliance_status).toBe('attention');
+    expect((await hb({ security: {} })).status).toBe(200);
+    detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(detail.body.security).toEqual({});
+    expect(detail.body.compliance_reasons).toEqual([]);
 
-    // Non-supervised iOS rejects Managed Lost Mode (409 requires_supervision), but accepts Device Lock (202)
-    expect(
-      (
-        await a.agent
-          .post(`/api/v1/endpoints/${iosId}/commands`)
-          .set(CSRF)
-          .send({ kind: 'mobile_action', action: 'enable_lost_mode', lost_message: 'Return to IT' })
-      ).status,
-    ).toBe(409);
+    // Values that would reach the agent as program arguments can never look like options.
+    const send = (body: Record<string, unknown>) => a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send(body);
+    expect((await send({ kind: 'software_action', action: 'install', package_id: '--allow-unauthenticated' })).status).toBe(400);
+    expect((await send({ kind: 'service_action', service: '--force', action: 'stop' })).status).toBe(400);
+    expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: '-type=any' })).status).toBe(400);
+    expect((await send({ kind: 'mobile_action', action: 'lock_device' })).status).toBe(400);
 
-    expect(
-      (
-        await a.agent
-          .post(`/api/v1/endpoints/${iosId}/commands`)
-          .set(CSRF)
-          .send({ kind: 'mobile_action', action: 'lock_device' })
-      ).status,
-    ).toBe(202);
+    // What this platform's agent cannot do is refused up front.
+    expect((await send({ kind: 'power_action', action: 'logoff' })).status).toBe(409);
+    expect((await send({ kind: 'diagnostic_command', tool: 'gpresult' })).status).toBe(409);
+    expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: 'example.com' })).status).toBe(202);
+
+    // Uploading overwrites files on the endpoint, so it needs the same role as deleting them.
+    await setRole(a.email, a.organizationId, 'technician');
+    const techUpload = await send({ kind: 'fs_op', op: 'upload', path: '/tmp/x.txt', data_base64: 'aGk=' });
+    expect(techUpload.status).toBe(403);
+    expect((await send({ kind: 'fs_op', op: 'list', path: '/tmp' })).status).toBe(202);
   });
 });
 

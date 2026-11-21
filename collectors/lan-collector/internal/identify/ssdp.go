@@ -69,6 +69,8 @@ func probeSSDP(ctx context.Context, c *collector, local net.IP) {
 		return
 	}
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	_, _ = conn.WriteToUDP([]byte(ssdpSearch), ssdpGroup)
 
 	locations := map[string]string{} // ip → description URL
@@ -106,6 +108,9 @@ func probeSSDP(ctx context.Context, c *collector, local net.IP) {
 		}
 	}
 
+	if ctx.Err() != nil {
+		return
+	}
 	client := &http.Client{Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 4)
@@ -157,14 +162,60 @@ func nbstatQuery(id uint16) []byte {
 	return q
 }
 
+// skipDNSName advances past a wire-format DNS name (label chain and/or compression pointer).
+func skipDNSName(msg []byte, off int) (int, bool) {
+	for {
+		if off >= len(msg) {
+			return 0, false
+		}
+		n := int(msg[off])
+		if n == 0 {
+			return off + 1, true
+		}
+		if n&0xc0 == 0xc0 {
+			if off+1 >= len(msg) {
+				return 0, false
+			}
+			return off + 2, true
+		}
+		if n&0xc0 != 0 {
+			return 0, false
+		}
+		off += 1 + n
+		if off > len(msg) {
+			return 0, false
+		}
+	}
+}
+
 // parseNBStat returns the machine name from a node status response ("" if none).
 func parseNBStat(msg []byte) string {
-	const header, rrFixed = 12, 34 + 2 + 2 + 4 + 2
-	if len(msg) < header+rrFixed+1 {
+	const dnsHeader = 12
+	const rrFixed = 2 + 2 + 4 + 2 // TYPE, CLASS, TTL, RDLENGTH
+	if len(msg) < dnsHeader {
 		return ""
 	}
-	count := int(msg[header+rrFixed])
-	entries := msg[header+rrFixed+1:]
+	off := dnsHeader
+	qdCount := int(binary.BigEndian.Uint16(msg[4:6]))
+	for i := 0; i < qdCount; i++ {
+		var ok bool
+		off, ok = skipDNSName(msg, off)
+		if !ok || off+4 > len(msg) {
+			return ""
+		}
+		off += 4
+	}
+	var ok bool
+	off, ok = skipDNSName(msg, off)
+	if !ok || off+rrFixed+1 > len(msg) {
+		return ""
+	}
+	if rrType := binary.BigEndian.Uint16(msg[off : off+2]); rrType != 0 && rrType != 0x0021 {
+		return ""
+	}
+	off += rrFixed
+	count := int(msg[off])
+	entries := msg[off+1:]
 	for i := 0; i < count && len(entries) >= (i+1)*18; i++ {
 		e := entries[i*18 : (i+1)*18]
 		suffix, flags := e[15], binary.BigEndian.Uint16(e[16:18])
@@ -185,10 +236,19 @@ func probeNetBIOS(ctx context.Context, c *collector, hosts []string) {
 		return
 	}
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	for i, ip := range hosts {
+		if ctx.Err() != nil {
+			return
+		}
 		if addr := net.ParseIP(ip); addr != nil {
 			_, _ = conn.WriteToUDP(nbstatQuery(uint16(i+1)), &net.UDPAddr{IP: addr, Port: 137})
-			time.Sleep(10 * time.Millisecond) // pace: at most 100 small packets per second
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond): // pace: at most 100 small packets per second
+			}
 		}
 	}
 	deadline := time.Now().Add(1500 * time.Millisecond)

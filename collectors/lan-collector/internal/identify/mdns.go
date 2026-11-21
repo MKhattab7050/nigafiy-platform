@@ -122,6 +122,8 @@ func probeMDNS(ctx context.Context, c *collector, hosts []string, local net.IP) 
 		return
 	}
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	send := func(names []string) {
 		for _, msg := range buildQueries(names) {
@@ -159,7 +161,7 @@ func probeMDNS(ctx context.Context, c *collector, hosts []string, local net.IP) 
 			second = append(second, t)
 		}
 	}
-	if len(second) > 0 {
+	if len(second) > 0 && ctx.Err() == nil {
 		send(second)
 		read(2 * time.Second)
 	}

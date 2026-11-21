@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { Collector, CollectorCreated } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
-import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
+import { AppError, auth, idParams, notFound, parse, publicServerUrl, requireRole } from '../../common/http.ts';
 import { randomToken, sha256 } from '../../common/crypto.ts';
 import { withTenant } from '../../infrastructure/db.ts';
-import { notifyRealtime } from '../events/emit.ts';
+import { resolveOpenIncidentByKey } from '../correlation/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
 
 export const collectorsRouter: Router = Router();
 
@@ -44,7 +45,7 @@ collectorsRouter.post('/collectors', requireRole('admin'), async (req, res) => {
     await audit(db, req, 'collector.created', { type: 'collector', id }, { name: body.name, site_id: body.site_id });
     return (await db.query<Collector>(`${COLLECTOR_SELECT} WHERE c.id = $1`, [id])).rows[0]!;
   });
-  const response: CollectorCreated = { collector, enrollment_token: enrollment.token };
+  const response: CollectorCreated = { collector, enrollment_token: enrollment.token, ...publicServerUrl(req) };
   res.status(201).json(response);
 });
 
@@ -62,7 +63,7 @@ collectorsRouter.post('/collectors/:id/enrollment-token', requireRole('admin'), 
     await audit(db, req, 'collector.enrollment_token_reissued', { type: 'collector', id });
     return (await db.query<Collector>(`${COLLECTOR_SELECT} WHERE c.id = $1`, [id])).rows[0]!;
   });
-  const response: CollectorCreated = { collector, enrollment_token: enrollment.token };
+  const response: CollectorCreated = { collector, enrollment_token: enrollment.token, ...publicServerUrl(req) };
   res.json(response);
 });
 
@@ -77,6 +78,9 @@ collectorsRouter.post('/collectors/:id/revoke', requireRole('admin'), async (req
       [id],
     );
     if (!updated.rowCount) throw notFound('Collector');
+    if (await resolveOpenIncidentByKey(db, ctx.organizationId, `collector:${id}`, 'the collector was revoked')) {
+      await notifyRealtime(db, ctx.organizationId, 'events');
+    }
     await audit(db, req, 'collector.revoked', { type: 'collector', id });
     await notifyRealtime(db, ctx.organizationId, 'collectors');
   });

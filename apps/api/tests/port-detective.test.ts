@@ -111,6 +111,13 @@ describe('Port Detective API', () => {
     const audits = await systemPool.query(`SELECT metadata::text AS m FROM audit_logs WHERE organization_id = $1`, [a.organizationId]).catch(() => ({ rows: [] }));
     expect(JSON.stringify(audits.rows)).not.toContain(COMMUNITY);
 
+    // The address can be corrected, under the same rules as adding.
+    const sw = `/api/v1/switches/${created.body.id}`;
+    expect((await a.agent.patch(sw).set(CSRF).send({ host: '10.9.9.9' })).status).toBe(422);
+    expect((await a.agent.patch(sw).set(CSRF).send({ host: '192.168.5.3' })).status).toBe(200);
+    expect((await a.agent.get(sw)).body).toMatchObject({ host: '192.168.5.3' });
+    expect((await a.agent.patch(sw).set(CSRF).send({ host: '192.168.5.2' })).status).toBe(200);
+
     // The collector of the site receives what it needs to read the switch, and a "read now" command.
     const hb = (await heartbeat(c)).body;
     expect(hb.config.snmp.targets).toEqual([{ id: created.body.id, host: '192.168.5.2', port: 161, version: '2c', interval_seconds: 300, community: COMMUNITY }]);
@@ -155,6 +162,14 @@ describe('Port Detective API', () => {
     const found = (await a.agent.get('/api/v1/ports/find?q=nas')).body.items;
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ device: { label: 'nas' }, location: { port_name: 'Gi0/1' } });
+    expect(found[0].device).not.toHaveProperty('site_id');
+    expect(found[0].location).not.toHaveProperty('site_id');
+
+    const multi = (await a.agent.get('/api/v1/ports/find?q=192.168.5.')).body.items as any[];
+    expect(multi.length).toBe(5);
+    expect(multi.find((x) => x.device.ip === '192.168.5.10').location.port_name).toBe('Gi0/1');
+    expect(multi.find((x) => x.device.ip === '192.168.5.11').location.port_name).toBe('Gi0/2');
+    expect(multi.find((x) => x.device.ip === '192.168.5.1').location).toBeNull();
 
     // Second read: the NAS was re-plugged into port 3, port 2 collected 7 errors, LLDP heard a neighbour on port 8.
     const second = poll(sw, 5, {

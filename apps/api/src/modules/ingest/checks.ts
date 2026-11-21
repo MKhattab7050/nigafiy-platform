@@ -1,7 +1,8 @@
 import type { CheckRole, CheckState, Severity } from '@lan-detective/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
-import { emitEvent, notifyRealtime } from '../events/emit.ts';
-import { type CheckResultItem, type CollectorContext, ItemRejected, MAX_FUTURE_SKEW_MS } from './schema.ts';
+import { type CheckResultItem, type CollectorContext, ItemRejected, MAX_FUTURE_SKEW_MS } from '../../common/collector-protocol.ts';
+import { emitEvent } from '../events/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
 
 interface CheckRow {
   id: string;
@@ -9,6 +10,7 @@ interface CheckRow {
   kind: string;
   role: CheckRole;
   target: string;
+  enabled: boolean;
   state: CheckState;
   pending_state: CheckState | null;
   pending_count: number;
@@ -43,12 +45,13 @@ export async function processCheckResult(db: Db, c: CollectorContext, item: Chec
   if (ts.getTime() > now.getTime() + MAX_FUTURE_SKEW_MS) throw new ItemRejected('timestamp is in the future');
 
   const found = await db.query<CheckRow>(
-    `SELECT id, name, kind, role, target, state, pending_state, pending_count, failure_threshold, latency_warn_ms, loss_warn_pct, last_result_at
+    `SELECT id, name, kind, role, target, enabled, state, pending_state, pending_count, failure_threshold, latency_warn_ms, loss_warn_pct, last_result_at
        FROM monitoring_checks WHERE id = $1 AND site_id = $2 FOR UPDATE`,
     [item.check_id, c.siteId],
   );
   const check = found.rows[0];
   if (!check) throw new ItemRejected('check is unknown or not part of this collector\'s site');
+  if (!check.enabled) return;
 
   const inserted = await db.query(
     `INSERT INTO check_results (check_id, ts, organization_id, ok, latency_ms, loss_pct, jitter_ms, error)

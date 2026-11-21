@@ -4,8 +4,8 @@ import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { closePools, systemPool } from '../src/infrastructure/db.ts';
-import { watchCollectors } from '../src/jobs/collector-watch.ts';
-import { dispatchNotifications } from '../src/jobs/notification-dispatch.ts';
+import { watchCollectors } from '../src/modules/collectors/index.ts';
+import { dispatchNotifications } from '../src/modules/notifications/index.ts';
 import { CSRF, type TestAccount, type TestCollector, addScope, app, heartbeat, newAccount, newCollector, sweep, telemetry } from './helpers.ts';
 
 afterAll(closePools);

@@ -1,10 +1,12 @@
 package identify
 
 import (
+	"context"
 	"encoding/binary"
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -129,6 +131,13 @@ func TestNetBIOS(t *testing.T) {
 		return binary.BigEndian.AppendUint16(e, flags)
 	}
 	resp := make([]byte, 12+34+10)
+	binary.BigEndian.PutUint16(resp[2:4], 0x8400)
+	binary.BigEndian.PutUint16(resp[6:8], 1)
+	resp[12] = 0x20
+	copy(resp[13:45], "CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	binary.BigEndian.PutUint16(resp[46:48], 0x0021) // NBSTAT
+	binary.BigEndian.PutUint16(resp[48:50], 0x0001) // IN
+	binary.BigEndian.PutUint16(resp[54:56], 1+3*18)
 	resp = append(resp, 3)
 	resp = append(resp, entry("WORKGROUP", 0x00, 0x8400)...) // group name → not the machine
 	resp = append(resp, entry("OFFICE-PC", 0x00, 0x0400)...)
@@ -138,6 +147,62 @@ func TestNetBIOS(t *testing.T) {
 	}
 	if parseNBStat([]byte{1, 2, 3}) != "" || parseNBStat(resp[:60]) != "" {
 		t.Error("truncated responses must yield no name")
+	}
+
+	// Compression-pointer Answer RR name (0xc00c) with and without echoed Question section.
+	ptrOnly := make([]byte, 12+2+10)
+	binary.BigEndian.PutUint16(ptrOnly[2:4], 0x8400)
+	binary.BigEndian.PutUint16(ptrOnly[6:8], 1)
+	ptrOnly[12], ptrOnly[13] = 0xc0, 0x0c
+	binary.BigEndian.PutUint16(ptrOnly[14:16], 0x0021)
+	binary.BigEndian.PutUint16(ptrOnly[16:18], 0x0001)
+	ptrOnly = append(ptrOnly, 2)
+	ptrOnly = append(ptrOnly, entry("WORKGROUP", 0x00, 0x8400)...)
+	ptrOnly = append(ptrOnly, entry("NAS-BOX", 0x00, 0x0400)...)
+	if got := parseNBStat(ptrOnly); got != "NAS-BOX" {
+		t.Errorf("parseNBStat compression pointer = %q, want NAS-BOX", got)
+	}
+
+	// Echoed Question (QDCOUNT=1) followed by Answer RR using 0xc00c pointer.
+	withQuestion := make([]byte, 12)
+	binary.BigEndian.PutUint16(withQuestion[2:4], 0x8400)
+	binary.BigEndian.PutUint16(withQuestion[4:6], 1) // QDCOUNT=1
+	binary.BigEndian.PutUint16(withQuestion[6:8], 1) // ANCOUNT=1
+	withQuestion = append(withQuestion, 0x20)
+	withQuestion = append(withQuestion, "CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"...)
+	withQuestion = append(withQuestion, 0x00, 0x00, 0x21, 0x00, 0x01) // QTYPE=NBSTAT, QCLASS=IN
+	withQuestion = append(withQuestion, 0xc0, 0x0c)                   // Answer NAME pointer to offset 12
+	withQuestion = append(withQuestion, 0x00, 0x21, 0x00, 0x01, 0, 0, 0, 0, 0, 19)
+	withQuestion = append(withQuestion, 1)
+	withQuestion = append(withQuestion, entry("LAPTOP-9", 0x00, 0x0400)...)
+	if got := parseNBStat(withQuestion); got != "LAPTOP-9" {
+		t.Errorf("parseNBStat with echoed question = %q, want LAPTOP-9", got)
+	}
+
+	// Label chain ending in compression pointer and malformed names.
+	chained := make([]byte, 12)
+	chained = append(chained, 0x04, 'h', 'o', 's', 't', 0xc0, 0x0c)
+	chained = append(chained, 0x00, 0x21, 0x00, 0x01, 0, 0, 0, 0, 0, 19, 1)
+	chained = append(chained, entry("PRINTER-1", 0x00, 0x0400)...)
+	if got := parseNBStat(chained); got != "PRINTER-1" {
+		t.Errorf("parseNBStat label+pointer = %q, want PRINTER-1", got)
+	}
+	if parseNBStat(append(make([]byte, 12), 0xc0)) != "" || parseNBStat(append(make([]byte, 12), 0x40, 0x00)) != "" {
+		t.Error("malformed DNS RR names must yield no name")
+	}
+
+	// Cancelling ctx must unblock probeNetBIOS immediately without waiting for the 1.5s read deadline.
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		probeNetBIOS(ctx, newCollector(), []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4", "127.0.0.5"})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("probeNetBIOS did not stop promptly on context cancellation")
 	}
 }
 

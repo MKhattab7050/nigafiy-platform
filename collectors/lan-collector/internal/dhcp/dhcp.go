@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/binary"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +25,14 @@ import (
 )
 
 const (
+	// maxEntries bounds the table (and therefore the state file): every client on a hostile LAN
+	// can forge DHCP requests with random MACs, so without a cap memory and disk would grow
+	// without limit. When full, the entry seen least recently is dropped.
 	maxEntries = 4096
-	entryTTL   = 30 * 24 * time.Hour
+	// entryTTL is how long a learned name stays valid after the client was last heard from.
+	// 30 days covers devices that are away for holidays or a month-long leave, while a name
+	// that a client has not announced for longer is too stale to show as that device's name.
+	entryTTL = 30 * 24 * time.Hour
 )
 
 // Lease is what one client said about itself in its most recent DHCP request.
@@ -33,7 +40,10 @@ type Lease struct {
 	Hostname    string
 	VendorClass string
 	RequestedIP string
-	SeenAt      time.Time
+	// FirstSeen is when this MAC was first heard announcing itself (kept across renewals).
+	FirstSeen time.Time
+	// SeenAt is when it was last heard.
+	SeenAt time.Time
 }
 
 // Request is one parsed client message.
@@ -44,21 +54,45 @@ type Request struct {
 
 var magicCookie = []byte{99, 130, 83, 99}
 
+// ClientMessage is everything one DHCP client message says about the client: its name and vendor
+// class (Request), the option list it asks for (option 55, the OS's "DHCP fingerprint") and, in a
+// DHCPREQUEST, the server it chose (option 54).
+type ClientMessage struct {
+	Request
+	// PRL is option 55 as comma-separated decimal codes, in the order the client sent them.
+	PRL string
+	// ServerID is option 54: the DHCP server the client is requesting its lease from.
+	ServerID string
+	// Type is the DHCP message type (1 DISCOVER, 3 REQUEST, 8 INFORM).
+	Type byte
+}
+
 // Parse extracts the client's MAC, hostname and vendor class from a BOOTP/DHCP client message.
-// It returns ok=false for server replies and for anything malformed.
+// It returns ok=false for server replies, for anything malformed, and for messages that carry
+// neither a hostname nor a vendor class.
 func Parse(msg []byte) (Request, bool) {
-	const fixed = 236
-	if len(msg) < fixed+4 || msg[0] != 1 /* BOOTREQUEST */ || msg[1] != 1 /* Ethernet */ || msg[2] != 6 {
+	m, ok := ParseClient(msg)
+	if !ok || (m.Hostname == "" && m.VendorClass == "") {
 		return Request{}, false
 	}
+	return m.Request, true
+}
+
+// ParseClient parses a DHCP client message (DISCOVER, REQUEST or INFORM) whatever it announces.
+func ParseClient(msg []byte) (ClientMessage, bool) {
+	const fixed = 236
+	if len(msg) < fixed+4 || msg[0] != 1 /* BOOTREQUEST */ || msg[1] != 1 /* Ethernet */ || msg[2] != 6 {
+		return ClientMessage{}, false
+	}
 	if string(msg[fixed:fixed+4]) != string(magicCookie) {
-		return Request{}, false
+		return ClientMessage{}, false
 	}
 	mac := netinfo.NormalizeMAC(net.HardwareAddr(msg[28:34]).String())
 	if mac == "" {
-		return Request{}, false
+		return ClientMessage{}, false
 	}
-	req := Request{MAC: mac}
+	out := ClientMessage{Request: Request{MAC: mac}}
+	req := &out.Request
 	if ci := net.IP(msg[12:16]); !ci.IsUnspecified() {
 		req.RequestedIP = ci.String()
 	}
@@ -88,31 +122,57 @@ func Parse(msg []byte) (Request, bool) {
 		case 53:
 			// 1 DISCOVER, 3 REQUEST, 8 INFORM are the client messages that describe the client.
 			isDHCP = len(value) == 1 && (value[0] == 1 || value[0] == 3 || value[0] == 8)
+			if isDHCP {
+				out.Type = value[0]
+			}
+		case 54:
+			if len(value) == 4 {
+				out.ServerID = net.IP(value).String()
+			}
+		case 55:
+			codes := make([]string, 0, len(value))
+			for _, c := range value {
+				codes = append(codes, strconv.Itoa(int(c)))
+			}
+			out.PRL = strings.Join(codes, ",")
 		}
 		opts = opts[2+int(opts[1]):]
 	}
-	if !isDHCP || (req.Hostname == "" && req.VendorClass == "") {
-		return Request{}, false
+	if !isDHCP {
+		return ClientMessage{}, false
 	}
-	return req, true
+	return out, true
 }
 
-// Table is a bounded, expiring memory of what clients announced.
+// Table is a bounded, expiring memory of what clients announced. It can be persisted with
+// Save/LoadTable and kept on disk with Persist.
 type Table struct {
 	mu      sync.Mutex
 	entries map[string]Lease
 	learned int
+	// dirty is true while the table holds changes that are not yet on disk; changed is signalled
+	// (non-blocking, capacity 1) whenever it becomes dirty so Persist can wake up.
+	dirty   bool
+	changed chan struct{}
 }
 
-func NewTable() *Table { return &Table{entries: map[string]Lease{}} }
+func NewTable() *Table { return &Table{entries: map[string]Lease{}, changed: make(chan struct{}, 1)} }
 
 // Record stores a request and reports whether it taught us something new.
 func (t *Table) Record(r Request, now time.Time) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	old, known := t.entries[r.MAC]
+	if known && now.Sub(old.SeenAt) > entryTTL {
+		// An expired entry is gone: its name must not be resurrected by a later vendor-only message.
+		known, old = false, Lease{}
+	}
 	lease := r.Lease
 	lease.SeenAt = now
+	lease.FirstSeen = now
+	if known && !old.FirstSeen.IsZero() {
+		lease.FirstSeen = old.FirstSeen
+	}
 	// A later message without a hostname must not erase a name learned earlier.
 	if lease.Hostname == "" {
 		lease.Hostname = old.Hostname
@@ -120,15 +180,24 @@ func (t *Table) Record(r Request, now time.Time) bool {
 	if lease.VendorClass == "" {
 		lease.VendorClass = old.VendorClass
 	}
-	if !known && len(t.entries) >= maxEntries {
+	if _, present := t.entries[r.MAC]; !present && len(t.entries) >= maxEntries {
 		t.evictOldest()
 	}
 	t.entries[r.MAC] = lease
+	t.markDirtyLocked()
 	changed := !known || old.Hostname != lease.Hostname || old.VendorClass != lease.VendorClass
 	if changed {
 		t.learned++
 	}
 	return changed
+}
+
+func (t *Table) markDirtyLocked() {
+	t.dirty = true
+	select {
+	case t.changed <- struct{}{}:
+	default:
+	}
 }
 
 func (t *Table) evictOldest() {
@@ -163,6 +232,12 @@ func (t *Table) Len() int {
 // onLearn is called when a client announces a new or changed name. The returned error is non-nil
 // only when the port could not be opened.
 func Listen(ctx context.Context, addr string, table *Table, onLearn func(Request)) error {
+	return ListenObserve(ctx, addr, table, onLearn, nil)
+}
+
+// ListenObserve is Listen that also hands every client message (with its option list and chosen
+// server) to observe, for DHCP fingerprinting and rogue-DHCP evidence. observe may be nil.
+func ListenObserve(ctx context.Context, addr string, table *Table, onLearn func(Request), observe func(ClientMessage)) error {
 	conn, err := net.ListenPacket("udp4", addr)
 	if err != nil {
 		return err
@@ -178,8 +253,18 @@ func Listen(ctx context.Context, addr string, table *Table, onLearn func(Request
 			if err != nil {
 				return // closed on shutdown
 			}
-			if req, ok := Parse(buf[:n]); ok && table.Record(req, time.Now()) && onLearn != nil {
-				onLearn(req)
+			m, ok := ParseClient(buf[:n])
+			if !ok {
+				continue
+			}
+			if observe != nil {
+				observe(m)
+			}
+			if m.Hostname == "" && m.VendorClass == "" {
+				continue
+			}
+			if table.Record(m.Request, time.Now()) && onLearn != nil {
+				onLearn(m.Request)
 			}
 		}
 	}()

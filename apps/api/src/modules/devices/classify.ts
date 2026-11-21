@@ -1,4 +1,6 @@
 import type { Confidence, DeviceType } from '@lan-detective/shared-types';
+import { classifyBanner } from './banner-rules.ts';
+import { classifyDhcp } from './dhcp-fingerprint.ts';
 
 /**
  * Device classification from evidence — deterministic rules, first match wins.
@@ -93,6 +95,16 @@ export function classify(f: ClassifyFacts): Classification | null {
   const appleMobile = has('_apple-mobdev2._tcp', '_apple-pairable._tcp', '_remotepairing._tcp');
   if (appleMobile) return result('mobile', 'high', svc(appleMobile));
 
+  // ── DHCP fingerprint (option 55 / 60, set by the operating system's DHCP client) ──
+  // Without an option list, a vendor class alone only decides when it names the product outright (high).
+  const dhcpGuess = fp.hints?.dhcp_prl || dhcpClass ? classifyDhcp(fp.hints?.dhcp_prl ?? '', dhcpClass) : null;
+  const dhcpOs = dhcpGuess && (fp.hints?.dhcp_prl || dhcpGuess.confidence === 'high') ? dhcpGuess : null;
+  if (dhcpOs?.device_type && dhcpOs.os_family !== 'android') {
+    return result(dhcpOs.device_type, dhcpOs.confidence, dhcpOs.evidence, f.macRandomized && dhcpOs.device_type === 'mobile' && 'Uses a private (randomized) Wi-Fi MAC address');
+  }
+  if (dhcpOs?.os_family === 'android') return result('mobile', 'high', dhcpOs.evidence, f.macRandomized && 'Uses a private (randomized) Wi-Fi MAC address');
+  if (dhcpOs?.os_family === 'apple' && f.macRandomized) return result('mobile', 'medium', dhcpOs.evidence, 'Uses a private (randomized) Wi-Fi MAC address, which iPhones and iPads do by default');
+
   // ── computers ──
   if (/^(macbook|imac|macmini|macpro|mac\d)/i.test(model.replace(/\s/g, '')) || has('_afpovertcp._tcp')) {
     return result('apple_computer', 'high', modelNote || svc('_afpovertcp._tcp'));
@@ -112,6 +124,11 @@ export function classify(f: ClassifyFacts): Classification | null {
   // ── smart-home / IoT ──
   const iotSvc = has('_hap._tcp', '_matter._tcp', '_matterc._udp', '_esphomelib._tcp', '_hue._tcp', '_shelly._tcp', '_miio._udp', '_homekit._tcp', '_tuya._tcp');
   if (iotSvc) return result('iot', 'high', svc(iotSvc), modelNote);
+
+  // ── web banner (page title, Server header, TLS certificate of the device's own web interface) ──
+  const banner = classifyBanner({ http_title: fp.hints?.http_title, http_server: fp.hints?.http_server, tls_subject: fp.hints?.tls_subject, tls_issuer: fp.hints?.tls_issuer });
+  if (banner) return result(banner.type, banner.confidence, banner.evidence, modelNote);
+  if (dhcpOs?.os_family === 'apple') return result('apple_computer', 'low', dhcpOs.evidence, 'Not a randomized MAC address, so a Mac is likelier than an iPhone or iPad');
 
   // ── name-only signals ──
   const byName: [RegExp, DeviceType][] = [

@@ -70,7 +70,29 @@ export function vendorForMac(mac: string): string | null {
 export function isPublicAddress(address: string): boolean {
   try {
     let addr = ipaddr.parse(address);
-    if (addr.kind() === 'ipv6' && (addr as ipaddr.IPv6).isIPv4MappedAddress()) addr = (addr as ipaddr.IPv6).toIPv4Address();
+    if (addr.kind() === 'ipv6') {
+      const v6 = addr as ipaddr.IPv6;
+      if (v6.isIPv4MappedAddress()) {
+        addr = v6.toIPv4Address();
+      } else {
+        const bytes = v6.toByteArray();
+        const isV4Translated =
+          bytes.slice(0, 8).every((b) => b === 0) &&
+          bytes[8] === 0xff &&
+          bytes[9] === 0xff &&
+          bytes[10] === 0x00 &&
+          bytes[11] === 0x00;
+        const isNat64 =
+          bytes[0] === 0x00 &&
+          bytes[1] === 0x64 &&
+          bytes[2] === 0xff &&
+          bytes[3] === 0x9b &&
+          bytes.slice(4, 12).every((b) => b === 0);
+        if (isV4Translated || isNat64) {
+          addr = new ipaddr.IPv4(bytes.slice(12));
+        }
+      }
+    }
     return addr.range() === 'unicast';
   } catch {
     return false;

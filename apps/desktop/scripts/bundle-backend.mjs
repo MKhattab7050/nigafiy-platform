@@ -17,7 +17,10 @@ const win = process.platform === 'win32';
 
 function run(cmd, args, opts = {}) {
   console.log(`\n$ ${cmd} ${args.join(' ')}`);
-  const r = spawnSync(cmd, args, { cwd: root, stdio: 'inherit', shell: win, ...opts, env: { ...process.env, ...opts.env } });
+  const spawnOpts = { cwd: root, stdio: 'inherit', ...opts, env: { ...process.env, ...opts.env } };
+  const r = win
+    ? spawnSync([cmd, ...args].map((a) => (/[\s"&|<>^]/.test(a) ? `"${a.replaceAll('"', '\\"')}"` : a)).join(' '), { ...spawnOpts, shell: true })
+    : spawnSync(cmd, args, spawnOpts);
   if (r.status !== 0) {
     console.error(`failed: ${cmd} ${args.join(' ')}`);
     process.exit(1);
@@ -34,7 +37,18 @@ run('go', ['build', '-o', path.join(root, 'collectors/lan-collector/bin', win ? 
 
 // 2. API with production dependencies only, as plain folders (no pnpm symlinks inside the installer).
 run('pnpm', ['--filter', '@lan-detective/api', 'deploy', '--prod', '--legacy', '--config.node-linker=hoisted', path.join(out, 'api')]);
+rmSync(path.join(root, 'apps/api/apps'), { recursive: true, force: true });
 for (const dir of ['tests', 'vitest.config.ts']) rmSync(path.join(out, 'api', dir), { recursive: true, force: true });
+
+// 2b. The API imports a few runtime values (ROLES, DEVICE_TRUSTS, ...) from the shared types package. In the
+// repository Node strips its TypeScript; inside node_modules it refuses to, so the bundle gets compiled JavaScript.
+const sharedOut = path.join(out, 'api', 'node_modules', '@lan-detective', 'shared-types');
+rmSync(sharedOut, { recursive: true, force: true });
+run('pnpm', ['--filter', '@lan-detective/shared-types', 'exec', 'tsc', '-p', '.', '--noEmit', 'false', '--outDir', path.join(sharedOut, 'dist')]);
+writeFileSync(
+  path.join(sharedOut, 'package.json'),
+  JSON.stringify({ name: '@lan-detective/shared-types', private: true, type: 'module', main: 'dist/index.js', exports: { '.': './dist/index.js', './markdown': './dist/markdown.js' } }, null, 2),
+);
 
 // 3. Web app as a standalone server. The API address is fixed at build time (Next.js rewrites).
 run('pnpm', ['--filter', '@lan-detective/web', 'build'], { env: { NEXT_OUTPUT: 'standalone', API_INTERNAL_URL: 'http://127.0.0.1:47100', NEXT_TELEMETRY_DISABLED: '1' } });

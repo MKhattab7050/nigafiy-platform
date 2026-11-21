@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Diagnosis, IncidentDetail, Topology } from '@lan-detective/shared-types';
 import { closePools, systemPool } from '../src/infrastructure/db.ts';
-import { watchCollectors } from '../src/jobs/collector-watch.ts';
-import { rollupCheckResults } from '../src/jobs/rollup.ts';
+import { watchCollectors } from '../src/modules/collectors/index.ts';
+import { rollupCheckResults } from '../src/modules/monitoring/index.ts';
 import { type CheckFacts, type NetworkFacts, diagnoseNetwork } from '../src/modules/doctor/rules.ts';
 import { CSRF, type TestAccount, type TestCollector, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 

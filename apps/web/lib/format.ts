@@ -30,16 +30,22 @@ export function clockTime(iso: string, locale: Locale, withDate: boolean): strin
   );
 }
 
-export const ms = (v: number | null | undefined): string => (v === null || v === undefined ? '—' : v < 10 ? `${v.toFixed(1)} ms` : `${Math.round(v)} ms`);
-export const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? '—' : `${v.toFixed(v === 0 || v === 100 ? 0 : digits)}%`);
+/**
+ * A number with a Latin unit, isolated as left-to-right text (LRI … PDI) so that in Arabic it reads
+ * "22 ms" instead of the bidi-reordered "ms 22". The marks are invisible.
+ */
+const ltr = (s: string): string => `\u2066${s}\u2069`;
+
+export const ms = (v: number | null | undefined): string => (v === null || v === undefined ? '—' : ltr(v < 10 ? `${v.toFixed(1)} ms` : `${Math.round(v)} ms`));
+export const pct = (v: number | null | undefined, digits = 1): string => (v === null || v === undefined ? '—' : ltr(`${v.toFixed(v === 0 || v === 100 ? 0 : digits)}%`));
 
 /** Bits per second in the unit a network engineer expects (decimal: 1 Mb/s = 1,000,000 b/s). */
 export function bps(v: number | null | undefined): string {
   if (v === null || v === undefined) return '—';
-  if (v >= 1e9) return `${(v / 1e9).toFixed(2)} Gb/s`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)} Mb/s`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)} kb/s`;
-  return `${Math.round(v)} b/s`;
+  if (v >= 1e9) return ltr(`${(v / 1e9).toFixed(2)} Gb/s`);
+  if (v >= 1e6) return ltr(`${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)} Mb/s`);
+  if (v >= 1e3) return ltr(`${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)} kb/s`);
+  return ltr(`${Math.round(v)} b/s`);
 }
 
 export function duration(fromIso: string, toIso: string | null): string {
@@ -93,3 +99,23 @@ export const fromLocalInput = (v: string): string | null => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 };
+
+/** The IANA time zone of this browser (sent when a site or account is created), or undefined when unavailable. */
+export function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Every IANA zone this browser knows, with UTC first (some browsers leave it out of the list). */
+export function allTimeZones(): string[] {
+  let zones: string[] = [];
+  try {
+    zones = Intl.supportedValuesOf('timeZone');
+  } catch {
+    /* older browser: the search box still accepts a typed zone */
+  }
+  return ['UTC', ...zones.filter((z) => z !== 'UTC')];
+}

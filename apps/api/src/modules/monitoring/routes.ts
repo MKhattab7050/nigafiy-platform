@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CheckSeriesPoint, MonitoringCheck } from '@lan-detective/shared-types';
+import type { CheckSeriesPoint, DefaultChecksRestored, MonitoringCheck } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { isIPv4 } from '../../common/net.ts';
 import { withTenant } from '../../infrastructure/db.ts';
-import { notifyRealtime } from '../events/emit.ts';
-import { AUTO_GATEWAY } from './defaults.ts';
+import { refreshSiteCorrelation, resolveOpenIncidentByKey } from '../correlation/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
+import { AUTO_GATEWAY, restoreDefaultChecks } from './defaults.ts';
 
 export const monitoringRouter: Router = Router();
 
@@ -97,6 +98,11 @@ monitoringRouter.patch('/checks/:id', requireRole('admin'), async (req, res) => 
     if (sets.length) await db.query(`UPDATE monitoring_checks SET ${sets.join(', ')} WHERE id = $1`, values);
     const row = (await db.query<MonitoringCheck>(`${CHECK_SELECT} WHERE c.id = $1`, [id])).rows[0];
     if (!row) throw notFound('Check');
+    if (body.enabled === false) {
+      await resolveOpenIncidentByKey(db, ctx.organizationId, `check:${id}`, 'the check was disabled');
+      await refreshSiteCorrelation(db, ctx.organizationId, row.site_id);
+      await notifyRealtime(db, ctx.organizationId, 'events');
+    }
     await audit(db, req, 'check.updated', { type: 'monitoring_check', id }, body);
     await notifyRealtime(db, ctx.organizationId, 'checks');
     return row;
@@ -108,11 +114,34 @@ monitoringRouter.delete('/checks/:id', requireRole('admin'), async (req, res) =>
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {
-    const deleted = await db.query<{ name: string }>(`DELETE FROM monitoring_checks WHERE id = $1 RETURNING name`, [id]);
+    const deleted = await db.query<{ name: string; site_id: string }>(`DELETE FROM monitoring_checks WHERE id = $1 RETURNING name, site_id`, [id]);
     if (!deleted.rows[0]) throw notFound('Check');
+    await resolveOpenIncidentByKey(db, ctx.organizationId, `check:${id}`, 'the check was deleted');
+    await refreshSiteCorrelation(db, ctx.organizationId, deleted.rows[0].site_id);
     await audit(db, req, 'check.deleted', { type: 'monitoring_check', id }, { name: deleted.rows[0].name });
+    await notifyRealtime(db, ctx.organizationId, 'checks');
+    await notifyRealtime(db, ctx.organizationId, 'events');
   });
   res.status(204).end();
+});
+
+/**
+ * Re-create the site's starter checks (gateway, two internet targets, DNS) that are missing.
+ * Idempotent: existing ones — even renamed or re-tuned — are left as they are. 201 when something was created.
+ */
+monitoringRouter.post('/sites/:id/default-checks', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  const result = await withTenant(ctx.organizationId, async (db): Promise<DefaultChecksRestored> => {
+    if (!(await db.query(`SELECT 1 FROM sites WHERE id = $1`, [id])).rowCount) throw notFound('Site');
+    const restored = await restoreDefaultChecks(db, ctx.organizationId, id);
+    if (restored.created.length) {
+      await audit(db, req, 'check.defaults_restored', { type: 'site', id }, { created: restored.created });
+      await notifyRealtime(db, ctx.organizationId, 'checks');
+    }
+    return { site_id: id, ...restored };
+  });
+  res.status(result.created.length ? 201 : 200).json(result);
 });
 
 // Bucket sizes keep every chart at a few hundred points regardless of range.

@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { CheckRole, CheckState, Comparison, Incident, NetworkEvent, PeriodStats, Snapshot, SnapshotDevice } from '@lan-detective/shared-types';
 import { AppError, auth, parse } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
-import { EVENT_SELECT } from '../events/routes.ts';
-import { INCIDENT_SELECT } from '../incidents/routes.ts';
+import { EVENT_SELECT } from '../events/index.ts';
+import { INCIDENT_SELECT } from '../incidents/index.ts';
 
 /**
  * Network Time Machine — reconstructs past state from what was recorded at the time:

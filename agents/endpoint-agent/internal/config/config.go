@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ type Config struct {
 	EnrollmentToken   string
 	StateDir          string
 	CAFile            string
+	TLSPinSHA256      string
 	LogLevel          string
 	AllowInsecureHTTP bool
 }
@@ -23,6 +25,7 @@ func FromEnv() Config {
 		EnrollmentToken:   os.Getenv("LAN_ENDPOINT_ENROLLMENT_TOKEN"),
 		StateDir:          os.Getenv("LAN_ENDPOINT_STATE_DIR"),
 		CAFile:            os.Getenv("LAN_ENDPOINT_CA_FILE"),
+		TLSPinSHA256:      os.Getenv("LAN_ENDPOINT_TLS_PIN_SHA256"),
 		LogLevel:          os.Getenv("LAN_ENDPOINT_LOG_LEVEL"),
 		AllowInsecureHTTP: os.Getenv("LAN_ENDPOINT_ALLOW_INSECURE_HTTP") == "true" || os.Getenv("LAN_ENDPOINT_ALLOW_INSECURE_HTTP") == "1",
 	}
@@ -33,6 +36,16 @@ func FromEnv() Config {
 		cfg.LogLevel = "info"
 	}
 	return cfg
+}
+
+// ParsePin parses a SHA-256 certificate fingerprint given as 64 hex characters or colon-separated hex bytes.
+func ParsePin(s string) ([]byte, error) {
+	clean := strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(strings.TrimSpace(s)))
+	b, err := hex.DecodeString(clean)
+	if err != nil || len(b) != 32 {
+		return nil, errors.New("tls_pin_sha256 must be a SHA-256 fingerprint (64 hex digits, optionally colon-separated)")
+	}
+	return b, nil
 }
 
 func (c *Config) Validate() error {
@@ -52,6 +65,11 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.StateDir) == "" {
 		problems = append(problems, "state_dir is required")
+	}
+	if strings.TrimSpace(c.TLSPinSHA256) != "" {
+		if _, err := ParsePin(c.TLSPinSHA256); err != nil {
+			problems = append(problems, err.Error())
+		}
 	}
 	switch c.LogLevel {
 	case "debug", "info", "warn", "error":

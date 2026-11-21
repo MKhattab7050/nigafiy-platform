@@ -1,7 +1,8 @@
+import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { buildInsights, type DeviceFact, type InsightFacts } from '../src/modules/insights/rules.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
-import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry, type TestAccount } from './helpers.ts';
+import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry, type TestAccount } from './helpers.ts';
 
 const events = async (a: TestAccount, type: string) =>
   (await a.agent.get(`/api/v1/events?type=${type}&limit=50`)).body.items as Record<string, any>[];
@@ -59,6 +60,28 @@ describe('device controls', () => {
     const nasEvents = (await a.agent.get(`/api/v1/events?device_id=${nas.id}&limit=50`)).body.items as Record<string, any>[];
     expect(nasEvents.filter((e) => e.type === 'device_offline' || e.type === 'device_online')).toHaveLength(0);
     expect((await devices(a)).find((d) => d.id === nas.id)!.status).toBe('online');
+  });
+
+  it('scopes bulk unreviewed trust updates to site_id when provided', async () => {
+    const { a } = await home();
+    const site2 = await a.agent.post('/api/v1/sites').set(CSRF).send({ name: 'Branch' });
+    expect(site2.status).toBe(201);
+    const scope2 = await a.agent.post(`/api/v1/sites/${site2.body.id}/scopes`).set(CSRF).send({ cidr: '192.168.8.0/24', authorization_confirmed: true });
+    const col2Created = await a.agent.post('/api/v1/collectors').set(CSRF).send({ site_id: site2.body.id, name: 'edge-2' });
+    const col2 = await request(app)
+      .post('/api/v1/collector/enroll')
+      .send({ enrollment_token: col2Created.body.enrollment_token, hostname: 'h2', version: '0.1.0-test', os: 'linux', arch: 'amd64' });
+    await telemetry(
+      { id: col2.body.collector_id, credential: col2.body.credential, enrollmentToken: col2Created.body.enrollment_token },
+      [sweep(scope2.body.id, [{ ip: '192.168.8.10', mac: '00:0c:29:88:00:10', hostname: 'branch-nas' }], 1)],
+    );
+
+    const res = await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ all_unreviewed: true, trust: 'known', site_id: a.siteId });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ updated: 3 });
+    expect((await devices(a, `&site_id=${site2.body.id}&trust=unreviewed`)).length).toBe(1);
+    const audit = (await a.agent.get('/api/v1/audit-logs')).body.items.find((e: any) => e.action === 'device.trust_bulk');
+    expect(audit.metadata.site_id).toBe(a.siteId);
   });
 
   it('creates one monitoring check per device that follows IP changes', async () => {

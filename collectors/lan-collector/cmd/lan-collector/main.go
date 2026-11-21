@@ -16,6 +16,8 @@ import (
 
 	"github.com/lan-detective/lan-collector/internal/agent"
 	"github.com/lan-detective/lan-collector/internal/config"
+	// Router drivers shipped in the collector (they register with internal/router).
+	_ "github.com/lan-detective/lan-collector/internal/router/zyxel"
 )
 
 // Version is set at build time: -ldflags "-X main.Version=1.2.3".

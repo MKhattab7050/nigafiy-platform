@@ -141,10 +141,13 @@ func (l *Lists) Ensure(ctx context.Context, dir string, categories []string, cli
 		l.mu.RUnlock()
 		if !loaded {
 			if f, err := os.Open(path); err == nil {
-				st, _ := f.Stat()
-				l.set(c, ParseHosts(f), st.ModTime())
+				var modTime time.Time
+				if st, err := f.Stat(); err == nil && st != nil {
+					modTime = st.ModTime()
+				}
+				l.set(c, ParseHosts(f), modTime)
 				f.Close()
-				at = st.ModTime()
+				at = modTime
 			}
 		}
 		if time.Since(at) < 24*time.Hour {

@@ -3,7 +3,7 @@ declare namespace Express {
   interface Request {
     id: string;
     auth?: import('./common/http.ts').AuthContext;
-    collector?: import('./modules/ingest/schema.ts').CollectorContext;
-    endpoint?: import('./modules/endpoints/schema.ts').EndpointContext;
+    collector?: import('./common/collector-protocol.ts').CollectorContext;
+    endpoint?: import('./modules/endpoints/index.ts').EndpointContext;
   }
 }

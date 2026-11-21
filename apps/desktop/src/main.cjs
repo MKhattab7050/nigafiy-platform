@@ -12,7 +12,7 @@ const { app, BrowserWindow, Menu, Tray, ipcMain, shell, nativeImage, dialog, saf
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { CollectorManager } = require('./collector-manager.cjs');
+const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 
 const SMOKE = process.argv.includes('--smoke');
@@ -37,8 +37,10 @@ const hasBundle = Boolean(bundleDir && fs.existsSync(path.join(bundleDir, 'local
 let localStack = null;
 /** @type {{ webUrl: string, apiUrl: string } | null} */
 let localUrls = null;
+let localApi = null;
 let localMode = false;
 let localShown = false;
+let localError = null;
 
 function collectorBinary() {
   return app.isPackaged
@@ -59,6 +61,7 @@ function showPanel() {
   if (panel) {
     panel.show();
     panel.focus();
+    emitPanelState();
     return panel;
   }
   panel = new BrowserWindow({
@@ -85,6 +88,15 @@ function showDashboard() {
   const origin = serverOrigin();
   if (!origin && !localMode) return showPanel(); // first run: ask for the server address
   if (dashboard) {
+    if (origin && (!localMode || localShown)) {
+      let currentOrigin = null;
+      try {
+        currentOrigin = new URL(dashboard.webContents.getURL() || 'about:blank').origin;
+      } catch {
+        currentOrigin = null;
+      }
+      if (currentOrigin !== origin) void dashboard.webContents.loadURL(origin);
+    }
     dashboard.show();
     dashboard.focus();
     return dashboard;
@@ -104,10 +116,21 @@ function showDashboard() {
   const contents = dashboard.webContents;
   // Stay on the configured server. Anything else opens in the user's own browser (https only).
   const external = (url) => {
-    if (url.startsWith('https://')) void shell.openExternal(url);
+    try {
+      if (new URL(url).protocol === 'https:') void shell.openExternal(url);
+    } catch {
+      /* ignore malformed URL */
+    }
   };
   contents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin !== serverOrigin()) {
+    let targetOrigin = null;
+    try {
+      targetOrigin = new URL(url).origin;
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    if (targetOrigin !== serverOrigin()) {
       event.preventDefault();
       external(url);
     }
@@ -118,18 +141,19 @@ function showDashboard() {
   });
   contents.session.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
   contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
-    if (!isMainFrame || code === -3 || !origin) return; // -3 = navigation aborted (normal)
+    const activeOrigin = serverOrigin();
+    if (!isMainFrame || code === -3 || !activeOrigin) return; // -3 = navigation aborted (normal)
     void dialog
       .showMessageBox(dashboard, {
         type: 'warning',
         title: 'LAN Detective',
         message: 'Cannot reach the LAN Detective server',
-        detail: `${origin}\n${description}\n\nThe local collector keeps monitoring and will upload its results when the server is reachable again.`,
+        detail: `${activeOrigin}\n${description}\n\nThe local collector keeps monitoring and will upload its results when the server is reachable again.`,
         buttons: ['Try again', 'Server settings', 'Close'],
         defaultId: 0,
       })
       .then(({ response }) => {
-        if (response === 0) void contents.loadURL(origin);
+        if (response === 0) void contents.loadURL(activeOrigin);
         if (response === 1) showPanel();
       });
   });
@@ -141,7 +165,11 @@ function showDashboard() {
     }
   });
   dashboard.on('closed', () => (dashboard = null));
-  void contents.loadURL(origin && (!localMode || localShown) ? origin : splashUrl('Starting LAN Detective…'));
+  void contents.loadURL(
+    origin && (!localMode || localShown)
+      ? origin
+      : splashUrl(localError ?? 'Starting LAN Detective…', Boolean(localError)),
+  );
   return dashboard;
 }
 
@@ -150,12 +178,14 @@ function refreshTray() {
   const state = collector.getState();
   const running = state.status === 'running' || state.status === 'starting';
   const summary = !state.enrolled ? 'Collector: not enrolled' : running ? (state.connected === false ? 'Collector: running, server unreachable' : 'Collector: running') : 'Collector: stopped';
-  tray.setToolTip(`LAN Detective\n${summary}`);
+  const modeLabel = localMode ? 'Mode: local (this computer)' : state.settings.serverUrl ? `Server: ${state.settings.serverUrl}` : 'Server: not configured';
+  tray.setToolTip(`LAN Detective${localMode ? ' (Local)' : ''}\n${summary}`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open dashboard', click: () => showDashboard() },
       { label: 'Collector on this computer…', click: () => showPanel() },
       { type: 'separator' },
+      { label: modeLabel, enabled: false },
       { label: summary, enabled: false },
       running
         ? { label: 'Stop collector', click: () => void collector.stop() }
@@ -177,8 +207,9 @@ function tryStart(token) {
 }
 
 async function quit() {
+  if (quitting) return;
   quitting = true;
-  await collector.stop().catch(() => undefined);
+  await collector?.stop().catch(() => undefined);
   await localStack?.stop().catch(() => undefined);
   app.quit();
 }
@@ -197,6 +228,7 @@ function splashUrl(message, error = false) {
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 function setSplash(message, error = false) {
+  localError = error ? message : null;
   if (dashboard && !localShown) void dashboard.webContents.loadURL(splashUrl(message, error));
 }
 
@@ -219,9 +251,64 @@ function accountStore() {
   };
 }
 
-async function askToScan(net) {
+function localPrefsStore() {
+  const file = path.join(app.getPath('userData'), 'local-prefs.json');
+  return {
+    load() {
+      try {
+        const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return raw && typeof raw === 'object' ? { scanDeclined: Boolean(raw.scanDeclined) } : { scanDeclined: false };
+      } catch {
+        return { scanDeclined: false };
+      }
+    },
+    save(patch) {
+      const next = { ...this.load(), ...patch };
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(next, null, 2), { mode: 0o600 });
+      return next;
+    },
+  };
+}
+
+function panelState() {
+  const state = collector.getState();
+  const prefs = localPrefsStore().load();
+  return {
+    ...state,
+    localMode,
+    localWebUrl: localMode ? localUrls?.webUrl ?? null : null,
+    localApiUrl: localMode ? localUrls?.apiUrl ?? null : null,
+    localCanScan: localMode && Boolean(localUrls) && Boolean(localApi) && state.binaryAvailable && !state.enrolled,
+    scanDeclined: localMode && Boolean(prefs.scanDeclined) && !state.enrolled,
+  };
+}
+
+function emitPanelState() {
+  panel?.webContents.send('collector:state-changed', panelState());
+}
+
+async function exitLocalMode() {
+  if (!localMode) return;
+  localMode = false;
+  localShown = false;
+  localError = null;
+  localApi = null;
+  localUrls = null;
+  await localStack?.stop().catch(() => undefined);
+  localStack = null;
+  const origin = serverOrigin();
+  if (dashboard && origin && dashboard.isVisible()) {
+    void dashboard.webContents.loadURL(origin);
+  }
+  refreshTray();
+  emitPanelState();
+}
+
+async function askToScan(net, parentWindow = dashboard) {
   if (LOCAL_SMOKE) return process.env.LD_DESKTOP_AUTO_CONSENT === '1';
-  const { response } = await dialog.showMessageBox(dashboard ?? undefined, {
+  const parent = parentWindow && !parentWindow.isDestroyed() && parentWindow.isVisible() ? parentWindow : undefined;
+  const { response } = await dialog.showMessageBox(parent, {
     type: 'question',
     title: 'LAN Detective',
     message: `Scan your network ${net.cidr}?\nفحص شبكتك ${net.cidr}؟`,
@@ -233,6 +320,16 @@ async function askToScan(net) {
     cancelId: 1,
   });
   return response === 0;
+}
+
+async function enrollOnNetwork(api, net, onProgress) {
+  localPrefsStore().save({ scanDeclined: false });
+  onProgress?.(`Setting up scanning of ${net.cidr}…`);
+  const token = await enrollThisComputer(api, net.cidr);
+  if (!localMode || !localUrls) return;
+  await collector.saveSettings({ serverUrl: localUrls.apiUrl, allowedCidrs: [net.cidr], autoStart: true });
+  if (!localMode) return;
+  tryStart(token);
 }
 
 async function startLocal() {
@@ -255,15 +352,19 @@ async function startLocal() {
   }
   try {
     localUrls = await localStack.start();
+    if (!localMode) return;
+    emitPanelState();
     setSplash('Signing in…');
     // A collector identity issued by some other server is useless here: forget it and set up again.
     if (collector.isEnrolled() && collector.settings.serverUrl && collector.settings.serverUrl !== localUrls.apiUrl) await collector.resetIdentity();
+    if (!localMode) return;
     const store = accountStore();
     let api = null;
     // Sign in automatically with the app's own account. If this computer was set up from the command
     // line with a personal account instead, the person signs in with that account themselves.
     if (store.load() || !collector.isEnrolled()) {
       api = (await signIn(localUrls.apiUrl, localUrls.webUrl, store)).api;
+      if (!localMode) return;
       await session.fromPartition('persist:dashboard').cookies.set({
         url: localUrls.webUrl,
         name: 'ld_session',
@@ -273,24 +374,38 @@ async function startLocal() {
         expirationDate: Math.floor(Date.now() / 1000) + 7 * 24 * 3600,
       });
     }
+    if (!localMode) return;
+    localApi = api;
+    emitPanelState();
+    const prefs = localPrefsStore();
     if (collector.binaryAvailable()) {
       if (collector.isEnrolled()) {
-        if (collector.settings.serverUrl !== localUrls.apiUrl) await collector.saveSettings({ ...collector.settings, serverUrl: localUrls.apiUrl });
-        collector.start();
-      } else if (api) {
+        if (prefs.load().scanDeclined) prefs.save({ scanDeclined: false });
+        if (collector.settings.serverUrl !== localUrls.apiUrl) {
+          await collector.saveSettings({ ...collector.settings, serverUrl: localUrls.apiUrl }, { preserveIdentity: true });
+        }
+        if (localMode && collector.settings.autoStart) tryStart();
+      } else if (api && (LOCAL_SMOKE || !prefs.load().scanDeclined)) {
         const net = await homeNetwork();
-        if (net?.private && (await askToScan(net))) {
-          setSplash(`Setting up scanning of ${net.cidr}…`);
-          const token = await enrollThisComputer(api, net.cidr);
-          await collector.saveSettings({ serverUrl: localUrls.apiUrl, allowedCidrs: [net.cidr], autoStart: true });
-          collector.start({ enrollmentToken: token });
+        if (!localMode) return;
+        if (net?.private) {
+          if (await askToScan(net, dashboard)) {
+            if (!localMode) return;
+            await enrollOnNetwork(api, net, setSplash);
+          } else if (!LOCAL_SMOKE) {
+            prefs.save({ scanDeclined: true });
+          }
         }
       }
     }
+    if (!localMode) return;
     localShown = true;
+    emitPanelState();
+    refreshTray();
     if (!dashboard) showDashboard();
     else await dashboard.webContents.loadURL(localUrls.webUrl);
   } catch (err) {
+    if (!localMode) return;
     setSplash(`LAN Detective could not start:\n${err.message}`, true);
   }
 }
@@ -307,6 +422,12 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => showDashboard());
+  app.on('before-quit', (e) => {
+    if (!quitting) {
+      e.preventDefault();
+      void quit();
+    }
+  });
   app.on('window-all-closed', () => {
     /* keep running in the tray */
   });
@@ -319,22 +440,70 @@ if (!app.requestSingleInstanceLock()) {
       dataDir: repoRoot ? path.join(repoRoot, '.data', 'collector') : path.join(app.getPath('userData'), 'collector'),
     });
     const configured = collector.settings.serverUrl;
-    localMode = Boolean(repoRoot || hasBundle) && !SMOKE && (!configured || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(configured));
+    localMode = Boolean(repoRoot || hasBundle) && !SMOKE && (!configured || isLocalServerUrl(configured));
     collector.on('state', (state) => {
-      panel?.webContents.send('collector:state-changed', state);
+      if (localMode && state.enrolled && localPrefsStore().load().scanDeclined) {
+        localPrefsStore().save({ scanDeclined: false });
+      }
+      emitPanelState();
       refreshTray();
     });
 
-    handle('collector:state', () => collector.getState());
-    handle('collector:save-settings', (settings) => collector.saveSettings(settings ?? {}));
-    handle('collector:start', (token) => tryStart(typeof token === 'string' ? token : ''));
-    handle('collector:stop', () => collector.stop());
-    handle('collector:reset', () => collector.resetIdentity());
-    handle('app:open-dashboard', () => {
-      // The server address may have changed: reload the dashboard on the new origin.
-      if (dashboard && serverOrigin() && new URL(dashboard.webContents.getURL() || 'about:blank').origin !== serverOrigin()) {
-        void dashboard.webContents.loadURL(serverOrigin());
+    handle('collector:state', () => panelState());
+    handle('collector:save-settings', async (settings) => {
+      const prevLocalMode = localMode;
+      const nextState = await collector.saveSettings(settings ?? {});
+      const switchedFromLocal = prevLocalMode && !isLocalServerUrl(nextState.settings.serverUrl);
+      if (switchedFromLocal) await exitLocalMode();
+      const out = panelState();
+      if (switchedFromLocal) out.switchedFromLocal = true;
+      return out;
+    });
+    handle('collector:start', async (token) => {
+      if (localMode && !collector.settings.serverUrl && localUrls?.apiUrl) {
+        await collector.saveSettings({ ...collector.settings, serverUrl: localUrls.apiUrl }, { preserveIdentity: true });
       }
+      tryStart(typeof token === 'string' ? token : '');
+      if (localMode) localPrefsStore().save({ scanDeclined: false });
+      return panelState();
+    });
+    handle('collector:stop', async () => {
+      await collector.stop();
+      return panelState();
+    });
+    handle('collector:reset', async () => {
+      await collector.resetIdentity();
+      if (localMode) localPrefsStore().save({ scanDeclined: false });
+      return panelState();
+    });
+    handle('local:setup-scan', async () => {
+      if (!localMode || !localUrls || !localApi) throw new Error('Local server is not ready yet.');
+      if (!collector.binaryAvailable()) throw new Error('The collector program is missing from this installation.');
+      const prefs = localPrefsStore();
+      prefs.save({ scanDeclined: false });
+      if (collector.isEnrolled()) {
+        if (collector.settings.serverUrl !== localUrls.apiUrl) {
+          await collector.saveSettings({ ...collector.settings, serverUrl: localUrls.apiUrl }, { preserveIdentity: true });
+        }
+        tryStart();
+        return panelState();
+      }
+      const net = await homeNetwork();
+      if (!net) throw new Error('No active private network was found on this computer. Connect to your home network and try again.');
+      if (!net.private) throw new Error(`This computer’s address (${net.address}) is not a private network address, so automatic scanning is skipped.`);
+      if (await askToScan(net, panel ?? dashboard)) {
+        await enrollOnNetwork(localApi, net);
+      } else {
+        prefs.save({ scanDeclined: true });
+      }
+      return panelState();
+    });
+    handle('local:reset-scan-prompt', () => {
+      localPrefsStore().save({ scanDeclined: false });
+      emitPanelState();
+      return panelState();
+    });
+    handle('app:open-dashboard', () => {
       showDashboard();
     });
 

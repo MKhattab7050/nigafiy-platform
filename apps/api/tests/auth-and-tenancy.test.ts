@@ -2,6 +2,7 @@ import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isPublicAddress, validateScope } from '../src/common/net.ts';
 import { appPool, closePools, systemPool, withTenant } from '../src/infrastructure/db.ts';
+import { base32Decode, totp } from '../src/modules/auth/totp.ts';
 import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
 afterAll(closePools);
@@ -52,6 +53,8 @@ describe('authentication', () => {
     expect((await a.agent.post('/api/v1/sites').send({ name: 'x' })).status).toBe(403);
     expect((await a.agent.post('/api/v1/sites').set(CSRF).set('Origin', 'https://evil.example').send({ name: 'x' })).status).toBe(403);
     expect((await a.agent.post('/api/v1/sites').set(CSRF).set('Origin', 'http://localhost:3100').send({ name: 'Branch' })).status).toBe(201);
+    expect((await request(app).post('/api/v1/auth/login').set(CSRF).set('Origin', 'https://evil.example').send({ email: a.email, password: 'x' })).status).toBe(403);
+    expect((await a.agent.post('/api/v1/auth/mfa/setup').set(CSRF).set('Origin', 'https://evil.example').send({})).status).toBe(403);
   });
 
   it('requires a session for every data endpoint', async () => {
@@ -100,8 +103,26 @@ describe('network scope authorization', () => {
   });
 
   it('recognises non-public webhook destinations', () => {
-    for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.0.1', '169.254.169.254', '::1', '::ffff:10.0.0.1', 'fd00::1']) expect(isPublicAddress(ip), ip).toBe(false);
+    for (const ip of [
+      '127.0.0.1',
+      '10.1.2.3',
+      '192.168.0.1',
+      '169.254.169.254',
+      '::1',
+      '::ffff:10.0.0.1',
+      '::ffff:0:127.0.0.1',
+      '::ffff:0:10.0.0.1',
+      '::ffff:0:169.254.169.254',
+      '64:ff9b::127.0.0.1',
+      '64:ff9b::10.0.0.1',
+      '64:ff9b::169.254.169.254',
+      '64:ff9b:1::10.0.0.1',
+      'fd00::1',
+    ]) {
+      expect(isPublicAddress(ip), ip).toBe(false);
+    }
     expect(isPublicAddress('93.184.216.34')).toBe(true);
+    expect(isPublicAddress('64:ff9b::93.184.216.34')).toBe(true);
   });
 });
 
@@ -193,5 +214,102 @@ describe('tenant isolation', () => {
     // The tenant setting does not leak to the next user of a pooled connection.
     expect((await appPool.query(`SELECT current_setting('app.current_org', true) AS v`)).rows[0].v ?? '').toBe('');
     await withTenant(a.organizationId, async (db) => expect((await db.query(`SELECT 1 FROM devices`)).rowCount).toBe(1));
+  });
+});
+
+describe('MFA, invitations and event pagination', () => {
+  it('blocks overwriting an already-enabled MFA secret and enforces MFA on invitation acceptance', async () => {
+    const owner = await newAccount('mfa-org');
+    const sec = await owner.agent.patch('/api/v1/team/security').set(CSRF).send({ mfa_required: 'all' });
+    expect(sec.status).toBe(200);
+
+    // Owner enrolls in MFA and cannot overwrite it via /mfa/setup without disabling first.
+    const setup = await owner.agent.post('/api/v1/auth/mfa/setup').set(CSRF).send({});
+    expect(setup.status).toBe(200);
+    const code = totp(base32Decode(setup.body.secret), Date.now());
+    const confirm = await owner.agent.post('/api/v1/auth/mfa/confirm').set(CSRF).send({ code });
+    expect(confirm.status).toBe(200);
+    const overwrite = await owner.agent.post('/api/v1/auth/mfa/setup').set(CSRF).send({});
+    expect(overwrite.status).toBe(409);
+    expect(overwrite.body.error.code).toBe('mfa_already_enabled');
+
+    // Invite a brand-new user into an org with mfa_required = 'all' -> requires MFA enrollment before creating a session.
+    const inviteeEmail = `invitee-${Date.now()}@example.test`;
+    const inv1 = await owner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: inviteeEmail, role: 'technician' });
+    expect(inv1.status).toBe(201);
+
+    const invitee = request.agent(app);
+    const acc1 = await invitee.post(`/api/v1/auth/invitations/${inv1.body.token}/accept`).set(CSRF).send({
+      display_name: 'Invitee',
+      password: 'correct horse battery',
+    });
+    expect(acc1.status).toBe(200);
+    expect(acc1.body).toMatchObject({ ok: false, mfa_setup_required: true });
+    expect(acc1.body.mfa_token).toBeTruthy();
+    expect((await invitee.get('/api/v1/auth/me')).status).toBe(401);
+
+    const invSetup = await invitee.post('/api/v1/auth/mfa/setup').set(CSRF).send({ mfa_token: acc1.body.mfa_token });
+    expect(invSetup.status).toBe(200);
+    const invSecret = invSetup.body.secret as string;
+    const invConfirm = await invitee.post('/api/v1/auth/mfa/confirm').set(CSRF).send({
+      mfa_token: acc1.body.mfa_token,
+      code: totp(base32Decode(invSecret), Date.now()),
+    });
+    expect(invConfirm.status).toBe(200);
+    expect((await invitee.get('/api/v1/auth/me')).body.organization.id).toBe(owner.organizationId);
+
+    // Existing MFA-enabled user invited to a second org (even with mfa_required = 'off') must verify MFA before receiving a session.
+    const secondOwner = await newAccount('mfa-org2');
+    const inv2 = await secondOwner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: inviteeEmail, role: 'viewer' });
+    expect(inv2.status).toBe(201);
+
+    const inviteeSecond = request.agent(app);
+    const acc2 = await inviteeSecond.post(`/api/v1/auth/invitations/${inv2.body.token}/accept`).set(CSRF).send({
+      password: 'correct horse battery',
+    });
+    expect(acc2.status).toBe(200);
+    expect(acc2.body).toMatchObject({ ok: false, mfa_required: true });
+    expect((await inviteeSecond.get('/api/v1/auth/me')).status).toBe(401);
+
+    const mfaLogin = await inviteeSecond.post('/api/v1/auth/login/mfa').set(CSRF).send({
+      mfa_token: acc2.body.mfa_token,
+      code: invConfirm.body.recovery_codes[0],
+    });
+    expect(mfaLogin.status).toBe(200);
+    const me2 = await inviteeSecond.get('/api/v1/auth/me');
+    expect(me2.status).toBe(200);
+    expect(me2.body.organization.id).toBe(secondOwner.organizationId);
+  });
+
+  it('paginates events losslessly across identical timestamps using before + before_id', async () => {
+    const a = await newAccount('ev-page');
+    const sameTs = new Date('2026-11-10T12:00:00.000Z');
+    const olderTs = new Date('2026-11-10T11:59:00.000Z');
+    const insertedIds: string[] = [];
+    for (const [idx, ts] of [sameTs, sameTs, sameTs, olderTs].entries()) {
+      const r = await systemPool.query<{ id: string }>(
+        `INSERT INTO network_events (organization_id, site_id, type, severity, title, source, occurred_at)
+         VALUES ($1,$2,'test_page','info',$3,'platform',$4) RETURNING id`,
+        [a.organizationId, a.siteId, `ev-${idx}`, ts],
+      );
+      insertedIds.push(r.rows[0]!.id);
+    }
+
+    const page1 = (await a.agent.get('/api/v1/events?type=test_page&limit=2')).body;
+    expect(page1.items).toHaveLength(2);
+    expect(page1.next_before).toBeTruthy();
+    expect(page1.next_before_id).toBe(page1.items[1].id);
+
+    const page2 = (
+      await a.agent.get(
+        `/api/v1/events?type=test_page&limit=2&before=${encodeURIComponent(page1.next_before)}&before_id=${encodeURIComponent(page1.next_before_id)}`,
+      )
+    ).body;
+    expect(page2.items).toHaveLength(2);
+    expect(page2.next_before).toBeNull();
+    expect(page2.next_before_id).toBeNull();
+
+    const seenIds = [...page1.items, ...page2.items].map((e: { id: string }) => e.id);
+    expect(new Set(seenIds)).toEqual(new Set(insertedIds));
   });
 });

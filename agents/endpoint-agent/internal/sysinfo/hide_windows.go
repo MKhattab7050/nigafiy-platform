@@ -7,7 +7,11 @@ import (
 	"syscall"
 )
 
-func hideWindow(cmd *exec.Cmd) {
+func HideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+}
+
+func hideWindow(cmd *exec.Cmd) {
+	HideWindow(cmd)
 }
 

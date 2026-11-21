@@ -14,7 +14,14 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+)
+
+var (
+	healthCacheMu  sync.Mutex
+	cachedHealth   Health
+	cachedHealthAt time.Time
 )
 
 type Disk struct {
@@ -67,10 +74,11 @@ type Connection struct {
 }
 
 type SecurityPosture struct {
-	FirewallEnabled  bool   `json:"firewall_enabled"`
-	AntivirusEnabled bool   `json:"antivirus_enabled"`
-	DiskEncrypted    bool   `json:"disk_encrypted"`
-	PendingUpdates   int    `json:"pending_updates"`
+	// Pointers: a value the agent did not measure is left out, never reported as false/0.
+	FirewallEnabled  *bool  `json:"firewall_enabled,omitempty"`
+	AntivirusEnabled *bool  `json:"antivirus_enabled,omitempty"`
+	DiskEncrypted    *bool  `json:"disk_encrypted,omitempty"`
+	PendingUpdates   *int   `json:"pending_updates,omitempty"`
 	LastUpdateDate   string `json:"last_update_date,omitempty"`
 	OSBuild          string `json:"os_build,omitempty"`
 }
@@ -85,7 +93,7 @@ type Health struct {
 	SerialNumber  string          `json:"serial_number,omitempty"`
 	CPUModel      string          `json:"cpu_model,omitempty"`
 	CPUCores      int             `json:"cpu_cores"`
-	RAMTotalMB    int             `json:"ram_total_mb"`
+	RAMTotalMB    int             `json:"ram_total_mb,omitempty"`
 	RAMUsedMB     int             `json:"ram_used_mb"`
 	RAMPct        float64         `json:"ram_pct"`
 	CPUPct        float64         `json:"cpu_pct"`
@@ -175,10 +183,6 @@ func CollectHealth(ctx context.Context, started time.Time) Health {
 		OS:            runtime.GOOS,
 		Arch:          runtime.GOARCH,
 		CPUCores:      runtime.NumCPU(),
-		RAMTotalMB:    4096,
-		RAMUsedMB:     1024,
-		RAMPct:        25.0,
-		CPUPct:        5.0,
 		UptimeSeconds: int64(time.Since(started).Seconds()),
 		LoggedInUsers: users,
 		PrimaryIP:     primaryIP,
@@ -200,6 +204,10 @@ func CollectHealth(ctx context.Context, started time.Time) Health {
 		}
 		h.DiskUsedPct = maxPct
 	}
+	healthCacheMu.Lock()
+	cachedHealth = h
+	cachedHealthAt = time.Now()
+	healthCacheMu.Unlock()
 	return h
 }
 
@@ -217,6 +225,43 @@ func currentUsers() []string {
 	return []string{}
 }
 
+type winDisk struct {
+	Mount string  `json:"mount"`
+	FS    string  `json:"fs"`
+	Total float64 `json:"total"`
+	Free  float64 `json:"free"`
+}
+
+func parseWinDisks(raw json.RawMessage) []Disk {
+	if len(raw) == 0 {
+		return nil
+	}
+	var disks []winDisk
+	if json.Unmarshal(raw, &disks) != nil {
+		var single winDisk
+		if json.Unmarshal(raw, &single) == nil && single.Mount != "" {
+			disks = []winDisk{single}
+		}
+	}
+	var out []Disk
+	for _, d := range disks {
+		if d.Total <= 0 {
+			continue
+		}
+		used := round1(d.Total - d.Free)
+		pct := round1(used * 100 / d.Total)
+		out = append(out, Disk{
+			Mount:      truncate(d.Mount, 120),
+			Filesystem: truncate(d.FS, 60),
+			TotalGB:    d.Total,
+			UsedGB:     used,
+			FreeGB:     d.Free,
+			UsedPct:    pct,
+		})
+	}
+	return out
+}
+
 func collectWindowsHealth(ctx context.Context, h *Health) {
 	c, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -228,18 +273,12 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		`$avCim = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpComputerStatus -ErrorAction SilentlyContinue; ` +
 		`$ntos = Get-Item "$env:SystemRoot\System32\ntoskrnl.exe" -ErrorAction SilentlyContinue; ` +
 		`$disks = @([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' } | ForEach-Object { @{ mount=$_.Name.TrimEnd('\'); fs=$_.DriveFormat; total=[math]::Round($_.TotalSize/1GB,1); free=[math]::Round($_.AvailableFreeSpace/1GB,1) } }); ` +
-		`@{ caption=$os.Caption; build=$os.BuildNumber; mfg=$cs.Manufacturer; model=$cs.Model; serial=$bios.SerialNumber; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; av=if($null -ne $avCim){[bool]$avCim.AntivirusEnabled}else{$true}; fw=if($null -ne $fwReg){[bool]($fwReg.EnableFirewall -eq 1)}else{$true}; last_hf=if($ntos){$ntos.LastWriteTime.ToString('yyyy-MM-dd')}else{''}; disks=$disks } | ConvertTo-Json -Depth 4 -Compress`
+		`@{ caption=$os.Caption; build=$os.BuildNumber; mfg=$cs.Manufacturer; model=$cs.Model; serial=$bios.SerialNumber; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; av=if($null -ne $avCim){[bool]$avCim.AntivirusEnabled}else{$null}; fw=if($null -ne $fwReg){[bool]($fwReg.EnableFirewall -eq 1)}else{$null}; last_hf=if($ntos){$ntos.LastWriteTime.ToString('yyyy-MM-dd')}else{''}; disks=$disks } | ConvertTo-Json -Depth 4 -Compress`
 	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return
-	}
-	type winDisk struct {
-		Mount string  `json:"mount"`
-		FS    string  `json:"fs"`
-		Total float64 `json:"total"`
-		Free  float64 `json:"free"`
 	}
 	var data struct {
 		Caption string          `json:"caption"`
@@ -252,22 +291,13 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		Boot    int64           `json:"boot"`
 		CPUName string          `json:"cpu_name"`
 		CPULoad float64         `json:"cpu_load"`
-		AV      bool            `json:"av"`
-		FW      bool            `json:"fw"`
+		AV      *bool           `json:"av"`
+		FW      *bool           `json:"fw"`
 		LastHF  string          `json:"last_hf"`
 		Disks   json.RawMessage `json:"disks"`
 	}
 	if json.Unmarshal(out, &data) != nil {
 		return
-	}
-	var disks []winDisk
-	if len(data.Disks) > 0 {
-		if json.Unmarshal(data.Disks, &disks) != nil {
-			var single winDisk
-			if json.Unmarshal(data.Disks, &single) == nil && single.Mount != "" {
-				disks = []winDisk{single}
-			}
-		}
 	}
 	if data.Caption != "" {
 		h.OSVersion = truncate(data.Caption, 120)
@@ -304,43 +334,315 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		h.UptimeSeconds = data.Boot
 	}
 	h.CPUPct = round1(data.CPULoad)
-	for _, d := range disks {
-		if d.Total <= 0 {
-			continue
-		}
-		used := round1(d.Total - d.Free)
-		pct := round1(used * 100 / d.Total)
-		h.Disks = append(h.Disks, Disk{
-			Mount:      truncate(d.Mount, 120),
-			Filesystem: truncate(d.FS, 60),
-			TotalGB:    d.Total,
-			UsedGB:     used,
-			FreeGB:     d.Free,
-			UsedPct:    pct,
-		})
-	}
+	h.Disks = parseWinDisks(data.Disks)
 }
 
-func collectUnixHealth(ctx context.Context, h *Health) {
-	if raw, err := os.ReadFile("/proc/meminfo"); err == nil {
-		var totalKB, availKB int
-		for _, line := range strings.Split(string(raw), "\n") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				v, _ := strconv.Atoi(fields[1])
-				switch fields[0] {
-				case "MemTotal:":
-					totalKB = v
-				case "MemAvailable:":
-					availKB = v
+// ParseLinuxMeminfo extracts total MB, used MB, and usage percentage from /proc/meminfo contents.
+func ParseLinuxMeminfo(raw string) (totalMB, usedMB int, pct float64) {
+	var totalKB, availKB, freeKB, buffersKB, cachedKB int
+	var hasAvail bool
+	for _, line := range strings.Split(raw, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		v, err := strconv.Atoi(fields[1])
+		if err != nil {
+			continue
+		}
+		switch fields[0] {
+		case "MemTotal:":
+			totalKB = v
+		case "MemAvailable:":
+			availKB = v
+			hasAvail = true
+		case "MemFree:":
+			freeKB = v
+		case "Buffers:":
+			buffersKB = v
+		case "Cached:":
+			cachedKB = v
+		}
+	}
+	if totalKB <= 0 {
+		return 0, 0, 0
+	}
+	usedKB := totalKB - availKB
+	if !hasAvail {
+		usedKB = totalKB - freeKB - buffersKB - cachedKB
+	}
+	if usedKB < 0 {
+		usedKB = 0
+	}
+	totalMB = totalKB / 1024
+	usedMB = usedKB / 1024
+	if totalMB <= 0 {
+		return 0, 0, 0
+	}
+	return totalMB, usedMB, round1(float64(usedMB) * 100 / float64(totalMB))
+}
+
+// ParseLinuxCPUInfo extracts the CPU model string from /proc/cpuinfo contents.
+func ParseLinuxCPUInfo(raw string) string {
+	var modelName, hardware, processor string
+	for _, line := range strings.Split(raw, "\n") {
+		idx := strings.Index(line, ":")
+		if idx <= 0 {
+			continue
+		}
+		key := strings.ToLower(strings.TrimSpace(line[:idx]))
+		val := strings.TrimSpace(line[idx+1:])
+		if val == "" {
+			continue
+		}
+		switch key {
+		case "model name", "cpu model", "uarch":
+			if modelName == "" {
+				modelName = val
+			}
+		case "hardware":
+			if hardware == "" {
+				hardware = val
+			}
+		case "processor":
+			// On x86, "processor : 0" is a core index; on ARM, "Processor : ARMv7..." is the model name.
+			if processor == "" {
+				if _, err := strconv.Atoi(val); err != nil {
+					processor = val
 				}
 			}
 		}
-		if totalKB > 0 {
-			h.RAMTotalMB = totalKB / 1024
-			h.RAMUsedMB = (totalKB - availKB) / 1024
-			h.RAMPct = round1(float64(h.RAMUsedMB) * 100 / float64(h.RAMTotalMB))
+	}
+	for _, candidate := range []string{modelName, hardware, processor} {
+		if candidate != "" {
+			return truncate(candidate, 160)
 		}
+	}
+	return ""
+}
+
+// ParseOSRelease extracts PRETTY_NAME (or NAME + VERSION) from /etc/os-release contents.
+func ParseOSRelease(raw string) string {
+	var pretty, name, version string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		if idx <= 0 {
+			continue
+		}
+		k := strings.TrimSpace(line[:idx])
+		v := strings.Trim(strings.TrimSpace(line[idx+1:]), `"'`)
+		switch k {
+		case "PRETTY_NAME":
+			pretty = v
+		case "NAME":
+			name = v
+		case "VERSION":
+			version = v
+		}
+	}
+	if pretty != "" {
+		return truncate(pretty, 120)
+	}
+	if name != "" {
+		return truncate(strings.TrimSpace(name+" "+version), 120)
+	}
+	return ""
+}
+
+// ParseLinuxLoadAvgCPU converts the 1-minute load average in /proc/loadavg into a 0..100 CPU percentage.
+func ParseLinuxLoadAvgCPU(raw string, numCPU int) float64 {
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return 0
+	}
+	load1, err := strconv.ParseFloat(fields[0], 64)
+	if err != nil || load1 < 0 {
+		return 0
+	}
+	if numCPU <= 0 {
+		numCPU = 1
+	}
+	pct := (load1 / float64(numCPU)) * 100
+	if pct > 100 {
+		pct = 100
+	}
+	return round1(pct)
+}
+
+// ParseDarwinVMStat computes used RAM in MB and usage percentage from macOS `vm_stat` output.
+func ParseDarwinVMStat(raw string, totalMB int) (usedMB int, pct float64) {
+	pageSize := int64(4096)
+	var active, wired, compressed int64
+	for _, line := range strings.Split(raw, "\n") {
+		if idx := strings.Index(line, "page size of "); idx >= 0 {
+			rest := line[idx+len("page size of "):]
+			if f := strings.Fields(rest); len(f) > 0 {
+				if ps, err := strconv.ParseInt(f[0], 10, 64); err == nil && ps > 0 {
+					pageSize = ps
+				}
+			}
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		valStr := strings.TrimSuffix(strings.TrimSpace(parts[1]), ".")
+		val, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil || val < 0 {
+			continue
+		}
+		switch key {
+		case "Pages active":
+			active = val
+		case "Pages wired down":
+			wired = val
+		case "Pages occupied by compressor":
+			compressed = val
+		}
+	}
+	usedBytes := (active + wired + compressed) * pageSize
+	if usedBytes <= 0 {
+		return 0, 0
+	}
+	usedMB = int(usedBytes / (1024 * 1024))
+	if totalMB > 0 {
+		if usedMB > totalMB {
+			usedMB = totalMB
+		}
+		pct = round1(float64(usedMB) * 100 / float64(totalMB))
+	}
+	return usedMB, pct
+}
+
+// ParseDarwinBoottime parses `sysctl -n kern.boottime` output (`{ sec = 1700000000, usec = 0 } ...`) into uptime seconds.
+func ParseDarwinBoottime(raw string, now time.Time) int64 {
+	idx := strings.Index(raw, "sec =")
+	if idx < 0 {
+		return 0
+	}
+	rest := strings.TrimSpace(raw[idx+len("sec ="):])
+	end := strings.IndexAny(rest, ", }")
+	if end > 0 {
+		rest = rest[:end]
+	}
+	sec, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
+	if err != nil || sec <= 0 {
+		return 0
+	}
+	up := now.Unix() - sec
+	if up < 0 {
+		return 0
+	}
+	return up
+}
+
+// ParsePSCPU sums `ps -A -o %cpu` output and normalizes by CPU core count into a 0..100 percentage.
+func ParsePSCPU(raw string, numCPU int) float64 {
+	var sum float64
+	for _, line := range strings.Split(raw, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		v, err := strconv.ParseFloat(f[0], 64)
+		if err != nil || v < 0 {
+			continue
+		}
+		sum += v
+	}
+	if numCPU <= 0 {
+		numCPU = 1
+	}
+	pct := sum / float64(numCPU)
+	if pct > 100 {
+		pct = 100
+	}
+	return round1(pct)
+}
+
+// ParseDFDisks parses POSIX `df -P -k` output into disk entries.
+func ParseDFDisks(raw string) []Disk {
+	var disks []Disk
+	for i, line := range strings.Split(raw, "\n") {
+		if i == 0 {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) < 6 || strings.HasPrefix(f[0], "tmpfs") || strings.HasPrefix(f[0], "devtmpfs") {
+			continue
+		}
+		totalKB, _ := strconv.ParseFloat(f[1], 64)
+		usedKB, _ := strconv.ParseFloat(f[2], 64)
+		availKB, _ := strconv.ParseFloat(f[3], 64)
+		if totalKB <= 0 {
+			continue
+		}
+		totalGB := round1(totalKB / (1024 * 1024))
+		if totalGB <= 0 {
+			continue
+		}
+		usedGB := round1(usedKB / (1024 * 1024))
+		freeGB := round1(availKB / (1024 * 1024))
+		disks = append(disks, Disk{
+			Mount:   truncate(f[5], 120),
+			TotalGB: totalGB,
+			UsedGB:  usedGB,
+			FreeGB:  freeGB,
+			UsedPct: round1(usedKB * 100 / totalKB),
+		})
+	}
+	return disks
+}
+
+func collectUnixHealth(ctx context.Context, h *Health) {
+	if runtime.GOOS == "darwin" {
+		c, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		h.Manufacturer = "Apple Inc."
+		if out, err := exec.CommandContext(c, "sysctl", "-n", "hw.model").Output(); err == nil {
+			if m := truncate(strings.TrimSpace(string(out)), 120); m != "" {
+				h.Model = m
+			}
+		}
+		if out, err := exec.CommandContext(c, "sysctl", "-n", "hw.memsize").Output(); err == nil {
+			if b, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64); err == nil && b > 0 {
+				h.RAMTotalMB = int(b / (1024 * 1024))
+			}
+		}
+		if out, err := exec.CommandContext(c, "vm_stat").Output(); err == nil {
+			h.RAMUsedMB, h.RAMPct = ParseDarwinVMStat(string(out), h.RAMTotalMB)
+		}
+		if out, err := exec.CommandContext(c, "sysctl", "-n", "kern.boottime").Output(); err == nil {
+			if up := ParseDarwinBoottime(string(out), time.Now()); up > 0 {
+				h.UptimeSeconds = up
+			}
+		}
+		if out, err := exec.CommandContext(c, "sysctl", "-n", "machdep.cpu.brand_string").Output(); err == nil {
+			if cpu := truncate(strings.TrimSpace(string(out)), 160); cpu != "" {
+				h.CPUModel = cpu
+			}
+		}
+		if out, err := exec.CommandContext(c, "sw_vers", "-productVersion").Output(); err == nil {
+			if ver := truncate(strings.TrimSpace(string(out)), 100); ver != "" {
+				h.OSVersion = "macOS " + ver
+			}
+		}
+		if out, err := exec.CommandContext(c, "ps", "-A", "-o", "%cpu").Output(); err == nil {
+			h.CPUPct = ParsePSCPU(string(out), runtime.NumCPU())
+		}
+		h.Disks = collectDisks(ctx)
+		return
+	}
+
+	// Linux / POSIX via /proc and /sys
+	if raw, err := os.ReadFile("/proc/meminfo"); err == nil {
+		h.RAMTotalMB, h.RAMUsedMB, h.RAMPct = ParseLinuxMeminfo(string(raw))
 	}
 	if raw, err := os.ReadFile("/proc/uptime"); err == nil {
 		fields := strings.Fields(string(raw))
@@ -350,46 +652,77 @@ func collectUnixHealth(ctx context.Context, h *Health) {
 			}
 		}
 	}
-	c, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	if out, err := exec.CommandContext(c, "df", "-P", "-k").Output(); err == nil {
-		for i, line := range strings.Split(string(out), "\n") {
-			if i == 0 {
-				continue
-			}
-			f := strings.Fields(line)
-			if len(f) < 6 || strings.HasPrefix(f[0], "tmpfs") || strings.HasPrefix(f[0], "devtmpfs") {
-				continue
-			}
-			totalKB, _ := strconv.ParseFloat(f[1], 64)
-			usedKB, _ := strconv.ParseFloat(f[2], 64)
-			availKB, _ := strconv.ParseFloat(f[3], 64)
-			if totalKB <= 0 {
-				continue
-			}
-			totalGB := round1(totalKB / (1024 * 1024))
-			if totalGB <= 0 {
-				continue
-			}
-			usedGB := round1(usedKB / (1024 * 1024))
-			freeGB := round1(availKB / (1024 * 1024))
-			h.Disks = append(h.Disks, Disk{
-				Mount:   truncate(f[5], 120),
-				TotalGB: totalGB,
-				UsedGB:  usedGB,
-				FreeGB:  freeGB,
-				UsedPct: round1(usedKB * 100 / totalKB),
-			})
+	if raw, err := os.ReadFile("/proc/cpuinfo"); err == nil {
+		if cpu := ParseLinuxCPUInfo(string(raw)); cpu != "" {
+			h.CPUModel = cpu
 		}
 	}
+	if raw, err := os.ReadFile("/etc/os-release"); err == nil {
+		if osVer := ParseOSRelease(string(raw)); osVer != "" {
+			h.OSVersion = osVer
+		}
+	}
+	if raw, err := os.ReadFile("/sys/class/dmi/id/sys_vendor"); err == nil {
+		if v := truncate(strings.TrimSpace(string(raw)), 120); v != "" {
+			h.Manufacturer = v
+		}
+	}
+	if raw, err := os.ReadFile("/sys/class/dmi/id/product_name"); err == nil {
+		if m := truncate(strings.TrimSpace(string(raw)), 120); m != "" {
+			h.Model = m
+		}
+	}
+	if raw, err := os.ReadFile("/proc/loadavg"); err == nil {
+		h.CPUPct = ParseLinuxLoadAvgCPU(string(raw), runtime.NumCPU())
+	}
+	h.Disks = collectDisks(ctx)
+}
+
+func collectDisks(ctx context.Context) []Disk {
+	c, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	if runtime.GOOS == "windows" {
+		script := `@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' } | ForEach-Object { @{ mount=$_.Name.TrimEnd('\'); fs=$_.DriveFormat; total=[math]::Round($_.TotalSize/1GB,1); free=[math]::Round($_.AvailableFreeSpace/1GB,1) } }) | ConvertTo-Json -Compress`
+		cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+		hideWindow(cmd)
+		out, err := cmd.Output()
+		if err != nil {
+			return []Disk{}
+		}
+		if disks := parseWinDisks(out); disks != nil {
+			return disks
+		}
+		return []Disk{}
+	}
+	out, err := exec.CommandContext(c, "df", "-P", "-k").Output()
+	if err != nil {
+		return []Disk{}
+	}
+	if disks := ParseDFDisks(string(out)); disks != nil {
+		return disks
+	}
+	return []Disk{}
 }
 
 // CollectInventory gathers processes, services, installed software, and active network connections.
 func CollectInventory(ctx context.Context) Inventory {
-	h := CollectHealth(ctx, time.Now())
+	var disks []Disk
+	var ifs []Interface
+	healthCacheMu.Lock()
+	if !cachedHealthAt.IsZero() && time.Since(cachedHealthAt) < 15*time.Second {
+		disks = append([]Disk(nil), cachedHealth.Disks...)
+		ifs = append([]Interface(nil), cachedHealth.Interfaces...)
+	}
+	healthCacheMu.Unlock()
+	if disks == nil {
+		disks = collectDisks(ctx)
+	}
+	if ifs == nil {
+		ifs, _, _ = CollectInterfaces()
+	}
 	inv := Inventory{
-		Disks:       h.Disks,
-		Interfaces:  h.Interfaces,
+		Disks:       disks,
+		Interfaces:  ifs,
 		Processes:   []Process{},
 		Services:    []Service{},
 		Software:    []Software{},
@@ -501,24 +834,22 @@ func collectUnixProcesses(ctx context.Context) []Process {
 	return list
 }
 
-func collectWindowsServices(ctx context.Context) []Service {
-	c, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	script := `Get-Service | Select-Object -First 250 Name,DisplayName,@{N='State';E={$_.Status.ToString()}},@{N='Start';E={$_.StartType.ToString()}} | ConvertTo-Json -Compress`
-	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	hideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return []Service{}
-	}
-	var raw []struct {
-		Name        string `json:"Name"`
-		DisplayName string `json:"DisplayName"`
-		State       string `json:"State"`
-		Start       string `json:"Start"`
-	}
+type winService struct {
+	Name        string `json:"Name"`
+	DisplayName string `json:"DisplayName"`
+	State       string `json:"State"`
+	Start       string `json:"Start"`
+}
+
+func parseWinServices(out []byte) []Service {
+	var raw []winService
 	if json.Unmarshal(out, &raw) != nil {
-		return []Service{}
+		var single winService
+		if json.Unmarshal(out, &single) == nil && single.Name != "" {
+			raw = []winService{single}
+		} else {
+			return []Service{}
+		}
 	}
 	var list []Service
 	for _, s := range raw {
@@ -553,6 +884,19 @@ func collectWindowsServices(ctx context.Context) []Service {
 		})
 	}
 	return list
+}
+
+func collectWindowsServices(ctx context.Context) []Service {
+	c, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	script := `@(Get-Service | Select-Object -First 250 Name,DisplayName,@{N='State';E={$_.Status.ToString()}},@{N='Start';E={$_.StartType.ToString()}}) | ConvertTo-Json -Compress`
+	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return []Service{}
+	}
+	return parseWinServices(out)
 }
 
 func collectUnixServices(ctx context.Context) []Service {
@@ -695,24 +1039,22 @@ func collectUnixSoftware(ctx context.Context) []Software {
 	return list
 }
 
-func collectWindowsSoftware(ctx context.Context) []Software {
-	c, cancel := context.WithTimeout(ctx, 8*time.Second)
-	defer cancel()
-	script := `Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*,HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object -First 250 DisplayName,DisplayVersion,Publisher,InstallDate | ConvertTo-Json -Compress`
-	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-	hideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return []Software{}
-	}
-	var raw []struct {
-		DisplayName    string `json:"DisplayName"`
-		DisplayVersion string `json:"DisplayVersion"`
-		Publisher      string `json:"Publisher"`
-		InstallDate    string `json:"InstallDate"`
-	}
+type winSoftware struct {
+	DisplayName    string `json:"DisplayName"`
+	DisplayVersion string `json:"DisplayVersion"`
+	Publisher      string `json:"Publisher"`
+	InstallDate    string `json:"InstallDate"`
+}
+
+func parseWinSoftware(out []byte) []Software {
+	var raw []winSoftware
 	if json.Unmarshal(out, &raw) != nil {
-		return []Software{}
+		var single winSoftware
+		if json.Unmarshal(out, &single) == nil && single.DisplayName != "" {
+			raw = []winSoftware{single}
+		} else {
+			return []Software{}
+		}
 	}
 	seen := map[string]bool{}
 	var list []Software
@@ -733,7 +1075,20 @@ func collectWindowsSoftware(ctx context.Context) []Software {
 	return list
 }
 
-// ParseNetstat parses `netstat -ano` output into structured TCP/UDP connections.
+func collectWindowsSoftware(ctx context.Context) []Software {
+	c, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	script := `@(Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*,HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object -First 250 DisplayName,DisplayVersion,Publisher,InstallDate) | ConvertTo-Json -Compress`
+	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return []Software{}
+	}
+	return parseWinSoftware(out)
+}
+
+// ParseNetstat parses `netstat -ano` or `netstat -tunap` / `netstat -anv` output into structured TCP/UDP connections.
 func ParseNetstat(output string, procByPID map[int]string) []Connection {
 	var list []Connection
 	for _, line := range strings.Split(output, "\n") {
@@ -742,20 +1097,46 @@ func ParseNetstat(output string, procByPID map[int]string) []Connection {
 			continue
 		}
 		proto := strings.ToLower(f[0])
-		if proto != "tcp" && proto != "udp" {
+		if strings.HasPrefix(proto, "tcp") {
+			proto = "tcp"
+		} else if strings.HasPrefix(proto, "udp") {
+			proto = "udp"
+		} else {
 			continue
 		}
-		localAddr, localPort, ok := splitHostPort(f[1])
+		addrIdx := 1
+		// Linux/BSD netstat includes Recv-Q and Send-Q columns before Local Address.
+		if len(f) >= 6 {
+			if _, err1 := strconv.Atoi(f[1]); err1 == nil {
+				if _, err2 := strconv.Atoi(f[2]); err2 == nil {
+					addrIdx = 3
+				}
+			}
+		}
+		if len(f) <= addrIdx+1 {
+			continue
+		}
+		localAddr, localPort, ok := splitHostPort(f[addrIdx])
 		if !ok {
 			continue
 		}
-		remoteAddr, remotePort, _ := splitHostPort(f[2])
+		remoteAddr, remotePort, _ := splitHostPort(f[addrIdx+1])
 		state := "LISTEN"
 		pidField := f[len(f)-1]
-		if proto == "tcp" && len(f) >= 5 {
-			state = truncate(f[3], 40)
+		if proto == "tcp" && len(f) >= addrIdx+4 {
+			state = truncate(f[addrIdx+2], 40)
 		}
-		pid, _ := strconv.Atoi(pidField)
+		pid := 0
+		procName := ""
+		if slash := strings.IndexByte(pidField, '/'); slash > 0 {
+			pid, _ = strconv.Atoi(pidField[:slash])
+			procName = truncate(pidField[slash+1:], 160)
+		} else {
+			pid, _ = strconv.Atoi(pidField)
+		}
+		if procName == "" && pid > 0 {
+			procName = procByPID[pid]
+		}
 		conn := Connection{
 			Proto:         proto,
 			LocalAddress:  truncate(localAddr, 64),
@@ -764,7 +1145,7 @@ func ParseNetstat(output string, procByPID map[int]string) []Connection {
 			RemotePort:    remotePort,
 			State:         state,
 			PID:           pid,
-			ProcessName:   procByPID[pid],
+			ProcessName:   procName,
 		}
 		list = append(list, conn)
 		if len(list) >= 250 {
@@ -774,13 +1155,142 @@ func ParseNetstat(output string, procByPID map[int]string) []Connection {
 	return list
 }
 
+// ParseLinuxSS parses `ss -tunap` output into structured TCP/UDP connections.
+func ParseLinuxSS(output string, procByPID map[int]string) []Connection {
+	var list []Connection
+	for _, line := range strings.Split(output, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 5 {
+			continue
+		}
+		proto := strings.ToLower(f[0])
+		if proto != "tcp" && proto != "udp" {
+			continue
+		}
+		state := truncate(f[1], 40)
+		if proto == "udp" && state == "UNCONN" {
+			state = "LISTEN"
+		}
+		localAddr, localPort, ok := splitHostPort(f[4])
+		if !ok {
+			continue
+		}
+		remoteAddr, remotePort := "", 0
+		if len(f) >= 6 {
+			remoteAddr, remotePort, _ = splitHostPort(f[5])
+		}
+		pid := 0
+		procName := ""
+		if len(f) >= 7 {
+			rest := strings.Join(f[6:], " ")
+			if idx := strings.Index(rest, "pid="); idx >= 0 {
+				sub := rest[idx+4:]
+				if end := strings.IndexAny(sub, ",)"); end > 0 {
+					pid, _ = strconv.Atoi(sub[:end])
+				}
+			}
+			if q1 := strings.IndexByte(rest, '"'); q1 >= 0 {
+				if q2 := strings.IndexByte(rest[q1+1:], '"'); q2 > 0 {
+					procName = truncate(rest[q1+1:q1+1+q2], 160)
+				}
+			}
+		}
+		if procName == "" && pid > 0 {
+			procName = procByPID[pid]
+		}
+		list = append(list, Connection{
+			Proto:         proto,
+			LocalAddress:  truncate(localAddr, 64),
+			LocalPort:     localPort,
+			RemoteAddress: truncate(remoteAddr, 64),
+			RemotePort:    remotePort,
+			State:         state,
+			PID:           pid,
+			ProcessName:   procName,
+		})
+		if len(list) >= 250 {
+			break
+		}
+	}
+	return list
+}
+
+// ParseLsofConnections parses macOS/POSIX `lsof -iTCP -iUDP -n -P` output into structured connections.
+func ParseLsofConnections(output string, procByPID map[int]string) []Connection {
+	var list []Connection
+	for i, line := range strings.Split(output, "\n") {
+		if i == 0 {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) < 9 {
+			continue
+		}
+		procName := truncate(f[0], 160)
+		pid, _ := strconv.Atoi(f[1])
+		if p := procByPID[pid]; p != "" {
+			procName = p
+		}
+		proto := ""
+		nameIdx := -1
+		for idx := 7; idx < len(f); idx++ {
+			low := strings.ToLower(f[idx])
+			if low == "tcp" || low == "udp" {
+				proto = low
+				nameIdx = idx + 1
+				break
+			}
+		}
+		if proto == "" || nameIdx < 0 || nameIdx >= len(f) {
+			continue
+		}
+		addrSpec := f[nameIdx]
+		state := "LISTEN"
+		if len(f) > nameIdx+1 {
+			st := strings.Trim(f[nameIdx+1], "()")
+			if st != "" {
+				state = truncate(st, 40)
+			}
+		}
+		localPart := addrSpec
+		remotePart := ""
+		if arrow := strings.Index(addrSpec, "->"); arrow > 0 {
+			localPart = addrSpec[:arrow]
+			remotePart = addrSpec[arrow+2:]
+		}
+		localAddr, localPort, ok := splitHostPort(localPart)
+		if !ok {
+			continue
+		}
+		remoteAddr, remotePort, _ := splitHostPort(remotePart)
+		list = append(list, Connection{
+			Proto:         proto,
+			LocalAddress:  truncate(localAddr, 64),
+			LocalPort:     localPort,
+			RemoteAddress: truncate(remoteAddr, 64),
+			RemotePort:    remotePort,
+			State:         state,
+			PID:           pid,
+			ProcessName:   procName,
+		})
+		if len(list) >= 250 {
+			break
+		}
+	}
+	return list
+}
+
 func splitHostPort(s string) (string, int, bool) {
-	if s == "*:*" || s == "0.0.0.0:0" || s == "[::]:0" {
+	if s == "" || s == "*:*" || s == "*.*" || s == "0.0.0.0:0" || s == "[::]:0" || s == "0.0.0.0:*" || s == "[::]:*" {
 		return "", 0, false
 	}
 	idx := strings.LastIndex(s, ":")
 	if idx <= 0 || idx == len(s)-1 {
-		return "", 0, false
+		// BSD netstat uses a dot before port (e.g. 192.168.1.25.443 or *.22).
+		idx = strings.LastIndex(s, ".")
+		if idx <= 0 || idx == len(s)-1 {
+			return "", 0, false
+		}
 	}
 	port, err := strconv.Atoi(s[idx+1:])
 	if err != nil || port < 0 || port > 65535 {
@@ -792,6 +1302,26 @@ func splitHostPort(s string) (string, int, bool) {
 func collectConnections(ctx context.Context, procByPID map[int]string) []Connection {
 	c, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	switch runtime.GOOS {
+	case "linux":
+		if out, err := exec.CommandContext(c, "ss", "-tunap").Output(); err == nil {
+			if conns := ParseLinuxSS(string(out), procByPID); len(conns) > 0 {
+				return conns
+			}
+		}
+		if out, err := exec.CommandContext(c, "netstat", "-tunap").Output(); err == nil {
+			return ParseNetstat(string(out), procByPID)
+		}
+	case "darwin":
+		if out, err := exec.CommandContext(c, "lsof", "-iTCP", "-iUDP", "-n", "-P").Output(); err == nil {
+			if conns := ParseLsofConnections(string(out), procByPID); len(conns) > 0 {
+				return conns
+			}
+		}
+		if out, err := exec.CommandContext(c, "netstat", "-anv").Output(); err == nil {
+			return ParseNetstat(string(out), procByPID)
+		}
+	}
 	cmd := exec.CommandContext(c, "netstat", "-ano")
 	hideWindow(cmd)
 	out, err := cmd.Output()

@@ -163,6 +163,10 @@ func TestHandleBlocksForwardsAndCounts(t *testing.T) {
 	if h.RCode != dnsmessage.RCodeNameError {
 		t.Fatalf("other types should be NXDOMAIN, got %v", h.RCode)
 	}
+	hCanary, rsCanary := answer("192.168.1.51", "use-application-dns.net.", dnsmessage.TypeA)
+	if hCanary.RCode != dnsmessage.RCodeNameError || len(rsCanary) != 0 {
+		t.Fatalf("encrypted_dns canary should return NXDOMAIN with no answers, got %v %v", hCanary.RCode, rsCanary)
+	}
 	_, rs = answer("192.168.1.51", "www.roblox.com.", dnsmessage.TypeA) // another device: default rule
 	if len(rs) != 1 || rs[0].Body.(*dnsmessage.AResource).A != [4]byte{93, 184, 216, 34} {
 		t.Fatalf("other devices should be forwarded, got %v", rs)
@@ -234,5 +238,67 @@ func TestListenUDP(t *testing.T) {
 	rs, _ := p.AllAnswers()
 	if h.ID != 0xbeef || len(rs) != 1 {
 		t.Fatalf("unexpected answer %v %v", h, rs)
+	}
+}
+
+// Schedules are evaluated on the site's wall clock, not the collector host's.
+func TestScheduleUsesSiteTimezone(t *testing.T) {
+	blockedFor := func(s *Server) bool {
+		resp := s.Handle(context.Background(), "192.168.1.5", query(t, "example.com.", dnsmessage.TypeA), false)
+		var p dnsmessage.Parser
+		_, _ = p.Start(resp)
+		_ = p.SkipAllQuestions()
+		rs, _ := p.AllAnswers()
+		return len(rs) == 1 && rs[0].Body.(*dnsmessage.AResource).A == [4]byte{}
+	}
+	newServer := func(tz string, now time.Time) *Server {
+		s := NewServer(NewLists(), nil)
+		s.Forwarder = func(_ context.Context, _ string, msg []byte, _ bool) ([]byte, error) {
+			var p dnsmessage.Parser
+			h, _ := p.Start(msg)
+			q, _ := p.Question()
+			h.Response = true
+			b := dnsmessage.NewBuilder(nil, h)
+			_ = b.StartQuestions()
+			_ = b.Question(q)
+			_ = b.StartAnswers()
+			_ = b.AResource(dnsmessage.ResourceHeader{Name: q.Name, Class: dnsmessage.ClassINET, TTL: 30}, dnsmessage.AResource{A: [4]byte{1, 2, 3, 4}})
+			return b.Finish()
+		}
+		s.Now = func() time.Time { return now }
+		// Tuesday 22:00–23:30 bedtime.
+		s.SetPolicy(Policy{Enabled: true, Upstreams: []string{"10.0.0.1"}, Timezone: tz,
+			Default: Rule{Schedule: []Window{{Days: []int{2}, From: "22:00", To: "23:30"}}}})
+		return s
+	}
+	// 2026-11-10 is a Tuesday. 14:00 UTC is 23:00 in Tokyo (UTC+9, no DST).
+	utc := time.Date(2026, 11, 10, 14, 0, 0, 0, time.UTC)
+	tokyo := newServer("Asia/Tokyo", utc)
+	if !blockedFor(tokyo) {
+		t.Fatal("23:00 Tuesday in Tokyo is inside the bedtime window")
+	}
+	if name, ok := tokyo.TimezoneStatus(); name != "Asia/Tokyo" || !ok {
+		t.Fatalf("timezone status %q %v", name, ok)
+	}
+	// 14:00 UTC is 06:00 in Los Angeles (UTC-8 in November): outside the window.
+	if blockedFor(newServer("America/Los_Angeles", utc)) {
+		t.Fatal("06:00 Tuesday in Los Angeles is outside the window")
+	}
+	// Same instant, same rule, but the moment is 23:00 Tokyo; evaluated as UTC (14:00) it would not block.
+	if blockedFor(newServer("UTC", utc)) {
+		t.Fatal("14:00 UTC is outside the window")
+	}
+	// An unloadable zone falls back to host-local time and is reported, never panics.
+	bad := newServer("Mars/Olympus_Mons", utc)
+	if name, ok := bad.TimezoneStatus(); ok || name != time.Local.String() {
+		t.Fatalf("bad zone: %q %v", name, ok)
+	}
+	want := (Window{Days: []int{2}, From: "22:00", To: "23:30"}).Active(utc.In(time.Local))
+	if blockedFor(bad) != want {
+		t.Fatal("bad zone must evaluate in host-local time")
+	}
+	// Absent: host-local time, as before.
+	if loc, ok := (Policy{}).Location(); loc != time.Local || !ok {
+		t.Fatal("empty timezone must mean host-local time")
 	}
 }

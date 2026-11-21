@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('desktop', {
   start: (enrollmentToken) => ipcRenderer.invoke('collector:start', enrollmentToken),
   stop: () => ipcRenderer.invoke('collector:stop'),
   resetIdentity: () => ipcRenderer.invoke('collector:reset'),
+  setupLocalScan: () => ipcRenderer.invoke('local:setup-scan'),
+  resetScanPrompt: () => ipcRenderer.invoke('local:reset-scan-prompt'),
   openDashboard: () => ipcRenderer.invoke('app:open-dashboard'),
   onState: subscribe('collector:state-changed'),
 });

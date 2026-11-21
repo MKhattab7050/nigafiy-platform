@@ -14,6 +14,9 @@ package dnsfilter
 import (
 	"strings"
 	"time"
+	// Embedded IANA zone data: Windows hosts have no zoneinfo database, and schedules must be
+	// evaluated in the site's zone wherever the collector runs.
+	_ "time/tzdata"
 )
 
 // Window is a period when the internet is off for a device ("bedtime"). Days use 0 = Sunday.
@@ -48,6 +51,24 @@ type Policy struct {
 	Upstreams []string `json:"upstreams"`
 	Default   Rule     `json:"default"`
 	Clients   []Client `json:"clients"`
+	// Timezone is the site's IANA zone (e.g. "Europe/Berlin") in which schedule windows are
+	// evaluated. Empty means the collector host's local time (older clouds do not send it).
+	Timezone string `json:"timezone,omitempty"`
+}
+
+// Location resolves the policy's timezone. Empty → host-local time. A zone that cannot be loaded
+// also falls back to host-local time, and ok is false so the caller can report it; schedules keep
+// working rather than silently never matching.
+func (p Policy) Location() (loc *time.Location, ok bool) {
+	tz := strings.TrimSpace(p.Timezone)
+	if tz == "" {
+		return time.Local, true
+	}
+	l, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.Local, false
+	}
+	return l, true
 }
 
 // Decision is the outcome for one question.

@@ -1,0 +1,214 @@
+import type { DeviceTrust } from '@lan-detective/shared-types';
+import type { ControlAction } from '@/lib/controls';
+
+// Shapes of the routers API (apps/api/src/modules/routers). Kept here because they are owned by this feature.
+
+export const ROUTER_VENDORS = [{ value: 'zyxel', label: 'Zyxel' }] as const;
+export type RouterVendor = (typeof ROUTER_VENDORS)[number]['value'];
+export const ROUTER_TRANSPORTS = ['https-pinned', 'https', 'http'] as const;
+export type RouterTransport = (typeof ROUTER_TRANSPORTS)[number];
+export type Delivery = 'active' | 'disabled' | 'out_of_scope' | 'awaiting_certificate' | 'login_paused';
+export type RouterHealth = 'never' | 'ok' | 'unreachable' | 'login_failed' | 'locked_out' | 'certificate' | 'not_authorized' | 'error';
+
+export interface Capability {
+  capability: string;
+  supported: boolean;
+  mechanism?: string;
+  note?: string;
+}
+
+export interface RouterIdentity {
+  vendor: string;
+  model: string;
+  firmware: string;
+  extra?: Record<string, string>;
+}
+
+export interface SiteRouter {
+  id: string;
+  site_id: string;
+  device_id: string | null;
+  name: string;
+  vendor: string;
+  address: string;
+  port: number | null;
+  transport: RouterTransport;
+  pin_sha256: string | null;
+  pinned_at: string | null;
+  enabled: boolean;
+  refresh_interval_seconds: number;
+  status: RouterHealth;
+  last_error: string | null;
+  last_error_kind: string | null;
+  last_checked_at: string | null;
+  last_ok_at: string | null;
+  login_paused: boolean;
+  login_paused_reason: 'bad_credentials' | 'locked_out' | null;
+  login_paused_until: string | null;
+  identity: RouterIdentity | null;
+  capabilities: Capability[] | null;
+  clients_refreshed_at: string | null;
+  client_count: number;
+  credentials: { set: boolean; updated_at: string };
+  in_scope: boolean;
+  delivery: Delivery;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FetchedCertificate {
+  sha256: string;
+  subject: string;
+  issuer: string;
+  not_before: string;
+  not_after: string;
+  self_signed: boolean;
+  expired: boolean;
+  system_trust: boolean;
+}
+
+export interface BlockedEntry {
+  mac: string;
+  name?: string;
+  mechanism: string;
+  owner: 'lan-detective' | 'administrator' | 'unknown';
+  partial?: boolean;
+  detail?: string;
+  managed: boolean;
+}
+
+export interface LedgerEntry {
+  id: string;
+  mac: string;
+  device_id: string | null;
+  mechanism: string | null;
+  pre_existing: boolean;
+  applied_by_email: string | null;
+  applied_at: string;
+  undo: string | null;
+  released_at: string | null;
+  released_by_email: string | null;
+  released_via: 'product' | 'router' | null;
+}
+
+export type RequestAction = 'refresh' | 'fetch_certificate' | 'block' | 'unblock' | 'rate_limit' | 'clear_rate_limit' | 'schedule' | 'clear_schedule';
+
+export interface RouterRequest {
+  id: string;
+  router_id?: string;
+  action: RequestAction;
+  mac: string | null;
+  device_id: string | null;
+  params: Record<string, unknown>;
+  status: 'pending' | 'completed' | 'failed' | 'expired';
+  result: {
+    change?: { action: string; mac: string; mechanism: string; applied: boolean; already_in_effect: boolean; detail: string; undo: string };
+    certificate?: FetchedCertificate;
+    identity?: RouterIdentity | null;
+    clients?: number | null;
+    blocked?: number | null;
+  } | null;
+  error: string | null;
+  error_kind: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface RouterDetail extends SiteRouter {
+  blocked_entries: BlockedEntry[] | null;
+  certificate: { pinned: string | null; pinned_at: string | null; fetched: FetchedCertificate | null; fetched_at: string | null };
+  blocks: LedgerEntry[];
+  recent_requests: RouterRequest[];
+}
+
+export interface RouterClient {
+  mac: string;
+  ip: string | null;
+  hostname: string | null;
+  connection: string;
+  interface: string | null;
+  signal_dbm: number | null;
+  active: boolean | null;
+  lease_source: string | null;
+  lease_remaining_seconds: number | null;
+  blocked: boolean | null;
+  raw: Record<string, string> | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  device_id: string | null;
+  device_label: string | null;
+  device_trust: DeviceTrust | null;
+  ledger: { id: string; pre_existing: boolean; applied_by_email: string | null; applied_at: string } | null;
+  device_link: 'inferred_by_mac' | null;
+}
+
+export interface QueuedRequest {
+  request_id: string;
+  collector?: string;
+  already_pending?: boolean;
+}
+
+export interface DeviceResult {
+  device_id: string;
+  status: 'queued' | 'refused';
+  code?: string;
+  message?: string;
+  request_id?: string;
+}
+
+export interface BlockResponse {
+  router_id: string;
+  action: 'block' | 'unblock';
+  queued: number;
+  results: DeviceResult[];
+}
+
+/** A device as the block dialog names it. */
+export interface DeviceRef {
+  id: string;
+  label: string;
+  ip?: string | null;
+  mac?: string | null;
+}
+
+/** The `router` section of GET /devices/:id/controls. */
+export interface DeviceRouterControls {
+  routers: {
+    router_id: string;
+    name: string;
+    address: string;
+    status: RouterHealth;
+    delivery: Delivery;
+    login_paused: boolean;
+    login_paused_reason: string | null;
+    sees_device:
+      | {
+          ip: string | null;
+          hostname: string | null;
+          connection: string;
+          interface: string | null;
+          signal_dbm: number | null;
+          active: boolean | null;
+          blocked: boolean | null;
+          lease_source: string | null;
+          lease_remaining_seconds: number | null;
+          last_seen_at: string;
+          link: 'inferred_by_mac';
+        }
+      | null;
+    block_state: {
+      state: 'blocked' | 'not_blocked' | 'unknown';
+      by: string | null;
+      applied_by_email: string | null;
+      applied_at: string | null;
+      mechanism: string | null;
+      undo: string | null;
+      router_entries: { mac: string; owner: string; mechanism: string; partial?: boolean; detail?: string }[];
+    };
+    capabilities: Capability[] | null;
+    actions: { block: ControlAction; unblock: ControlAction; rate_limit: ControlAction; schedule: ControlAction };
+  }[];
+  protected: { code: string; message: string } | null;
+  setup: { reason: string; href: string; note: string } | null;
+}

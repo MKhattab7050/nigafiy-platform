@@ -155,6 +155,23 @@ describe('access control API', () => {
     expect(page.setup.status).toMatchObject({ listening: true });
     expect(page.setup.protected_devices).toBe(1);
     expect(page.devices.find((d: any) => d.id === tablet.id)).toMatchObject({ protected: true, queries_24h: 120, blocked_24h: 7 });
+
+    // IP-only client + MAC precedence (tablet MAC with laptop IP resolves to tablet) + invalid-only batch
+    const batch2 = {
+      type: 'dns_stats',
+      ts: new Date().toISOString(),
+      window_start: start.toISOString(),
+      clients: [
+        { ip: '192.168.9.40', mac: '00:0c:29:99:00:30', queries: 10, blocked: 2, top_domains: [] },
+        { ip: '192.168.9.40', queries: 15, blocked: 1, top_domains: [] },
+      ],
+    };
+    expect((await telemetry(c, [batch2])).body).toMatchObject({ accepted: 1, rejected: [] });
+    expect((await a.agent.get(`/api/v1/devices/${tablet.id}/activity?hours=24`)).body).toMatchObject({ queries: 130, blocked: 9 });
+    expect((await telemetry(c, [{ ...batch2, clients: [{ ip: 'not-an-ip', queries: 1, blocked: 0, top_domains: [] }] }])).body).toMatchObject({
+      accepted: 1,
+      rejected: [],
+    });
   });
 
   it('enforces roles and tenant isolation', async () => {

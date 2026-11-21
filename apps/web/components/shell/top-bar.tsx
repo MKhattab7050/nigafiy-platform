@@ -1,0 +1,327 @@
+'use client';
+
+import { Download, FileBarChart2, Menu, Printer, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import type { SearchHit, SearchHitKind, SearchResponse, SummaryReport } from '@lan-detective/shared-types';
+import { type ApiError, api, qs } from '@/lib/api';
+import { useApp } from '@/lib/app';
+import { ms, pct } from '@/lib/format';
+import { type Key, useI18n } from '@/lib/i18n';
+import { Logo } from '../logo';
+import { Badge, Button, Card, ErrorNote, Fact, Input, Modal, Select, SkeletonBlock } from '../ui';
+import { ThemeSwitch } from './theme-switch';
+
+const SEARCH_GROUPS: SearchHitKind[] = ['device', 'endpoint', 'incident', 'switch', 'subnet', 'scope', 'router'];
+
+/** Site selector, global search, executive summary report, live indicator, theme and language: identical on every page. */
+export function TopBar({ onMenu }: { onMenu: () => void }) {
+  const router = useRouter();
+  const { t, locale, setLocale } = useI18n();
+  const { sites, siteId, setSiteId, live } = useApp();
+
+  // Global search modal state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [queryText, setQueryText] = useState('');
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<ApiError | null>(null);
+
+  // Executive summary report modal state
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportDays, setReportDays] = useState<number>(7);
+  const [report, setReport] = useState<SummaryReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<ApiError | null>(null);
+
+  // Debounced search query
+  useEffect(() => {
+    if (!searchOpen) return;
+    const q = queryText.trim();
+    if (!q) {
+      setSearchHits([]);
+      setSearching(false);
+      setSearchError(null);
+      return;
+    }
+    let active = true;
+    setSearching(true);
+    setSearchError(null);
+    const timer = setTimeout(() => {
+      api<SearchResponse>(`/search${qs({ q, site_id: siteId })}`)
+        .then((res) => {
+          if (active) setSearchHits(res.items);
+        })
+        .catch((err) => {
+          if (active) setSearchError(err as ApiError);
+        })
+        .finally(() => {
+          if (active) setSearching(false);
+        });
+    }, 220);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [queryText, siteId, searchOpen]);
+
+  // Fetch summary report when opened or days/site changes
+  useEffect(() => {
+    if (!reportOpen) return;
+    let active = true;
+    setReportLoading(true);
+    setReportError(null);
+    api<SummaryReport>(`/reports/summary${qs({ days: reportDays, site_id: siteId })}`)
+      .then((res) => {
+        if (active) setReport(res);
+      })
+      .catch((err) => {
+        if (active) setReportError(err as ApiError);
+      })
+      .finally(() => {
+        if (active) setReportLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reportOpen, reportDays, siteId]);
+
+  function downloadReportJson() {
+    if (!report) return;
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lan-detective-summary-${report.days}d.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-bg px-3 sm:gap-3 sm:px-4 lg:px-6">
+      <button
+        type="button"
+        className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-muted hover:bg-raised hover:text-fg lg:hidden"
+        onClick={onMenu}
+        aria-label={t('top.menu')}
+      >
+        <Menu className="size-5" aria-hidden />
+      </button>
+      <div className="hidden sm:block lg:hidden">
+        <Logo compact />
+      </div>
+      <div className="min-w-0 max-w-48 flex-1 sm:w-44 sm:flex-none">
+        <Select aria-label={t('common.site')} value={siteId ?? ''} onChange={(e) => setSiteId(e.target.value || null)} className="h-8">
+          <option value="">{t('top.allSites')}</option>
+          {sites.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      {/* Global Search trigger */}
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        className="flex h-8 min-w-0 max-w-64 flex-1 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-sunken px-2.5 text-xs text-muted transition-colors hover:border-faint/60 hover:text-fg"
+        aria-label={t('top.searchTitle')}
+      >
+        <Search className="size-3.5 shrink-0 text-faint" aria-hidden />
+        <span className="truncate">{t('top.searchPlaceholder')}</span>
+      </button>
+
+      <div className="ms-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
+        <Button size="sm" variant="secondary" onClick={() => setReportOpen(true)}>
+          <FileBarChart2 className="size-3.5" aria-hidden />
+          <span className="max-md:sr-only">{t('top.reportBtn')}</span>
+        </Button>
+
+        <span className="flex items-center gap-1.5 text-xs text-muted" role="status" title={live ? t('top.live') : t('top.reconnecting')}>
+          <span className="relative flex size-2">
+            {live && <span className="absolute inset-0 animate-ping rounded-full bg-ok/50 [animation-duration:2.4s]" aria-hidden />}
+            <span className={`relative size-2 rounded-full ${live ? 'bg-ok' : 'bg-warn'}`} aria-hidden />
+          </span>
+          <span className="max-sm:sr-only">{live ? t('top.live') : t('top.reconnecting')}</span>
+        </span>
+        <ThemeSwitch />
+        <button
+          type="button"
+          onClick={() => {
+            const next = locale === 'en' ? 'ar' : 'en';
+            setLocale(next);
+            void api('/auth/me', { method: 'PATCH', body: { locale: next } }).catch(() => undefined);
+          }}
+          className="h-8 rounded-[var(--radius-control)] border border-line-strong px-2.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-fg"
+          aria-label={t('settings.language')}
+          lang={locale === 'en' ? 'ar' : 'en'}
+        >
+          {locale === 'en' ? 'العربية' : 'English'}
+        </button>
+      </div>
+
+      {/* Global Search Modal */}
+      {searchOpen && (
+        <Modal title={t('top.searchTitle')} onClose={() => setSearchOpen(false)} wide>
+          <div className="space-y-4">
+            <Input
+              autoFocus
+              type="search"
+              placeholder={t('top.searchPlaceholder')}
+              aria-label={t('top.searchTitle')}
+              value={queryText}
+              onChange={(e) => setQueryText(e.target.value)}
+            />
+            {searchError && <ErrorNote error={searchError} />}
+            {searching ? (
+              <SkeletonBlock lines={4} />
+            ) : queryText.trim() && searchHits.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-muted">{t('top.searchEmpty')}</p>
+            ) : (
+              <div className="space-y-4">
+                {SEARCH_GROUPS.map((kind) => {
+                  const group = searchHits.filter((h) => h.kind === kind);
+                  if (!group.length) return null;
+                  return (
+                    <div key={kind}>
+                      <p className="mb-1.5 text-xs font-semibold text-muted">{t(`top.searchKind.${kind}` as Key)}</p>
+                      <ul className="divide-y divide-line rounded-md border border-line">
+                        {group.map((hit) => (
+                          <li key={`${hit.kind}-${hit.id}`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSearchOpen(false);
+                                router.push(hit.href);
+                              }}
+                              className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2 text-start text-[13px] hover:bg-raised"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-fg" dir="auto">
+                                  {hit.title}
+                                </p>
+                                {hit.subtitle && (
+                                  <p className="mono truncate text-xs text-muted" dir="ltr">
+                                    {hit.subtitle}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {hit.site_name && (
+                                  <Badge tone="idle" dot={false}>
+                                    {hit.site_name}
+                                  </Badge>
+                                )}
+                                {hit.status && (
+                                  <Badge
+                                    tone={
+                                      hit.status === 'online' || hit.status === 'ok' || hit.status === 'enabled'
+                                        ? 'ok'
+                                        : hit.status === 'offline' || hit.status === 'down' || hit.status === 'error'
+                                          ? 'crit'
+                                          : 'info'
+                                    }
+                                  >
+                                    {hit.status}
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Executive Summary Report Modal */}
+      {reportOpen && (
+        <Modal title={t('top.reportTitle')} onClose={() => setReportOpen(false)} wide>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted">{t('top.reportDays')}:</span>
+                <Select
+                  aria-label={t('top.reportDays')}
+                  value={String(reportDays)}
+                  onChange={(e) => setReportDays(Number(e.target.value))}
+                  className="h-8 w-28"
+                >
+                  <option value="7">7d</option>
+                  <option value="14">14d</option>
+                  <option value="30">30d</option>
+                  <option value="90">90d</option>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" disabled={!report} onClick={downloadReportJson}>
+                  <Download className="size-3.5" aria-hidden />
+                  {t('top.reportJson')}
+                </Button>
+                <Button size="sm" variant="secondary" disabled={!report} onClick={() => window.print()}>
+                  <Printer className="size-3.5" aria-hidden />
+                  {t('top.reportPrint')}
+                </Button>
+              </div>
+            </div>
+
+            {reportError && <ErrorNote error={reportError} />}
+            {reportLoading || !report ? (
+              <SkeletonBlock lines={6} />
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Card title={t('nav.devices')}>
+                  <dl>
+                    <Fact label={t('status.online')}>
+                      {report.devices.online} / {report.devices.total}
+                    </Fact>
+                    <Fact label={t('status.offline')}>{report.devices.offline}</Fact>
+                    <Fact label={t('severity.critical')}>{report.devices.critical}</Fact>
+                  </dl>
+                </Card>
+
+                <Card title={t('nav.monitoring')}>
+                  <dl>
+                    <Fact label={t('top.reportAvailability')}>{pct(report.checks.availability_pct)}</Fact>
+                    <Fact label={t('top.reportAvgLatency')}>{ms(report.checks.avg_latency_ms)}</Fact>
+                    <Fact label={t('state.ok')}>
+                      {report.checks.ok} / {report.checks.total}
+                    </Fact>
+                  </dl>
+                </Card>
+
+                <Card title={t('nav.incidents')}>
+                  <dl>
+                    <Fact label={t('nav.openIncidents')}>{report.incidents.active}</Fact>
+                    <Fact label={t('chart.count')}>{report.incidents.total_in_window}</Fact>
+                    <Fact label={t('top.reportMttr')}>
+                      {report.incidents.mttr_minutes !== null ? `${report.incidents.mttr_minutes} min` : '—'}
+                    </Fact>
+                  </dl>
+                </Card>
+
+                <Card title={t('nav.endpoints')}>
+                  <dl>
+                    <Fact label={t('status.online')}>
+                      {report.endpoints.online} / {report.endpoints.total}
+                    </Fact>
+                    <Fact label={t('dash.compliance')}>{report.endpoints.compliant}</Fact>
+                    <Fact label={t('top.reportIpamUtil')}>{pct(report.ipam.utilization_pct)}</Fact>
+                  </dl>
+                </Card>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </header>
+  );
+}

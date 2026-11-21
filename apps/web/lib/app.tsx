@@ -11,6 +11,7 @@ type Listener = (topic: Topic) => void;
 
 interface AppState {
   me: Me;
+  reloadMe: () => void;
   sites: Site[];
   reloadSites: () => void;
   /** null = all sites */
@@ -23,6 +24,20 @@ interface AppState {
 }
 
 const RANK: Record<Role, number> = { viewer: 0, technician: 1, admin: 2, owner: 3 };
+
+/** True when `role` is at least `min`. */
+export const hasRole = (role: Role, min: Role): boolean => RANK[role] >= RANK[min];
+
+// Identical GETs issued at the same moment (e.g. two dashboard widgets reading /overview) share one request.
+const inflight = new Map<string, Promise<unknown>>();
+function sharedGet<T>(path: string): Promise<T> {
+  let p = inflight.get(path);
+  if (!p) {
+    p = api<T>(path).finally(() => inflight.delete(path));
+    inflight.set(path, p);
+  }
+  return p as Promise<T>;
+}
 const Ctx = createContext<AppState | null>(null);
 
 export function useApp(): AppState {
@@ -47,8 +62,15 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
       .catch(() => undefined);
   }, []);
 
+  const reloadMe = useCallback(() => {
+    api<Me>('/auth/me')
+      .then((m) => setMe(m))
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     api<Me>('/auth/me')
       .then((m) => {
         if (cancelled) return;
@@ -61,10 +83,11 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
       .catch((err) => {
         if (cancelled) return;
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) router.replace('/login');
-        else setTimeout(() => window.location.reload(), 5000); // server unreachable: retry
+        else retryTimer = setTimeout(() => window.location.reload(), 5000); // server unreachable: retry
       });
     return () => {
       cancelled = true;
+      clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -95,6 +118,7 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
     if (!me) return null;
     return {
       me,
+      reloadMe,
       sites,
       reloadSites,
       siteId,
@@ -108,19 +132,19 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
         listeners.current.add(listener);
         return () => void listeners.current.delete(listener);
       },
-      can: (min) => RANK[me.role] >= RANK[min],
+      can: (min) => hasRole(me.role, min),
       signOut: async () => {
         await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
         window.location.href = '/login';
       },
     };
-  }, [me, sites, siteId, live, reloadSites]);
+  }, [me, reloadMe, sites, siteId, live, reloadSites]);
 
   if (!value) return <>{fallback}</>;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
-interface Query<T> {
+export interface Query<T> {
   data: T | undefined;
   error: ApiError | null;
   loading: boolean;
@@ -133,14 +157,14 @@ interface Query<T> {
  */
 export function useQuery<T>(path: string | null, topics: Topic[] = [], refreshMs = 30_000): Query<T> {
   const { subscribe } = useApp();
-  const [state, setState] = useState<{ data?: T; error: ApiError | null; loading: boolean; path: string | null }>({ error: null, loading: true, path });
+  const [state, setState] = useState<{ data?: T; error: ApiError | null; loading: boolean; path: string | null }>({ error: null, loading: Boolean(path), path });
   const seq = useRef(0);
   const topicKey = topics.join(',');
 
   const load = useCallback(() => {
     if (!path) return;
     const mine = ++seq.current;
-    api<T>(path)
+    sharedGet<T>(path)
       .then((data) => mine === seq.current && setState({ data, error: null, loading: false, path }))
       .catch((error: ApiError) => {
         if (mine !== seq.current) return;
@@ -151,22 +175,26 @@ export function useQuery<T>(path: string | null, topics: Topic[] = [], refreshMs
   }, [path]);
 
   useEffect(() => {
-    if (!path) return;
+    if (!path) {
+      setState({ data: undefined, error: null, loading: false, path: null });
+      return;
+    }
     setState((s) => (s.path === path ? s : { data: undefined, error: null, loading: true, path }));
     load();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribe((topic) => {
+      if (document.visibilityState === 'hidden') return;
       if (!topicKey.split(',').includes(topic)) return;
       clearTimeout(timer);
-      timer = setTimeout(load, 400);
+      timer = setTimeout(load, 350 + Math.floor(Math.random() * 200));
     });
-    const interval = setInterval(() => document.visibilityState === 'visible' && load(), refreshMs);
+    const interval = refreshMs > 0 ? setInterval(() => document.visibilityState === 'visible' && load(), refreshMs) : null;
     return () => {
       unsubscribe();
       clearTimeout(timer);
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     };
   }, [path, load, subscribe, topicKey, refreshMs]);
 
-  return { data: state.path === path ? state.data : undefined, error: state.error, loading: state.loading || state.path !== path, reload: load };
+  return { data: path && state.path === path ? state.data : undefined, error: path ? state.error : null, loading: path ? state.loading || state.path !== path : false, reload: load };
 }

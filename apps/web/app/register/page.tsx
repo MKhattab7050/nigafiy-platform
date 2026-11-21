@@ -1,4 +1,4 @@
-import { AuthForm } from '@/components/auth-form';
+import { AuthForm } from '@/features/auth';
 
 export const metadata = { title: 'Create account' };
 

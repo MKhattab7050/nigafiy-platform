@@ -52,8 +52,8 @@ func TestParseProcARP(t *testing.T) {
 	if len(n) != 2 || n["192.168.1.1"].MAC != "00:11:22:33:44:55" || n["192.168.1.20"].MAC != "aa:bb:cc:dd:ee:02" {
 		t.Errorf("unexpected: %v", n)
 	}
-	if n["192.168.1.1"].Reachable {
-		t.Errorf("/proc/net/arp carries no freshness; entries must not be marked reachable")
+	if !n["192.168.1.1"].Reachable || !n["192.168.1.20"].Reachable {
+		t.Errorf("completed /proc/net/arp entries must be marked reachable")
 	}
 }
 
@@ -68,12 +68,12 @@ func TestParseStateTable(t *testing.T) {
 func TestParseArpA(t *testing.T) {
 	mac := "? (192.168.1.1) at 0:11:22:33:44:55 on en0 ifscope [ethernet]\n? (192.168.1.50) at (incomplete) on en0 ifscope [ethernet]\n? (192.168.1.255) at ff:ff:ff:ff:ff:ff on en0 ifscope [ethernet]\n"
 	n := ParseArpA(mac)
-	if len(n) != 1 || n["192.168.1.1"].MAC != "00:11:22:33:44:55" {
+	if len(n) != 1 || n["192.168.1.1"].MAC != "00:11:22:33:44:55" || !n["192.168.1.1"].Reachable {
 		t.Errorf("macOS: unexpected %v", n)
 	}
 	win := "\r\nInterface: 192.168.1.23 --- 0x8\r\n  Internet Address      Physical Address      Type\r\n  192.168.1.1           00-11-22-33-44-55     dynamic\r\n  192.168.1.255         ff-ff-ff-ff-ff-ff     static\r\n"
 	n = ParseArpA(win)
-	if len(n) != 1 || n["192.168.1.1"].MAC != "00:11:22:33:44:55" {
+	if len(n) != 1 || n["192.168.1.1"].MAC != "00:11:22:33:44:55" || !n["192.168.1.1"].Reachable {
 		t.Errorf("windows: unexpected %v", n)
 	}
 }
@@ -83,7 +83,7 @@ func TestGatewayParsers(t *testing.T) {
 	if gw := ParseProcRoute(proc); gw != "192.168.1.1" {
 		t.Errorf("ParseProcRoute = %q", gw)
 	}
-	win := "IPv4 Route Table\r\n===========\r\nActive Routes:\r\nNetwork Destination        Netmask          Gateway       Interface  Metric\r\n          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.23     25\r\n        127.0.0.0        255.0.0.0         On-link         127.0.0.1    331\r\n"
+	win := "IPv4 Route Table\r\n===========\r\nActive Routes:\r\nNetwork Destination        Netmask          Gateway       Interface  Metric\r\n          0.0.0.0          0.0.0.0     192.168.50.1    192.168.50.23     50\r\n          0.0.0.0          0.0.0.0      192.168.1.1     192.168.1.23     25\r\n        127.0.0.0        255.0.0.0         On-link         127.0.0.1    331\r\n"
 	if gw := ParseRoutePrint(win); gw != "192.168.1.1" {
 		t.Errorf("ParseRoutePrint = %q", gw)
 	}

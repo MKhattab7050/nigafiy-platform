@@ -4,20 +4,30 @@ import type { NetworkScope, Site } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { validateScope } from '../../common/net.ts';
+import { timeZoneSchema } from '../../common/timezone.ts';
 import { systemPool, withTenant } from '../../infrastructure/db.ts';
-import { notifyRealtime } from '../events/emit.ts';
-import { createDefaultChecks } from '../monitoring/defaults.ts';
+import { createDefaultChecks } from '../monitoring/index.ts';
+import { notifyRealtime } from '../realtime/index.ts';
+import { suggestScopes } from './scope-suggestions.ts';
 
 export const sitesRouter: Router = Router();
 
 const SITE_COLUMNS = `id, name, timezone, discovery_interval_seconds, created_at`;
 const SCOPE_COLUMNS = `id, site_id, cidr::text AS cidr, label, enabled, authorized_by_name, authorized_at, last_run_finished_at`;
 
-const siteInput = z.object({
+const siteFields = {
   name: z.string().trim().min(1).max(80),
-  timezone: z.string().trim().min(1).max(64).default('UTC'),
-  discovery_interval_seconds: z.number().int().min(60).max(86400).default(300),
+  // IANA zone (validated, stored canonically). Bedtimes and other local times of the site are evaluated in it.
+  timezone: timeZoneSchema,
+  discovery_interval_seconds: z.number().int().min(60).max(86400),
+};
+const siteInput = z.object({
+  ...siteFields,
+  timezone: siteFields.timezone.default('UTC'),
+  discovery_interval_seconds: siteFields.discovery_interval_seconds.default(300),
 });
+// No defaults here: a field left out of a PATCH keeps its stored value (defaults inside .partial() would reset it).
+const sitePatch = z.object(siteFields).partial();
 
 sitesRouter.get('/sites', async (req, res) => {
   const ctx = auth(req);
@@ -44,7 +54,7 @@ sitesRouter.post('/sites', requireRole('admin'), async (req, res) => {
 sitesRouter.patch('/sites/:id', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  const body = parse(siteInput.partial(), req.body);
+  const body = parse(sitePatch, req.body);
   const site = await withTenant(ctx.organizationId, async (db) => {
     const updated = await db.query<Site>(
       `UPDATE sites SET name = coalesce($2, name), timezone = coalesce($3, timezone),
@@ -131,4 +141,14 @@ sitesRouter.delete('/scopes/:id', requireRole('admin'), async (req, res) => {
     await audit(db, req, 'scope.removed', { type: 'network_scope', id }, { cidr: deleted.rows[0].cidr });
   });
   res.status(204).end();
+});
+
+/**
+ * Networks the site's collectors are attached to that no scope covers yet. Suggestions only:
+ * authorizing one is still POST /sites/:id/scopes with authorization_confirmed (admin).
+ */
+sitesRouter.get('/sites/:id/scope-suggestions', async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  res.json(await suggestScopes(ctx.organizationId, id));
 });

@@ -75,7 +75,9 @@ func (a *Agent) snmpLoop(ctx context.Context) {
 			continue
 		case <-tick.C:
 		}
-		for _, t := range a.snmpTargets() {
+		targets := a.snmpTargets()
+		pruneSNMPState(targets, last, &refusedMu, refused)
+		for _, t := range targets {
 			interval := clamp(t.IntervalSeconds, minSNMPInterval, 5*time.Minute)
 			if time.Since(last[t.ID]) < interval {
 				continue
@@ -125,5 +127,51 @@ func (a *Agent) pollSNMP(ctx context.Context, t snmp.Target) {
 			"duration", time.Since(started).Round(time.Millisecond).String())
 	}
 	a.enqueue(item)
+	if err == nil {
+		if v := vlanItem(t.ID, res); v != nil {
+			a.enqueue(v)
+		}
+	}
 	a.wakeUploader()
+}
+
+// vlanItem: the VLAN picture of a successful read (port control), as its own telemetry item so a
+// server that does not know it rejects only this item, never the port read itself. Nil when the
+// switch exposes no VLAN tables and no sysObjectID.
+func vlanItem(targetID string, res *snmp.Result) map[string]any {
+	if len(res.VLANs) == 0 && len(res.PortVLANs) == 0 && res.SysObjectID == "" {
+		return nil
+	}
+	item := map[string]any{"type": "switch_vlans", "ts": time.Now().UTC().Add(time.Millisecond), "target_id": targetID,
+		"vlans": orEmpty(res.VLANs), "ports": orEmpty(res.PortVLANs), "methods": orEmpty(res.WriteMethods)}
+	if res.SysObjectID != "" {
+		item["sys_object_id"] = res.SysObjectID
+	}
+	return item
+}
+
+func orEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+func pruneSNMPState(targets []snmp.Target, last map[string]time.Time, refusedMu *sync.Mutex, refused map[string]bool) {
+	active := make(map[string]bool, len(targets))
+	for _, t := range targets {
+		active[t.ID] = true
+	}
+	for id := range last {
+		if !active[id] {
+			delete(last, id)
+		}
+	}
+	refusedMu.Lock()
+	for id := range refused {
+		if !active[id] {
+			delete(refused, id)
+		}
+	}
+	refusedMu.Unlock()
 }

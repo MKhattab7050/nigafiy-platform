@@ -1,6 +1,7 @@
-// Package sim is a tiny read-only SNMP v2c agent that plays a managed switch. It exists for tests
-// and for looking at Port Detective without hardware (cmd/snmp-sim). It is never started by the
-// collector itself.
+// Package sim is a tiny SNMP v2c agent that plays a managed switch. It exists for tests and for
+// looking at Port Detective without hardware (cmd/snmp-sim). It is never started by the collector
+// itself. It is read-only unless a write community is set; then it accepts SET only on the OIDs
+// registered with Writable (see write.go).
 package sim
 
 import (
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gosnmp/gosnmp"
 )
@@ -20,11 +22,22 @@ type entry struct {
 	value any
 }
 
-// Agent serves a fixed OID tree.
+// Agent serves an OID tree.
 type Agent struct {
 	Community string
-	entries   []entry
-	conn      net.PacketConn
+	// WriteCommunity enables SET (only on Writable OIDs). Empty: read-only.
+	WriteCommunity string
+	// IgnoreSets: answer SETs with success without changing anything (a switch that silently
+	// ignores writes; read-back must catch it).
+	IgnoreSets bool
+	// RejectSet, when it returns non-zero for an OID, fails a SET on it with that error status.
+	RejectSet func(oid string) gosnmp.SNMPError
+
+	mu       sync.Mutex
+	entries  []entry
+	writable []string
+	sets     []string
+	conn     net.PacketConn
 }
 
 func parse(oid string) []int {
@@ -46,7 +59,19 @@ func less(a, b []int) bool {
 }
 
 func (a *Agent) Set(oid string, typ gosnmp.Asn1BER, value any) {
-	a.entries = append(a.entries, entry{oid: parse(oid), name: "." + strings.TrimPrefix(oid, "."), typ: typ, value: value})
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	name := "." + strings.TrimPrefix(oid, ".")
+	for i := range a.entries {
+		if a.entries[i].name == name {
+			a.entries[i].typ, a.entries[i].value = typ, value
+			return
+		}
+	}
+	a.entries = append(a.entries, entry{oid: parse(oid), name: name, typ: typ, value: value})
+	if a.conn != nil {
+		sort.Slice(a.entries, func(i, j int) bool { return less(a.entries[i].oid, a.entries[j].oid) })
+	}
 }
 
 func (a *Agent) Str(oid, v string)        { a.Set(oid, gosnmp.OctetString, []byte(v)) }
@@ -102,10 +127,11 @@ func (a *Agent) serve() {
 			return
 		}
 		req, err := dec.SnmpDecodePacket(buf[:n])
-		if err != nil || req.Community != a.Community {
+		if err != nil || (req.Community != a.Community && (a.WriteCommunity == "" || req.Community != a.WriteCommunity)) {
 			continue // like a real agent: wrong community gets silence
 		}
 		resp := &gosnmp.SnmpPacket{Version: gosnmp.Version2c, Community: req.Community, PDUType: gosnmp.GetResponse, RequestID: req.RequestID}
+		a.mu.Lock()
 		end := func(name string) gosnmp.SnmpPDU {
 			return gosnmp.SnmpPDU{Name: name, Type: gosnmp.EndOfMibView, Value: nil}
 		}
@@ -141,9 +167,13 @@ func (a *Agent) serve() {
 					cur = e.name
 				}
 			}
+		case gosnmp.SetRequest:
+			a.handleSet(req, resp)
 		default:
-			continue // read-only: SET and everything else is ignored
+			a.mu.Unlock()
+			continue // everything else is ignored
 		}
+		a.mu.Unlock()
 		out, err := resp.MarshalMsg()
 		if err != nil {
 			continue

@@ -1,23 +1,14 @@
 import { z } from 'zod';
 import { isIPv4 } from '../../common/net.ts';
 
-// Universal Endpoint Agent & Mobile/MDM protocol schema — strict validation on every field.
+// Endpoint agent protocol schema (Windows, Linux, macOS) — strict validation on every field.
 
 const ipv4 = z.string().max(15).refine(isIPv4, 'must be an IPv4 address');
 const mac = z.string().regex(/^[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}$/, 'must be a MAC address');
 // eslint-disable-next-line no-control-regex
 const cleanText = (max: number) => z.string().min(1).max(max).regex(/^[^\u0000-\u001f\u007f]*$/, 'control characters are not allowed');
 
-export const platformEnum = z.enum(['windows', 'linux', 'macos', 'android', 'ios']);
-export const managementModeEnum = z.enum([
-  'agent',
-  'android_device_owner',
-  'android_work_profile',
-  'android_companion',
-  'ios_supervised_mdm',
-  'ios_byod_mdm',
-  'macos_mdm',
-]);
+export const platformEnum = z.enum(['windows', 'linux', 'macos']);
 
 export const securityPostureSchema = z
   .object({
@@ -27,13 +18,6 @@ export const securityPostureSchema = z
     pending_updates: z.number().int().min(0).max(10_000).optional(),
     last_update_date: z.string().max(40).optional(),
     os_build: z.string().max(60).optional(),
-    supervised: z.boolean().optional(),
-    device_owner: z.boolean().optional(),
-    work_profile: z.boolean().optional(),
-    passcode_compliant: z.boolean().optional(),
-    rooted_or_jailbroken: z.boolean().optional(),
-    screen_recording_granted: z.boolean().optional(),
-    accessibility_granted: z.boolean().optional(),
   })
   .strict();
 
@@ -41,15 +25,6 @@ export const endpointPolicySchema = z
   .object({
     allowed_fs_roots: z.array(cleanText(260)).max(20).optional(),
     remote_desktop_consent: z.enum(['unattended', 'prompt']).optional(),
-    passcode_required: z.boolean().optional(),
-    min_passcode_length: z.number().int().min(4).max(16).optional(),
-    camera_disabled: z.boolean().optional(),
-    usb_file_transfer_blocked: z.boolean().optional(),
-    wifi_ssid: cleanText(64).optional(),
-    wifi_security: z.enum(['WPA2', 'WPA3', 'EAP']).optional(),
-    vpn_name: cleanText(80).optional(),
-    vpn_server: cleanText(160).optional(),
-    managed_apps: z.array(cleanText(160)).max(100).optional(),
   })
   .strict();
 
@@ -60,14 +35,12 @@ export const agentEnrollSchema = z
     agent_version: cleanText(40).optional(),
     version: cleanText(40).optional(),
     platform: platformEnum.optional(),
-    management_mode: managementModeEnum.optional(),
     os: cleanText(40),
     os_version: cleanText(120).optional(),
     arch: cleanText(40).default('amd64'),
     manufacturer: cleanText(120).optional(),
     model: cleanText(120).optional(),
     serial_number: cleanText(120).optional(),
-    security_patch_level: cleanText(40).optional(),
     cpu_model: cleanText(160).optional(),
     cpu_cores: z.number().int().min(1).max(1024).optional(),
     ram_total_mb: z.number().int().min(1).max(16_777_216).optional(),
@@ -157,16 +130,12 @@ export const agentHeartbeatSchema = z
     version: cleanText(40).optional(),
     hostname: cleanText(253),
     platform: platformEnum.optional(),
-    management_mode: managementModeEnum.optional(),
     os: cleanText(40),
     os_version: cleanText(120).optional(),
     arch: cleanText(40).default('amd64'),
     manufacturer: cleanText(120).optional(),
     model: cleanText(120).optional(),
     serial_number: cleanText(120).optional(),
-    security_patch_level: cleanText(40).optional(),
-    battery_pct: z.number().min(0).max(100).optional(),
-    battery_charging: z.boolean().optional(),
     cpu_model: cleanText(160).optional(),
     cpu_cores: z.number().int().min(1).max(1024).optional(),
     ram_total_mb: z.number().int().min(1).max(16_777_216).optional(),
@@ -201,6 +170,18 @@ export const agentInventorySchema = z
   })
   .strict();
 
+/** POST /api/v1/agent/command-result: results delivered as soon as a command finishes. */
+export const agentCommandResultsSchema = z
+  .object({
+    command_results: z.array(commandResultSchema).min(1).max(50),
+  })
+  .strict();
+
+export type AgentEnroll = z.infer<typeof agentEnrollSchema>;
+export type AgentHeartbeat = z.infer<typeof agentHeartbeatSchema>;
+export type AgentInventory = z.infer<typeof agentInventorySchema>;
+export type CommandResult = z.infer<typeof commandResultSchema>;
+
 export interface EndpointContext {
   id: string;
   organizationId: string;
@@ -208,6 +189,27 @@ export interface EndpointContext {
   deviceId: string | null;
   name: string;
   platform: z.infer<typeof platformEnum>;
-  managementMode: z.infer<typeof managementModeEnum>;
   connectionState: 'never' | 'online' | 'offline';
 }
+
+// ── User-facing API (/api/v1/endpoints/*) ───────────────────────────────────
+
+export const endpointListQuery = z.object({
+  site_id: z.uuid().optional(),
+  device_id: z.uuid().optional(),
+  platform: platformEnum.optional(),
+  compliance_status: z.enum(['compliant', 'non_compliant', 'attention', 'unknown']).optional(),
+});
+
+export const endpointCreateSchema = z
+  .object({
+    site_id: z.uuid(),
+    name: z.string().trim().min(1).max(80),
+    platform: platformEnum.default('windows'),
+    device_id: z.uuid().nullable().optional(),
+  })
+  .strict();
+export type EndpointCreate = z.infer<typeof endpointCreateSchema>;
+
+export const seriesQuery = z.object({ range: z.enum(['15m', '1h', '24h', '7d', '30d']).default('1h') });
+export type SeriesRange = z.infer<typeof seriesQuery>['range'];

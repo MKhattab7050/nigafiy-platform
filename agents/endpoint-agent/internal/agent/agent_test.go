@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -127,6 +130,119 @@ func TestEndpointAgentLifecycleAndCommands(t *testing.T) {
 	defer mu.Unlock()
 	if enrolled != 1 || inventories < 1 || len(lastResults) != 1 || lastResults[0].ID != "cmd-1" || !lastResults[0].OK {
 		t.Fatalf("unexpected state: enrolled=%d inventories=%d results=%+v", enrolled, inventories, lastResults)
+	}
+}
+
+func formatColonPin(sum []byte) string {
+	h := strings.ToUpper(hex.EncodeToString(sum))
+	var parts []string
+	for i := 0; i < len(h); i += 2 {
+		parts = append(parts, h[i:i+2])
+	}
+	return strings.Join(parts, ":")
+}
+
+func TestEndpointAgentTLSPinning(t *testing.T) {
+	var enrollPayload, hbPayload map[string]any
+	var mu sync.Mutex
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/v1/agent/enroll":
+			_ = json.NewDecoder(r.Body).Decode(&enrollPayload)
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"endpoint_id": "ep-tls",
+				"credential":  "lda_ep-tls.secret",
+			})
+		case "/api/v1/agent/heartbeat":
+			_ = json.NewDecoder(r.Body).Decode(&hbPayload)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"heartbeat_interval_seconds": 10,
+				"commands":                   []any{},
+			})
+		default:
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}
+	}))
+	defer srv.Close()
+
+	leafSum := sha256.Sum256(srv.Certificate().Raw)
+	colonPin := formatColonPin(leafSum[:])
+	wrongPin := strings.Repeat("00", 32)
+
+	deps := Deps{
+		CollectHealth: func(_ context.Context, _ time.Time) sysinfo.Health {
+			// RAMTotalMB intentionally 0 to verify it is omitted when unmeasured
+			return sysinfo.Health{
+				Hostname:      "unmeasured-ram-host",
+				OS:            "linux",
+				Arch:          "amd64",
+				CPUCores:      4,
+				RAMTotalMB:    0,
+				LoggedInUsers: []string{},
+			}
+		},
+		CollectInventory: func(_ context.Context) sysinfo.Inventory {
+			return sysinfo.Inventory{}
+		},
+		ExecuteCommand: func(_ context.Context, cmd control.Command) control.Result {
+			return control.Result{ID: cmd.ID, OK: true}
+		},
+	}
+
+	// 1. Wrong pin must fail TLS handshake.
+	badCfg := &config.Config{
+		ServerURL:       srv.URL,
+		EnrollmentToken: "ldea_test-token-01234567890123456789",
+		StateDir:        t.TempDir(),
+		TLSPinSHA256:    wrongPin,
+		LogLevel:        "error",
+	}
+	if err := badCfg.Validate(); err != nil {
+		t.Fatalf("expected valid config with 64-hex pin: %v", err)
+	}
+	badAgent, err := New(badCfg, deps, slog.New(slog.NewTextHandler(io.Discard, nil)), "0.1.0-test", DefaultTuning())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := badAgent.ensureEnrolled(context.Background()); err == nil || !strings.Contains(err.Error(), "tls pin mismatch") {
+		t.Fatalf("expected tls pin mismatch error, got %v", err)
+	}
+
+	// 2. Matching colon-separated pin must succeed against self-signed TLS server.
+	goodCfg := &config.Config{
+		ServerURL:       srv.URL,
+		EnrollmentToken: "ldea_test-token-01234567890123456789",
+		StateDir:        t.TempDir(),
+		TLSPinSHA256:    colonPin,
+		LogLevel:        "error",
+	}
+	if err := goodCfg.Validate(); err != nil {
+		t.Fatalf("expected valid config with colon-separated pin: %v", err)
+	}
+	goodAgent, err := New(goodCfg, deps, slog.New(slog.NewTextHandler(io.Discard, nil)), "0.1.0-test", DefaultTuning())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := goodAgent.ensureEnrolled(context.Background()); err != nil {
+		t.Fatalf("expected enrollment over pinned TLS to succeed, got %v", err)
+	}
+	attempt := 0
+	_ = goodAgent.heartbeatOnce(context.Background(), &attempt)
+	if attempt != 0 {
+		t.Fatalf("expected heartbeat over pinned TLS to succeed, attempt=%d", attempt)
+	}
+
+	// 3. Verify ram_total_mb was omitted when RAMTotalMB == 0.
+	mu.Lock()
+	defer mu.Unlock()
+	if _, present := enrollPayload["ram_total_mb"]; present {
+		t.Fatalf("expected ram_total_mb to be omitted from enroll payload when 0, got %+v", enrollPayload)
+	}
+	if _, present := hbPayload["ram_total_mb"]; present {
+		t.Fatalf("expected ram_total_mb to be omitted from heartbeat payload when 0, got %+v", hbPayload)
 	}
 }
 

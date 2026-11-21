@@ -13,7 +13,7 @@ import { logger } from './logger.ts';
  *    tables (users / sessions) that the app role cannot read at all, collector credential lookup,
  *    and platform-level jobs that sweep across tenants with set-based SQL.
  */
-export const systemPool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 6, application_name: 'ld-system' });
+export const systemPool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 12, application_name: 'ld-system' });
 export const appPool = new pg.Pool({ connectionString: env.APP_DATABASE_URL, max: 16, application_name: 'ld-app' });
 
 for (const [name, pool] of [['system', systemPool], ['app', appPool]] as const) {

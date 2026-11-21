@@ -19,8 +19,23 @@ export interface DeviceFact {
   last_seen_at: Date;
 }
 
+/** Device types worth a monitoring check of their own: the network's infrastructure. */
+export const INFRASTRUCTURE_TYPES = ['router', 'printer', 'nas', 'camera', 'access_point', 'server'] as const;
+
+/** An infrastructure device whose type LAN Detective inferred (medium/high confidence) and that has no check. */
+export interface InfrastructureFact {
+  id: string;
+  label: string;
+  ip: string;
+  device_type: (typeof INFRASTRUCTURE_TYPES)[number];
+  type_confidence: 'medium' | 'high';
+  type_evidence: string | null;
+}
+
 export interface InsightFacts {
   now: Date;
+  /** Present only for sites where the `suggest.monitor_infrastructure` automation is enabled. */
+  infrastructure?: InfrastructureFact[];
   devices: DeviceFact[];
   /** Collectors that are enrolled (active). */
   collectors: { id: string; name: string; last_heartbeat_at: Date | null; gateway_ip: string | null }[];
@@ -34,6 +49,11 @@ export interface InsightFacts {
     unreadable: { id: string; name: string; error: string | null }[];
     erroring: { target_id: string; switch_name: string; port_name: string; errors: number; seconds: number }[];
   };
+  /**
+   * Router control: for each unwanted device that is online, the configured routers that can block it
+   * (block supported, reachable, logins not paused, no block of LAN Detective's own already open).
+   */
+  routerBlockable?: { device_id: string; router_id: string; router_name: string }[];
   /** Network access control (DNS filter), when the site has it configured. */
   access?: {
     enabled: boolean;
@@ -113,6 +133,22 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       detail: 'You marked this device as unwanted. To remove it, block its MAC address in your router and change the Wi-Fi password if you do not know who it is.',
       evidence: [`Answered the last sweep at ${d.ip ?? 'unknown address'}`, `Marked unwanted by you`],
       actions: [link('open_device', 'Open device', `/devices/${d.id}`), ...routerAction],
+    });
+  }
+  // A router that can block an unwanted device: proposed with one action. Never blocked automatically.
+  for (const d of unwantedOnline) {
+    const r = (f.routerBlockable ?? []).find((b) => b.device_id === d.id);
+    if (!r) continue;
+    add({
+      id: `unwanted-block-${d.id}`,
+      code: 'unwanted_blockable',
+      params: { device: d.label, router: r.router_name },
+      severity: 'warning',
+      category: 'security',
+      title: `Block ${d.label} on ${r.router_name}?`,
+      detail: 'You marked this device as unwanted and it is online. Your router can block it. LAN Detective does not do this on its own: it waits for you.',
+      evidence: [`Marked unwanted by you`, `Online at ${d.ip ?? 'unknown address'}`, `${r.router_name} supports blocking devices`],
+      actions: [api('block_on_router', `Block on ${r.router_name}`, `/api/v1/routers/${r.router_id}/block`, { device_ids: [d.id] }, `Block ${d.label} on ${r.router_name}?`)],
     });
   }
   deduct('unwanted_online', `${unwantedOnline.length} unwanted device(s) online`, Math.min(50, unwantedOnline.length * 25));
@@ -236,6 +272,44 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       detail: 'It is marked important but is only checked during discovery sweeps. A ping check measures it every minute and records latency.',
       evidence: ['Marked important', 'No monitoring check'],
       actions: [api('monitor', 'Monitor it', `/api/v1/devices/${d.id}/monitor`)],
+    });
+  }
+
+  // Infrastructure that was classified automatically: proposed, never monitored without the user's click.
+  const suggestedAlready = new Set(unmonitored.slice(0, 3).map((d) => d.id));
+  const infra = (f.infrastructure ?? []).filter((d) => !suggestedAlready.has(d.id));
+  if (infra.length) {
+    const TYPE_LABEL: Record<InfrastructureFact['device_type'], string> = {
+      router: 'router',
+      printer: 'printer',
+      nas: 'NAS',
+      camera: 'camera',
+      access_point: 'access point',
+      server: 'server',
+    };
+    add({
+      id: 'monitor-infrastructure',
+      code: 'suggest_monitor_infrastructure',
+      params: { count: infra.length, names: list(infra.map((d) => d.label)) },
+      severity: 'info',
+      category: 'availability',
+      title: `Watch ${infra.length} infrastructure device(s) continuously`,
+      detail:
+        'These look like routers, printers, storage, cameras, access points or servers. They are only checked during discovery sweeps; a ping check measures each one every minute. Their type was worked out automatically: check it before you accept.',
+      evidence: infra.slice(0, 8).map((d) => `${d.label} (${d.ip}): looks like a ${TYPE_LABEL[d.device_type]} — inferred, ${d.type_confidence} confidence${d.type_evidence ? `: ${d.type_evidence}` : ''}`),
+      actions: [
+        api('monitor_all', 'Monitor them', '/api/v1/devices/monitor', { ids: infra.slice(0, 200).map((d) => d.id) }, `Create a ping check for ${Math.min(infra.length, 200)} device(s)?`),
+        link('review', 'Review devices', '/devices'),
+      ],
+      devices: infra.map((d) => ({
+        device_id: d.id,
+        label: d.label,
+        ip: d.ip,
+        device_type: d.device_type,
+        type_confidence: d.type_confidence,
+        inferred: true as const,
+        evidence: d.type_evidence,
+      })),
     });
   }
 

@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import dgram from 'node:dgram';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -60,6 +60,28 @@ if (bundleDir ? major < 22 || (major === 22 && minor < 18) : major < 24) {
   process.exit(1);
 }
 mkdirSync(logDir, { recursive: true });
+
+// Windows Startup folder auto-start installer / uninstaller
+if (win && (flag('--install-autostart') || flag('--uninstall-autostart'))) {
+  const startupDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+  const vbsPath = path.join(startupDir, 'LAN Detective.vbs');
+  if (flag('--uninstall-autostart')) {
+    if (existsSync(vbsPath)) unlinkSync(vbsPath);
+    ok(`Removed Windows auto-start launcher (${vbsPath})`);
+  } else {
+    mkdirSync(startupDir, { recursive: true });
+    const cmdLine = `"${process.execPath}" "${path.join(root, 'scripts', 'local.mjs')}" --no-open`;
+    const vbs = [
+      'Set WshShell = CreateObject("WScript.Shell")',
+      `WshShell.CurrentDirectory = "${root.replaceAll('"', '""')}"`,
+      `WshShell.Run "${cmdLine.replaceAll('"', '""')}", 0, False`,
+      '',
+    ].join('\r\n');
+    writeFileSync(vbsPath, vbs, 'utf8');
+    ok(`Installed Windows auto-start launcher (${vbsPath})`);
+  }
+  if (flag('--only-autostart')) process.exit(0);
+}
 
 if (!bundleDir && (!existsSync(path.join(root, 'node_modules')) || !existsSync(path.join(root, 'apps/web/node_modules/next')))) {
   say('Installing dependencies (first run)…');
@@ -321,16 +343,19 @@ else if (await portOpen(webPort)) {
 
 // ── 4. collector on this computer ───────────────────────────────────────────
 const collectorDir = path.join(root, 'collectors/lan-collector');
+const agentDir = path.join(root, 'agents/endpoint-agent');
 const collectorData = path.join(dataDir, 'collector');
 const stateDir = path.join(collectorData, 'state');
-const enrolled = existsSync(path.join(stateDir, 'credential.json'));
+const credFile = path.join(stateDir, 'credential.json');
 const binary = path.join(collectorDir, 'bin', win ? 'lan-collector.exe' : 'lan-collector');
+const agentBinary = path.join(agentDir, 'bin', win ? 'endpoint-agent.exe' : 'endpoint-agent');
 
 function findGo() {
   const candidates = ['go', ...(win ? ['C:\\Program Files\\Go\\bin\\go.exe'] : ['/usr/local/go/bin/go'])];
   return candidates.find((g) => spawnSync(g, ['version'], { stdio: 'ignore' }).status === 0);
 }
 function newestSource(dir) {
+  if (!existsSync(dir)) return 0;
   let newest = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
@@ -339,7 +364,19 @@ function newestSource(dir) {
   }
   return newest;
 }
+function ensureAgentBinary() {
+  if (!existsSync(agentDir)) return;
+  const stale = !existsSync(agentBinary) || statSync(agentBinary).mtimeMs < newestSource(agentDir);
+  if (!stale) return;
+  const go = findGo();
+  if (!go) return;
+  mkdirSync(path.dirname(agentBinary), { recursive: true });
+  say(`${c.dim}Building endpoint-agent…${c.off}`);
+  const r = spawnSync(go, ['build', '-o', agentBinary, './cmd/endpoint-agent'], { cwd: agentDir, stdio: 'inherit' });
+  if (r.status === 0) ok('Updated endpoint-agent binary');
+}
 function ensureBinary() {
+  ensureAgentBinary();
   const stale = !existsSync(binary) || statSync(binary).mtimeMs < newestSource(collectorDir);
   if (!stale) return true;
   const go = findGo();
@@ -351,12 +388,14 @@ function ensureBinary() {
     warn('The collector needs Go 1.24+ to build (https://go.dev/dl). Skipping the collector.');
     return false;
   }
+  mkdirSync(path.dirname(binary), { recursive: true });
   say(`${c.dim}Building the collector…${c.off}`);
   const r = spawnSync(go, ['build', '-o', binary, './cmd/lan-collector'], { cwd: collectorDir, stdio: 'inherit' });
   if (r.status !== 0) {
     warn('Collector build failed; skipping the collector.');
     return false;
   }
+  ok('Updated lan-collector binary');
   return true;
 }
 
@@ -439,6 +478,100 @@ async function homeNetwork() {
     return { iface: name, address, cidr: `${intToIp(ipToInt(address) & mask)}/${prefix}`, private: isPrivate(address) };
   }
   return null;
+}
+
+/**
+ * Self-healing reconciliation: if an organization and site already exist in the local database,
+ * ensures this computer's local collector is active with a valid credential in .data/collector/state/credential.json
+ * and that the local private LAN CIDR is authorized for scanning.
+ */
+async function reconcileLocalCollector() {
+  const client = new pg.Client({ connectionString: env.DATABASE_URL, connectionTimeoutMillis: 5000, query_timeout: 5000 });
+  try {
+    await client.connect();
+    const siteRes = await client.query(
+      `SELECT s.id AS site_id, s.organization_id, u.id AS user_id
+         FROM sites s
+         JOIN organizations o ON o.id = s.organization_id
+         LEFT JOIN memberships m ON m.organization_id = o.id AND m.status = 'active'
+         LEFT JOIN users u ON u.id = m.user_id
+        WHERE o.name NOT LIKE 'SIMULATED%'
+        ORDER BY o.created_at ASC, s.created_at ASC
+        LIMIT 1`,
+    );
+    const primary = siteRes.rows[0];
+    if (!primary) return false;
+
+    const net0 = await homeNetwork();
+    if (net0 && net0.private) {
+      await client.query(
+        `INSERT INTO network_scopes (organization_id, site_id, cidr, label, enabled, authorized_by)
+         VALUES ($1, $2, $3::cidr, 'Home network', true, $4)
+         ON CONFLICT (site_id, cidr) DO UPDATE SET enabled = true`,
+        [primary.organization_id, primary.site_id, net0.cidr, primary.user_id ?? null],
+      );
+    }
+
+    mkdirSync(stateDir, { recursive: true });
+    const collectorName = `${os.hostname()} (this computer)`;
+    let validCollectorId = null;
+
+    if (existsSync(credFile)) {
+      try {
+        const parsed = JSON.parse(readFileSync(credFile, 'utf8'));
+        const m = /^ldc_([0-9a-f-]{36})\.([A-Za-z0-9_-]{20,100})$/.exec(parsed.credential || '');
+        if (m && m[1] === parsed.collector_id) {
+          const hash = crypto.createHash('sha256').update(m[2]).digest('hex');
+          const row = await client.query(
+            `SELECT id FROM collectors WHERE id = $1 AND organization_id = $2 AND status = 'active' AND credential_hash = $3`,
+            [parsed.collector_id, primary.organization_id, hash],
+          );
+          if (row.rows[0]) validCollectorId = row.rows[0].id;
+        }
+      } catch {
+        /* corrupt credential.json — will regenerate below */
+      }
+    }
+
+    if (!validCollectorId) {
+      const secret = crypto.randomBytes(32).toString('base64url');
+      const secretHash = crypto.createHash('sha256').update(secret).digest('hex');
+      const existing = await client.query(
+        `SELECT id FROM collectors WHERE organization_id = $1 AND site_id = $2 AND name = $3 ORDER BY created_at ASC LIMIT 1`,
+        [primary.organization_id, primary.site_id, collectorName],
+      );
+      if (existing.rows[0]) {
+        validCollectorId = existing.rows[0].id;
+        await client.query(
+          `UPDATE collectors
+              SET status = 'active', credential_hash = $2, enrollment_token_hash = NULL, enrollment_expires_at = NULL,
+                  hostname = $3, os = $4, arch = $5
+            WHERE id = $1`,
+          [validCollectorId, secretHash, os.hostname(), process.platform === 'win32' ? 'windows' : process.platform, process.arch === 'x64' ? 'amd64' : process.arch],
+        );
+      } else {
+        const inserted = await client.query(
+          `INSERT INTO collectors (organization_id, site_id, name, status, credential_hash, hostname, os, arch)
+           VALUES ($1, $2, $3, 'active', $4, $5, $6, $7)
+           RETURNING id`,
+          [primary.organization_id, primary.site_id, collectorName, secretHash, os.hostname(), process.platform === 'win32' ? 'windows' : process.platform, process.arch === 'x64' ? 'amd64' : process.arch],
+        );
+        validCollectorId = inserted.rows[0].id;
+      }
+      writeFileSync(
+        credFile,
+        JSON.stringify({ collector_id: validCollectorId, credential: `ldc_${validCollectorId}.${secret}` }),
+        { mode: 0o600 },
+      );
+      ok(`Auto-enrolled local collector (${collectorName})`);
+    }
+
+    return true;
+  } catch {
+    return existsSync(credFile);
+  } finally {
+    client.end().catch(() => undefined);
+  }
 }
 
 async function homeSetup() {
@@ -533,16 +666,24 @@ async function homeSetup() {
   return created.json.enrollment_token;
 }
 
+let enrolled = await reconcileLocalCollector();
 let enrollToken = token;
 if (!noCollector && !enrolled && !enrollToken) {
   if (process.stdin.isTTY || (process.env.LD_SETUP_EMAIL && process.env.LD_SETUP_PASSWORD)) enrollToken = await homeSetup();
   if (!enrollToken) showEnrollHelp();
 }
 
-if (noCollector) say(`${c.dim}Collector skipped (--no-collector).${c.off}`);
-else if (!enrolled && !enrollToken) {
-  /* help already shown */
-} else if (ensureBinary()) {
+let collectorEntry = null;
+let collectorRestarting = false;
+let collectorRestarts = 0;
+const MAX_COLLECTOR_RESTARTS = 5;
+
+async function launchCollector(initial = false) {
+  if (shuttingDown || noCollector) return;
+  enrolled = (await reconcileLocalCollector()) || existsSync(credFile);
+  if (!enrolled && !enrollToken) return;
+  if (!ensureBinary()) return;
+
   mkdirSync(stateDir, { recursive: true });
   const configPath = path.join(collectorData, 'collector.yaml');
   writeFileSync(
@@ -558,7 +699,8 @@ else if (!enrolled && !enrollToken) {
     ].join('\n'),
   );
   const quiet = new Set(['heartbeat', 'telemetry uploaded']);
-  start('collector', binary, ['-config', configPath], {
+  const startedAt = Date.now();
+  const child = start('collector', binary, ['-config', configPath], {
     env: enrollToken && !enrolled ? { LAN_COLLECTOR_ENROLLMENT_TOKEN: enrollToken } : {},
     onLine: (line) => {
       let j;
@@ -567,24 +709,60 @@ else if (!enrolled && !enrollToken) {
       } catch {
         return;
       }
-      // The "development switches" warning is about plain-HTTP to the API, which is expected here (localhost only).
       if (quiet.has(j.msg) || j.msg.startsWith('development switches')) return;
       const color = j.level === 'ERROR' ? c.red : j.level === 'WARN' ? c.yellow : c.dim;
       const extra = j.cidr ? ` ${j.cidr} found=${j.found}/${j.probed}` : j.hostname ? ` ${j.hostname} (${j.mac})` : j.error ? ` — ${j.error}` : '';
       say(`${color}collector │ ${j.msg}${extra}${c.off}`);
     },
     onExit: (code) => {
-      warn(`Collector stopped (exit code ${code}). The rest keeps running. See .data/logs/collector.log`);
-      if (!existsSync(path.join(stateDir, 'credential.json'))) say('  If the token was refused, create a new one in the web app and run: pnpm local --token <token>');
+      if (shuttingDown || collectorRestarting) return;
+      if (Date.now() - startedAt > 60_000) collectorRestarts = 0;
+      if (collectorRestarts >= MAX_COLLECTOR_RESTARTS) {
+        warn(`Collector exited (code ${code}) ${collectorRestarts} times; giving up auto-restart. Check .data/logs/collector.log.`);
+        return;
+      }
+      collectorRestarts += 1;
+      const delayMs = Math.min(60_000, 3000 * 2 ** (collectorRestarts - 1));
+      warn(`Collector exited (code ${code}); auto-restarting in ${Math.round(delayMs / 1000)}s (attempt ${collectorRestarts}/${MAX_COLLECTOR_RESTARTS})…`);
+      setTimeout(() => void launchCollector(false), delayMs).unref();
     },
   });
-  ok(enrolled ? 'Collector started on this computer' : 'Collector enrolling with your token…');
+  collectorEntry = started.find((s) => s.child === child) ?? null;
+  if (initial) ok(enrolled ? 'Collector started on this computer (auto-restart & auto-update active)' : 'Collector enrolling with your token…');
+  else ok('Collector restarted');
+}
+
+if (noCollector) say(`${c.dim}Collector skipped (--no-collector).${c.off}`);
+else await launchCollector(true);
+
+// Watch Go sources in the background: if collector or agent code changes, rebuild automatically and hot-restart the collector.
+if (!noCollector && !bundleDir) {
+  setInterval(async () => {
+    if (shuttingDown || collectorRestarting) return;
+    ensureAgentBinary();
+    const collectorStale = existsSync(binary) && statSync(binary).mtimeMs < newestSource(collectorDir);
+    if (!collectorStale) return;
+    collectorRestarting = true;
+    try {
+      say(`${c.cyan}Detected collector source changes — rebuilding and restarting collector…${c.off}`);
+      if (collectorEntry) {
+        await kill(collectorEntry);
+        const idx = started.indexOf(collectorEntry);
+        if (idx >= 0) started.splice(idx, 1);
+        collectorEntry = null;
+      }
+      collectorRestarts = 0;
+      await launchCollector(false);
+    } finally {
+      collectorRestarting = false;
+    }
+  }, 5000).unref();
 }
 
 say('');
 say(`${c.bold}${c.green}Open ${webUrl}${c.off}   ${c.dim}(Ctrl+C to stop everything · logs in ${path.relative(process.cwd(), logDir) || logDir})${c.off}`);
 emit({ type: 'ready', webUrl, apiUrl });
-if (!noOpen && !desktop) {
+if (!noOpen && !desktop && /^https?:\/\/[^\s"&|<>^`$;]+$/.test(webUrl)) {
   const opener = win ? ['cmd', ['/c', 'start', '""', webUrl]] : process.platform === 'darwin' ? ['open', [webUrl]] : ['xdg-open', [webUrl]];
   try {
     spawn(opener[0], opener[1], { stdio: 'ignore', detached: true, windowsHide: true }).on('error', () => undefined).unref();

@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -55,7 +57,7 @@ func TestControlValidationAndExecution(t *testing.T) {
 
 	// Remote desktop capture via rd_capture
 	res = r.Execute(ctx, Command{ID: "7", Kind: "rd_capture", Payload: json.RawMessage(`{"display_index":0,"quality":60,"scale":0.5}`)})
-	if !res.OK || len(res.Data) == 0 {
+	if (!res.OK || len(res.Data) == 0) && !strings.Contains(res.Error, "interactive desktop session") {
 		t.Fatalf("expected rd_capture to succeed with JPEG frame data, got %+v", res)
 	}
 
@@ -86,3 +88,105 @@ func TestControlValidationAndExecution(t *testing.T) {
 	}
 }
 
+
+func TestArgumentsCannotBecomeOptions(t *testing.T) {
+	var called []string
+	r := Runner{Exec: func(_ context.Context, name string, args ...string) (string, error) {
+		called = append(called, name+" "+strings.Join(args, " "))
+		return "ok", nil
+	}}
+	ctx := context.Background()
+	cases := []Command{
+		{ID: "a", Kind: "software_action", Payload: json.RawMessage(`{"action":"install","package_id":"--allow-unauthenticated"}`)},
+		{ID: "b", Kind: "service_action", Payload: json.RawMessage(`{"service":"--force","action":"stop"}`)},
+		{ID: "c", Kind: "diagnostic_command", Payload: json.RawMessage(`{"tool":"nslookup","target":"-type=any"}`)},
+	}
+	for _, c := range cases {
+		if res := r.Execute(ctx, c); res.OK {
+			t.Fatalf("%s: an argument starting with '-' must be refused", c.Kind)
+		}
+	}
+	if len(called) != 0 {
+		t.Fatalf("nothing may run for refused commands, ran %v", called)
+	}
+}
+
+func TestKillProcessVerifiesNameWhenProvided(t *testing.T) {
+	ctx := context.Background()
+
+	// 1. Matching process name proceeds to termination.
+	var calls []string
+	r := Runner{Exec: func(_ context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		switch name {
+		case "tasklist":
+			return `"Notepad.EXE","4321","Console","1","12,000 K"`, nil
+		case "ps":
+			return "/usr/bin/notepad\n", nil
+		default:
+			return "ok", nil
+		}
+	}}
+	res := r.Execute(ctx, Command{ID: "kp-1", Kind: "kill_process", Payload: json.RawMessage(`{"pid":4321,"name":"notepad.exe"}`)})
+	if !res.OK {
+		t.Fatalf("expected matching process name to succeed, got %+v", res)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected verify + kill calls, got %v", calls)
+	}
+
+	// 2. Mismatched process name refuses before terminating.
+	calls = nil
+	rMismatch := Runner{Exec: func(_ context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		switch name {
+		case "tasklist":
+			return `"svchost.exe","4321","Services","0","20,000 K"`, nil
+		case "ps":
+			return "systemd\n", nil
+		default:
+			t.Fatalf("unexpected kill call %s when process name mismatched", name)
+			return "", nil
+		}
+	}}
+	res = rMismatch.Execute(ctx, Command{ID: "kp-2", Kind: "kill_process", Payload: json.RawMessage(`{"pid":4321,"name":"notepad.exe"}`)})
+	if res.OK {
+		t.Fatalf("expected mismatched process name to fail, got %+v", res)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("expected only verification call on mismatch, got %v", calls)
+	}
+
+	// 3. Dead / missing PID refuses before terminating.
+	calls = nil
+	rMissing := Runner{Exec: func(_ context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if name == "tasklist" {
+			return "INFO: No tasks are running which match the specified criteria.", nil
+		}
+		if name == "ps" {
+			return "", errors.New("exit status 1")
+		}
+		t.Fatalf("unexpected kill call %s for missing PID", name)
+		return "", nil
+	}}
+	res = rMissing.Execute(ctx, Command{ID: "kp-3", Kind: "kill_process", Payload: json.RawMessage(`{"pid":4321,"name":"notepad.exe"}`)})
+	if res.OK {
+		t.Fatalf("expected missing PID to fail, got %+v", res)
+	}
+	if runtime.GOOS == "windows" && !strings.Contains(res.Error, "not running") {
+		t.Fatalf("expected not running error, got %+v", res)
+	}
+
+	// Helper unit coverage across platforms.
+	if name, ok := extractTasklistProcessName("\"foo,bar.exe\",\"4321\",\"Console\",\"1\",\"10 K\"\r\n", "4321"); !ok || name != "foo,bar.exe" {
+		t.Fatalf("extractTasklistProcessName failed: %q %v", name, ok)
+	}
+	if !processNameMatches("/usr/bin/python3.11", "python3") ||
+		!processNameMatches("Notepad.EXE", "notepad") ||
+		!processNameMatches("chromium-browse", "chromium-browser") ||
+		processNameMatches("sh", "powershell.exe") ||
+		processNameMatches("svchost.exe", "notepad.exe") {
+		t.Fatal("processNameMatches logic mismatch")
+	}
+}

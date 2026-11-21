@@ -4,11 +4,14 @@ export class ApiError extends Error {
   status: number;
   code: string;
   details?: { path: string; message: string }[];
-  constructor(status: number, code: string, message: string, details?: { path: string; message: string }[]) {
+  /** Structured details that are not a validation list (e.g. { reason, until } of a login pause, { note } of an unsupported capability). */
+  info?: Record<string, unknown>;
+  constructor(status: number, code: string, message: string, details?: { path: string; message: string }[], info?: Record<string, unknown>) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
+    this.info = info;
   }
 }
 
@@ -35,8 +38,15 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     /* non-JSON error page from a proxy */
   }
   if (!res.ok) {
-    const err = (json as { error?: { code: string; message: string; details?: ApiError['details'] } } | null)?.error;
-    throw new ApiError(res.status, err?.code ?? 'http_error', err?.message ?? `Request failed (${res.status})`, Array.isArray(err?.details) ? err.details : undefined);
+    const err = (json as { error?: { code: string; message: string; details?: unknown } } | null)?.error;
+    const details = err?.details;
+    throw new ApiError(
+      res.status,
+      err?.code ?? 'http_error',
+      err?.message ?? `Request failed (${res.status})`,
+      Array.isArray(details) ? (details as ApiError['details']) : undefined,
+      details && typeof details === 'object' && !Array.isArray(details) ? (details as Record<string, unknown>) : undefined,
+    );
   }
   return json as T;
 }

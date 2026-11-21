@@ -1,6 +1,8 @@
 import type { Diagnosis, FaultDomain } from '@lan-detective/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { type CheckFacts, type NetworkFacts, diagnoseCollector, diagnoseDevice, diagnoseNetwork, diagnoseService, finalize } from './rules.ts';
+import { loadDhcpFacts } from './smart-facts.ts';
+import { diagnoseDhcp } from './smart-rules.ts';
 
 // Every query filters organization_id explicitly: this code also runs inside platform (system)
 // transactions, where Row Level Security does not apply.
@@ -74,7 +76,7 @@ export async function diagnoseSiteNetwork(db: Db, organizationId: string, siteId
 
 export interface IncidentRef {
   id: string;
-  kind: 'network' | 'service' | 'collector' | 'device';
+  kind: 'network' | 'service' | 'collector' | 'device' | 'dhcp';
   site_id: string | null;
   check_id: string | null;
   device_id: string | null;
@@ -92,6 +94,8 @@ export async function diagnoseIncident(db: Db, organizationId: string, incident:
     finalize(core, affectedOf(facts), await relatedIncidents(db, organizationId, incident.site_id, core.fault_domain, incident.id), now);
 
   if (incident.kind === 'network') return done(network);
+  // Rogue DHCP server / no DHCP offer (modules/security smart checks): smart-rules.ts.
+  if (incident.kind === 'dhcp') return done(diagnoseDhcp(await loadDhcpFacts(db, organizationId, incident.site_id, now)));
 
   if (incident.kind === 'service') {
     if (!incident.check_id) return null;

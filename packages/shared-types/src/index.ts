@@ -43,9 +43,11 @@ export interface Paginated<T> {
   page_size: number;
 }
 
+export type MfaRequirement = 'off' | 'admins' | 'all';
+
 export interface Me {
-  user: { id: string; email: string; display_name: string; locale: 'en' | 'ar' };
-  organization: { id: string; name: string; kind: string };
+  user: { id: string; email: string; display_name: string; locale: 'en' | 'ar'; mfa_enabled: boolean };
+  organization: { id: string; name: string; kind: string; mfa_required: MfaRequirement };
   role: Role;
   memberships: { organization_id: string; organization_name: string; role: Role }[];
 }
@@ -91,6 +93,10 @@ export interface CollectorCreated {
   collector: Collector;
   /** Shown exactly once. Only a hash is stored. */
   enrollment_token: string;
+  /** Server address for the install command: PUBLIC_URL when configured, else the origin the request reached. */
+  server_url: string;
+  server_url_source: 'configured' | 'request';
+  tls_pin_sha256?: string | null;
 }
 
 export interface Device {
@@ -155,6 +161,8 @@ export interface Insight {
   detail: string;
   evidence: string[];
   actions: InsightAction[];
+  /** Devices the insight is about, with how their type was worked out (e.g. suggest_monitor_infrastructure). */
+  devices?: InsightDevice[];
 }
 
 export interface InsightsReport {
@@ -198,6 +206,8 @@ export interface NetworkEvent {
   occurred_at: string;
   /** When the cloud platform recorded it. */
   received_at: string;
+  in_maintenance?: boolean;
+  maintenance_window_id?: string | null;
 }
 
 export interface MonitoringCheck {
@@ -260,6 +270,7 @@ export interface NotificationChannel {
   min_severity: Severity;
   event_types: string[] | null;
   enabled: boolean;
+  use_for_account_emails?: boolean;
   created_at: string;
   last_delivery_status: string | null;
   last_delivery_at: string | null;
@@ -274,11 +285,18 @@ export interface AuditEntry {
   target_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+  /**
+   * Who acted: 'user' (user_email is set), 'system' (LAN Detective acted by itself; metadata.automation
+   * is the automation key) or 'collector' (triggered by a collector's report).
+   */
+  actor: AuditActor;
 }
+
+export type AuditActor = 'user' | 'system' | 'collector';
 
 // ───────────────────────── Phase 2 ─────────────────────────
 
-export type IncidentKind = 'network' | 'service' | 'collector' | 'device';
+export type IncidentKind = 'network' | 'service' | 'collector' | 'device' | 'dhcp';
 export type IncidentStatus = 'open' | 'acknowledged' | 'resolved';
 export type Confidence = 'high' | 'medium' | 'low';
 export type FaultDomain =
@@ -296,7 +314,10 @@ export type FaultDomain =
   | 'collector'
   | 'site_internet'
   | 'insufficient_data'
-  | 'undetermined';
+  | 'undetermined'
+  // Smart checks (modules/security): a rogue / missing DHCP server, the collector's Wi-Fi link.
+  | 'dhcp'
+  | 'wifi';
 
 /** One piece of evidence. `observed` = measured directly; `derived` = computed from observations. */
 export interface EvidenceItem {
@@ -382,6 +403,8 @@ export interface DoctorReport {
   diagnosis: Diagnosis;
   active_incident: { id: string; number: number } | null;
   collectors_online: number;
+  /** Smart-check diagnoses (DHCP, Wi-Fi) that need attention; healthy ones are left out. */
+  smart?: Diagnosis[];
 }
 
 export interface TopologyNode {
@@ -776,15 +799,8 @@ export interface ToolRun {
 // ── Phase 3 & 4: Universal Endpoint Management & Remote Administration ──────
 
 export type EndpointStatus = 'pending' | 'active' | 'revoked';
-export type EndpointPlatform = 'windows' | 'linux' | 'macos' | 'android' | 'ios';
-export type EndpointManagementMode =
-  | 'agent'
-  | 'android_device_owner'
-  | 'android_work_profile'
-  | 'android_companion'
-  | 'ios_supervised_mdm'
-  | 'ios_byod_mdm'
-  | 'macos_mdm';
+/** Platforms the LAN Detective endpoint agent runs on. iOS/Android are not supported. */
+export type EndpointPlatform = 'windows' | 'linux' | 'macos';
 export type EndpointComplianceStatus = 'compliant' | 'non_compliant' | 'attention' | 'unknown';
 export type EndpointCommandKind =
   | 'refresh_inventory'
@@ -797,9 +813,7 @@ export type EndpointCommandKind =
   | 'rd_input'
   | 'software_action'
   | 'fetch_logs'
-  | 'diagnostic_command'
-  | 'apply_policy'
-  | 'mobile_action';
+  | 'diagnostic_command';
 export type EndpointCommandStatus = 'pending' | 'delivered' | 'completed' | 'failed' | 'expired';
 
 export type CapabilityState =
@@ -808,14 +822,13 @@ export type CapabilityState =
   | 'tested'
   | 'partially_supported'
   | 'requires_permissions'
-  | 'requires_enterprise_enrollment'
   | 'requires_external_config'
   | 'unsupported_by_os'
   | 'not_tested';
 
 export interface EndpointCapabilityItem {
   key: string;
-  category: 'inventory' | 'remote_control' | 'file_management' | 'software' | 'security_policy';
+  category: 'inventory' | 'remote_control' | 'file_management' | 'software';
   label_en: string;
   label_ar: string;
   state: CapabilityState;
@@ -831,27 +844,11 @@ export interface EndpointSecurityPosture {
   pending_updates?: number;
   last_update_date?: string;
   os_build?: string;
-  supervised?: boolean;
-  device_owner?: boolean;
-  work_profile?: boolean;
-  passcode_compliant?: boolean;
-  rooted_or_jailbroken?: boolean;
-  screen_recording_granted?: boolean;
-  accessibility_granted?: boolean;
 }
 
 export interface EndpointPolicy {
   allowed_fs_roots?: string[];
   remote_desktop_consent?: 'unattended' | 'prompt';
-  passcode_required?: boolean;
-  min_passcode_length?: number;
-  camera_disabled?: boolean;
-  usb_file_transfer_blocked?: boolean;
-  wifi_ssid?: string;
-  wifi_security?: 'WPA2' | 'WPA3' | 'EAP';
-  vpn_name?: string;
-  vpn_server?: string;
-  managed_apps?: string[];
 }
 
 export interface RemoteFileRoot {
@@ -980,7 +977,6 @@ export interface EndpointSummary {
   device_id: string | null;
   name: string;
   platform: EndpointPlatform;
-  management_mode: EndpointManagementMode;
   status: EndpointStatus;
   connection_state: 'never' | 'online' | 'offline';
   compliance_status: EndpointComplianceStatus;
@@ -988,9 +984,6 @@ export interface EndpointSummary {
   manufacturer: string | null;
   model: string | null;
   serial_number: string | null;
-  security_patch_level: string | null;
-  battery_pct: number | null;
-  battery_charging: boolean | null;
   agent_version: string | null;
   hostname: string | null;
   os: string | null;
@@ -1016,8 +1009,10 @@ export interface EndpointSummary {
 export interface EndpointCreated {
   endpoint: EndpointSummary;
   enrollment_token: string;
-  android_provisioning?: Record<string, unknown>;
-  apple_mdm_profile_url?: string;
+  /** Server address for the agent's -server flag: PUBLIC_URL when configured, else the origin the request reached. */
+  server_url: string;
+  server_url_source: 'configured' | 'request';
+  tls_pin_sha256: string | null;
 }
 
 export interface EndpointCommand {
@@ -1059,3 +1054,716 @@ export interface EndpointSeriesPoint {
 }
 
 
+
+// ───────────────────────── Smart defaults / automation ─────────────────────────
+
+/** Facts LAN Detective worked out itself are labelled as such, with how sure it is and why. */
+export interface InferredFact {
+  inferred: true;
+  confidence: Confidence;
+  evidence: string[];
+}
+
+export type AutomationSource = 'default' | 'org' | 'site';
+
+export interface AutomationOverride {
+  enabled: boolean;
+  config: Record<string, unknown>;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface AutomationItem {
+  key: string;
+  /** Module that performs or proposes it. */
+  owner: string;
+  /** 'act': does something by itself; 'suggest': only proposes, the user decides. */
+  kind: 'act' | 'suggest';
+  description_key: string;
+  description: string;
+  default_enabled: boolean;
+  /** Effective state for the requested scope (site when site_id was given, else organization). */
+  enabled: boolean;
+  source: AutomationSource;
+  config: Record<string, unknown>;
+  default_config: Record<string, unknown>;
+  org_override: AutomationOverride | null;
+  site_override: AutomationOverride | null;
+  /** From the system audit entries of this automation (for the site when site_id was given), last 30 days. */
+  last_effect: { count: number; last_at: string | null; window_days: number };
+}
+
+export interface AutomationList {
+  site_id: string | null;
+  items: AutomationItem[];
+}
+
+export interface ScopeSuggestionSource {
+  kind: 'interface' | 'gateway';
+  collector_id: string;
+  collector_name: string;
+  /** Interface name for kind 'interface'; null for 'gateway'. */
+  interface: string | null;
+  /** The address as the collector reported it ("192.168.1.20/16", or the gateway "192.168.1.1"). */
+  reported: string;
+}
+
+export interface ScopeSuggestion {
+  /** Ready to send to POST /sites/:id/scopes (after the user confirms authorization). */
+  cidr: string;
+  /** The network exactly as reported, when it differs from `cidr` (narrowed) — else null. */
+  reported_cidr: string | null;
+  narrowed: boolean;
+  /** false: the collector reports this exact network on its interface. true: worked out (narrowed, or from the gateway). */
+  inferred: boolean;
+  confidence: Confidence;
+  evidence: string[];
+  sources: ScopeSuggestionSource[];
+}
+
+export interface ScopeSuggestions {
+  site_id: string;
+  items: ScopeSuggestion[];
+}
+
+export interface DeviceMonitorResult {
+  id: string;
+  /** created: a new check; exists: the device already had one; not_found / no_address: nothing done. */
+  status: 'created' | 'exists' | 'not_found' | 'no_address';
+  check_id: string | null;
+  error: { code: string; message: string } | null;
+}
+
+export interface DeviceMonitorBulk {
+  created: number;
+  results: DeviceMonitorResult[];
+}
+
+export interface DefaultChecksRestored {
+  site_id: string;
+  /** Names of the starter checks that were missing and are now created again ([] when all were there). */
+  created: string[];
+  /** Names of the starter checks that already existed. */
+  existing: string[];
+}
+
+export interface InsightDevice {
+  device_id: string;
+  label: string;
+  ip: string | null;
+  device_type: DeviceType;
+  type_confidence: Confidence;
+  /** The device type was inferred by LAN Detective (never set by a person). */
+  inferred: true;
+  evidence: string | null;
+}
+
+export interface SwitchCandidateReason {
+  kind: 'classified' | 'lldp_neighbor';
+  evidence: string;
+}
+
+export interface SwitchCandidate {
+  device_id: string;
+  label: string;
+  ip: string | null;
+  mac: string | null;
+  device_type: DeviceType;
+  type_source: 'none' | 'inferred' | 'manual';
+  type_confidence: Confidence | null;
+  /** Whether its address is inside an authorized scope (adding it as a switch requires that). */
+  in_scope: boolean;
+  /** Always true: being a switch is a guess until SNMP answers. */
+  inferred: true;
+  reasons: SwitchCandidateReason[];
+}
+
+export interface EndpointEnrollmentSuggestion {
+  device_id: string;
+  site_id: string;
+  suggested_name: string;
+  suggested_platform: EndpointPlatform;
+  /** inferred: from the device classification; default: nothing known, so the product default (windows). */
+  platform_source: 'inferred' | 'default';
+  platform_confidence: Confidence | null;
+  platform_evidence: string[];
+  /** Already enrolled / pending endpoint for this device, if any. */
+  existing_endpoint_id: string | null;
+  server_url: string;
+  server_url_source: 'configured' | 'request';
+  tls_pin_sha256: string | null;
+}
+
+// ───────────────────────── Team Accounts, MFA & Invitations ─────────────────────────
+
+export type MemberStatus = 'active' | 'deactivated';
+export type AccountMailOutcome = 'sent' | 'not_configured' | 'failed';
+
+export interface AuthOptions {
+  allow_registration: boolean;
+  account_mail_configured: boolean;
+}
+
+export type LoginResponse =
+  | { ok: true }
+  | { ok: false; mfa_required: true; mfa_token: string }
+  | { ok: false; mfa_setup_required: true; mfa_token: string };
+
+export interface MfaSetupResponse {
+  secret: string;
+  otpauth_uri: string;
+}
+
+export interface MfaConfirmResponse {
+  ok: true;
+  recovery_codes: string[];
+}
+
+export interface TeamMember {
+  id: string;
+  display_name: string;
+  email: string;
+  role: Role;
+  status: MemberStatus;
+  mfa_enabled: boolean;
+  last_login_at: string | null;
+  joined_at: string;
+  deactivated_at: string | null;
+}
+
+export interface TeamInvitation {
+  id: string;
+  email: string;
+  role: Role;
+  invited_by_name: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface TeamOverview {
+  members: TeamMember[];
+  invitations: TeamInvitation[];
+  mfa_required: MfaRequirement;
+  account_mail_configured: boolean;
+}
+
+export interface InvitationCreated {
+  invitation: TeamInvitation;
+  mail_outcome: AccountMailOutcome;
+  invite_url: string;
+  token: string;
+}
+
+export interface InvitationPreview {
+  email: string;
+  role: Role;
+  organization_name: string;
+  invited_by_name: string | null;
+  expires_at: string;
+  existing_user: boolean;
+}
+
+export interface PasswordResetIssued {
+  mail_outcome: AccountMailOutcome;
+  reset_url: string;
+  token: string;
+  expires_at: string;
+}
+
+// ───────────────────────── Maintenance Windows ─────────────────────────
+
+export interface MaintenanceOccurrence {
+  start: string;
+  end: string;
+}
+
+export interface MaintenanceWindow {
+  id: string;
+  site_id: string | null;
+  site_name: string | null;
+  reason: string;
+  timezone: string;
+  starts_local: string;
+  ends_local: string;
+  weekdays: number[] | null;
+  recur_until: string | null;
+  target_all: boolean;
+  device_ids: string[];
+  check_ids: string[];
+  collector_ids: string[];
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+  active: boolean;
+  current_occurrence: MaintenanceOccurrence | null;
+  next_occurrence: MaintenanceOccurrence | null;
+}
+
+export interface MaintenanceRun {
+  id: string;
+  window_id: string | null;
+  site_id: string | null;
+  site_name: string | null;
+  reason: string;
+  occurrence_start: string;
+  occurrence_end: string;
+  scope: {
+    target_all: boolean;
+    device_ids: string[];
+    check_ids: string[];
+    collector_ids: string[];
+  };
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface MaintenanceList {
+  items: MaintenanceWindow[];
+  active_runs: MaintenanceRun[];
+}
+
+// ───────────────────────── Global Search & Reports ─────────────────────────
+
+export type SearchHitKind = 'device' | 'endpoint' | 'incident' | 'switch' | 'subnet' | 'scope' | 'router' | 'knowledge';
+
+export interface SearchHit {
+  kind: SearchHitKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  href: string;
+  site_id: string | null;
+  site_name: string | null;
+}
+
+export interface SearchResponse {
+  query: string;
+  items: SearchHit[];
+}
+
+export interface SummaryReport {
+  generated_at: string;
+  days: number;
+  from: string;
+  to: string;
+  period: { days: number; from: string; to: string };
+  organization: { id: string; name: string };
+  site: { id: string; name: string; timezone: string } | null;
+  sites_count: number;
+  devices: {
+    total: number;
+    online: number;
+    offline: number;
+    unknown: number;
+    critical: number;
+    critical_offline: number;
+    new_in_window: number;
+    by_trust: { known: number; unreviewed: number; unwanted: number };
+    by_type: { device_type: DeviceType; count: number }[];
+  };
+  collectors: {
+    total: number;
+    online: number;
+    offline: number;
+  };
+  checks: {
+    total: number;
+    ok: number;
+    degraded: number;
+    down: number;
+    unknown: number;
+    availability_pct: number | null;
+    avg_latency_ms: number | null;
+    avg_loss_pct: number | null;
+    by_role: {
+      role: CheckRole;
+      total: number;
+      ok: number;
+      degraded: number;
+      down: number;
+      samples: number;
+      availability_pct: number | null;
+      avg_latency_ms: number | null;
+      avg_loss_pct: number | null;
+    }[];
+  };
+  incidents: {
+    total: number;
+    total_in_window: number;
+    active: number;
+    resolved: number;
+    resolved_in_window: number;
+    mttr_minutes: number | null;
+    by_severity: { critical: number; warning: number; info: number };
+  };
+  endpoints: {
+    total: number;
+    online: number;
+    offline: number;
+    compliant: number;
+    non_compliant: number;
+    attention: number;
+    unknown: number;
+    by_compliance: {
+      compliant: number;
+      non_compliant: number;
+      attention: number;
+      unknown: number;
+    };
+  };
+  ipam: {
+    subnets: number;
+    usable_addresses: number;
+    online_addresses: number;
+    documented_addresses: number;
+    utilization_pct: number | null;
+    conflicts: number;
+  };
+  switches: {
+    total: number;
+    ok: number;
+    error: number;
+    ports_total: number;
+    ports_up: number;
+  };
+  routers: {
+    total: number;
+    ok: number;
+    active_blocks: number;
+    clients: number;
+  };
+}
+
+// ── Knowledge memory (incident resolution knowledge base + runbooks) ────────
+
+export type KnowledgeStatus = 'candidate' | 'draft' | 'published' | 'discarded';
+export type KnowledgeSource = 'incident' | 'manual';
+export type KnowledgeKind = 'article' | 'runbook';
+
+/** One knowledge article or runbook as listed. Text fields are plain text with minimal markdown. */
+export interface KnowledgeEntry {
+  id: string;
+  status: KnowledgeStatus;
+  source: KnowledgeSource;
+  kind: KnowledgeKind;
+  title: string;
+  symptoms: string;
+  cause: string;
+  /** 'doctor': the Network Doctor's inferred probable cause, not yet confirmed by a person. */
+  cause_source: 'doctor' | 'manual';
+  fix_steps: string;
+  tags: string[];
+  rule_ids: string[];
+  incident_kinds: IncidentKind[];
+  event_types: string[];
+  device_types: string[];
+  vendors: string[];
+  site_id: string | null;
+  site_name: string | null;
+  device_id: string | null;
+  device_name: string | null;
+  check_id: string | null;
+  check_name: string | null;
+  incident_id: string | null;
+  incident_number: number | null;
+  fault_domain: string | null;
+  diagnosis_summary: string | null;
+  diagnosis_confidence: Confidence | null;
+  incident_duration_seconds: number | null;
+  edited: boolean;
+  revision: number;
+  helpful: number;
+  not_helpful: number;
+  uses: number;
+  /** The caller's own vote: true = helped, false = did not help, null = no vote. */
+  my_vote: boolean | null;
+  created_by_name: string | null;
+  updated_by_name: string | null;
+  published_by_name: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeRevision {
+  id: string;
+  revision: number;
+  action: 'captured' | 'refreshed' | 'created' | 'edited' | 'published' | 'unpublished' | 'discarded' | 'restored';
+  user_name: string | null;
+  created_at: string;
+  snapshot: Pick<KnowledgeEntry, 'title' | 'symptoms' | 'cause' | 'cause_source' | 'fix_steps' | 'kind' | 'tags' | 'rule_ids' | 'incident_kinds' | 'event_types' | 'device_types' | 'vendors'>;
+}
+
+export interface KnowledgeUse {
+  incident_id: string;
+  incident_number: number;
+  incident_title: string;
+  user_name: string | null;
+  created_at: string;
+}
+
+export interface KnowledgeDetail extends KnowledgeEntry {
+  revisions: KnowledgeRevision[];
+  used_on: KnowledgeUse[];
+}
+
+export interface KnowledgeList extends Paginated<KnowledgeEntry> {
+  counts: { candidate: number; draft: number; published: number; discarded: number };
+}
+
+export type KnowledgeReasonCode =
+  | 'rule'
+  | 'fault_domain'
+  | 'incident_kind'
+  | 'event_type'
+  | 'device'
+  | 'check'
+  | 'device_type'
+  | 'vendor'
+  | 'site'
+  | 'text'
+  | 'recent'
+  | 'votes'
+  | 'used';
+
+/** Why a suggestion ranked where it did: every point of the score is explained. */
+export interface KnowledgeReason {
+  code: KnowledgeReasonCode;
+  /** The matched value(s), e.g. the rule id, the vendor, the overlapping event types. */
+  detail: string | null;
+  points: number;
+}
+
+export interface KnowledgeSuggestion {
+  entry: KnowledgeEntry;
+  score: number;
+  reasons: KnowledgeReason[];
+}
+
+export interface KnowledgeSuggestResponse {
+  /** What the suggestions were matched against (all observed or recorded values). */
+  context: {
+    incident_id: string | null;
+    device_id: string | null;
+    site_id: string | null;
+    rule_ids: string[];
+    fault_domain: string | null;
+    incident_kind: IncidentKind | null;
+    event_types: string[];
+    device_type: string | null;
+    vendor: string | null;
+    check_id: string | null;
+  };
+  items: KnowledgeSuggestion[];
+}
+
+// ── Digital twin (failure impact simulation) and multi-site / multi-organization portfolio ──
+
+export type ImpactNodeKind = 'internet' | 'gateway' | 'segment' | 'device' | 'switch' | 'collector';
+
+export interface ImpactGraphNode {
+  /** Same id as the topology node (dev:…, gw:…, seg:…, internet); collectors are col:<id>. */
+  id: string;
+  kind: ImpactNodeKind;
+  label: string;
+  device_id: string | null;
+  collector_id: string | null;
+  ip: string | null;
+  segment: string | null;
+  status: DeviceStatus | null;
+  is_critical: boolean;
+  /** Switch ports that carry a known link (for "fail this port"). */
+  ports?: string[];
+}
+
+export interface ImpactGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: TopologyEdge['relation'] | 'wireless_client' | 'runs_on' | 'collector_in';
+  port?: string;
+  basis: 'observed' | 'inferred';
+  /** Normalized for impact: observed keeps its confidence, inferred is at most medium. */
+  confidence: Confidence;
+  evidence: string;
+  evidence_source: string;
+  /** The device's place in the layer-2 fabric was not observed (it is only known to be in this segment). */
+  unknown_attachment: boolean;
+  segment: string | null;
+  last_verified_at: string | null;
+}
+
+export interface ImpactGraph {
+  site_id: string;
+  generated_at: string;
+  nodes: ImpactGraphNode[];
+  edges: ImpactGraphEdge[];
+  limitations: string[];
+}
+
+export type ImpactFailure =
+  | { type: 'node'; id: string }
+  | { type: 'device'; id: string }
+  | { type: 'collector'; id: string }
+  | { type: 'port'; id: string; port: string }
+  | { type: 'link'; id: string }
+  | { type: 'site' };
+
+export interface ImpactPathStep {
+  edge_id: string;
+  from: string;
+  to: string;
+  from_label: string;
+  to_label: string;
+  relation: ImpactGraphEdge['relation'];
+  basis: 'observed' | 'inferred';
+  confidence: Confidence;
+  evidence: string;
+  evidence_source: string;
+  /** This step relies on an attachment that was not observed. */
+  uncertain: boolean;
+}
+
+/** failed: selected; cut_off: reaches neither the internet nor the site core; internet_lost: LAN still works; attachment_unknown: may be affected. */
+export type DeviceImpactStatus = 'failed' | 'cut_off' | 'internet_lost' | 'attachment_unknown';
+
+export interface ImpactedDevice {
+  node_id: string;
+  device_id: string | null;
+  label: string;
+  ip: string | null;
+  kind: ImpactNodeKind;
+  is_critical: boolean;
+  status: DeviceImpactStatus;
+  confidence: Confidence;
+  reason: string;
+  path: ImpactPathStep[];
+}
+
+export interface ImpactedCheck {
+  check_id: string;
+  name: string;
+  role: CheckRole;
+  kind: CheckKind;
+  target: string;
+  status: 'down' | 'may_go_down';
+  confidence: Confidence;
+  reason: string;
+  /** How the check's target was tied to the graph. */
+  target_binding: string | null;
+  path: ImpactPathStep[];
+}
+
+export interface ImpactedEndpoint {
+  endpoint_id: string;
+  name: string;
+  device_id: string | null;
+  status: 'unreachable' | 'internet_lost' | 'attachment_unknown';
+  confidence: Confidence;
+  reason: string;
+}
+
+export interface ImpactedCollector {
+  collector_id: string;
+  name: string;
+  status: 'failed' | 'cut_off' | 'internet_lost';
+  reason: string;
+}
+
+export interface SiteImpact {
+  site_id: string;
+  name: string;
+  dark: boolean;
+  internet: 'lost' | 'kept' | 'unknown';
+  monitoring: 'blind' | 'kept' | 'none';
+  reasons: string[];
+}
+
+export interface ImpactResult {
+  site_id: string;
+  generated_at: string;
+  failures: { failure: ImpactFailure; label: string }[];
+  devices: ImpactedDevice[];
+  checks: ImpactedCheck[];
+  endpoints: ImpactedEndpoint[];
+  collectors: ImpactedCollector[];
+  sites: SiteImpact[];
+  summary: {
+    devices_failed: number;
+    devices_cut_off: number;
+    devices_internet_lost: number;
+    devices_attachment_unknown: number;
+    checks_down: number;
+    checks_may_go_down: number;
+    endpoints_unreachable: number;
+    endpoints_attachment_unknown: number;
+    sites_dark: number;
+  };
+  /** Node / edge ids to highlight on the network map. */
+  highlight: { failed: string[]; impacted: string[]; uncertain: string[]; edges: string[] };
+  limitations: string[];
+}
+
+export interface SpofEntry {
+  target: ImpactFailure;
+  node_id: string | null;
+  edge_id: string | null;
+  label: string;
+  kind: ImpactNodeKind | 'link';
+  /** devices impacted + checks down + endpoints unreachable. */
+  blast_radius: number;
+  devices_impacted: number;
+  critical_devices_impacted: number;
+  checks_down: number;
+  endpoints_unreachable: number;
+  site_dark: boolean;
+  attachment_unknown: number;
+  confidence: Confidence;
+  evidence: string[];
+}
+
+export interface SpofReport {
+  site_id: string;
+  generated_at: string;
+  items: SpofEntry[];
+  limitations: string[];
+}
+
+export interface PortfolioKpis {
+  health: { score: number; verdict: InsightsReport['verdict'] } | null;
+  incidents: { critical: number; warning: number; info: number; total: number };
+  devices: { total: number; online: number; offline: number; unknown: number; unreviewed: number };
+  collectors: { total: number; online: number; offline: number; never: number; last_heartbeat_at: string | null };
+  endpoints: { total: number; online: number; compliant: number; non_compliant: number; attention: number; unknown: number };
+  checks: { total: number; ok: number; degraded: number; down: number; unknown: number; last_failure: { check_id: string; name: string; at: string } | null };
+}
+
+export interface PortfolioSite extends PortfolioKpis {
+  site_id: string;
+  name: string;
+  timezone: string;
+}
+
+export interface PortfolioSites {
+  organization_id: string;
+  generated_at: string;
+  items: PortfolioSite[];
+}
+
+export interface PortfolioOrganization extends PortfolioKpis {
+  organization_id: string;
+  name: string;
+  kind: string;
+  role: Role;
+  current: boolean;
+  /** Set when the organization's policy keeps its data closed to this session (no KPIs are returned). */
+  locked: 'mfa_required' | null;
+  sites: number;
+}
+
+export interface PortfolioOrganizations {
+  generated_at: string;
+  items: PortfolioOrganization[];
+}

@@ -37,6 +37,7 @@ func TestLoadRejectsInvalid(t *testing.T) {
 		"zero pps":              "server_url: https://ld.example.com\nlimits: {max_concurrency: 8, max_pps: 0, ping_timeout_ms: 1000}\n",
 		"bad allow-list":        "server_url: https://ld.example.com\nallowed_cidrs: [\"everything\"]\n",
 		"bad log level":         "server_url: https://ld.example.com\nlog_level: verbose\n",
+		"bad tls pin":           "server_url: https://ld.example.com\ntls_pin_sha256: not-a-sha256\n",
 		"not yaml":              "{{{{",
 	}
 	for name, body := range cases {

@@ -5,8 +5,11 @@ package cloud
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,6 +54,9 @@ type RemoteConfig struct {
 	// SNMP lists the switches to read for Port Detective. It carries read credentials, so the
 	// agent never writes it to the on-disk configuration cache.
 	SNMP json.RawMessage `json:"snmp,omitempty"`
+	// Routers lists the site's routers this collector may read and control. It carries the router
+	// administrator credentials, so — like SNMP — it is never written to the on-disk cache.
+	Routers json.RawMessage `json:"routers,omitempty"`
 }
 
 type Command struct {
@@ -98,7 +104,17 @@ type Client struct {
 	userAgent  string
 }
 
-func New(serverURL, caFile, version string) (*Client, error) {
+// ParsePin parses a SHA-256 certificate fingerprint given as 64 hex digits or colon-separated hex bytes.
+func ParsePin(s string) ([]byte, error) {
+	clean := strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(strings.TrimSpace(s)))
+	b, err := hex.DecodeString(clean)
+	if err != nil || len(b) != 32 {
+		return nil, errors.New("tls_pin_sha256 must be a SHA-256 fingerprint (64 hex digits, optionally colon-separated)")
+	}
+	return b, nil
+}
+
+func New(serverURL, caFile, version string, tlsPinSHA256 ...string) (*Client, error) {
 	base, err := url.Parse(strings.TrimRight(serverURL, "/"))
 	if err != nil {
 		return nil, err
@@ -114,6 +130,24 @@ func New(serverURL, caFile, version string) (*Client, error) {
 			return nil, errors.New("ca_file contains no certificates")
 		}
 		tlsCfg.RootCAs = pool
+	}
+	if len(tlsPinSHA256) > 0 && strings.TrimSpace(tlsPinSHA256[0]) != "" {
+		pin, err := ParsePin(tlsPinSHA256[0])
+		if err != nil {
+			return nil, err
+		}
+		want := append([]byte(nil), pin...)
+		tlsCfg.InsecureSkipVerify = true // replaced by explicit leaf SHA-256 pin verification below
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return errors.New("tls pin verification failed: server presented no certificate")
+			}
+			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+			if subtle.ConstantTimeCompare(sum[:], want) != 1 {
+				return fmt.Errorf("tls pin mismatch: server leaf certificate sha256 %x does not match configured pin", sum[:])
+			}
+			return nil
+		}
 	}
 	return &Client{
 		base: base,

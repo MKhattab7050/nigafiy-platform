@@ -3,8 +3,8 @@ import { z } from 'zod';
 import type { DeviceStatus, DeviceType, Topology, TopologyEdge, TopologyNode } from '@lan-detective/shared-types';
 import { auth, notFound, parse } from '../../common/http.ts';
 import { cidrContains } from '../../common/net.ts';
-import { withTenant } from '../../infrastructure/db.ts';
-import { type Sighting, locate } from '../ports/locate.ts';
+import { type Db, withTenant } from '../../infrastructure/db.ts';
+import { type Sighting, locate } from '../ports/index.ts';
 
 /**
  * Network topology, built only from evidence the platform actually has today:
@@ -35,8 +35,14 @@ interface DeviceRow {
 topologyRouter.get('/topology', async (req, res) => {
   const ctx = auth(req);
   const { site_id: siteId } = parse(z.object({ site_id: z.uuid() }), req.query);
+  res.json(await withTenant(ctx.organizationId, (db) => buildTopology(db, siteId)));
+});
 
-  const topology = await withTenant(ctx.organizationId, async (db): Promise<Topology> => {
+/**
+ * Builds the evidence graph of one site inside the caller's tenant transaction (RLS applies).
+ * Exported through index.ts so other modules (impact simulation) reuse this graph instead of its SQL.
+ */
+export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
     if (!(await db.query(`SELECT 1 FROM sites WHERE id = $1`, [siteId])).rowCount) throw notFound('Site');
     const scopes = await db.query<{ cidr: string; label: string | null }>(`SELECT cidr::text AS cidr, label FROM network_scopes WHERE site_id = $1 AND enabled ORDER BY cidr`, [siteId]);
     const collectors = await db.query<{ name: string; gateway_ip: string | null; interfaces: { name: string; addresses: string[] }[]; connection_state: string; last_heartbeat_at: Date | null }>(
@@ -255,6 +261,4 @@ topologyRouter.get('/topology', async (req, res) => {
     if (devices.rows.length === 2000) limitations.push('Only the first 2000 devices are shown.');
 
     return { site_id: siteId, generated_at: new Date().toISOString(), nodes, edges, limitations };
-  });
-  res.json(topology);
-});
+}

@@ -82,4 +82,5 @@ form .btn { margin-top: 12px; }
 .logs .lvl.warn { color: var(--warn); }
 .logs .lvl.error { color: var(--crit); }
 .logs .extra { color: var(--muted); }
+.local-actions { margin-top: 10px; }
 [hidden] { display: none !important; }

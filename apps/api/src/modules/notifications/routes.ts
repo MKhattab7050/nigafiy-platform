@@ -11,7 +11,7 @@ export const notificationsRouter: Router = Router();
 
 // The signing secret is never part of any SELECT that leaves this module.
 const CHANNEL_SELECT = `
-  SELECT c.id, c.kind, c.name, c.url, c.config, c.min_severity, c.event_types, c.enabled, c.created_at,
+  SELECT c.id, c.kind, c.name, c.url, c.config, c.min_severity, c.event_types, c.enabled, c.use_for_account_emails, c.created_at,
          d.status AS last_delivery_status, coalesce(d.delivered_at, d.created_at) AS last_delivery_at, d.last_error AS last_delivery_error
     FROM notification_channels c
     LEFT JOIN LATERAL (SELECT status, delivered_at, created_at, last_error FROM notification_deliveries
@@ -22,11 +22,17 @@ const common = {
   min_severity: z.enum(['info', 'warning', 'critical']).default('warning'),
   event_types: z.array(z.string().max(60)).max(30).nullable().default(null),
 };
-const webhookInput = z.object({ kind: z.literal('webhook').default('webhook'), url: z.url().max(500), ...common });
+const webhookInput = z.object({
+  kind: z.literal('webhook').default('webhook'),
+  url: z.url().max(500),
+  use_for_account_emails: z.literal(false).optional(),
+  ...common,
+});
 const address = z.email().max(254);
 const emailInput = z.object({
   kind: z.literal('email'),
   recipients: z.array(address).min(1).max(10),
+  use_for_account_emails: z.boolean().default(false),
   smtp: z
     .object({
       host: z.string().trim().min(1).max(253).regex(/^[A-Za-z0-9.-]+$/, 'Enter a host name or IPv4 address'),
@@ -50,19 +56,23 @@ function assertWebhookUrl(raw: string): void {
   }
 }
 
-notificationsRouter.get('/notification-channels', requireRole('admin'), async (req, res) => {
+notificationsRouter.get(['/notification-channels', '/notifications/channels'], requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const result = await withTenant(ctx.organizationId, (db) => db.query<NotificationChannel>(`${CHANNEL_SELECT} ORDER BY c.created_at`));
   res.json({ items: result.rows });
 });
 
-notificationsRouter.post('/notification-channels', requireRole('admin'), async (req, res) => {
+notificationsRouter.post(['/notification-channels', '/notifications/channels'], requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
+  if ((req.body as { kind?: string; use_for_account_emails?: boolean } | undefined)?.use_for_account_emails && (req.body as { kind?: string }).kind !== 'email') {
+    throw new AppError(400, 'not_email_channel', 'Only an email channel can send account emails');
+  }
   const body = parse(channelInput, req.body);
   let url: string;
   let config: Record<string, unknown> = {};
   let sealed: string;
   let signingSecret: string | null = null;
+  const useForAccountEmails = body.kind === 'email' ? body.use_for_account_emails : false;
   if (body.kind === 'email') {
     const { password, username, ...smtp } = body.smtp;
     if (password && !username) throw new AppError(400, 'invalid_smtp', 'A password needs a user name');
@@ -79,27 +89,45 @@ notificationsRouter.post('/notification-channels', requireRole('admin'), async (
   }
   const channel = await withTenant(ctx.organizationId, async (db) => {
     const inserted = await db.query<{ id: string }>(
-      `INSERT INTO notification_channels (organization_id, kind, name, url, config, secret_encrypted, min_severity, event_types)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [ctx.organizationId, body.kind, body.name, url, JSON.stringify(config), sealed, body.min_severity, body.event_types],
+      `INSERT INTO notification_channels (organization_id, kind, name, url, config, secret_encrypted, min_severity, event_types, use_for_account_emails)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [ctx.organizationId, body.kind, body.name, url, JSON.stringify(config), sealed, body.min_severity, body.event_types, useForAccountEmails],
     );
     const id = inserted.rows[0]!.id;
     // The audit trail records that a channel was added, never its password or signing secret.
-    await audit(db, req, 'notification_channel.created', { type: 'notification_channel', id }, { name: body.name, kind: body.kind });
+    await audit(db, req, 'notification_channel.created', { type: 'notification_channel', id }, {
+      name: body.name,
+      kind: body.kind,
+      use_for_account_emails: useForAccountEmails,
+    });
     return (await db.query<NotificationChannel>(`${CHANNEL_SELECT} WHERE c.id = $1`, [id])).rows[0]!;
   });
   // A webhook signing secret is returned exactly once so the receiver can verify signatures; stored encrypted.
   res.status(201).json({ channel, signing_secret: signingSecret });
 });
 
-notificationsRouter.patch('/notification-channels/:id', requireRole('admin'), async (req, res) => {
+notificationsRouter.patch(['/notification-channels/:id', '/notifications/channels/:id'], requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  const body = parse(z.object({ enabled: z.boolean().optional(), min_severity: z.enum(['info', 'warning', 'critical']).optional() }).strict(), req.body);
+  const body = parse(
+    z
+      .object({
+        enabled: z.boolean().optional(),
+        min_severity: z.enum(['info', 'warning', 'critical']).optional(),
+        /** Email channels only: also send account mail (invitations, password resets) through this channel. Off by default. */
+        use_for_account_emails: z.boolean().optional(),
+      })
+      .strict(),
+    req.body,
+  );
   const channel = await withTenant(ctx.organizationId, async (db) => {
+    const kind = (await db.query<{ kind: string }>(`SELECT kind FROM notification_channels WHERE id = $1`, [id])).rows[0]?.kind;
+    if (!kind) throw notFound('Channel');
+    if (body.use_for_account_emails && kind !== 'email') throw new AppError(400, 'not_email_channel', 'Only an email channel can send account emails');
     const updated = await db.query(
-      `UPDATE notification_channels SET enabled = coalesce($2, enabled), min_severity = coalesce($3, min_severity) WHERE id = $1`,
-      [id, body.enabled ?? null, body.min_severity ?? null],
+      `UPDATE notification_channels SET enabled = coalesce($2, enabled), min_severity = coalesce($3, min_severity),
+              use_for_account_emails = coalesce($4, use_for_account_emails) WHERE id = $1`,
+      [id, body.enabled ?? null, body.min_severity ?? null, body.use_for_account_emails ?? null],
     );
     if (!updated.rowCount) throw notFound('Channel');
     await audit(db, req, 'notification_channel.updated', { type: 'notification_channel', id }, body);
@@ -108,7 +136,7 @@ notificationsRouter.patch('/notification-channels/:id', requireRole('admin'), as
   res.json(channel);
 });
 
-notificationsRouter.delete('/notification-channels/:id', requireRole('admin'), async (req, res) => {
+notificationsRouter.delete(['/notification-channels/:id', '/notifications/channels/:id'], requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {
@@ -120,7 +148,7 @@ notificationsRouter.delete('/notification-channels/:id', requireRole('admin'), a
 });
 
 /** Queue a clearly-labelled test notification to one channel. */
-notificationsRouter.post('/notification-channels/:id/test', requireRole('admin'), async (req, res) => {
+notificationsRouter.post(['/notification-channels/:id/test', '/notifications/channels/:id/test'], requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {

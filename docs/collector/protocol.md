@@ -7,37 +7,55 @@ cmd/lan-collector        flags, logging, signal handling
 internal/config          YAML + env, strict validation, hard ceilings
 internal/scope           what may be probed (private only, ≤ /20, optional local allow-list)
 internal/discovery       rate/concurrency-limited ICMP sweep + neighbour table + rDNS
+internal/identify        active local-link identification: mDNS/DNS-SD, SSDP/UPnP, NetBIOS
+internal/dhcp            passive UDP/67 DHCP broadcast name/vendor learning + state/dhcp-names.json persistence
 internal/netinfo         reads OS state: neighbour table, default gateway, interfaces (no packets)
 internal/probe           ICMP / TCP / DNS measurements
+internal/dnsfilter       optional local DNS filtering forwarder (categories, profiles, schedules, stats)
+internal/snmp            read-only SNMP v2c/v3 switch polling (interfaces, 64-bit counters, FDB, LLDP)
+internal/router          router connectors: client list, TOFU cert fetch, block/unblock, rate limit, schedule
+internal/tools           on-demand IT Toolbox measurements (ping, tcp, 19-port scan, dns, rdns, traceroute)
+internal/wol             scope-checked Wake-on-LAN magic packet sender
 internal/spool           bounded on-disk outbox
 internal/cloud           HTTPS client, error classes, backoff
-internal/agent           four loops: heartbeat, discovery, checks, upload
+internal/agent           orchestration loops: heartbeat, discovery, checks, SNMP, routers, DNS stats, upload
 ```
 
-Four goroutine loops share one context; cancelling it (SIGINT/SIGTERM) stops them, flushes unsent
+Goroutine loops share one root context; cancelling it (`SIGINT`/`SIGTERM`) stops them, flushes unsent
 measurements to disk and exits.
 
-**Discovery method** (low impact): one ICMP echo per address → read the host's neighbour table →
-one reverse-DNS lookup per device found. A device that drops ICMP is still found if its neighbour
-entry is *reachable*; stale entries only supply the MAC of hosts that answered. No port scanning.
+**Discovery & identification** (low impact): one ICMP echo per address → read the host's neighbour table →
+one reverse-DNS lookup and local identification query (mDNS/DNS-SD, SSDP/UPnP, NetBIOS) per device found,
+supplemented by passive DHCP broadcast listening (`internal/dhcp`, persisted in `state/dhcp-names.json`).
+A device that drops ICMP is still found if its neighbour entry is *reachable*; stale entries only supply
+the MAC of hosts that answered. Scheduled discovery performs no port scanning (the 19-port IT Toolbox scan
+runs only on explicit single-host operator command).
 
 **Limits** — config defaults 32 concurrent / 50 packets per second; ceilings compiled into the binary
 (128 / 500 / scopes ≤ /20, private ranges only). Floors: discovery ≥ 60 s, checks ≥ 10 s.
 
-**Trust** — a scope delivered by the cloud is re-validated locally; with `allowed_cidrs` set, the
-collector refuses anything outside it. Only one command kind exists (`run_discovery`); unknown commands
-and unknown check kinds are ignored. There is no remote execution.
+**Trust** — scopes, Wake-on-LAN targets, SNMP switches, router addresses, and LAN toolbox targets delivered
+by the server are re-validated locally against the collector's authorized scopes (`allowed_cidrs` when set).
+Commands use a closed allow-list:
+- `run_discovery` — trigger an immediate discovery sweep
+- `run_checks` — run all monitoring checks immediately
+- `wake_device` — send a Wake-on-LAN packet inside an authorized scope
+- `poll_snmp` — poll a configured SNMP switch immediately
+- `run_tool` — run an IT Toolbox diagnostic (`ping`, `tcp`, `ports`, `dns`, `rdns`, `traceroute`)
+- `router_refresh`, `router_fetch_certificate`, `router_block`, `router_unblock`, `router_rate_limit`, `router_schedule` — execute an explicit administrator router request
+
+Unknown commands and unknown check kinds are ignored. There is no shell or arbitrary command execution.
 
 **Offline behaviour** — the last configuration is cached on disk, so monitoring continues (and resumes
-after a restart) while the cloud is unreachable. Batches are written to the spool first and deleted
+after a restart) while the server is unreachable. Batches are written to the spool first and deleted
 only after a `200`. The spool is bounded (`spool_max_batches`, oldest dropped first).
 
 **Privileges** — Linux: `CAP_NET_RAW` or unprivileged ping (`net.ipv4.ping_group_range`); host
-networking so the LAN's layer 2 is visible. No root needed.
+networking so the LAN's layer 2 is visible. No root needed unless binding port 53 (`CAP_NET_BIND_SERVICE`).
 
 ## Protocol
 
-Base path `/api/v1/collector`, JSON over HTTPS. Unknown fields are rejected.
+Base path `/api/v1/collector`, JSON over HTTPS (or loopback HTTP in local development). Unknown fields are rejected.
 
 ### `POST /enroll` — no auth
 
@@ -58,29 +76,13 @@ Organization and site are taken from the token's database row.
   "spool_depth": 0, "completed_commands": [] }
 ```
 
-Response:
-
-```json
-{ "server_time": "…",
-  "config": { "heartbeat_interval_seconds": 30,
-              "discovery": { "interval_seconds": 300, "scopes": [{ "id": "…", "cidr": "192.168.1.0/24" }] },
-              "checks": [{ "id": "…", "kind": "icmp", "target": "auto:gateway", "port": null, "interval_seconds": 30 }] },
-  "commands": [{ "id": "…", "kind": "run_discovery" }] }
-```
-
-Commands are re-sent until acknowledged in `completed_commands`.
+Response delivers `config` (`heartbeat_interval_seconds`, `discovery`, `checks`, `access`, `snmp_targets`, `routers`)
+and pending `commands`. Commands are re-sent until acknowledged in `completed_commands`.
 
 ### `POST /telemetry` — `Authorization: Bearer ldc_…`
 
-```json
-{ "batch_id": "<uuid>", "sent_at": "…", "items": [
-  { "type": "discovery_run", "run_id": "<uuid>", "scope_id": "…", "trigger": "scheduled",
-    "started_at": "…", "finished_at": "…", "hosts_probed": 254,
-    "hosts": [{ "ip": "192.168.1.10", "mac": "00:11:22:33:44:55", "hostname": "nas.lan", "rtt_ms": 0.4,
-                "sources": ["icmp", "arp_cache", "rdns"] }] },
-  { "type": "check_result", "check_id": "…", "ts": "…", "ok": true, "latency_ms": 12.4,
-    "loss_pct": 0, "jitter_ms": 0.8, "resolved_target": "192.168.1.1" } ] }
-```
+Carries batched items (`discovery_run`, `check_result`, `snmp_switch`, `dns_stats`, `tool_result`,
+`router_status`, `router_action_result`).
 
 Response `200 { "duplicate": false, "accepted": 2, "rejected": [{ "index": 0, "reason": "…" }] }`.
 

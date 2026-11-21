@@ -5,6 +5,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -78,6 +80,7 @@ type Agent struct {
 
 	wakeHeartbeat chan struct{}
 	wakeInventory chan struct{}
+	cmdSem        chan struct{}
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -95,6 +98,24 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			return nil, errors.New("ca_file contains no certificates")
 		}
 		tlsCfg.RootCAs = pool
+	}
+	if strings.TrimSpace(cfg.TLSPinSHA256) != "" {
+		pin, err := config.ParsePin(cfg.TLSPinSHA256)
+		if err != nil {
+			return nil, err
+		}
+		want := append([]byte(nil), pin...)
+		tlsCfg.InsecureSkipVerify = true // replaced by explicit leaf SHA-256 pin verification below
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return errors.New("tls pin verification failed: server presented no certificate")
+			}
+			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+			if subtle.ConstantTimeCompare(sum[:], want) != 1 {
+				return fmt.Errorf("tls pin mismatch: server leaf certificate sha256 %x does not match configured pin", sum[:])
+			}
+			return nil
+		}
 	}
 	return &Agent{
 		cfg:     cfg,
@@ -114,6 +135,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		seenCmds:      map[string]bool{},
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
+		cmdSem:        make(chan struct{}, 16),
 	}, nil
 }
 
@@ -149,7 +171,9 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 	if raw, err := os.ReadFile(a.credentialPath()); err == nil {
 		var c credentialFile
 		if json.Unmarshal(raw, &c) == nil && c.Credential != "" {
+			a.mu.Lock()
 			a.credential = c.Credential
+			a.mu.Unlock()
 			a.log.Info("using stored endpoint identity", "endpoint_id", c.EndpointID)
 			return nil
 		}
@@ -166,7 +190,9 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 		"os":               h.OS,
 		"arch":             h.Arch,
 		"cpu_cores":        h.CPUCores,
-		"ram_total_mb":     h.RAMTotalMB,
+	}
+	if h.RAMTotalMB > 0 {
+		payload["ram_total_mb"] = h.RAMTotalMB
 	}
 	if h.OSVersion != "" {
 		payload["os_version"] = h.OSVersion
@@ -205,7 +231,9 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 	if err := os.WriteFile(a.credentialPath(), raw, 0o600); err != nil {
 		return fmt.Errorf("store credential: %w", err)
 	}
+	a.mu.Lock()
 	a.credential = resp.Credential
+	a.mu.Unlock()
 	a.log.Info("enrolled endpoint", "endpoint_id", resp.EndpointID)
 	return nil
 }
@@ -230,18 +258,20 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	a.mu.Unlock()
 
 	body := map[string]any{
-		"agent_version":    a.version,
-		"hostname":         h.Hostname,
-		"os":               h.OS,
-		"arch":             h.Arch,
-		"cpu_cores":        h.CPUCores,
-		"ram_total_mb":     h.RAMTotalMB,
-		"uptime_seconds":   h.UptimeSeconds,
-		"logged_in_users":  h.LoggedInUsers,
-		"cpu_pct":          h.CPUPct,
-		"ram_used_mb":      h.RAMUsedMB,
-		"ram_pct":          h.RAMPct,
-		"command_results":  results,
+		"agent_version":   a.version,
+		"hostname":        h.Hostname,
+		"os":              h.OS,
+		"arch":            h.Arch,
+		"cpu_cores":       h.CPUCores,
+		"uptime_seconds":  h.UptimeSeconds,
+		"logged_in_users": h.LoggedInUsers,
+		"cpu_pct":         h.CPUPct,
+		"ram_used_mb":     h.RAMUsedMB,
+		"ram_pct":         h.RAMPct,
+		"command_results": results,
+	}
+	if h.RAMTotalMB > 0 {
+		body["ram_total_mb"] = h.RAMTotalMB
 	}
 	if h.OSVersion != "" {
 		body["os_version"] = h.OSVersion
@@ -309,7 +339,12 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	for _, cmd := range resp.Commands {
 		a.mu.Lock()
 		seen := a.seenCmds[cmd.ID]
-		a.seenCmds[cmd.ID] = true
+		if !seen {
+			if len(a.seenCmds) >= 2048 {
+				clear(a.seenCmds)
+			}
+			a.seenCmds[cmd.ID] = true
+		}
 		a.mu.Unlock()
 		if seen {
 			continue
@@ -335,12 +370,22 @@ func (a *Agent) commandPollLoop(ctx context.Context) {
 			Commands []control.Command `json:"commands"`
 		}
 		if err := a.post(ctx, "/poll", map[string]any{}, true, &resp); err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(2 * time.Second):
+			}
 			continue
 		}
 		for _, cmd := range resp.Commands {
 			a.mu.Lock()
 			seen := a.seenCmds[cmd.ID]
-			a.seenCmds[cmd.ID] = true
+			if !seen {
+				if len(a.seenCmds) >= 2048 {
+					clear(a.seenCmds)
+				}
+				a.seenCmds[cmd.ID] = true
+			}
 			a.mu.Unlock()
 			if seen {
 				continue
@@ -351,6 +396,14 @@ func (a *Agent) commandPollLoop(ctx context.Context) {
 }
 
 func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
+	if a.cmdSem != nil {
+		select {
+		case a.cmdSem <- struct{}{}:
+			defer func() { <-a.cmdSem }()
+		case <-ctx.Done():
+			return
+		}
+	}
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
 	res := a.deps.ExecuteCommand(ctx, cmd)
 
@@ -406,7 +459,10 @@ func (a *Agent) post(ctx context.Context, path string, payload any, authed bool,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "lan-endpoint-agent/"+a.version)
 	if authed {
-		req.Header.Set("Authorization", "Bearer "+a.credential)
+		a.mu.Lock()
+		cred := a.credential
+		a.mu.Unlock()
+		req.Header.Set("Authorization", "Bearer "+cred)
 	}
 	resp, err := a.httpClient.Do(req)
 	if err != nil {

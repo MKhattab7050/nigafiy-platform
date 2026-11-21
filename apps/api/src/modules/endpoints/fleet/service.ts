@@ -1,0 +1,98 @@
+import type { z } from 'zod';
+import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint, EndpointSummary, Role } from '@lan-detective/shared-types';
+import { notFound } from '../../../common/http.ts';
+import { withTenant } from '../../../infrastructure/db.ts';
+import { buildCapabilities } from '../capabilities.ts';
+import { ENDPOINT_SUMMARY_SELECT, payloadForAudit } from '../repo.ts';
+import type { SeriesRange, endpointListQuery } from '../schema.ts';
+
+// Fleet & inventory: the read side of the endpoints module.
+
+export async function listEndpoints(organizationId: string, q: z.infer<typeof endpointListQuery>): Promise<EndpointSummary[]> {
+  const items = await withTenant(organizationId, (db) =>
+    db.query<EndpointSummary>(
+      `${ENDPOINT_SUMMARY_SELECT}
+        WHERE ($1::uuid IS NULL OR e.site_id = $1)
+          AND ($2::uuid IS NULL OR e.device_id = $2)
+          AND ($3::text IS NULL OR e.platform = $3)
+          AND ($4::text IS NULL OR e.compliance_status = $4)
+        ORDER BY CASE e.connection_state WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, e.name`,
+      [q.site_id ?? null, q.device_id ?? null, q.platform ?? null, q.compliance_status ?? null],
+    ),
+  );
+  return items.rows;
+}
+
+/** Full detail incl. inventory, capabilities and the latest commands (payloads redacted as for the audit log). */
+export function getEndpointDetail(organizationId: string, id: string, role?: Role): Promise<EndpointDetail> {
+  return withTenant(organizationId, async (db) => {
+    await db.query(
+      `UPDATE endpoint_commands
+          SET status = 'expired', error = 'Command expired before the agent executed it', completed_at = now()
+        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered') AND created_at < now() - interval '10 minutes'`,
+      [id],
+    );
+    const ep = (
+      await db.query<EndpointDetail>(
+        `${ENDPOINT_SUMMARY_SELECT.replace(
+          'FROM endpoints e',
+          ', e.security, e.policy, e.rd_session, e.last_rd_frame, e.disks, e.interfaces, e.processes, e.services, e.software, e.connections FROM endpoints e',
+        )}
+          WHERE e.id = $1`,
+        [id],
+      )
+    ).rows[0];
+    if (!ep) throw notFound('Endpoint');
+    const commands = await db.query<EndpointCommand>(
+      `SELECT id, endpoint_id, kind, payload, status, output, error, result_data, created_by_name, created_at, delivered_at, completed_at
+         FROM endpoint_commands
+        WHERE endpoint_id = $1
+        ORDER BY created_at DESC
+        LIMIT 60`,
+      [id],
+    );
+    const isViewer = role === 'viewer';
+    ep.commands = commands.rows.map((c) => ({
+      ...c,
+      payload: payloadForAudit(c.kind, c.payload),
+      result_data: isViewer && (c.kind === 'fs_op' || c.kind === 'rd_capture') ? null : c.result_data,
+    }));
+    if (isViewer) {
+      ep.last_rd_frame = null;
+    }
+    ep.capabilities = buildCapabilities(ep.platform);
+    return ep;
+  });
+}
+
+const RANGES: Record<SeriesRange, { seconds: number; bucket: number }> = {
+  '15m': { seconds: 900, bucket: 20 },
+  '1h': { seconds: 3600, bucket: 60 },
+  '24h': { seconds: 86_400, bucket: 300 },
+  '7d': { seconds: 604_800, bucket: 3600 },
+  '30d': { seconds: 2_592_000, bucket: 14_400 },
+};
+
+export async function getSeries(organizationId: string, id: string, range: SeriesRange) {
+  const r = RANGES[range]!;
+  const to = new Date();
+  const from = new Date(to.getTime() - r.seconds * 1000);
+
+  const points = await withTenant(organizationId, async (db) => {
+    if (!(await db.query(`SELECT 1 FROM endpoints WHERE id = $1`, [id])).rowCount) throw notFound('Endpoint');
+    const result = await db.query<EndpointSeriesPoint>(
+      `SELECT date_bin(make_interval(secs => $4), ts, timestamptz '2000-01-01') AS ts,
+              avg(cpu_pct)::float8 AS cpu_pct,
+              avg(ram_pct)::float8 AS ram_pct,
+              avg(disk_used_pct)::float8 AS disk_used_pct,
+              count(*)::int AS samples
+         FROM endpoint_samples
+        WHERE endpoint_id = $1 AND ts >= $2 AND ts < $3
+        GROUP BY 1 ORDER BY 1`,
+      [id, from, to, r.bucket],
+    );
+    return result.rows;
+  });
+
+  return { from, to, bucket_seconds: r.bucket, points };
+}

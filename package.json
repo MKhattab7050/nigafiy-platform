@@ -9,6 +9,8 @@
   },
   "scripts": {
     "local": "node scripts/local.mjs",
+    "local:autostart": "node scripts/local.mjs --install-autostart --only-autostart",
+    "local:stop-autostart": "node scripts/local.mjs --uninstall-autostart --only-autostart",
     "start": "node scripts/local.mjs",
     "dev:db": "pnpm --filter @lan-detective/api dev:db",
     "dev:api": "pnpm --filter @lan-detective/api dev",

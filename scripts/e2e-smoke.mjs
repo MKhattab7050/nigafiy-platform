@@ -7,7 +7,7 @@
 // and verifies that real ICMP discovery results and real check measurements arrive.
 // Everything it creates is clearly labelled "E2E smoke".
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -122,5 +122,6 @@ try {
 } finally {
   collector.kill('SIGINT');
   await sleep(500);
+  rmSync(stateDir, { recursive: true, force: true });
   process.exit(failed ? 1 : 0);
 }

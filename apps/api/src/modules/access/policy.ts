@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { safeTimeZone } from '../../common/timezone.ts';
 
 /** Categories the collector understands. `encrypted_dns` is always enforced while filtering is on. */
 export const ACCESS_CATEGORIES = ['ads_malware', 'adult', 'gambling', 'social', 'video', 'games', 'chat'] as const;
@@ -80,11 +81,14 @@ export function mergeRules(now: Date, ...layers: (RuleLayer | null | undefined)[
   return rule;
 }
 
-/** Whether a rule turns the internet off at `now` (pause or bedtime), evaluated in the given IANA zone. */
+/**
+ * Whether a rule turns the internet off at `now` (pause or bedtime), evaluated in the given IANA zone
+ * (the site's). A zone this runtime does not know is evaluated as UTC rather than failing the request.
+ */
 export function internetOff(rule: EffectiveRule, now: Date, timeZone = 'UTC'): 'paused' | 'schedule' | null {
   if (rule.paused_until && new Date(rule.paused_until) > now) return 'paused';
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    new Intl.DateTimeFormat('en-US', { timeZone: safeTimeZone(timeZone), weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
       .formatToParts(now)
       .map((p) => [p.type, p.value]),
   );

@@ -51,8 +51,17 @@ func ValidTarget(s string) bool {
 
 // Runner holds the probes the tools are built from.
 type Runner struct {
-	ICMP func(ctx context.Context, ip string) probe.Result
-	TCP  func(ctx context.Context, host string, port int) probe.Result
+	ICMP          func(ctx context.Context, ip string) probe.Result
+	TCP           func(ctx context.Context, host string, port int) probe.Result
+	AllowLoopback bool
+}
+
+func (r Runner) isAllowedLANAddr(ip string) bool {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil || !addr.Is4() {
+		return false
+	}
+	return addr.IsPrivate() || (r.AllowLoopback && addr.IsLoopback())
 }
 
 func resolveIPv4(ctx context.Context, host string) (string, error) {
@@ -102,7 +111,14 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if req.Port < 1 || req.Port > 65535 {
 			return nil, errors.New("a port between 1 and 65535 is required")
 		}
-		res := r.TCP(ctx, req.Target, req.Port)
+		ip, err := resolveIPv4(ctx, req.Target)
+		if err != nil {
+			return nil, err
+		}
+		if !r.isAllowedLANAddr(ip) {
+			return nil, errors.New("TCP port checks are only allowed for private LAN addresses")
+		}
+		res := r.TCP(ctx, ip, req.Port)
 		out := map[string]any{"port": req.Port, "open": res.OK}
 		if res.LatencyMs != nil {
 			out["connect_ms"] = *res.LatencyMs
@@ -180,8 +196,7 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		addr, err := netip.ParseAddr(ip)
-		if err != nil || !addr.Is4() || (!addr.IsPrivate() && !addr.IsLoopback()) {
+		if !r.isAllowedLANAddr(ip) {
 			return nil, errors.New("service port checks are only allowed for private LAN addresses")
 		}
 		open := r.scanCommonPorts(ctx, ip)
