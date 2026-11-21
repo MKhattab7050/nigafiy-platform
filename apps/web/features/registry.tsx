@@ -19,7 +19,7 @@ import {
   Stethoscope,
   Wrench,
 } from 'lucide-react';
-import { BookOpen, Building2, GitBranch, Sparkles } from 'lucide-react'; // Phase 6: knowledge, portfolio, impact, assistant
+import { BookOpen, Building2, GitBranch } from 'lucide-react'; // Phase 6: knowledge, portfolio, impact
 import { type ComponentType, type LazyExoticComponent, lazy } from 'react';
 import type { Paginated, Role } from '@lan-detective/shared-types';
 import { qs } from '@/lib/api';
@@ -224,7 +224,7 @@ export const FEATURES: Feature[] = [
     widget: { component: lazy(() => import('./playbooks/widget')), order: 95, attention: true },
   },
 
-  // ── Phase 6: knowledge memory, digital twin impact, multi-site portfolio, optional AI assistant ──
+  // ── Phase 6: knowledge memory, digital twin impact, multi-site portfolio ──
   {
     id: 'portfolio',
     route: '/portfolio',
@@ -256,7 +256,6 @@ export const FEATURES: Feature[] = [
     },
     widget: { component: lazy(() => import('./knowledge/widget')), order: 105 },
   },
-  { id: 'assistant', route: '/assistant', label: 'nav.assistant', icon: Sparkles, placement: 'tools' },
 
   {
     id: 'settings',

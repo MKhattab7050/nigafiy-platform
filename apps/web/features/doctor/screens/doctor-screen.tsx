@@ -11,7 +11,6 @@ import { useI18n } from '@/lib/i18n';
 import { DiagnosisView } from '../components/diagnosis-view';
 import { domainTone } from '../components/domain-tone';
 import { FeatureBoundary } from '@/components/error-boundary';
-import { ExplainWithAi } from '@/features/assistant';
 import { KnowledgeSuggestions } from '@/features/knowledge';
 
 export function DoctorScreen() {
@@ -87,11 +86,6 @@ export function DoctorScreen() {
                   }
                 >
                   <DiagnosisView diagnosis={r.diagnosis} />
-                  {r.diagnosis.fault_domain !== 'healthy' && (
-                    <FeatureBoundary>
-                      <ExplainWithAi subject="doctor" siteId={r.site_id} />
-                    </FeatureBoundary>
-                  )}
                   {r.diagnosis.fault_domain !== 'healthy' && !r.active_incident && (
                     <div className="mt-3">
                       <FeatureBoundary>

@@ -16,7 +16,6 @@ import * as timeMachine from '@/features/time-machine/strings';
 import * as toolbox from '@/features/toolbox/strings';
 import * as topology from '@/features/topology/strings';
 import * as knowledge from '@/features/knowledge/strings';
-import * as assistant from '@/features/assistant/strings';
 import * as impact from '@/features/impact/strings';
 import * as portfolio from '@/features/portfolio/strings';
 import * as security from '@/features/security/strings';
@@ -29,7 +28,7 @@ import * as ui from './ui-strings';
  * Every feature keeps its `t(key)` strings in its own `strings.ts` (a leaf module with no imports);
  * this file only merges them. Keys are namespaced by feature, so they never collide.
  */
-const modules = [core, ui, access, auth, dashboard, devices, discovery, doctor, endpoints, events, incidents, ipam, monitoring, ports, routers, settings, timeMachine, toolbox, topology, knowledge, assistant, impact, portfolio, security, configBackup, playbooks] as const;
+const modules = [core, ui, access, auth, dashboard, devices, discovery, doctor, endpoints, events, incidents, ipam, monitoring, ports, routers, settings, timeMachine, toolbox, topology, knowledge, impact, portfolio, security, configBackup, playbooks] as const;
 
 type Union = (typeof modules)[number]['en'];
 type Merge<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void ? I : never;

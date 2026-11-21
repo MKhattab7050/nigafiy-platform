@@ -94,7 +94,7 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 | Smart security checks: rogue DHCP, UPnP IGD audit, Wi-Fi analyser, DHCP/HTTP fingerprinting (`023`, `modules/security`) | built | built (`internal/agent/smartchecks.go`, `internal/smart`; scheduled + run now, scope re-checked at every layer) | built (`/security`) | API + Go; doc `docs/features/smart-checks.md` |
 | Approval-gated playbooks (`024`, `modules/playbooks`) | built | n/a | built (`/playbooks`, editor, `/playbooks/runs`, run detail with approvals) | API; doc `docs/features/playbooks.md` |
 | Knowledge memory (`025`, `modules/knowledge`) | built | n/a | built (`/knowledge`, `/knowledge/[id]`) | API |
-| Optional AI assistant, off by default, admin's own key (`026`, `modules/assistant`) | built | n/a | built (`/assistant`) | API |
+| AI assistant (`026`, removed in `027`) | removed | n/a | removed | removed per owner decision (2026-11-21); platform stays 100% deterministic & local-first |
 | Impact analysis (digital twin) and MSP portfolio (`modules/impact`, `modules/portfolio`) | built | n/a | built (`/impact`, `/portfolio`) | API (`modules.test.ts`) |
 
 Milestone 0b finished the rows that were missing or partial at the baseline (collector wiring and Go tests for smart checks, the config backup, smart checks and playbooks screens, and their feature docs).
@@ -131,17 +131,15 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 
 ## Known limitations
 
-- **Doctor rules cover the network path, services, critical devices and collectors.** Wi-Fi and DHCP
-  server diagnostics are not built yet.
+- **Doctor rules cover the network path, services, critical devices, collectors, and smart-check findings** (`modules/doctor/smart-rules.ts` for rogue DHCP, UPnP, and Wi-Fi security).
 - **Baselines** are a 7-day average latency used in wording; they do not change state thresholds yet.
 - **Diagnosis text and event titles are English**; UI chrome is translated.
-- Time Machine check state is the last recorded transition before the moment; configuration-change
-  history does not exist yet (no config backup module).
+- Time Machine check state is the last recorded transition before the moment; switch/router config snapshots and diffs live separately in `/config-backup` (`022`).
 - Period comparison of periods older than ~25 days uses hourly roll-ups (coarser).
 - Device status granularity equals the discovery interval; devices on routed subnets are IP-identified.
 - Notifications: webhook and SMTP email, with scheduled maintenance windows (`019_maintenance.sql`). No multi-tier alert escalation, external SSO (SAML/OIDC), or billing.
 - Endpoint management covers Windows, Linux and macOS computers with the agent. Phones and tablets are not managed (no iOS/Android support); they still appear as discovered network devices. On macOS, remote desktop is view-only and the agent's Linux/macOS builds have only been cross-compiled and unit-tested, not run on those systems.
-- AI is not used anywhere. The planned AI layer only rephrases and ranks what the rule engine found.
+- AI is deliberately not used anywhere (the optional AI assistant added in `026` was removed in `027` per owner decision). All diagnoses, insights, knowledge suggestions, and playbooks are deterministic and evidence-backed.
 
 ## Risks and assumptions
 
@@ -166,12 +164,12 @@ six phases. Status against it:
 | 2 Network intelligence | SNMP, monitoring, topology, charts, IPAM, switch ports, alerts, Network Doctor, IT toolbox | **Built.** Interface history charts, switch-level FDB/LLDP topology, IPAM conflict events, email notifications, maintenance windows, and IT toolbox (Ping, TCP, Common ports, DNS, rDNS, Traceroute) are all implemented and tested |
 | 3 Endpoint management | Go endpoint agent, enrollment, inventory, health, software inventory, activity telemetry | **Built** for Windows/Linux/macOS: `agents/endpoint-agent`, `/api/v1/agent/*`, `/api/v1/endpoints/*`, `/endpoints` UI with per-platform capabilities, evidence-only compliance and auto-linking to LAN devices. Mobile device management (iOS/Android) is not built: it needs Apple MDM (APNs certificate, signed profiles, check-in protocol) and an Android device-policy app |
 | 4 Remote administration | processes, services, power/session actions, user messaging, command audit, Remote File Manager, live Remote Desktop, software & logs | **Built.** Live Remote File Manager (`internal/filemgr`), live Remote Desktop (`internal/remotedesktop`), process termination, service start/stop/restart, software install/remove/upgrade, event log retrieval, allow-listed diagnostic terminal, lock/logoff/restart/shutdown, on-screen user messaging, and full audit log |
-| 5 Infrastructure control & security | router / switch / firewall control, VLAN operations, quarantine, security intelligence, config backup, automation | **In progress.** DNS-based access control (`005`), smart-default automation (`016`), and router control (`017`: client lists, block/unblock, rate limits, schedules, TOFU cert pinning, block ledger) are built. Switch port write actions / VLAN reconfiguration, device config backups, and multi-step workflow automation remain |
-| 6 Intelligence | AI assistant, knowledge memory, incident replay, digital twin, reports, multi-site / MSP | **In progress.** Incident replay, multi-tenant data model, trigram global search (`020`), and printable summary reports (`/reports`) are built. AI assistant, knowledge memory, and digital twin simulation remain |
+| 5 Infrastructure control & security | router / switch / firewall control, VLAN operations, quarantine, security intelligence, config backup, automation | **Built (expanding router vendors).** DNS-based access control (`005`), smart-default automation (`016`), router control (`017`: currently `zyxel`, expanding to multi-vendor drivers), switch port write controls & VLAN/quarantine (`021`), SSH config backup & diff (`022`), smart security checks (`023`), and approval-gated playbooks (`024`) are built and tested |
+| 6 Intelligence | knowledge memory, incident replay, digital twin, reports, multi-site / MSP | **Built (AI removed per owner decision).** Incident replay, multi-tenant data model, trigram global search (`020`), printable summary reports (`/reports`), knowledge memory (`025`), digital twin impact analysis (`/impact`), and multi-site MSP portfolio (`/portfolio`) are built |
 
 **Next, in order:**
-1. Complete Phase 5: switch port write controls / VLAN assignment, network device configuration backup & version diffing, and multi-step workflow automation with approval gates.
-2. Complete Phase 6: optional AI explanation layer on top of deterministic Network Doctor diagnoses, incident resolution knowledge memory, and multi-site MSP roll-up views.
+1. Expand multi-vendor router control drivers (`collectors/lan-collector/internal/router/*`) beyond `zyxel` (MikroTik, UniFi, OpenWrt, OPNsense, pfSense, FortiGate, Omada, ASUS, Cisco IOS XE).
+2. Complete hardening & security foundations (CSP, CI, linting, frontend E2E tests, multi-instance `commandEvents`, key rotation, DB backup) and continue the Nigafiy restructuring milestones (Milestone 2 rename & brand onward — see `docs/superpowers/plans/2026-11-21-nigafiy-hardening-and-routers.md`).
 
 **Decisions the brief forces** (to make when Phases 3–4 start):
 - `docs/security/model.md` states that remote command execution is deliberately absent and that the collector protocol cannot carry one. That stays true for the network collector. Remote administration goes through the separate endpoint agent, installed and enrolled per machine, with its own protocol, permissions and audit trail.

@@ -9,7 +9,6 @@ import { absoluteTime, duration, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
 import { DiagnosisView } from '@/features/doctor';
 import { FeatureBoundary } from '@/components/error-boundary';
-import { ExplainWithAi } from '@/features/assistant';
 import { KnowledgeSuggestions } from '@/features/knowledge';
 import { Replay } from '../components/incident-replay';
 import { Actions } from '../components/incident-actions';
@@ -44,11 +43,6 @@ export function IncidentDetailScreen({ id }: { id: string }) {
               <div className="space-y-4">
                 <Card title={t('dx.title')}>
                   {inc.diagnosis ? <DiagnosisView diagnosis={inc.diagnosis} /> : <p className="text-[13px] text-muted">{t('dx.none')}</p>}
-                  {inc.diagnosis && (
-                    <FeatureBoundary>
-                      <ExplainWithAi subject="incident" incidentId={inc.id} />
-                    </FeatureBoundary>
-                  )}
                 </Card>
                 <FeatureBoundary>
                   <KnowledgeSuggestions incidentId={inc.id} />

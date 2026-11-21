@@ -1,6 +1,5 @@
 import { type ModuleManifest, validateModules } from '../infrastructure/module.ts';
 import { accessModule } from './access/index.ts';
-import { assistantModule } from './assistant/index.ts';
 import { authModule } from './auth/index.ts';
 import { automationModule } from './automation/index.ts';
 import { collectorsModule } from './collectors/index.ts';
@@ -67,7 +66,6 @@ export const modules: readonly ModuleManifest[] = validateModules([
   automationModule,
   playbooksModule,
   knowledgeModule,
-  assistantModule,
   impactModule,
   portfolioModule,
   configBackupModule,
