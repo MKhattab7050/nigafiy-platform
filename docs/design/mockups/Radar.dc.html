@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Radar devices</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#00718C}a:hover{color:#004E61}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #0099BC; display: flex; align-items: center; justify-content: center">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12l5.5-5.5"></path></svg>
+      </div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Radar</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; min-height: 740px">
+      <nav aria-label="Radar" style="flex: 1 1 200px; max-width: 230px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span>{{n.label}}</span>
+          </a>
+        </sc-for>
+        <span style="flex: 1; min-height: 24px"></span>
+        <a href="#" style="display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 13px; color: var(--fg2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"></path></svg>
+          <span>{{t.backHub}}</span>
+        </a>
+      </nav>
+      <main style="flex: 999 1 560px; min-width: 0; background: var(--layer); border-start-start-radius: 8px; border-top: 1px solid var(--stroke); border-inline-start: 1px solid var(--stroke); padding: 24px 28px; display: flex; flex-wrap: wrap; gap: 20px; align-content: flex-start">
+        <div style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 16px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+            <h1 style="margin: 0; font-size: 26px; font-weight: 600; flex: 1 1 200px">{{t.title}}</h1>
+            <a href="#" style="display: inline-flex; align-items: center; height: 32px; padding-inline: 14px; border-radius: 5px; border: 1px solid var(--stroke); background: var(--card); color: var(--fg); text-decoration: none; font-size: 13px">{{t.export}}</a>
+            <a href="#" style="display: inline-flex; align-items: center; height: 32px; padding-inline: 14px; border-radius: 5px; background: #00809D; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.scan}}</a>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <sc-for list="{{filters}}" as="f" hint-placeholder-count="4">
+              <a href="#" style="{{f.style}} display: inline-flex; align-items: center; height: 30px; padding-inline: 12px; border-radius: 15px; text-decoration: none; font-size: 13px">{{f.label}}</a>
+            </sc-for>
+          </div>
+          <div style="overflow-x: auto; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+            <table style="width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px">
+              <thead>
+                <tr style="text-align: start; color: var(--fg2)">
+                  <th style="text-align: start; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{t.cStatus}}</th>
+                  <th style="text-align: start; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{t.cName}}</th>
+                  <th style="text-align: start; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{t.cType}}</th>
+                  <th style="text-align: start; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{t.cIp}}</th>
+                  <th style="text-align: start; font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{t.cTrust}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+                  <tr style="{{r.rowStyle}}">
+                    <td style="padding: 10px 14px; border-bottom: 1px solid var(--stroke)"><span style="display: inline-flex; align-items: center; gap: 6px; color: {{r.stColor}}; font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 4px; background: currentColor"></span>{{r.st}}</span></td>
+                    <td style="padding: 10px 14px; border-bottom: 1px solid var(--stroke)"><div style="font-weight: 600">{{r.name}}</div><div style="font-size: 12px; color: var(--fg2)">{{r.nameSrc}}</div></td>
+                    <td style="padding: 10px 14px; border-bottom: 1px solid var(--stroke)"><div>{{r.type}}</div><div style="font-size: 12px; color: var(--fg2)">{{r.conf}}</div></td>
+                    <td dir="ltr" style="padding: 10px 14px; border-bottom: 1px solid var(--stroke); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; text-align: start">{{r.ip}}</td>
+                    <td style="padding: 10px 14px; border-bottom: 1px solid var(--stroke)">{{r.trust}}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside aria-labelledby="card-h" style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); align-self: flex-start">
+          <div>
+            <div style="font-size: 12px; color: var(--fg2)">{{t.cardKicker}}</div>
+            <h2 id="card-h" style="margin: 2px 0 0; font-size: 18px; font-weight: 600">[Device name]</h2>
+            <div dir="ltr" style="font-size: 12px; color: var(--fg2); font-family: 'Cascadia Mono', Consolas, monospace; text-align: start">192.168.1.x · xx:xx:xx:xx:xx:xx</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+            <sc-for list="{{facts}}" as="f" hint-placeholder-count="3">
+              <div style="display: flex; gap: 8px"><span style="color: var(--fg2); min-width: 96px">{{f.k}}</span><span style="flex: 1">{{f.v}}</span></div>
+            </sc-for>
+          </div>
+          <div style="height: 1px; background: var(--stroke)"></div>
+          <div style="font-size: 13px; font-weight: 600">{{t.actions}}</div>
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="5">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg2)"><span style="width: 8px; height: 8px; border-radius: 2px; background: {{g.accent}}"></span>{{g.program}}</div>
+              <sc-if value="{{g.installed}}" hint-placeholder-val="{{true}}">
+                <div style="display: flex; flex-wrap: wrap; gap: 6px">
+                  <sc-for list="{{g.actions}}" as="a" hint-placeholder-count="2">
+                    <a href="#" style="display: inline-flex; align-items: center; min-height: 32px; padding-inline: 12px; border-radius: 5px; border: 1px solid var(--stroke); color: var(--fg); text-decoration: none; font-size: 13px">{{a.label}}</a>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{g.missing}}" hint-placeholder-val="{{false}}">
+                <a href="#" style="display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--accentText)">{{g.installText}}</a>
+              </sc-if>
+            </div>
+          </sc-for>
+        </aside>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1b1f24', mica: '#1e2529', layer: '#252b2f', card: '#2b3135', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c5c5c5', accentText: '#4fc8e6', ok: '#6ccb5f', warn: '#f7a64a', crit: '#ff8a8a', sel: 'rgba(79,200,230,0.12)', selRow: 'rgba(79,200,230,0.08)' }
+      : { desk: '#d6e4ea', mica: '#edf4f6', layer: '#f9fbfb', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#00718C', ok: '#0E7A0D', warn: '#9D5300', crit: '#B3261E', sel: 'rgba(0,153,188,0.10)', selRow: 'rgba(0,153,188,0.06)' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', backHub: 'العودة إلى Hub', title: 'الأجهزة', export: 'تصدير CSV', scan: 'فحص الآن',
+      cStatus: 'الحالة', cName: 'الاسم', cType: 'النوع', cIp: 'العنوان', cTrust: 'الثقة', cardKicker: 'بطاقة الجهاز · نفسها في كل البرامج', actions: 'كل الإجراءات المتاحة',
+    } : {
+      mockup: 'Design mockup, not real data', backHub: 'Back to Hub', title: 'Devices', export: 'Export CSV', scan: 'Scan now',
+      cStatus: 'Status', cName: 'Name', cType: 'Type', cIp: 'Address', cTrust: 'Trust', cardKicker: 'Device card · the same in every program', actions: 'Every available action',
+    };
+    const navItems = ar
+      ? [['الاكتشاف', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12l5.5-5.5'], ['الأجهزة', 'M3 5h18v11H3zM8 20h8M12 16v4'], ['خريطة الشبكة', 'M5 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M19 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M7 6l4 11M17 6l-4 11'], ['عناوين IP', 'M5 9h14M5 15h14M10 4L8 20M16 4l-2 16'], ['منافذ السويتش', 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2']]
+      : [['Discovery', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12l5.5-5.5'], ['Devices', 'M3 5h18v11H3zM8 20h8M12 16v4'], ['Network map', 'M5 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M19 5m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 19m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M7 6l4 11M17 6l-4 11'], ['IP addresses', 'M5 9h14M5 15h14M10 4L8 20M16 4l-2 16'], ['Switch ports', 'M4 7h16v10H4zM8 11v2M12 11v2M16 11v2']];
+    const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], style: i === 1 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #0099BC;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
+    const F = ar ? ['الكل', 'متصل', 'غير مُراجَع', 'غير مرغوب'] : ['All', 'Online', 'Unreviewed', 'Unwanted'];
+    const filters = F.map((l, i) => ({ label: l, style: i === 0 ? 'background: #00809D; color: #fff;' : 'border: 1px solid var(--stroke); color: var(--fg); background: var(--card);' }));
+    const st = { on: [ar ? 'متصل' : 'Online', 'var(--ok)'], off: [ar ? 'غير متصل' : 'Offline', 'var(--fg2)'], unk: [ar ? 'غير معروف' : 'Unknown', 'var(--warn)'] };
+    const R = ar ? [
+      ['on', '[اسم الراوتر]', 'المصدر: SNMP', 'راوتر', 'ثقة عالية · البوابة', '192.168.1.x', 'معروف', true],
+      ['on', '[اسم الحاسوب]', 'المصدر: DHCP', 'حاسوب Windows', 'ثقة عالية · الوكيل', '192.168.1.x', 'معروف', false],
+      ['on', 'بدون اسم', 'لم يُعلن عن اسم', 'هاتف / جهاز لوحي', 'ثقة منخفضة · MAC عشوائي', '192.168.1.x', 'غير مُراجَع', false],
+      ['off', '[اسم الطابعة]', 'المصدر: mDNS', 'طابعة', 'ثقة عالية', '192.168.1.x', 'معروف', false],
+      ['unk', '[اسم الجهاز]', 'المصدر: يدوي', 'كاميرا', 'يدوي', '192.168.1.x', 'غير مرغوب', false],
+    ] : [
+      ['on', '[Router name]', 'Name from SNMP', 'Router', 'High confidence · gateway', '192.168.1.x', 'Known', true],
+      ['on', '[Computer name]', 'Name from DHCP', 'Windows PC', 'High confidence · agent', '192.168.1.x', 'Known', false],
+      ['on', 'No name', 'Did not announce a name', 'Phone / tablet', 'Low confidence · random MAC', '192.168.1.x', 'Unreviewed', false],
+      ['off', '[Printer name]', 'Name from mDNS', 'Printer', 'High confidence', '192.168.1.x', 'Known', false],
+      ['unk', '[Device name]', 'Name set by hand', 'Camera', 'Manual', '192.168.1.x', 'Unwanted', false],
+    ];
+    const rows = R.map((r) => ({ st: st[r[0]][0], stColor: st[r[0]][1], name: r[1], nameSrc: r[2], type: r[3], conf: r[4], ip: r[5], trust: r[6], rowStyle: r[7] ? 'background: var(--selRow);' : '' }));
+    const facts = ar
+      ? [{ k: 'النوع', v: 'راوتر · ثقة عالية (SNMP + البوابة)' }, { k: 'الشركة', v: '[الشركة المصنعة] · سجل IEEE' }, { k: 'المنفذ', v: '[سويتش] · المنفذ [x] · مباشر' }]
+      : [{ k: 'Type', v: 'Router · high confidence (SNMP + gateway)' }, { k: 'Vendor', v: '[Vendor] · IEEE registry' }, { k: 'Plugged into', v: '[Switch] · port [x] · direct' }];
+    const G = [
+      ['Radar', '#0099BC', true, ar ? ['تحديد النوع', 'وضع علامة معروف', 'إيقاظ (WoL)'] : ['Identify', 'Mark known', 'Wake (WoL)']],
+      ['Watch', '#C27C0E', true, ar ? ['مراقبة', 'الحوادث'] : ['Monitor', 'Incidents']],
+      ['Guard', '#D13438', true, ar ? ['إيقاف الإنترنت مؤقتاً', 'حظر على الراوتر', 'عزل المنفذ'] : ['Pause internet', 'Block on router', 'Quarantine port']],
+      ['Toolbox', '#2E8540', true, ar ? ['Ping', 'فحص المنافذ', 'تتبع المسار'] : ['Ping', 'Port check', 'Traceroute']],
+      ['Mind', '#C239B3', false, []],
+    ];
+    const groups = G.map((g) => ({ program: 'Nigafiy ' + g[0], accent: g[1], installed: g[2], missing: !g[2], actions: g[3].map((l) => ({ label: l })), installText: ar ? 'متاح في Nigafiy ' + g[0] + ': تثبيت' : 'Available in Nigafiy ' + g[0] + ': install' }));
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, filters, rows, facts, groups };
+  }
+}
+</script>
+</body>
+</html>

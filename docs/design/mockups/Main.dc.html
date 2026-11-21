@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Hub home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1466E6}a:hover{color:#0C3B5E}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0B1F5C"></rect><path d="M8 11a3 3 0 0 1 4.5-2.6l9.5 5.5a4 4 0 0 1 2 3.4V22a2 2 0 0 1-2 2h-1.5a2 2 0 0 1-2-2v-4.3L13.3 15v7a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2z" fill="#1A73FF"></path><path d="M13.3 15l3.9-2.3 4.8 2.8a4 4 0 0 1 2 3.4V22a2 2 0 0 1-2 2h-1.5a2 2 0 0 1-2-2v-4.3z" fill="#0F4FD1"></path></svg>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Hub</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; min-height: 740px">
+      <nav aria-label="Hub" style="flex: 1 1 220px; max-width: 260px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="5">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 12px; height: 40px; padding-inline: 12px; border-radius: 6px; text-decoration: none; font-size: 14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span>{{n.label}}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <main style="flex: 999 1 560px; min-width: 0; background: var(--layer); border-start-start-radius: 8px; border-top: 1px solid var(--stroke); border-inline-start: 1px solid var(--stroke); padding: 28px 32px; display: flex; flex-direction: column; gap: 28px">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px">
+          <div style="flex: 1 1 320px">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 600">{{t.title}}</h1>
+            <p style="margin: 4px 0 0; font-size: 14px; color: var(--fg2)">{{t.sub}}</p>
+          </div>
+          <label style="flex: 0 1 360px; display: flex; align-items: center; gap: 8px; height: 36px; padding-inline: 12px; border-radius: 6px; border: 1px solid var(--stroke); background: var(--card); font-size: 13px; color: var(--fg2)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4"></path></svg>
+            <input type="search" placeholder="{{t.search}}" aria-label="{{t.search}}" style="flex: 1; border: 0; background: transparent; font: inherit; color: var(--fg); outline: none">
+          </label>
+        </div>
+
+        <section aria-labelledby="engine-h" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 20px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--ok)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M8 12l3 3 5-6"></path></svg>
+            <span id="engine-h">{{t.engine}}</span>
+          </div>
+          <span style="font-size: 13px; color: var(--fg2)">{{t.engineSub}}</span>
+          <span style="flex: 1"></span>
+          <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.engineLink}}</a>
+        </section>
+
+        <section aria-labelledby="progs-h" style="display: flex; flex-direction: column; gap: 12px">
+          <h2 id="progs-h" style="margin: 0; font-size: 18px; font-weight: 600">{{t.programs}}</h2>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px">
+            <sc-for list="{{programs}}" as="p" hint-placeholder-count="6">
+              <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+                <div style="display: flex; align-items: center; gap: 12px">
+                  <div style="width: 40px; height: 40px; border-radius: 10px; background: {{p.accent}}; display: flex; align-items: center; justify-content: center; flex: none">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.icon}}"></path></svg>
+                  </div>
+                  <div style="min-width: 0">
+                    <div style="font-size: 15px; font-weight: 600">{{p.name}}</div>
+                    <div style="font-size: 12px; color: var(--fg2)">{{p.job}}</div>
+                  </div>
+                </div>
+                <div style="font-size: 12px; color: var(--fg2); min-height: 32px">{{p.desc}}</div>
+                <sc-if value="{{p.installed}}" hint-placeholder-val="{{true}}">
+                  <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; height: 32px; padding-inline: 14px; border-radius: 5px; background: {{p.accent}}; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.open}}</a>
+                </sc-if>
+                <sc-if value="{{p.notInstalled}}" hint-placeholder-val="{{false}}">
+                  <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; height: 32px; padding-inline: 14px; border-radius: 5px; border: 1px solid var(--stroke); color: var(--fg); text-decoration: none; font-size: 13px">{{t.install}}</a>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <section aria-labelledby="att-h" style="display: flex; flex-direction: column; gap: 12px">
+          <h2 id="att-h" style="margin: 0; font-size: 18px; font-weight: 600">{{t.attention}}</h2>
+          <div style="border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); overflow: hidden">
+            <sc-for list="{{attention}}" as="a" hint-placeholder-count="4">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--stroke)">
+                <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: {{a.sevColor}}; min-width: 92px">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round" aria-hidden="true"><path d="{{a.sevIcon}}"></path></svg>
+                  {{a.sev}}
+                </span>
+                <span style="flex: 1 1 260px; font-size: 14px">{{a.text}}</span>
+                <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg2)">
+                  <span style="width: 8px; height: 8px; border-radius: 2px; background: {{a.accent}}"></span>{{a.program}}
+                </span>
+                <a href="#" style="font-size: 13px; color: var(--accentText)">{{a.action}}</a>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1b1f24', mica: '#202429', layer: '#272b30', card: '#2d3136', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c5c5c5', accentText: '#62abf5', ok: '#6ccb5f', warn: '#f7a64a', crit: '#ff8a8a', sel: 'rgba(255,255,255,0.07)' }
+      : { desk: '#d9e2ec', mica: '#eef2f6', layer: '#f9fafb', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#0F5BA0', ok: '#0E7A0D', warn: '#9D5300', crit: '#B3261E', sel: 'rgba(0,0,0,0.05)' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', title: 'الرئيسية', sub: 'كل برامج Nigafiy وكل ما يحتاج انتباهك في مكان واحد', search: 'ابحث في الأجهزة والحوادث والحواسيب…',
+      engine: 'المحرك يعمل على هذا الجهاز', engineSub: 'قاعدة البيانات · الخادم · المستشعر المحلي', engineLink: 'تفاصيل الحالة', programs: 'برامجك', open: 'فتح', install: 'تثبيت', attention: 'يحتاج انتباهك',
+    } : {
+      mockup: 'Design mockup, not real data', title: 'Home', sub: 'Every Nigafiy program and everything that needs you, in one place', search: 'Search devices, incidents, computers…',
+      engine: 'Engine running on this PC', engineSub: 'Database · API · local Sensor', engineLink: 'Status details', programs: 'Your programs', open: 'Open', install: 'Install', attention: 'Needs your attention',
+    };
+    const P = [
+      ['Hub', '#1466E6', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z', 'Home and engine', 'الرئيسية والمحرك', 'Sign-in, sites, Sensors, updates', 'الدخول والمواقع والمستشعرات والتحديثات', true],
+      ['Radar', '#0099BC', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3.5 0a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0M12 12l5.5-5.5', 'See the network', 'رؤية الشبكة', 'Discovery, devices, topology, IPAM, switch ports', 'الاكتشاف والأجهزة والخريطة وعناوين IP ومنافذ السويتش', true],
+      ['Watch', '#C27C0E', 'M3 12h4l2-5 4 10 2-5h6', 'Watch and understand', 'المراقبة والفهم', 'Monitoring, incidents, Doctor, Time Machine, reports', 'المراقبة والحوادث والطبيب وآلة الزمن والتقارير', true],
+      ['Guard', '#D13438', 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z', 'Protect and control', 'الحماية والتحكم', 'DNS filter, routers, port control, security checks, config backup', 'فلتر DNS والراوترات والتحكم بالمنافذ وفحوص الأمان والنسخ الاحتياطي', true],
+      ['Fleet', '#7A4FD6', 'M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6', 'Company computers', 'حواسيب الشركة', 'Agents, compliance, remote desktop, files, commands', 'الوكلاء والامتثال وسطح المكتب البعيد والملفات والأوامر', true],
+      ['Mind', '#C239B3', 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18', 'Intelligence and automation', 'الذكاء والأتمتة', 'Knowledge, playbooks, automation, assistant', 'المعرفة والإجراءات والأتمتة والمساعد', false],
+      ['Toolbox', '#2E8540', 'M14.5 5.5a4 4 0 0 0-5 5l-6 6 2 2 6-6a4 4 0 0 0 5-5l-2.5 2.5-2-2z', 'Quick tools', 'أدوات سريعة', 'Ping, ports, DNS, traceroute, subnet calculator', 'Ping والمنافذ وDNS وتتبع المسار وحاسبة الشبكات', true],
+    ];
+    const programs = P.map((p) => ({ name: 'Nigafiy ' + p[0], accent: p[1], icon: p[2], job: ar ? p[4] : p[3], desc: ar ? p[6] : p[5], installed: p[7], notInstalled: !p[7] }));
+    const navItems = ar
+      ? [['الرئيسية', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z'], ['البرامج', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], ['يحتاج انتباهك', 'M12 3l9 16H3zM12 10v4M12 17v.5'], ['المواقع والمستشعرات', 'M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11zM12 10m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0'], ['التحديثات', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6'], ['الإعدادات', 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2']]
+      : [['Home', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z'], ['Programs', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], ['Needs attention', 'M12 3l9 16H3zM12 10v4M12 17v.5'], ['Sites and Sensors', 'M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11zM12 10m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0'], ['Updates', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6'], ['Settings', 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2']];
+    const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], style: i === 0 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #1466E6;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
+    const sev = {
+      crit: { sev: ar ? 'حرج' : 'Critical', sevColor: 'var(--crit)', sevIcon: 'M8 3h8l5 5v8l-5 5H8l-5-5V8zM12 8v5M12 16v.5' },
+      warn: { sev: ar ? 'تحذير' : 'Warning', sevColor: 'var(--warn)', sevIcon: 'M12 3l9 16H3zM12 10v4M12 17v.5' },
+      info: { sev: ar ? 'للمراجعة' : 'Review', sevColor: 'var(--fg2)', sevIcon: 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 11v6M12 7.5v.5' },
+    };
+    const A = ar ? [
+      ['crit', '[اسم الموقع]: البوابة لا تستجيب', 'Watch', '#C27C0E', 'فتح الحادثة'],
+      ['warn', 'خادم DHCP غير متوقع على [192.168.1.x]', 'Guard', '#D13438', 'مراجعة'],
+      ['warn', '[اسم الحاسوب]: جدار الحماية متوقف', 'Fleet', '#7A4FD6', 'عرض'],
+      ['info', 'جهاز جديد غير مُراجَع: [اسم الجهاز]', 'Radar', '#0099BC', 'تحديد'],
+    ] : [
+      ['crit', '[Site name]: gateway not responding', 'Watch', '#C27C0E', 'Open incident'],
+      ['warn', 'Unexpected DHCP server at [192.168.1.x]', 'Guard', '#D13438', 'Review'],
+      ['warn', '[Computer name]: firewall is off', 'Fleet', '#7A4FD6', 'View'],
+      ['info', 'New unreviewed device: [device name]', 'Radar', '#0099BC', 'Identify'],
+    ];
+    const attention = A.map((a) => ({ ...sev[a[0]], text: a[1], program: 'Nigafiy ' + a[2], accent: a[3], action: a[4] }));
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, programs, nav, attention };
+  }
+}
+</script>
+</body>
+</html>

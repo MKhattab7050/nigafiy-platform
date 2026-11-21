@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy website home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=Poppins:wght@600&amp;family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0F5BA0}a:hover{color:#0C3B5E}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} background: var(--bg); color: var(--fg); font-family: 'IBM Plex Sans', 'IBM Plex Sans Arabic', system-ui, sans-serif">
+  <header style="border-bottom: 1px solid var(--stroke)">
+    <div style="max-width: 1160px; margin: 0 auto; padding: 0 24px; min-height: 64px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--fg)">
+        <svg width="30" height="30" viewBox="0 0 32 32" role="img" aria-label="Nigafiy"><path d="M5 9.2a4 4 0 0 1 6-3.5l14 8A5 5 0 0 1 27.5 18v5a3.5 3.5 0 0 1-3.5 3.5h-1a3.5 3.5 0 0 1-3.5-3.5v-5.8L12.5 13v10a3.5 3.5 0 0 1-3.5 3.5h-.5A3.5 3.5 0 0 1 5 23z" fill="#1A73FF"></path><path d="M12.5 13l5.7-3.3 6.8 3.9A5 5 0 0 1 27.5 18v5a3.5 3.5 0 0 1-3.5 3.5h-1a3.5 3.5 0 0 1-3.5-3.5v-5.8z" fill="{{navy}}"></path></svg>
+        <span style="font-family: Poppins, 'IBM Plex Sans', sans-serif; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: {{navyText}}">nigafiy</span>
+      </a>
+      <nav aria-label="Site" style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 15px; flex: 1 1 320px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="4"><a href="#" style="color: var(--fg2); text-decoration: none">{{n.label}}</a></sc-for>
+      </nav>
+      <a href="#" style="font-size: 14px; color: var(--fg2); text-decoration: none">{{t.lang}}</a>
+      <a href="#" style="display: inline-flex; align-items: center; min-height: 40px; padding-inline: 18px; border-radius: 6px; background: #1466E6; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600">{{t.download}}</a>
+    </div>
+  </header>
+
+  <section style="max-width: 1160px; margin: 0 auto; padding: 72px 24px 56px; display: flex; flex-wrap: wrap; gap: 48px; align-items: center">
+    <div style="flex: 1 1 440px; display: flex; flex-direction: column; gap: 20px">
+      <h1 style="margin: 0; font-size: 52px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">{{t.h1}}</h1>
+      <p style="margin: 0; font-size: 19px; line-height: 1.55; color: var(--fg2); max-width: 560px">{{t.lead}}</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px">
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 48px; padding-inline: 22px; border-radius: 6px; background: #1466E6; color: #fff; text-decoration: none; font-size: 16px; font-weight: 600">{{t.cta1}}</a>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 48px; padding-inline: 22px; border-radius: 6px; border: 1px solid var(--stroke2); color: var(--fg); text-decoration: none; font-size: 16px">{{t.cta2}}</a>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: var(--fg2)">{{t.req}}</p>
+    </div>
+    <div style="flex: 1 1 440px; min-height: 320px; border-radius: 12px; border: 1px dashed var(--stroke2); background: var(--panel); display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--fg2); font-size: 15px">{{t.shot}}</div>
+  </section>
+
+  <section style="background: var(--panel); border-block: 1px solid var(--stroke)">
+    <div style="max-width: 1160px; margin: 0 auto; padding: 56px 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 32px">
+      <sc-for list="{{pillars}}" as="p" hint-placeholder-count="3">
+        <div style="display: flex; flex-direction: column; gap: 10px">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1466E6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.icon}}"></path></svg>
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600">{{p.title}}</h2>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: var(--fg2)">{{p.text}}</p>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="max-width: 1160px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 28px">
+    <div>
+      <h2 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.01em">{{t.familyH}}</h2>
+      <p style="margin: 8px 0 0; font-size: 17px; color: var(--fg2)">{{t.familySub}}</p>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px">
+      <sc-for list="{{programs}}" as="p" hint-placeholder-count="7">
+        <a href="#" style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 10px; border: 1px solid var(--stroke); background: var(--card); text-decoration: none; color: var(--fg)">
+          <div style="width: 44px; height: 44px; border-radius: 11px; background: {{p.accent}}; display: flex; align-items: center; justify-content: center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.icon}}"></path></svg>
+          </div>
+          <div style="font-size: 18px; font-weight: 600">{{p.name}}</div>
+          <div style="font-size: 14px; line-height: 1.5; color: var(--fg2)">{{p.desc}}</div>
+        </a>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="background: var(--panel); border-block: 1px solid var(--stroke)">
+    <div style="max-width: 1160px; margin: 0 auto; padding: 56px 24px; display: flex; flex-wrap: wrap; gap: 40px; align-items: flex-start">
+      <div style="flex: 1 1 360px; display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 30px; font-weight: 700">{{t.bundleH}}</h2>
+        <p style="margin: 0; font-size: 16px; line-height: 1.6; color: var(--fg2)">{{t.bundleSub}}</p>
+      </div>
+      <form style="flex: 1 1 420px; display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 10px; background: var(--card); border: 1px solid var(--stroke)">
+        <sc-for list="{{picker}}" as="p" hint-placeholder-count="7">
+          <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; font-size: 15px">
+            <input type="checkbox" checked="{{p.checked}}" disabled="{{p.locked}}" style="width: 18px; height: 18px; accent-color: #1466E6">
+            <span style="width: 10px; height: 10px; border-radius: 3px; background: {{p.accent}}"></span>
+            <span style="flex: 1">{{p.name}}</span>
+            <span style="font-size: 13px; color: var(--fg2)">{{p.note}}</span>
+          </label>
+        </sc-for>
+        <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding-inline: 20px; border-radius: 6px; background: #1466E6; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; margin-top: 6px">{{t.getInstaller}}</a>
+        <p style="margin: 0; font-size: 12px; color: var(--fg2)">{{t.hashNote}}</p>
+      </form>
+    </div>
+  </section>
+
+  <footer style="max-width: 1160px; margin: 0 auto; padding: 32px 24px 48px; display: flex; flex-wrap: wrap; gap: 24px; font-size: 14px; color: var(--fg2)">
+    <span style="flex: 1 1 240px">{{t.foot}}</span>
+    <sc-for list="{{footLinks}}" as="l" hint-placeholder-count="4"><a href="#" style="color: var(--fg2)">{{l.label}}</a></sc-for>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { bg: '#111418', panel: '#171b20', card: '#1d2228', stroke: 'rgba(255,255,255,0.08)', stroke2: 'rgba(255,255,255,0.22)', fg: '#f2f4f7', fg2: '#b9c0c8' }
+      : { bg: '#ffffff', panel: '#f4f7fa', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#14171a', fg2: '#4f5862' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      lang: 'English', download: 'تنزيل', h1: 'منصة الشبكات وتقنية المعلومات التي تعمل على أجهزتك أنت',
+      lead: 'اكتشف كل جهاز، افهم كل عطل، احمِ الشبكة وأدر حواسيب الشركة. كل البيانات تبقى عندك، وكل وصول عن بُعد ظاهر ومُسجَّل.',
+      cta1: 'تنزيل الحزمة الكاملة', cta2: 'اختر برامجك', req: 'Windows 10 و11 · Agent لأنظمة Windows وLinux وmacOS', shot: '[لقطة شاشة من البرنامج الحقيقي وهو يعمل]',
+      familyH: 'عائلة برامج، محرك واحد', familySub: 'كل برنامج يقوم بمهمة واحدة جيداً، وكلها تتشارك البيانات وتسجيل الدخول نفسه.',
+      bundleH: 'ابنِ حزمتك', bundleSub: 'اختر البرامج التي تحتاجها واحصل على مثبّت Hub واحد يثبّتها بالضبط. يمكنك إضافة المزيد لاحقاً من داخل Hub.',
+      getInstaller: 'تنزيل المثبّت', hashNote: 'لكل ملف تنزيل رقم إصدار وحجم وبصمة SHA-256 منشورة.', foot: 'Nigafiy · محلي أولاً، شفاف، ويعمل بذكاء',
+    } : {
+      lang: 'العربية', download: 'Download', h1: 'The network and IT platform that runs on your own machines',
+      lead: 'Find every device, understand every fault, protect the network and manage company computers. Your data stays with you, and every remote session is visible and logged.',
+      cta1: 'Download the full bundle', cta2: 'Choose your programs', req: 'Windows 10 and 11 · Agent for Windows, Linux and macOS', shot: '[Screenshot of the real running program]',
+      familyH: 'A family of programs, one engine', familySub: 'Each program does one job well. They all share the same data and the same sign-in.',
+      bundleH: 'Build your bundle', bundleSub: 'Tick the programs you need and get one Hub installer that installs exactly those. Add more later from inside Hub.',
+      getInstaller: 'Get the installer', hashNote: 'Every download lists its version, size and SHA-256.', foot: 'Nigafiy · local-first, transparent, and it works things out by itself',
+    };
+    const nav = (ar ? ['البرامج', 'التنزيلات', 'الوثائق', 'الأمان والخصوصية'] : ['Programs', 'Downloads', 'Docs', 'Security and privacy']).map((l) => ({ label: l }));
+    const pillars = ar ? [
+      { icon: 'M3 12l9-8 9 8M5 10v10h14V10', title: 'محلي أولاً', text: 'المحرك وقاعدة البيانات يعملان على جهاز الشركة. لا لوحة تحكم سحابية ولا حسابات خارجية.' },
+      { icon: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0', title: 'شفاف', text: 'كل جلسة سطح مكتب بعيد تظهر على شاشة المستخدم، وكل إجراء مسجّل في سجل التدقيق.' },
+      { icon: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18', title: 'يستنتج بنفسه', text: 'يكتشف الشبكة ويقترح الخطوة التالية، ويبيّن دائماً كيف عرف الشيء ومدى ثقته.' },
+    ] : [
+      { icon: 'M3 12l9-8 9 8M5 10v10h14V10', title: 'Local-first', text: 'The engine and the database run on the company’s own machine. No cloud console and no outside accounts.' },
+      { icon: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0', title: 'Transparent', text: 'Every remote desktop session shows on the user’s screen, and every action is in the audit log.' },
+      { icon: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18', title: 'Works things out', text: 'It discovers the network and suggests the next step, and always shows how it knows and how sure it is.' },
+    ];
+    const P = [
+      ['Hub', '#1466E6', 'M4 11l8-7 8 7v9h-5v-6H9v6H4z', 'Home, engine, sign-in and updates for every program', 'الرئيسية والمحرك وتسجيل الدخول والتحديثات لكل البرامج'],
+      ['Radar', '#0099BC', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3.5 0a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0M12 12l5.5-5.5', 'Discovery, devices, network map, IP addresses and switch ports', 'الاكتشاف والأجهزة وخريطة الشبكة وعناوين IP ومنافذ السويتش'],
+      ['Watch', '#C27C0E', 'M3 12h4l2-5 4 10 2-5h6', 'Monitoring, incidents, Network Doctor, Time Machine and reports', 'المراقبة والحوادث وطبيب الشبكة وآلة الزمن والتقارير'],
+      ['Guard', '#D13438', 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z', 'DNS filter, router and switch-port control, security checks, config backup', 'فلتر DNS والتحكم بالراوتر ومنافذ السويتش وفحوص الأمان والنسخ الاحتياطي'],
+      ['Fleet', '#7A4FD6', 'M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6', 'Company computers: compliance, remote desktop, files and commands', 'حواسيب الشركة: الامتثال وسطح المكتب البعيد والملفات والأوامر'],
+      ['Mind', '#C239B3', 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18', 'Knowledge, approval-gated playbooks, automation and an optional assistant', 'المعرفة والإجراءات بموافقة والأتمتة ومساعد اختياري'],
+      ['Toolbox', '#2E8540', 'M14.5 5.5a4 4 0 0 0-5 5l-6 6 2 2 6-6a4 4 0 0 0 5-5l-2.5 2.5-2-2z', 'Ping, port checks, DNS, traceroute and a subnet calculator', 'Ping وفحص المنافذ وDNS وتتبع المسار وحاسبة الشبكات'],
+    ];
+    const programs = P.map((p) => ({ name: 'Nigafiy ' + p[0], accent: p[1], icon: p[2], desc: ar ? p[4] : p[3] }));
+    const picker = P.map((p, i) => ({ name: 'Nigafiy ' + p[0], accent: p[1], checked: i !== 5, locked: i === 0, note: i === 0 ? (ar ? 'مطلوب دائماً' : 'always included') : '[size]' }));
+    const footLinks = (ar ? ['سجل التغييرات', 'الأمان', 'بيان الإصدارات', 'الوثائق'] : ['Changelog', 'Security', 'Release manifest', 'Docs']).map((l) => ({ label: l }));
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, pillars, programs, picker, footLinks, navy: dark ? '#4F8DFF' : '#0B2A7A', navyText: dark ? '#f2f4f7' : '#0B1F5C' };
+  }
+}
+</script>
+</body>
+</html>
