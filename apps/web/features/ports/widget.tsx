@@ -26,15 +26,15 @@ export default function PortsWidget() {
     attentionFrom([query], ({ items }) =>
       items
         .filter((s) => s.enabled && s.last_status === 'error')
-        .map((s) => ({ id: `switch-${s.id}`, tone: 'warn' as const, text: fill(t('ports.attn.error'), { name: s.name }), action: { label: t('ports.attn.check'), href: `/ports?switch=${s.id}` } })),
+        .map((s) => ({ id: `switch-${s.id}`, tone: 'warn' as const, text: fill(t('ports.attn.error'), { name: s.name }), action: { label: t('ports.attn.check'), href: `/radar/ports?switch=${s.id}` } })),
     ),
   );
 
   return (
-    <Widget title={t('nav.switchPorts')} icon={Cable} href="/ports">
+    <Widget title={t('nav.switchPorts')} icon={Cable} href="/radar/ports">
       <Async query={query}>
         {({ items }) => {
-          if (items.length === 0) return <NextStep text={tx.emptyTitle} label={tx.addSwitch} href="/ports" />;
+          if (items.length === 0) return <NextStep text={tx.emptyTitle} label={tx.addSwitch} href="/radar/ports" />;
           const ports = items.reduce((n, s) => n + s.port_count, 0);
           const up = items.reduce((n, s) => n + s.ports_up, 0);
           return (
@@ -56,7 +56,7 @@ export default function PortsWidget() {
               <ul className="divide-y divide-line rounded-[8px] border border-line">
                 {items.slice(0, 4).map((s) => (
                   <li key={s.id}>
-                    <Link href={`/ports?switch=${s.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
+                    <Link href={`/radar/ports?switch=${s.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
                       <span className="min-w-0 truncate text-[13px]" dir="auto">
                         {s.name}
                       </span>

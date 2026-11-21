@@ -49,7 +49,7 @@ function PathLane({ check, title, summary, showSite }: { check: MonitoringCheck;
   return (
     <div className="min-w-0 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/monitoring" className="text-[13.5px] font-semibold text-fg hover:underline">
+        <Link href="/watch/monitoring" className="text-[13.5px] font-semibold text-fg hover:underline">
           {title}
         </Link>
         <StateBadge state={check.enabled ? check.state : null} />

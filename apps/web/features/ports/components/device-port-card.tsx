@@ -42,7 +42,7 @@ function DevicePortCardBody({ deviceId }: { deviceId: string }) {
   return (
     <div className="space-y-2 text-sm text-muted">
       <p>{d.reason === 'no_switches' ? tx.cardNone : tx.notLocated[d.reason ?? 'not_seen']}</p>
-      <Link href="/ports" className="text-accent hover:underline">
+      <Link href="/radar/ports" className="text-accent hover:underline">
         {tx.open}
       </Link>
       <DeviceQuarantine deviceId={deviceId} />

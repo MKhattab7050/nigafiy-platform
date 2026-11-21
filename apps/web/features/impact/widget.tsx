@@ -15,7 +15,7 @@ export default function ImpactWidget() {
   const site = siteId ?? (sites.length === 1 ? sites[0]!.id : null);
   const query = useQuery<SpofReport>(site ? `/impact/spof${qs({ site_id: site })}` : null, ['devices', 'collectors'], 300_000);
   return (
-    <Widget title={t('imp.title')} icon={GitBranch} href={site ? `/impact${qs({ site })}` : '/impact'}>
+    <Widget title={t('imp.title')} icon={GitBranch} href={site ? `/watch/impact${qs({ site })}` : '/watch/impact'}>
       {!site ? (
         <NextStep text={t('imp.selectSite')} />
       ) : (
@@ -24,7 +24,7 @@ export default function ImpactWidget() {
             const top = r.items[0];
             return (
               <div className="space-y-3">
-                <Metric label={t('imp.widget.spofs')} value={r.items.length} tone={r.items.length ? 'warn' : 'ok'} href={`/impact${qs({ site })}`} size="lg" />
+                <Metric label={t('imp.widget.spofs')} value={r.items.length} tone={r.items.length ? 'warn' : 'ok'} href={`/watch/impact${qs({ site })}`} size="lg" />
                 {top ? (
                   <p className="text-xs leading-relaxed text-muted">
                     {t('imp.widget.largest')}: <span className="font-medium text-fg" dir="auto">{top.label}</span> — {fill(t('imp.spof.devices'), { n: top.devices_impacted })}

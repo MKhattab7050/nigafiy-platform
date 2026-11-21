@@ -7,12 +7,14 @@ import { useMemo } from 'react';
 import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@lan-detective/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { PlatformIcon } from '@/components/device-icon';
+import { DeviceLink } from '@/components/device-link';
 import { SetupArt } from '@/components/illustrations';
 import { Badge, Button, Card, EmptyState, Segmented } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
-import { epTone, complianceTone, Meter } from './endpoint-tones';
+import { localizeComplianceReason } from '@/lib/localize';
 import { endpointsText } from '../text';
+import { Meter, complianceTone, epTone } from './endpoint-tones';
 
 export function FleetContent({
   items,
@@ -179,7 +181,7 @@ export function FleetContent({
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   <PlatformIcon platform={ep.platform} className="size-4 text-muted" />
-                  <Link href={`/endpoints/${ep.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline">
+                  <Link href={`/fleet/endpoints/${ep.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline">
                     {ep.name}
                   </Link>
                   <Badge tone="info">{tx.platforms[ep.platform] ?? ep.platform}</Badge>
@@ -246,8 +248,8 @@ export function FleetContent({
                     </div>
 
                     {ep.compliance_reasons && ep.compliance_reasons.length > 0 && (
-                      <div className="rounded-[6px] border border-warn/30 bg-warn/[0.08] px-2.5 py-1.5 text-xs text-fg">
-                        {ep.compliance_reasons.join(' · ')}
+                      <div className="rounded-[6px] border border-warn/30 bg-warn/[0.08] px-2.5 py-1.5 text-xs text-fg" dir="auto">
+                        {ep.compliance_reasons.map((r) => localizeComplianceReason(r, locale)).join(' · ')}
                       </div>
                     )}
 
@@ -267,13 +269,13 @@ export function FleetContent({
 
                 <div className="flex items-center justify-between border-t border-line pt-2.5 text-xs">
                   {ep.device_id ? (
-                    <Link href={`/devices/${ep.device_id}`} className="text-muted hover:text-fg hover:underline">
+                    <DeviceLink id={ep.device_id} className="text-muted hover:text-fg hover:underline">
                       {tx.openDevice}
-                    </Link>
+                    </DeviceLink>
                   ) : (
                     <span />
                   )}
-                  <Link href={`/endpoints/${ep.id}`} className="font-medium text-accent-hover hover:underline">
+                  <Link href={`/fleet/endpoints/${ep.id}`} className="font-medium text-accent-hover hover:underline">
                     {tx.tabs.overview} →
                   </Link>
                 </div>

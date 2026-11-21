@@ -6,10 +6,8 @@ import { api } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';
 import { AccountSecurity } from '../components/account-security';
-import { Notifications } from '../components/notifications';
 import { AuditLog } from '../components/audit-log';
-import { Automation } from '../components/automation';
-import { MaintenanceWindows } from '../components/maintenance-windows';
+import { MovedCard } from '../components/moved-card';
 import { SystemHealth } from '../components/system-health';
 import { TeamManagement } from '../components/team-management';
 
@@ -45,15 +43,13 @@ export function SettingsScreen() {
           </dl>
         </Card>
         <AccountSecurity />
-        <MaintenanceWindows />
-        <Automation />
         <div id="system" className="scroll-mt-20">
           <SystemHealth />
         </div>
+        <MovedCard />
         {can('admin') ? (
           <>
             <TeamManagement />
-            <Notifications />
             <AuditLog />
           </>
         ) : (

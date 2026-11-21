@@ -11,6 +11,7 @@ import { qs } from '@/lib/api';
 import { type Query, useApp, useQuery } from '@/lib/app';
 import { pct, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
+import { localizeDeductionReason } from '@/lib/localize';
 
 export const VERDICT_TONE: Record<InsightsReport['verdict'], Tone> = { healthy: 'ok', attention: 'warn', urgent: 'crit' };
 
@@ -64,7 +65,7 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
                 {deductions.map((b) => (
                   <li key={b.code} className="flex items-baseline justify-between gap-3">
                     <span className="min-w-0 text-muted" dir="auto">
-                      {b.reason}
+                      {localizeDeductionReason(b, locale)}
                     </span>
                     <span className="shrink-0 font-medium text-crit">−{b.points}</span>
                   </li>
@@ -136,7 +137,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
           value={o ? o.devices.online : loadingValue}
           sub={o ? fill(t('dash.tile.ofTotal'), { total: o.devices.total }) : undefined}
           tone={o && o.devices.offline > 0 ? 'warn' : 'idle'}
-          href="/devices?status=online"
+          href="/radar/devices?status=online"
         >
           {o && o.devices.total > 0 && (
             <ProportionBar
@@ -156,7 +157,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
           label={t('dash.tile.incidents')}
           value={incidents.data ? incidents.data.total : loadingValue}
           tone={incidents.data ? (incidents.data.total > 0 ? 'crit' : 'ok') : 'idle'}
-          href="/incidents"
+          href="/watch/incidents"
         >
           {o && <span className="tnum block text-[11.5px] text-muted">{`${t('overview.openProblems')}: ${o.open_problems}`}</span>}
         </StatTile>
@@ -165,7 +166,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
           value={failing ?? loadingValue}
           sub={o ? fill(t('dash.tile.ofTotal'), { total: o.checks.total }) : undefined}
           tone={failing === null ? 'idle' : o!.checks.down > 0 ? 'crit' : failing > 0 ? 'warn' : 'ok'}
-          href="/monitoring"
+          href="/watch/monitoring"
         >
           {o && <span className="tnum block text-[11.5px] text-muted">{`${t('overview.availability')}: ${pct(o.availability_24h_pct, 2)}`}</span>}
         </StatTile>
@@ -173,7 +174,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
           label={t('dash.tile.computers')}
           value={eps ? epsOnline : loadingValue}
           sub={eps ? fill(t('dash.tile.ofTotal'), { total: eps.length }) : undefined}
-          href="/endpoints"
+          href="/fleet/endpoints"
         >
           {eps && eps.length > 0 && (
             <ProportionBar

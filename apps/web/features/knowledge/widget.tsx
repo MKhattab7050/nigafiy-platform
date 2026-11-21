@@ -14,16 +14,16 @@ export default function KnowledgeWidget() {
   const { can } = useApp();
   const query = useQuery<Counts>('/knowledge/counts', ['events'], 120_000);
   return (
-    <Widget title={t('nav.knowledge')} icon={BookOpen} href="/knowledge">
+    <Widget title={t('nav.knowledge')} icon={BookOpen} href="/mind/knowledge">
       <Async query={query}>
         {(c) => (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
-              <Metric label={t('kb.widget.published')} value={c.published} href="/knowledge" />
-              {can('technician') && <Metric label={t('kb.widget.candidates')} value={c.candidate} tone={c.candidate ? 'warn' : 'idle'} href="/knowledge" />}
-              {can('technician') && <Metric label={t('kb.widget.drafts')} value={c.draft} href="/knowledge" />}
+              <Metric label={t('kb.widget.published')} value={c.published} href="/mind/knowledge" />
+              {can('technician') && <Metric label={t('kb.widget.candidates')} value={c.candidate} tone={c.candidate ? 'warn' : 'idle'} href="/mind/knowledge" />}
+              {can('technician') && <Metric label={t('kb.widget.drafts')} value={c.draft} href="/mind/knowledge" />}
             </div>
-            {can('technician') && c.candidate > 0 && <ButtonLink href="/knowledge">{t('kb.widget.review')}</ButtonLink>}
+            {can('technician') && c.candidate > 0 && <ButtonLink href="/mind/knowledge">{t('kb.widget.review')}</ButtonLink>}
             {c.published === 0 && c.candidate === 0 && <p className="text-xs leading-relaxed text-muted">{t('kb.emptyHint')}</p>}
           </div>
         )}

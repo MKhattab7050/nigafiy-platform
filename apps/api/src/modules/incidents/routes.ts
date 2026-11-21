@@ -20,6 +20,8 @@ incidentsRouter.get('/incidents', async (req, res) => {
     z.object({
       status: z.enum(['active', 'resolved', 'all']).default('all'),
       site_id: z.uuid().optional(),
+      // The device card's Watch action: incidents opened for this device or that took in one of its events.
+      device_id: z.uuid().optional(),
       page: z.coerce.number().int().min(1).default(1),
       page_size: z.coerce.number().int().min(1).max(100).default(25),
     }),
@@ -30,9 +32,12 @@ incidentsRouter.get('/incidents', async (req, res) => {
       `${INCIDENT_SELECT.replace('SELECT i.id', 'SELECT count(*) OVER() AS total, i.id')}
         WHERE ($1::uuid IS NULL OR i.site_id = $1)
           AND ($2 = 'all' OR ($2 = 'active') = (i.status <> 'resolved'))
+          AND ($5::uuid IS NULL OR i.device_id = $5 OR EXISTS (
+                SELECT 1 FROM incident_events ie JOIN network_events ne ON ne.id = ie.event_id
+                 WHERE ie.incident_id = i.id AND ne.device_id = $5))
         ORDER BY (i.status = 'resolved'), array_position(ARRAY['critical','warning','info'], i.severity), i.opened_at DESC
         LIMIT $3 OFFSET $4`,
-      [q.site_id ?? null, q.status, q.page_size, (q.page - 1) * q.page_size],
+      [q.site_id ?? null, q.status, q.page_size, (q.page - 1) * q.page_size, q.device_id ?? null],
     ),
   );
   res.json({ items: result.rows.map(({ total: _t, ...i }) => i), total: Number(result.rows[0]?.total ?? 0), page: q.page, page_size: q.page_size });

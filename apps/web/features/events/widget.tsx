@@ -16,12 +16,12 @@ export default function EventsWidget() {
   const query = useQuery<{ items: NetworkEvent[] }>(`/events${qs({ site_id: siteId, limit: 6 })}`, ['events']);
 
   return (
-    <Widget title={t('overview.recentEvents')} icon={ScrollText} href="/events" padded={false}>
+    <Widget title={t('overview.recentEvents')} icon={ScrollText} href="/watch/events" padded={false}>
       <Async query={query}>
         {({ items }) =>
           items.length === 0 ? (
             <div className="p-4">
-              <NextStep text={t('events.widget.none')} label={t('overview.setupCta')} href="/discovery" />
+              <NextStep text={t('events.widget.none')} label={t('overview.setupCta')} href="/radar/discovery" />
             </div>
           ) : (
             <EventList events={items} showSite={!siteId} />

@@ -11,6 +11,7 @@ import { useI18n } from '@/lib/i18n';
 import { IncidentRow } from '@/features/incidents';
 import { EventList } from '@/features/events';
 import { MIN, minuteNow } from './time';
+import { DeviceLink } from '@/components/device-link';
 
 export function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -39,7 +40,7 @@ export function DeviceTable({ devices, showStatus }: { devices: SnapshotDevice[]
           {devices.map((d) => (
             <tr key={d.id}>
               <td className="max-w-[16rem] truncate px-4 py-2" dir="auto">
-                <a href={`/devices/${d.id}`} className="hover:text-accent-hover">{d.name}</a>
+                <DeviceLink id={d.id} className="hover:text-accent-hover">{d.name}</DeviceLink>
               </td>
               {showStatus && (
                 <td className="px-3 py-2">

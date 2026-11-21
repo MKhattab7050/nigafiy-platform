@@ -12,7 +12,7 @@ import { useI18n } from '@/lib/i18n';
 import { STATUS_TONE } from '../components/port-tones';
 import { Finder } from '../components/finder';
 import { AddSwitch } from '../components/add-switch';
-import { SitePortControlCard } from '../components/site-port-control';
+import { PortControlPointer } from '../components/port-control-pointer';
 import { SwitchView } from '../components/switch-view';
 import { portsText } from '../text';
 
@@ -28,8 +28,6 @@ export function PortsView() {
   const rawSelected = params.get('switch');
   const selected = (rawSelected && list.data?.items.some((s) => s.id === rawSelected) ? rawSelected : list.data?.items[0]?.id) ?? null;
   const admin = can('admin');
-  // Port-control settings are per site: shown for the selected site (or the only one).
-  const settingsSite = siteId ?? (sites.length === 1 ? sites[0]!.id : null);
 
   return (
     <>
@@ -47,7 +45,7 @@ export function PortsView() {
         }
       />
       <div className="space-y-4">
-        {adding && site && <AddSwitch siteId={siteId} sites={sites} onDone={(id) => (setAdding(false), list.reload(), id && router.replace(`/ports?switch=${id}`))} />}
+        {adding && site && <AddSwitch siteId={siteId} sites={sites} onDone={(id) => (setAdding(false), list.reload(), id && router.replace(`/radar/ports?switch=${id}`))} />}
         <Async query={list}>
           {(data) =>
             data.items.length === 0 ? (
@@ -68,7 +66,7 @@ export function PortsView() {
                       <li key={s.id}>
                         <button
                           type="button"
-                          onClick={() => router.replace(`/ports?switch=${s.id}`)}
+                          onClick={() => router.replace(`/radar/ports?switch=${s.id}`)}
                           aria-current={s.id === selected}
                           className={`flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-start hover:bg-raised/60 ${s.id === selected ? 'bg-raised/60' : ''}`}
                         >
@@ -91,8 +89,8 @@ export function PortsView() {
                     ))}
                   </ul>
                 </Card>
-                {settingsSite && <SitePortControlCard siteId={settingsSite} admin={admin} />}
-                {selected && <SwitchView id={selected} admin={admin} canPoll={can('technician')} onRemoved={() => (router.replace('/ports'), list.reload())} onUpdated={() => list.reload()} />}
+                <PortControlPointer switchId={selected} />
+                {selected && <SwitchView id={selected} admin={admin} canPoll={can('technician')} onRemoved={() => (router.replace('/radar/ports'), list.reload())} onUpdated={() => list.reload()} />}
               </>
             )
           }

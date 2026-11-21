@@ -11,7 +11,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { automationDescription, automationName, configHint, configLabel } from '../automation-text';
 
 /**
- * Settings → Automation (GET /automation). Everyone can see what LAN Detective does by itself;
+ * Mind → Automation (GET /automation; formerly in Settings). Everyone can see what LAN Detective does by itself;
  * administrators switch each behaviour on or off and tune it, for the organization or (with a site
  * picked in the top bar) for one site only.
  */

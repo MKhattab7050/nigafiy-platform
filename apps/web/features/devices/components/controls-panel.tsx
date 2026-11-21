@@ -10,6 +10,7 @@ import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { DeviceToolLinks } from '@/features/toolbox';
+import { DEVICE_SECTION } from './device-actions';
 
 /** Things the user can do about a device. Removing a device happens on the router; we explain how. */
 export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; onChanged: () => void }) {
@@ -42,7 +43,7 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
   const tech = can('technician');
   return (
     <div className="space-y-4">
-      <div>
+      <div id={DEVICE_SECTION.trust} className="scroll-mt-20 rounded-[var(--radius-control)]">
         <p className="mb-1.5 text-xs font-medium text-muted">{t('ctl.trustLabel')}</p>
         <Segmented<DeviceTrust>
           label={t('ctl.trustLabel')}
@@ -53,7 +54,7 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
         <p className={`mt-1.5 text-xs ${d.trust === 'unwanted' ? 'text-crit' : 'text-faint'}`}>{t(`ctl.trustHint.${d.trust}`)}</p>
       </div>
 
-      <label className="flex cursor-pointer items-start gap-2.5">
+      <label id={DEVICE_SECTION.mute} className="flex scroll-mt-20 cursor-pointer items-start gap-2.5 rounded-[var(--radius-control)]">
         <input
           type="checkbox"
           disabled={!tech || busy === 'mute'}
@@ -67,12 +68,12 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
         </span>
       </label>
 
-      <div className="space-y-1.5 border-t border-line pt-4">
+      <div id={DEVICE_SECTION.monitor} className="scroll-mt-20 space-y-1.5 rounded-[var(--radius-control)] border-t border-line pt-4">
         {d.monitor_check_id ? (
           <p className="flex items-center gap-2 text-[13px] text-ok">
             <Activity className="size-4" aria-hidden />
             {t('ctl.monitored')}
-            <Link href="/monitoring" className="ms-auto text-xs text-accent-hover hover:underline">
+            <Link href="/watch/monitoring" className="ms-auto text-xs text-accent-hover hover:underline">
               {t('ctl.openMonitoring')}
             </Link>
           </p>
@@ -90,7 +91,7 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
       {tech && d.current_ip && <DeviceToolLinks siteId={d.site_id} ip={d.current_ip} />}
 
       {tech && d.primary_mac && (
-        <div className="space-y-1.5">
+        <div id={DEVICE_SECTION.wake} className="scroll-mt-20 space-y-1.5 rounded-[var(--radius-control)]">
           <Button
             busy={busy === 'wake'}
             onClick={() =>
@@ -115,6 +116,7 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
       <ErrorNote error={error} />
 
       {routerControls && ('available' in routerControls ? routerControls.available !== false : true) && (
+        <div id={DEVICE_SECTION.router} className="scroll-mt-20 rounded-[var(--radius-card)]">
         <DeviceRouterCard
           device={{
             id: d.id,
@@ -129,9 +131,10 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
             onChanged();
           }}
         />
+        </div>
       )}
 
-      <details className={`rounded-md border px-3 py-2.5 ${d.trust === 'unwanted' ? 'border-crit/40 bg-crit/5' : 'border-line'}`} open={d.trust === 'unwanted'}>
+      <details id={DEVICE_SECTION.block} className={`scroll-mt-20 rounded-md border px-3 py-2.5 ${d.trust === 'unwanted' ? 'border-crit/40 bg-crit/5' : 'border-line'}`} open={d.trust === 'unwanted'}>
         <summary className="flex cursor-pointer items-center gap-2 text-[13px] font-medium text-fg">
           <Ban className="size-4 text-crit" aria-hidden />
           {t('ctl.block')}

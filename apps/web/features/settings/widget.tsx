@@ -14,21 +14,21 @@ export default function SettingsWidget() {
   const query = useQuery<{ items: NotificationChannel[] }>('/notification-channels', ['events'], 30_000);
 
   useReportAttention(
-    'settings',
+    'notifications',
     attentionFrom([query], ({ items }) => {
       const out: AttentionItem[] = [];
-      if (items.filter((c) => c.enabled).length === 0) out.push({ id: 'channels-none', tone: 'info', text: t('settings.attn.none'), action: { label: t('settings.attn.add'), href: '/settings' } });
+      if (items.filter((c) => c.enabled).length === 0) out.push({ id: 'channels-none', tone: 'info', text: t('settings.attn.none'), action: { label: t('settings.attn.add'), href: '/watch/notifications' } });
       for (const c of items.filter((x) => x.enabled && x.last_delivery_status === 'failed'))
-        out.push({ id: `channel-failed-${c.id}`, tone: 'warn', text: fill(t('settings.attn.failed'), { name: c.name }), action: { label: t('settings.attn.fix'), href: '/settings' } });
+        out.push({ id: `channel-failed-${c.id}`, tone: 'warn', text: fill(t('settings.attn.failed'), { name: c.name }), action: { label: t('settings.attn.fix'), href: '/watch/notifications' } });
       return out;
     }),
   );
 
   return (
-    <Widget title={t('settings.notifications')} icon={Bell} href="/settings">
+    <Widget title={t('settings.notifications')} icon={Bell} href="/watch/notifications">
       <Async query={query}>
         {({ items }) => {
-          if (items.length === 0) return <NextStep text={t('settings.attn.none')} label={t('settings.attn.add')} href="/settings" />;
+          if (items.length === 0) return <NextStep text={t('settings.attn.none')} label={t('settings.attn.add')} href="/watch/notifications" />;
           const enabled = items.filter((c) => c.enabled).length;
           const failed = items.filter((c) => c.enabled && c.last_delivery_status === 'failed').length;
           return (

@@ -25,19 +25,19 @@ export default function PlaybooksWidget() {
         id: `playbook-approval-${a.step.id}`,
         tone: 'warn' as const,
         text: fill(tx.attnApproval, { playbook: a.run.playbook_name, action: actionLabel(a.step.action, locale) }),
-        action: { label: tx.attnOpen, href: `/playbooks/runs/${a.run.id}` },
+        action: { label: tx.attnOpen, href: `/mind/playbooks/runs/${a.run.id}` },
       })),
     ),
   );
 
   return (
-    <Widget title={t('nav.playbooks')} icon={GitBranch} href="/playbooks">
+    <Widget title={t('nav.playbooks')} icon={GitBranch} href="/mind/playbooks">
       <Async query={approvals}>
         {({ items }) => (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
-              <Metric label={tx.widgetWaiting} value={items.length} tone={items.length ? 'warn' : 'idle'} href="/playbooks" />
-              <Metric label={tx.widgetActive} value={active.data?.total ?? '—'} href="/playbooks/runs" />
+              <Metric label={tx.widgetWaiting} value={items.length} tone={items.length ? 'warn' : 'idle'} href="/mind/playbooks" />
+              <Metric label={tx.widgetActive} value={active.data?.total ?? '—'} href="/mind/playbooks/runs" />
             </div>
             {items.length === 0 ? (
               <p className="text-xs leading-relaxed text-muted">{tx.widgetNone}</p>
@@ -45,7 +45,7 @@ export default function PlaybooksWidget() {
               <ul className="divide-y divide-line rounded-[8px] border border-line">
                 {items.slice(0, 4).map((a) => (
                   <li key={a.step.id}>
-                    <Link href={`/playbooks/runs/${a.run.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
+                    <Link href={`/mind/playbooks/runs/${a.run.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
                       <span className="min-w-0 truncate text-[13px]" dir="auto">
                         {a.run.playbook_name}
                       </span>

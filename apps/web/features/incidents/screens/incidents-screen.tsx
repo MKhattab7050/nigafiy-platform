@@ -1,10 +1,12 @@
 'use client';
 
 import { Siren } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import type { Incident, Paginated } from '@lan-detective/shared-types';
 import { AllClearArt } from '@/components/illustrations';
-import { Async, Button, Card, EmptyState, PageHeader, Segmented, SkeletonBlock } from '@/components/ui';
+import { Async, Button, Card, EmptyState, Notice, PageHeader, Segmented, SkeletonBlock } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
@@ -15,14 +17,24 @@ export type Filter = 'active' | 'resolved' | 'all';
 export const PAGE_SIZE = 25;
 
 export function IncidentsScreen() {
+  return (
+    <Suspense>
+      <IncidentsView />
+    </Suspense>
+  );
+}
+
+function IncidentsView() {
   const { t } = useI18n();
   const { siteId } = useApp();
-  const [filter, setFilter] = useState<Filter>('active');
+  // ?device_id= comes from a device card's "Incidents" action: that device's incidents, open or not.
+  const deviceId = useSearchParams().get('device_id');
+  const [filter, setFilter] = useState<Filter>(deviceId ? 'all' : 'active');
   const [page, setPage] = useState(1);
   useEffect(() => {
     setPage(1);
   }, [siteId]);
-  const query = useQuery<Paginated<Incident>>(`/incidents${qs({ status: filter, site_id: siteId, page, page_size: PAGE_SIZE })}`, ['events', 'checks', 'collectors']);
+  const query = useQuery<Paginated<Incident>>(`/incidents${qs({ status: filter, site_id: siteId, device_id: deviceId, page, page_size: PAGE_SIZE })}`, ['events', 'checks', 'collectors']);
 
   return (
     <>
@@ -42,6 +54,14 @@ export function IncidentsScreen() {
           />
         }
       />
+      {deviceId && (
+        <Notice className="mb-4">
+          {t('platform.incidents.forDevice')}{' '}
+          <Link href="/watch/incidents" className="font-medium text-accent-hover hover:underline">
+            {t('platform.incidents.allDevices')}
+          </Link>
+        </Notice>
+      )}
       <IncidentTrend days={30} height={110} framed />
       <Card padded={false}>
         <Async query={query} skeleton={<div className="p-4"><SkeletonBlock lines={5} /></div>}>

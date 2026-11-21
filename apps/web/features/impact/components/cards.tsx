@@ -18,7 +18,7 @@ export function DeviceImpactCard({ deviceId, siteId }: { deviceId: string; siteI
     <Card
       title={t('imp.device.title')}
       action={
-        <Link href={`/impact${qs({ site: siteId, device: deviceId })}`} className="text-xs font-medium text-accent-hover hover:underline">
+        <Link href={`/watch/impact${qs({ site: siteId, device: deviceId })}`} className="text-xs font-medium text-accent-hover hover:underline">
           {t('imp.device.open')}
         </Link>
       }
@@ -40,7 +40,7 @@ export function TopologySpofCard({ siteId }: { siteId: string }) {
       description={t('imp.spof.hint')}
       padded={false}
       action={
-        <Link href={`/impact${qs({ site: siteId })}`} className="inline-flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline">
+        <Link href={`/watch/impact${qs({ site: siteId })}`} className="inline-flex items-center gap-1 text-xs font-medium text-accent-hover hover:underline">
           <GitBranch className="size-3.5" aria-hidden />
           {t('imp.topo.more')}
         </Link>

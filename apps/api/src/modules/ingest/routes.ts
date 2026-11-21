@@ -8,11 +8,13 @@ import { requireCollector } from './collector-auth.ts';
 import { enrollCollector } from './enrollment.ts';
 import { HEARTBEAT_INTERVAL_SECONDS, recordHeartbeat } from './heartbeat.ts';
 import { applyTelemetryBatch } from './telemetry.ts';
+import { limiterStore } from '../../infrastructure/rate-limit.ts';
 
 /** Collector-facing API. Collectors only ever make outbound HTTPS requests to these endpoints. */
 export const collectorGatewayRouter: Router = Router();
 
 const enrollLimiter = rateLimit({
+  store: limiterStore('collector:enroll'),
   windowMs: 60_000,
   limit: env.NODE_ENV === 'test' ? 10_000 : 10,
   standardHeaders: 'draft-7',

@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./markdown": "./src/markdown.ts",
-    "./programs": "./src/programs.ts"
+    "./programs": "./src/programs.ts",
+    "./routes": "./src/routes.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p ."

@@ -15,6 +15,10 @@ const AR: Record<string, Template> = {
     title: 'جهاز غير مرغوب فيه متصل بشبكتك: {device}',
     detail: 'أنت علّمت هذا الجهاز كغير مرغوب فيه. لإزالته احظر عنوان MAC الخاص به من إعدادات الراوتر، وغيّر كلمة مرور الواي فاي إن كنت لا تعرف صاحبه.',
   },
+  unwanted_blockable: {
+    title: 'حظر {device} على الراوتر {router}؟',
+    detail: 'أنت علّمت هذا الجهاز كغير مرغوب فيه وهو متصل الآن. يستطيع الراوتر حظره. Nigafiy لا ينفّذ ذلك تلقائيًا بل ينتظر قرارك.',
+  },
   unreviewed: { title: '{count} جهاز في انتظار مراجعتك', detail: 'علّم الأجهزة التي تعرفها كـ"معروف"، وبعدها ستُنبَّه فقط عن الأجهزة الجديدة عليك.' },
   ip_conflict: {
     title: '{count} عنوان IP انتقل لجهاز آخر خلال 24 ساعة',
@@ -64,11 +68,13 @@ const AR_ACTIONS: Record<string, string> = {
   open_incidents: 'فتح الحوادث',
   monitor: 'راقبه',
   monitor_all: 'راقبها',
+  block_on_router: 'احظره من الراوتر',
 };
 
 const AR_CONFIRM: Record<string, string> = {
   mark_all_known: 'هل تريد تعليم كل الأجهزة غير المراجَعة كمعروفة؟ افعل ذلك فقط إن كنت تعرفها كلها.',
   monitor_all: 'إنشاء فحص ping لكل جهاز من هذه الأجهزة؟',
+  block_on_router: 'هل تريد حظر هذا الجهاز مباشرةً من الراوتر؟',
 };
 
 const fill = (s: string, params: Insight['params']) => s.replace(/\{(\w+)\}/g, (m, k: string) => (params[k] !== undefined ? String(params[k]) : m));

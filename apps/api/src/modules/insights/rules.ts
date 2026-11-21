@@ -98,7 +98,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: f.collectors.length === 0 ? 'Nothing is watching your network yet' : 'No network range is authorized for scanning',
       detail: 'Add a collector and authorize your network range to start discovering devices.',
       evidence: [`${f.collectors.length} collector(s), ${f.scopes} authorized range(s)`],
-      actions: [link('open_collectors', 'Set up discovery', '/discovery')],
+      actions: [link('open_collectors', 'Set up discovery', '/radar/discovery')],
     });
     deduct('setup', 'Discovery is not set up', 40);
   }
@@ -114,7 +114,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: `Monitoring is paused: collector "${c.name}" is not reporting`,
         detail: 'Device states shown are the last known ones. Check that the computer running the collector is on and connected.',
         evidence: [c.last_heartbeat_at ? `Last heartbeat ${ago(f.now, c.last_heartbeat_at)} ago` : 'Never reported'],
-        actions: [link('open_collectors', 'Open collectors', '/discovery')],
+        actions: [link('open_collectors', 'Open collectors', '/radar/discovery')],
       });
       deduct('collector_silent', `Collector ${c.name} is not reporting`, 30);
     }
@@ -132,7 +132,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `Unwanted device is on your network: ${d.label}`,
       detail: 'You marked this device as unwanted. To remove it, block its MAC address in your router and change the Wi-Fi password if you do not know who it is.',
       evidence: [`Answered the last sweep at ${d.ip ?? 'unknown address'}`, `Marked unwanted by you`],
-      actions: [link('open_device', 'Open device', `/devices/${d.id}`), ...routerAction],
+      actions: [link('open_device', 'Open device', `/radar/devices/${d.id}`), ...routerAction],
     });
   }
   // A router that can block an unwanted device: proposed with one action. Never blocked automatically.
@@ -166,7 +166,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       detail: 'Mark the ones you recognize as Known. You will then be alerted only about devices you have not seen before.',
       evidence: [list(unreviewed.map((d) => d.label)), recent.length ? `${recent.length} joined in the last 24 hours` : 'None joined in the last 24 hours'],
       actions: [
-        link('review', 'Review devices', '/devices?trust=unreviewed'),
+        link('review', 'Review devices', '/radar/devices?trust=unreviewed'),
         api('mark_all_known', 'Mark all as known', '/api/v1/devices/trust', { all_unreviewed: true, trust: 'known' }, `Mark all ${unreviewed.length} unreviewed devices as known?`),
       ],
     });
@@ -184,7 +184,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${ips.length} address(es) changed hands in the last 24 hours`,
       detail: 'Usually harmless (an address reused by the router, or a phone with a private MAC). It can also mean an IP conflict, or a device pretending to be another one. Compare the devices involved.',
       evidence: ips.map((ip) => `${ip} was answered by a different MAC address`),
-      actions: [link('open_events', 'See the events', '/events?type=ip_mac_changed')],
+      actions: [link('open_events', 'See the events', '/watch/events?type=ip_mac_changed')],
     });
     deduct('ip_conflict', 'Addresses changed hands', 10);
   }
@@ -206,7 +206,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: what === 'gateway' ? `Your router is ${state === 'down' ? 'not responding' : 'responding poorly'}` : what === 'internet' ? `The internet connection is ${state === 'down' ? 'down' : 'degraded'}` : `Name resolution (DNS) is ${state === 'down' ? 'failing' : 'slow or unreliable'}`,
       detail: 'Network Doctor compares all measurements to tell where the problem is (your network, the router, or the provider).',
       evidence: f.checks.filter((c) => c.state === 'down' || c.state === 'degraded').map((c) => `${c.name}: ${c.state}${c.last_latency_ms != null ? `, ${Math.round(c.last_latency_ms)} ms` : ''}${c.last_loss_pct ? `, ${Math.round(c.last_loss_pct)}% loss` : ''}`),
-      actions: [link('open_doctor', 'Diagnose with Network Doctor', '/doctor')],
+      actions: [link('open_doctor', 'Diagnose with Network Doctor', '/watch/doctor')],
     });
     deduct(`path_${what}`, `${what} ${state}`, state === 'down' ? (what === 'gateway' ? 30 : what === 'internet' ? 25 : 15) : 10);
   } else {
@@ -221,7 +221,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: `Internet response time is high (${Math.round(slow[0]!.last_latency_ms!)} ms)`,
         detail: 'Video calls and games feel this. It is often caused by heavy downloads on the network or by the provider.',
         evidence: slow.map((c) => `${c.name}: ${Math.round(c.last_latency_ms!)} ms`),
-        actions: [link('open_monitoring', 'See the history', '/monitoring')],
+        actions: [link('open_monitoring', 'See the history', '/watch/monitoring')],
       });
       deduct('slow_internet', 'High internet latency', 5);
     }
@@ -238,7 +238,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${d.label} is offline`,
       detail: 'You marked this device as important. It stopped answering on the network.',
       evidence: [`Last seen ${ago(f.now, d.last_seen_at)} ago${d.ip ? ` at ${d.ip}` : ''}`],
-      actions: [link('open_device', 'Open device', `/devices/${d.id}`)],
+      actions: [link('open_device', 'Open device', `/radar/devices/${d.id}`)],
     });
   }
   deduct('critical_offline', `${criticalDown.length} important device(s) offline`, Math.min(30, criticalDown.length * 10));
@@ -254,7 +254,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${f.openIncidents.length} open incident(s)`,
       detail: `Most important: ${top.title}`,
       evidence: f.openIncidents.slice(0, 5).map((i) => i.title),
-      actions: [link('open_incidents', 'Open incidents', '/incidents')],
+      actions: [link('open_incidents', 'Open incidents', '/watch/incidents')],
     });
     deduct('open_incidents', 'Open incidents', top.severity === 'critical' ? 15 : top.severity === 'warning' ? 5 : 0);
   }
@@ -299,7 +299,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       evidence: infra.slice(0, 8).map((d) => `${d.label} (${d.ip}): looks like a ${TYPE_LABEL[d.device_type]} — inferred, ${d.type_confidence} confidence${d.type_evidence ? `: ${d.type_evidence}` : ''}`),
       actions: [
         api('monitor_all', 'Monitor them', '/api/v1/devices/monitor', { ids: infra.slice(0, 200).map((d) => d.id) }, `Create a ping check for ${Math.min(infra.length, 200)} device(s)?`),
-        link('review', 'Review devices', '/devices'),
+        link('review', 'Review devices', '/radar/devices'),
       ],
       devices: infra.map((d) => ({
         device_id: d.id,
@@ -324,7 +324,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${nameless.length} phones or tablets have no name yet`,
       detail: 'They use private Wi-Fi addresses and stay silent. Turn Wi-Fi off and on again on a phone: LAN Detective learns its name when it reconnects.',
       evidence: [`${nameless.length} online devices with a private (randomized) MAC and no announced name`],
-      actions: [link('review', 'See them', '/devices?type=mobile')],
+      actions: [link('review', 'See them', '/radar/devices?type=mobile')],
     });
   }
 
@@ -339,7 +339,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${newToday.length} device(s) joined today`,
       detail: list(newToday.map((d) => d.label)),
       evidence: newToday.slice(0, 5).map((d) => `${d.label}${d.ip ? ` (${d.ip})` : ''}`),
-      actions: [link('review', 'See devices', '/devices?sort=first_seen')],
+      actions: [link('review', 'See devices', '/radar/devices?sort=first_seen')],
     });
   }
 
@@ -353,7 +353,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `Switch ${sw.name} is not answering SNMP`,
       detail: 'Port information for it is as of the last successful read. Check that SNMP is enabled on it and the credentials are current.',
       evidence: [sw.error ?? 'The last read failed'],
-      actions: [link('open_ports', 'Open Port Detective', '/ports')],
+      actions: [link('open_ports', 'Open Port Detective', '/radar/ports')],
     });
     deduct('switch_unreadable', `Switch ${sw.name} unreadable`, 5);
   }
@@ -368,7 +368,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: `${bad.length} switch port(s) are logging errors`,
       detail: 'Rising error counters usually mean a bad cable, a failing port or a duplex mismatch. Whatever is plugged in there will be slow or drop out.',
       evidence: bad.slice(0, 5).map((b) => `${b.switch_name} ${b.port_name}: ${b.errors} new error(s) in ${Math.round(b.seconds / 60)} min`),
-      actions: [link('open_ports', 'See the ports', `/ports?switch=${bad[0]!.target_id}`)],
+      actions: [link('open_ports', 'See the ports', `/radar/ports?switch=${bad[0]!.target_id}`)],
     });
     deduct('port_errors', 'Switch ports with errors', Math.min(15, bad.length * 5));
   }
@@ -385,7 +385,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: 'Access control is on but not running',
         detail: 'The collector could not start its DNS filter, so no rules are applied.',
         evidence: [ac.error ?? 'The collector reports it is not listening for DNS'],
-        actions: [link('open_access', 'Open access control', '/access')],
+        actions: [link('open_access', 'Open access control', '/guard/access')],
       });
       deduct('access_not_running', 'Access control not running', 15);
     } else if (ac.protected_devices === 0) {
@@ -398,7 +398,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: 'No device is using LAN Detective for DNS yet',
         detail: `Set the router's DHCP "DNS server" to ${ac.dns_server_ip ?? 'this computer'} so devices receive the rules, then reconnect them to Wi-Fi.`,
         evidence: ['No DNS questions arrived from any device in the last 30 minutes'],
-        actions: [link('open_access', 'Show me how', '/access')],
+        actions: [link('open_access', 'Show me how', '/guard/access')],
       });
       deduct('access_no_devices', 'Access rules reach no device', 10);
     } else if (ac.protected_devices < ac.online_devices) {
@@ -411,7 +411,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: `${ac.protected_devices} of ${ac.online_devices} online devices use the filter`,
         detail: 'The others did not ask LAN Detective for any name recently: they may use their own DNS (Private DNS, VPN) or not have renewed their address yet.',
         evidence: [`${ac.protected_devices} devices sent DNS questions in the last 30 minutes`],
-        actions: [link('open_access', 'See which', '/access')],
+        actions: [link('open_access', 'See which', '/guard/access')],
       });
     }
     const byCat = (cat: string) => ac.blocked.filter((b) => b.category === cat).sort((a, b) => b.count - a.count);
@@ -426,7 +426,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: 'Adult content was blocked in the last 24 hours',
         detail: list(adult.map((b) => `${b.label} (${b.count})`)),
         evidence: adult.slice(0, 5).map((b) => `${b.label}: ${b.count} blocked request(s)`),
-        actions: [link('see_activity', 'See activity', `/devices/${adult[0]!.device_id}`)],
+        actions: [link('see_activity', 'See activity', `/radar/devices/${adult[0]!.device_id}`)],
       });
     }
     const bypass = byCat('encrypted_dns');
@@ -440,7 +440,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         title: 'Some devices tried to use their own encrypted DNS',
         detail: 'It was blocked so they fall back to the network rules. If a device keeps bypassing, turn off "Private DNS" on it.',
         evidence: bypass.slice(0, 5).map((b) => `${b.label}: ${b.count} attempt(s)`),
-        actions: [link('open_access', 'Open access control', '/access')],
+        actions: [link('open_access', 'Open access control', '/guard/access')],
       });
     }
   } else if (ac && !ac.enabled && f.devices.length > 0 && f.collectors.length > 0) {
@@ -453,7 +453,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       title: 'Control what devices can reach',
       detail: 'Block sites and apps, pause the internet for a device, or set bedtimes. Works with any router.',
       evidence: ['Access control is off for this network'],
-      actions: [link('open_access', 'Set up access control', '/access')],
+      actions: [link('open_access', 'Set up access control', '/guard/access')],
     });
   }
 

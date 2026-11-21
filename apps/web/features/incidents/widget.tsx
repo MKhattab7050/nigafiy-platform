@@ -34,14 +34,14 @@ export default function IncidentsWidget() {
           id: 'incidents-open',
           tone: top.severity === 'critical' ? 'crit' : 'warn',
           text: single ? fill(t('incident.attn.one'), { number: top.number, title: top.title }) : fill(t('incident.attn.many'), { count: page.total, title: top.title }),
-          action: single ? { label: t('incident.attn.openOne'), href: `/incidents/${top.id}` } : { label: t('incident.attn.openAll'), href: '/incidents' },
+          action: single ? { label: t('incident.attn.openOne'), href: `/watch/incidents/${top.id}` } : { label: t('incident.attn.openAll'), href: '/watch/incidents' },
         },
       ];
     }),
   );
 
   return (
-    <Widget title={t('overview.activeIncidents')} icon={Siren} href="/incidents" padded={false}>
+    <Widget title={t('overview.activeIncidents')} icon={Siren} href="/watch/incidents" padded={false}>
       <Async query={query} skeleton={<div className="p-4"><SkeletonBlock lines={4} /></div>}>
         {(page) => (
           <div className="grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

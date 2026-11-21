@@ -2,7 +2,6 @@
 
 import type { PortSearchHit } from '@lan-detective/shared-types';
 import { Search } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Card, Input, StatusBadge } from '@/components/ui';
 import { qs } from '@/lib/api';
@@ -10,6 +9,7 @@ import { useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { LocationView } from './location-view';
 import { portsText } from '../text';
+import { DeviceLink } from '@/components/device-link';
 
 export function Finder({ siteId }: { siteId: string | null }) {
   const { locale } = useI18n();
@@ -33,9 +33,9 @@ export function Finder({ siteId }: { siteId: string | null }) {
           {hits.data.items.map((h) => (
             <li key={h.device.id} className="py-3">
               <p className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                <Link href={`/devices/${h.device.id}`} className="font-medium hover:text-accent-hover" dir="auto">
+                <DeviceLink id={h.device.id} className="font-medium hover:text-accent-hover" dir="auto">
                   {h.device.label}
-                </Link>
+                </DeviceLink>
                 <StatusBadge status={h.device.status} />
                 <span className="mono text-xs text-muted">{[h.device.ip, h.device.mac].filter(Boolean).join(' · ')}</span>
               </p>

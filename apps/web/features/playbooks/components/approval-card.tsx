@@ -89,7 +89,7 @@ export function ApprovalCard({ run, step, stepsTotal, rights, onDone }: { run: R
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[13px]">
-            <Link href={`/playbooks/runs/${run.id}`} className="font-medium text-fg hover:underline" dir="auto">
+            <Link href={`/mind/playbooks/runs/${run.id}`} className="font-medium text-fg hover:underline" dir="auto">
               {run.playbook_name}
             </Link>{' '}
             <span className="text-muted">{tx.wantsTo}</span> <span className="font-medium">{actionLabel(step.action, locale)}</span>

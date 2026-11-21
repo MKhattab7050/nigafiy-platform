@@ -57,7 +57,7 @@ export function ScopeSuggestionList({
       </ul>
       {!admin && <p className="text-xs text-muted">{t('discovery.sugg.adminOnly')}</p>}
       {limit && items.length > limit && (
-        <Link href="/discovery" className="text-xs font-medium text-accent-hover hover:underline">
+        <Link href="/radar/discovery" className="text-xs font-medium text-accent-hover hover:underline">
           {fill(t('discovery.sugg.more'), { count: items.length - limit })}
         </Link>
       )}

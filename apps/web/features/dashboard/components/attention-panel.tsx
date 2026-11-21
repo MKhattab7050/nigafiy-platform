@@ -5,8 +5,10 @@ import { ArrowRight, BellRing } from 'lucide-react';
 import { AllClearArt } from '@/components/illustrations';
 import { SkeletonBlock, ToneIcon } from '@/components/ui';
 import { ButtonLink } from '@/components/widget';
+import { ProgramGlyph } from '@/features/platform';
 import { type AttentionItem, useAttentionReports } from '@/lib/attention';
-import { useI18n } from '@/lib/i18n';
+import { fill, useI18n } from '@/lib/i18n';
+import { programById, programOfFeature } from '@/lib/programs';
 
 const RANK: Record<AttentionItem['tone'], number> = { crit: 0, warn: 1, info: 2 };
 const EDGE: Record<AttentionItem['tone'], string> = { crit: 'before:bg-crit', warn: 'before:bg-warn', info: 'before:bg-accent' };
@@ -16,10 +18,13 @@ const EDGE: Record<AttentionItem['tone'], string> = { crit: 'before:bg-crit', wa
  * shortcut to the page that resolves it; nothing is done automatically.
  */
 export function AttentionPanel({ expected }: { expected: string[] }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const byId = useAttentionReports();
   const reports = Object.values(byId);
-  const items = reports.flatMap((r) => (r.state === 'ready' ? r.items : [])).sort((a, b) => RANK[a.tone] - RANK[b.tone]);
+  // Each item carries the program that owns the widget it came from (shared notifications, spec §5).
+  const items = Object.entries(byId)
+    .flatMap(([source, r]) => (r.state === 'ready' ? r.items.map((item) => ({ ...item, program: programById(programOfFeature(source)) })) : []))
+    .sort((a, b) => RANK[a.tone] - RANK[b.tone]);
   // Still checking until every widget that reports has answered (a lazily loaded one may not have mounted yet).
   const loading = expected.some((id) => !byId[id]) || reports.some((r) => r.state === 'loading');
   const failed = reports.some((r) => r.state === 'error');
@@ -50,6 +55,12 @@ export function AttentionPanel({ expected }: { expected: string[] }) {
               <p className="min-w-0 flex-1 basis-56 text-[13px] leading-relaxed text-fg" dir="auto">
                 <span className="sr-only">{t(item.tone === 'crit' ? 'severity.critical' : item.tone === 'warn' ? 'severity.warning' : 'severity.info')}: </span>
                 {item.text}
+                {item.program.id !== 'hub' && (
+                  <span className="ms-2 inline-flex items-center gap-1 align-middle text-[11px] text-faint" title={fill(t('platform.from'), { name: item.program.name[locale] })}>
+                    <ProgramGlyph id={item.program.id} size={12} />
+                    <bdi>{item.program.shortName}</bdi>
+                  </span>
+                )}
               </p>
               <ButtonLink href={item.action.href} variant={item.tone === 'crit' ? 'primary' : 'secondary'}>
                 {item.action.label}

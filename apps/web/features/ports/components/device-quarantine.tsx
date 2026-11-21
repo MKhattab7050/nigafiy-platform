@@ -72,7 +72,7 @@ export function DeviceQuarantine({ deviceId }: { deviceId: string }) {
         <p className="text-xs text-muted">
           {cx.quarantineNot[plan.reason ?? ''] ?? plan.message}{' '}
           {(plan.reason === 'no_quarantine_vlan' || plan.reason === 'write_not_configured' || plan.reason === 'vlan_not_found') && (
-            <Link href={plan.target_id ? `/ports?switch=${plan.target_id}` : '/ports'} className="text-accent hover:underline">
+            <Link href={plan.target_id ? `/radar/ports?switch=${plan.target_id}` : '/radar/ports'} className="text-accent hover:underline">
               {cx.setUpQuarantine}
             </Link>
           )}

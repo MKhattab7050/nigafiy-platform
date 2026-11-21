@@ -4,13 +4,15 @@ import clsx from 'clsx';
 import { LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FEATURES, type Feature, NAV_GROUPS, type NavBadge, isActiveRoute } from '@/features/registry';
+import { type Feature, type NavBadge, isActiveRoute } from '@/features/registry';
 import { api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
-import { type Key, useI18n } from '@/lib/i18n';
+import { type Key, fill, useI18n } from '@/lib/i18n';
+import { programById } from '@/lib/programs';
+import { useProgramId } from '@/lib/programs-context';
 import { SIDEBAR_STORAGE_KEY } from '@/lib/theme-boot';
-import { Logo, LogoMark } from '../logo';
 import { Select } from '../ui';
+import { ProgramSwitcher } from './program-switcher';
 
 /** In rail mode a label becomes a hover / focus tooltip beside the icon. */
 const RAIL_LABEL =
@@ -30,9 +32,9 @@ function BadgeCount({ badge }: { badge: NavBadge }) {
   );
 }
 
-function NavLink({ feature, pathname }: { feature: Feature; pathname: string }) {
+function NavLink({ feature, pathname, siblings }: { feature: Feature; pathname: string; siblings: readonly string[] }) {
   const { t } = useI18n();
-  const active = isActiveRoute(feature.route, pathname);
+  const active = isActiveRoute(feature.route, pathname, siblings);
   const Icon = feature.icon;
   return (
     <Link
@@ -76,13 +78,20 @@ function toggleRail() {
   }
 }
 
-/** The one sidebar: fixed on desktop (collapsible to an icon rail), inside the drawer on small screens. Built from the feature registry. */
+/**
+ * The one sidebar: fixed on desktop (collapsible to an icon rail), inside the drawer on small screens.
+ * It shows only the current program's sections (spec §6.2), from the program registry, under the
+ * program switcher. The account block and sign-out are the same in every program.
+ */
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { me, can, signOut } = useApp();
-  const visible = FEATURES.filter((f) => !f.minRole || can(f.minRole));
-  const at = (placement: Feature['placement']) => visible.filter((f) => f.placement === placement);
+  const program = programById(useProgramId());
+  const visible = program.sections.filter((f) => !f.minRole || can(f.minRole));
+  const siblings = program.sections.map((f) => f.route);
+  const main = visible.filter((f) => !f.pinBottom);
+  const bottom = visible.filter((f) => f.pinBottom);
   const initials = me.user.display_name
     .split(/\s+/)
     .map((w) => w[0])
@@ -91,16 +100,9 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     .toUpperCase();
 
   return (
-    <nav aria-label={t('nav.main')} className="flex h-full flex-col" onKeyDown={onNavKey}>
-      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-4 lg:rail:justify-center lg:rail:px-0">
-        <Link href="/" aria-label="LAN Detective" className="rounded-[8px]">
-          <span className="lg:rail:hidden">
-            <Logo />
-          </span>
-          <span className="hidden lg:rail:block">
-            <LogoMark />
-          </span>
-        </Link>
+    <nav aria-label={fill(t('platform.programNav'), { name: program.name[locale] })} className="flex h-full flex-col" onKeyDown={onNavKey}>
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-line px-2.5 lg:rail:justify-center lg:rail:px-0">
+        <ProgramSwitcher />
         {onClose && (
           <button type="button" className="rounded-[6px] p-1.5 text-muted hover:bg-raised hover:text-fg lg:hidden" onClick={onClose} aria-label={t('common.close')}>
             <X className="size-4" aria-hidden />
@@ -109,40 +111,23 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       </div>
       <div className="flex-1 space-y-5 overflow-y-auto px-3 py-4 lg:rail:overflow-visible lg:rail:px-2.5">
         <ul className="space-y-0.5">
-          {at('top').map((f) => (
+          {main.map((f) => (
             <li key={f.id}>
-              <NavLink feature={f} pathname={pathname} />
+              <NavLink feature={f} pathname={pathname} siblings={siblings} />
             </li>
           ))}
         </ul>
-        {NAV_GROUPS.map((group) => {
-          const items = at(group.id);
-          if (!items.length) return null;
-          return (
-            <div key={group.id} role="group" aria-labelledby={`nav-${group.id}`}>
-              <p id={`nav-${group.id}`} className="mb-1.5 px-2.5 text-[11.5px] font-medium text-faint lg:rail:sr-only">
-                {t(group.label)}
-              </p>
-              <span className="mx-auto mb-2 hidden h-px w-6 bg-line lg:rail:block" aria-hidden />
-              <ul className="space-y-0.5">
-                {items.map((f) => (
-                  <li key={f.id}>
-                    <NavLink feature={f} pathname={pathname} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
       </div>
       <div className="shrink-0 border-t border-line p-3 lg:rail:px-2.5">
-        <ul className="mb-2 space-y-0.5">
-          {at('bottom').map((f) => (
-            <li key={f.id}>
-              <NavLink feature={f} pathname={pathname} />
-            </li>
-          ))}
-        </ul>
+        {bottom.length > 0 && (
+          <ul className="mb-2 space-y-0.5">
+            {bottom.map((f) => (
+              <li key={f.id}>
+                <NavLink feature={f} pathname={pathname} siblings={siblings} />
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="flex items-center gap-2.5 rounded-[var(--radius-control)] px-1.5 py-1.5 lg:rail:justify-center lg:rail:px-0">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-line-strong bg-raised text-[11px] font-semibold text-muted" title={me.user.display_name} aria-hidden>
             {initials || '·'}

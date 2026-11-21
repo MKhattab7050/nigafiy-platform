@@ -23,7 +23,7 @@ export default function ToolboxWidget() {
   return (
     <Widget title={tx.title} icon={Wrench} href="/toolbox">
       {!site ? (
-        <NextStep text={t('doctor.noSites')} label={t('overview.setupCta')} href="/discovery" />
+        <NextStep text={t('doctor.noSites')} label={t('overview.setupCta')} href="/radar/discovery" />
       ) : (
         <Async query={query}>
           {({ items }) =>

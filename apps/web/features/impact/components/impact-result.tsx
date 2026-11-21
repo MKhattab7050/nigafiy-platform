@@ -5,6 +5,7 @@ import type { ImpactPathStep, ImpactResult } from '@lan-detective/shared-types';
 import { Badge, ConfidenceBadge, SectionLabel, type Tone } from '@/components/ui';
 import { Metric } from '@/components/widget';
 import { type Key, useI18n } from '@/lib/i18n';
+import { DeviceLink } from '@/components/device-link';
 
 const STATUS_TONE: Record<string, Tone> = {
   failed: 'crit',
@@ -102,9 +103,9 @@ export function ImpactResultView({ result, hideFailed }: { result: ImpactResult;
               <li key={d.node_id} className="px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
                   {d.device_id ? (
-                    <Link href={`/devices/${d.device_id}`} className="font-medium text-accent-hover hover:underline" dir="auto">
+                    <DeviceLink id={d.device_id} className="font-medium text-accent-hover hover:underline" dir="auto">
                       {d.label}
-                    </Link>
+                    </DeviceLink>
                   ) : (
                     <span className="font-medium" dir="auto">
                       {d.label}
@@ -161,7 +162,7 @@ export function ImpactResultView({ result, hideFailed }: { result: ImpactResult;
             {result.endpoints.map((e) => (
               <li key={e.endpoint_id} className="px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <Link href={`/endpoints/${e.endpoint_id}`} className="font-medium text-accent-hover hover:underline" dir="auto">
+                  <Link href={`/fleet/endpoints/${e.endpoint_id}`} className="font-medium text-accent-hover hover:underline" dir="auto">
                     {e.name}
                   </Link>
                   <ImpactStatus status={e.status} />

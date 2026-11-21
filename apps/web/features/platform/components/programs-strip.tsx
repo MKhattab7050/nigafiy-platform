@@ -5,7 +5,8 @@ import { PROGRAMS_BRAND } from '@nigafiy/brand';
 import Link from 'next/link';
 import { Async, Card, SkeletonBlock } from '@/components/ui';
 import { useQuery } from '@/lib/app';
-import { useI18n } from '@/lib/i18n';
+import { fill, useI18n } from '@/lib/i18n';
+import { installHref } from '@/lib/programs';
 
 /** A program's glyph on its accent square, from @nigafiy/brand (the approved icon set). */
 export function ProgramGlyph({ id, size = 36 }: { id: ProgramId; size?: number }) {
@@ -49,7 +50,12 @@ export function ProgramsStrip() {
                           {t('platform.open')}
                         </Link>
                       ) : (
-                        <span className="text-xs text-muted">{t('platform.notInstalled')}</span>
+                        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                          {t('platform.notInstalled')}
+                          <Link href={installHref(p.id)} aria-label={fill(t('platform.installAria'), { name: p.name[locale] })} className="font-medium text-accent-hover hover:underline">
+                            {t('platform.install')}
+                          </Link>
+                        </span>
                       )}
                       {p.install_source === 'bundled' && <span className="truncate text-[11px] text-faint">{t('platform.bundled')}</span>}
                     </div>

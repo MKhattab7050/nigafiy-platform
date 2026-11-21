@@ -57,7 +57,7 @@ export function IpamView() {
                   title={tx.emptyTitle}
                   action={
                     can('admin') ? (
-                      <Link href="/discovery" className="text-[13px] text-accent hover:underline">
+                      <Link href="/radar/discovery" className="text-[13px] text-accent hover:underline">
                         {tx.emptyAction}
                       </Link>
                     ) : undefined
@@ -76,7 +76,7 @@ export function IpamView() {
                         <li key={s.id}>
                           <button
                             type="button"
-                            onClick={() => router.replace(`/ipam?subnet=${s.id}`)}
+                            onClick={() => router.replace(`/radar/ipam?subnet=${s.id}`)}
                             aria-current={s.id === selected}
                             className={`grid w-full gap-x-4 gap-y-2 px-4 py-3 text-start hover:bg-raised/60 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center ${s.id === selected ? 'bg-raised/60' : ''}`}
                           >

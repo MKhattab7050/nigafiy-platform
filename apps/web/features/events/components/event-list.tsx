@@ -1,12 +1,13 @@
 'use client';
 
-import { ChevronDown } from 'lucide-react';
-import Link from 'next/link';
-import { useState } from 'react';
 import type { NetworkEvent } from '@lan-detective/shared-types';
+import { ChevronDown } from 'lucide-react';
+import { useState } from 'react';
+import { DeviceLink } from '@/components/device-link';
+import { Badge, Evidence, Tag, severityTone } from '@/components/ui';
 import { EVENT_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
-import { Badge, Evidence, Tag, severityTone } from '@/components/ui';
+import { localizeEventTitle } from '@/lib/localize';
 
 /** Timeline of events. Every row expands to the evidence that produced it. */
 export function EventList({ events, showSite = true, linkDevice = true }: { events: NetworkEvent[]; showSite?: boolean; linkDevice?: boolean }) {
@@ -31,7 +32,7 @@ export function EventList({ events, showSite = true, linkDevice = true }: { even
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] leading-snug text-fg" dir="auto">
-                  {e.title}
+                  {localizeEventTitle(e, locale)}
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
                   <span title={absoluteTime(e.occurred_at, locale)}>{relativeTime(e.occurred_at, locale)}</span>
@@ -60,9 +61,9 @@ export function EventList({ events, showSite = true, linkDevice = true }: { even
                   </span>
                   <span>{t(e.source === 'collector' ? 'events.source.collector' : 'events.source.platform')}</span>
                   {linkDevice && e.device_id && (
-                    <Link href={`/devices/${e.device_id}`} className="font-medium text-accent-hover hover:underline">
+                    <DeviceLink id={e.device_id} className="font-medium text-accent-hover hover:underline">
                       {t('nav.devices')} →
-                    </Link>
+                    </DeviceLink>
                   )}
                 </div>
               </div>

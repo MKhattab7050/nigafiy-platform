@@ -34,18 +34,18 @@ export default function EndpointsWidget() {
       const bad = active.filter((e) => e.compliance_status === 'non_compliant').length;
       const check = active.filter((e) => e.compliance_status === 'attention').length;
       return [
-        ...(bad ? [{ id: 'endpoints-noncompliant', tone: 'crit' as const, text: fill(t('endpoints.attn.nonCompliant'), { count: bad }), action: { label: t('endpoints.attn.review'), href: '/endpoints' } }] : []),
-        ...(check ? [{ id: 'endpoints-attention', tone: 'warn' as const, text: fill(t('endpoints.attn.attention'), { count: check }), action: { label: t('endpoints.attn.review'), href: '/endpoints' } }] : []),
+        ...(bad ? [{ id: 'endpoints-noncompliant', tone: 'crit' as const, text: fill(t('endpoints.attn.nonCompliant'), { count: bad }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
+        ...(check ? [{ id: 'endpoints-attention', tone: 'warn' as const, text: fill(t('endpoints.attn.attention'), { count: check }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
       ];
     }),
   );
 
   return (
-    <Widget title={t('nav.managedComputers')} icon={Cpu} href="/endpoints">
+    <Widget title={t('nav.managedComputers')} icon={Cpu} href="/fleet/endpoints">
       <Async query={query}>
         {({ items }) => {
           const active = items.filter((e) => e.status !== 'revoked');
-          if (active.length === 0) return <NextStep text={t('endpoints.widget.none')} label={t('endpoints.widget.enroll')} href="/endpoints" />;
+          if (active.length === 0) return <NextStep text={t('endpoints.widget.none')} label={t('endpoints.widget.enroll')} href="/fleet/endpoints" />;
           const online = active.filter(isOnline).length;
           const pending = active.filter((e) => e.status === 'pending').length;
           const offline = active.length - online - pending;

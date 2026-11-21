@@ -1,7 +1,6 @@
 'use client';
 
 import { MonitorSmartphone } from 'lucide-react';
-import Link from 'next/link';
 import type { Device, Overview, Paginated } from '@lan-detective/shared-types';
 import { BarList, Donut, Legend } from '@/components/charts';
 import { DeviceIcon } from '@/components/device-icon';
@@ -13,6 +12,7 @@ import { useApp, useQuery } from '@/lib/app';
 import { useReportAttention } from '@/lib/attention';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
+import { DeviceLink } from '@/components/device-link';
 
 /** The device list holds at most this many per request; the type breakdown is only drawn when it covers every device. */
 const TYPE_SAMPLE = 200;
@@ -34,10 +34,10 @@ export default function DevicesWidget() {
     'devices',
     attentionFrom([unreviewed, unwanted], (rev, bad) => [
       ...(bad.total > 0
-        ? [{ id: 'devices-unwanted', tone: 'crit' as const, text: fill(t('devices.attn.unwanted'), { count: bad.total }), action: { label: t('devices.attn.unwantedAction'), href: '/devices?trust=unwanted&status=online' } }]
+        ? [{ id: 'devices-unwanted', tone: 'crit' as const, text: fill(t('devices.attn.unwanted'), { count: bad.total }), action: { label: t('devices.attn.unwantedAction'), href: '/radar/devices?trust=unwanted&status=online' } }]
         : []),
       ...(rev.total > 0
-        ? [{ id: 'devices-unreviewed', tone: 'warn' as const, text: fill(t('devices.attn.unreviewed'), { count: rev.total }), action: { label: t('devices.attn.review'), href: '/devices?trust=unreviewed' } }]
+        ? [{ id: 'devices-unreviewed', tone: 'warn' as const, text: fill(t('devices.attn.unreviewed'), { count: rev.total }), action: { label: t('devices.attn.review'), href: '/radar/devices?trust=unreviewed' } }]
         : []),
     ]),
   );
@@ -46,10 +46,10 @@ export default function DevicesWidget() {
   const typeCounts = types ? Object.entries(types.reduce<Record<string, number>>((m, d) => ({ ...m, [d.device_type]: (m[d.device_type] ?? 0) + 1 }), {})) : [];
 
   return (
-    <Widget title={t('nav.devices')} icon={MonitorSmartphone} href="/devices">
+    <Widget title={t('nav.devices')} icon={MonitorSmartphone} href="/radar/devices">
       <Async query={overview}>
         {(o) => {
-          if (o.devices.total === 0) return <NextStep art={<SetupArt className="h-16 w-28" />} text={t('devices.emptyNone')} label={t('overview.setupCta')} href="/discovery" />;
+          if (o.devices.total === 0) return <NextStep art={<SetupArt className="h-16 w-28" />} text={t('devices.emptyNone')} label={t('overview.setupCta')} href="/radar/discovery" />;
           const total = o.devices.total;
           const slices = [
             { key: 'online', label: t('status.online'), value: o.devices.online, color: 'var(--color-ok)' },
@@ -64,12 +64,12 @@ export default function DevicesWidget() {
                   <span className="mt-1 text-[10.5px] text-faint">{t('overview.devices')}</span>
                 </Donut>
                 <div className="min-w-0 flex-1">
-                  <Legend slices={slices} hrefFor={(s) => `/devices?status=${s.key}`} />
+                  <Legend slices={slices} hrefFor={(s) => `/radar/devices?status=${s.key}`} />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 border-t border-line pt-3">
-                <Metric label={t('overview.new24h')} value={o.devices.new_24h} href="/devices?sort=first_seen" />
-                <Metric label={t('devices.widget.unreviewed')} value={unreviewed.data?.total ?? '—'} tone={unreviewed.data?.total ? 'warn' : 'idle'} href="/devices?trust=unreviewed" />
+                <Metric label={t('overview.new24h')} value={o.devices.new_24h} href="/radar/devices?sort=first_seen" />
+                <Metric label={t('devices.widget.unreviewed')} value={unreviewed.data?.total ?? '—'} tone={unreviewed.data?.total ? 'warn' : 'idle'} href="/radar/devices?trust=unreviewed" />
               </div>
               {typeCounts.length > 0 && (
                 <div>
@@ -81,7 +81,7 @@ export default function DevicesWidget() {
                     items={typeCounts.map(([type, n]) => ({
                       key: type,
                       value: n,
-                      href: `/devices?type=${type}`,
+                      href: `/radar/devices?type=${type}`,
                       label: (
                         <span className="inline-flex items-center gap-1.5">
                           <DeviceIcon type={type} className="size-3.5 text-faint" />
@@ -100,7 +100,7 @@ export default function DevicesWidget() {
                   <ul className="divide-y divide-line rounded-[8px] border border-line">
                     {o.problem_devices.slice(0, 4).map((d) => (
                       <li key={d.id}>
-                        <Link href={`/devices/${d.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
+                        <DeviceLink id={d.id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-raised/60">
                           <span className="min-w-0">
                             <span className="block truncate text-[13px] text-fg" dir="auto">
                               {d.name}
@@ -110,7 +110,7 @@ export default function DevicesWidget() {
                             </span>
                           </span>
                           <StatusBadge status={d.status} />
-                        </Link>
+                        </DeviceLink>
                       </li>
                     ))}
                   </ul>

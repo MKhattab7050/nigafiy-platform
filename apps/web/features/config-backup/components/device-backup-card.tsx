@@ -42,7 +42,7 @@ function Body({ deviceId, siteId }: { deviceId: string; siteId: string }) {
           <TargetStatusBadge target={target} />
           <span className="text-muted">{target.last_success_at ? relativeTime(target.last_success_at, locale) : t('common.never')}</span>
         </p>
-        <Link href={`/config-backup/${target.id}`} className="text-accent-hover hover:underline">
+        <Link href={`/guard/config-backup/${target.id}`} className="text-accent-hover hover:underline">
           {t('cb.card.open')}
         </Link>
       </div>
@@ -54,7 +54,7 @@ function Body({ deviceId, siteId }: { deviceId: string; siteId: string }) {
     setError(null);
     try {
       const r = await api<{ items: Target[] }>('/config-backup/targets', { method: 'POST', body: { site_id: siteId, targets: [{ address: suggestion.address }], run_now: false } });
-      router.push(`/config-backup/${r.items[0]!.id}?added=noCreds`);
+      router.push(`/guard/config-backup/${r.items[0]!.id}?added=noCreds`);
     } catch (e) {
       setError(e as ApiError);
       setBusy(false);
@@ -79,7 +79,7 @@ function Body({ deviceId, siteId }: { deviceId: string; siteId: string }) {
       ) : (
         <>
           <p>{suggestions.error ? suggestions.error.message : t('cb.card.none')}</p>
-          <Link href="/config-backup" className="text-accent-hover hover:underline">
+          <Link href="/guard/config-backup" className="text-accent-hover hover:underline">
             {t('cb.card.openPage')}
           </Link>
         </>

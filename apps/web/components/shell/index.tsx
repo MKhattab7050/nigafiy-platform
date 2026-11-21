@@ -1,8 +1,9 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useApp } from '@/lib/app';
+import { useProgramId } from '@/lib/programs-context';
 import { useTheme } from '@/lib/theme';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
@@ -13,6 +14,19 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const { me } = useApp();
   const { bindUser } = useTheme();
   const [open, setOpen] = useState(false);
+  const program = useProgramId();
+
+  // The program's accent tokens (globals.css, html[data-program]) follow the URL. Set before paint so a
+  // program never flashes in another program's colour; removed when the shell unmounts (sign-in pages).
+  useLayoutEffect(() => {
+    document.documentElement.dataset.program = program;
+  }, [program]);
+  useLayoutEffect(
+    () => () => {
+      delete document.documentElement.dataset.program;
+    },
+    [],
+  );
 
   useEffect(() => bindUser(me.user.id), [bindUser, me.user.id]);
   useEffect(() => setOpen(false), [pathname]);

@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import type { Confidence } from '@lan-detective/shared-types';
 import { Badge, Button, ConfidenceBadge, ErrorNote, Evidence, Field, InferredBadge, Modal, Textarea, severityTone } from '@/components/ui';
@@ -9,6 +8,7 @@ import { useApp } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import { APPROVABLE_KINDS, type Finding } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 const CONFIDENCES: Confidence[] = ['high', 'medium', 'low'];
 const confidenceOf = (v: unknown): Confidence | null => (CONFIDENCES.includes(v as Confidence) ? (v as Confidence) : null);
@@ -96,9 +96,9 @@ export function FindingRow({ finding: f, onChanged }: { finding: Finding; onChan
             {f.device_id && (
               <span>
                 {t('security.f.device')}:{' '}
-                <Link href={`/devices/${f.device_id}`} className="text-accent-hover hover:underline" dir="auto">
+                <DeviceLink id={f.device_id} className="text-accent-hover hover:underline" dir="auto">
                   {f.device_name ?? f.device_id}
-                </Link>
+                </DeviceLink>
               </span>
             )}
           </p>

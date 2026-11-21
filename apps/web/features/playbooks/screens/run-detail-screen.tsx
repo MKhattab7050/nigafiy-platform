@@ -12,6 +12,7 @@ import { DecisionButtons } from '../components/approval-card';
 import { RunStatusBadge, StepStatusBadge, STEP_TONE, usePbText } from '../components/common';
 import { actionLabel } from '../text';
 import { ACTIVE, type RunDetail, type RunStep } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 function Json({ value }: { value: Record<string, unknown> }) {
   return (
@@ -169,7 +170,7 @@ export function RunDetailScreen({ id }: { id: string }) {
   useEffect(() => setRefresh(active ? 5000 : 0), [active]);
 
   const back = (
-    <Link href="/playbooks/runs" className="inline-flex items-center gap-1 text-[13px] text-accent-hover hover:underline">
+    <Link href="/mind/playbooks/runs" className="inline-flex items-center gap-1 text-[13px] text-accent-hover hover:underline">
       <ArrowLeft className="size-3.5 rtl:rotate-180" aria-hidden />
       {tx.backToRuns}
     </Link>
@@ -196,7 +197,7 @@ export function RunDetailScreen({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-2">
             {back}
             {run.playbook_id && (
-              <Link href={`/playbooks/${run.playbook_id}`} className="text-[13px] text-accent-hover hover:underline">
+              <Link href={`/mind/playbooks/${run.playbook_id}`} className="text-[13px] text-accent-hover hover:underline">
                 {tx.playbook}
               </Link>
             )}
@@ -209,9 +210,9 @@ export function RunDetailScreen({ id }: { id: string }) {
         {active && <Badge tone="info" dot={false}>{tx.live}</Badge>}
         {run.site_name && <Badge tone="idle" dot={false}>{run.site_name}</Badge>}
         {run.devices.map((d) => (
-          <Link key={d.id} href={`/devices/${d.id}`} className="text-xs text-accent-hover hover:underline" dir="auto">
+          <DeviceLink key={d.id} id={d.id} className="text-xs text-accent-hover hover:underline" dir="auto">
             {d.label}
-          </Link>
+          </DeviceLink>
         ))}
       </div>
       {query.error && <ErrorNote error={query.error} onRetry={query.reload} />}
@@ -219,7 +220,7 @@ export function RunDetailScreen({ id }: { id: string }) {
       {run.caused_by_run_id && (
         <p className="text-xs text-muted">
           {tx.causedBy}:{' '}
-          <Link href={`/playbooks/runs/${run.caused_by_run_id}`} className="mono text-accent-hover hover:underline" dir="ltr">
+          <Link href={`/mind/playbooks/runs/${run.caused_by_run_id}`} className="mono text-accent-hover hover:underline" dir="ltr">
             {run.caused_by_run_id.slice(0, 8)}
           </Link>
         </p>

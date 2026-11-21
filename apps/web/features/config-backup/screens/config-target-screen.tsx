@@ -15,6 +15,7 @@ import { TargetStatusBadge, VendorLabel } from '../components/status';
 import { ADDED_CODES, type AddedCode, TargetSettingsCard, hourText } from '../components/target-form';
 import { VersionList } from '../components/version-list';
 import type { BackupRun, Target, TargetDetail } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 const RUN_TONE: Record<BackupRun['status'], Tone> = { pending: 'info', ok: 'ok', failed: 'crit', expired: 'warn' };
 const ADDED_KEY: Record<AddedCode, Key> = { queued: 'cb.added.queued', noCollector: 'cb.added.noCollector', noCreds: 'cb.added.noCreds' };
@@ -87,9 +88,9 @@ function StatusCard({ target: x }: { target: TargetDetail }) {
         </Fact>
         {x.device_id && (
           <Fact label={t('cb.device')}>
-            <Link href={`/devices/${x.device_id}`} className="text-accent-hover hover:underline" dir="auto">
+            <DeviceLink id={x.device_id} className="text-accent-hover hover:underline" dir="auto">
               {x.device_label ?? x.device_id}
-            </Link>
+            </DeviceLink>
           </Fact>
         )}
         <Fact label={t('cb.col.vendor')}>
@@ -184,7 +185,7 @@ function TargetView({ id }: { id: string }) {
     setError(null);
     try {
       await api(`/config-backup/targets/${id}`, { method: 'DELETE' });
-      router.push('/config-backup');
+      router.push('/guard/config-backup');
     } catch (e) {
       setError(e as ApiError);
       setBusy(null);
@@ -193,7 +194,7 @@ function TargetView({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/config-backup" className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
+      <Link href="/guard/config-backup" className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
         <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
         {t('cb.back')}
       </Link>

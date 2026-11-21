@@ -1,5 +1,5 @@
 // The Nigafiy program family: which program owns which screens (spec §5).
-// Shared by the API (GET /api/v1/platform/programs) and the web UI (Hub home, later the program shells).
+// Shared by the API (GET /api/v1/platform/programs) and the web UI (Hub home and the program shells, lib/programs.ts).
 // No runtime dependencies. Accent colours live in @nigafiy/brand.
 
 export const PROGRAM_IDS = ['hub', 'radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox'] as const;
@@ -10,9 +10,9 @@ export interface ProgramDefinition {
   /** Brand stays in Latin letters in Arabic text too. */
   readonly name: { readonly en: string; readonly ar: string };
   readonly job: { readonly en: string; readonly ar: string };
-  /** Where the program opens. Until Milestone 4 namespaces URLs, these are today's paths. */
+  /** Where the program opens (`PROGRAM_HOME` in routes.ts). */
   readonly home: string;
-  /** Every page the program owns (today's paths), in sidebar order. */
+  /** Every page the program owns, in sidebar order (Milestone 4 namespaced URLs; old URLs redirect, see routes.ts). */
   readonly pages: readonly string[];
 }
 
@@ -22,49 +22,60 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
     name: { en: 'Nigafiy Hub', ar: 'Nigafiy Hub' },
     job: { en: 'Home, sign-in, settings and the engine', ar: 'الرئيسية وتسجيل الدخول والإعدادات والمحرك' },
     home: '/',
-    pages: ['/', '/settings', '/portfolio'],
+    pages: ['/', '/portfolio', '/sensors', '/programs', '/settings'],
   },
   {
     id: 'radar',
     name: { en: 'Nigafiy Radar', ar: 'Nigafiy Radar' },
     job: { en: 'See every device on the network', ar: 'رؤية كل جهاز على الشبكة' },
-    home: '/devices',
-    pages: ['/devices', '/discovery', '/topology', '/ipam', '/ports'],
+    home: '/radar/devices',
+    pages: ['/radar/devices', '/radar/discovery', '/radar/topology', '/radar/ipam', '/radar/ports'],
   },
   {
     id: 'watch',
     name: { en: 'Nigafiy Watch', ar: 'Nigafiy Watch' },
     job: { en: 'Monitor, and understand what went wrong', ar: 'المراقبة وفهم سبب المشكلة' },
-    home: '/monitoring',
-    pages: ['/monitoring', '/incidents', '/events', '/doctor', '/time-machine', '/impact'],
+    home: '/watch/monitoring',
+    pages: [
+      '/watch/monitoring',
+      '/watch/incidents',
+      '/watch/events',
+      '/watch/doctor',
+      '/watch/insights',
+      '/watch/time-machine',
+      '/watch/impact',
+      '/watch/reports',
+      '/watch/notifications',
+      '/watch/maintenance',
+    ],
   },
   {
     id: 'guard',
     name: { en: 'Nigafiy Guard', ar: 'Nigafiy Guard' },
     job: { en: 'Protect and control the network', ar: 'حماية الشبكة والتحكم بها' },
-    home: '/security',
-    pages: ['/security', '/access', '/routers', '/config-backup'],
+    home: '/guard/security',
+    pages: ['/guard/security', '/guard/access', '/guard/routers', '/guard/port-control', '/guard/config-backup'],
   },
   {
     id: 'fleet',
     name: { en: 'Nigafiy Fleet', ar: 'Nigafiy Fleet' },
     job: { en: 'Manage and support company computers', ar: 'إدارة أجهزة الشركة ودعمها' },
-    home: '/endpoints',
-    pages: ['/endpoints'],
+    home: '/fleet/endpoints',
+    pages: ['/fleet/endpoints'],
   },
   {
     id: 'mind',
     name: { en: 'Nigafiy Mind', ar: 'Nigafiy Mind' },
     job: { en: 'Knowledge, playbooks and automation', ar: 'المعرفة وخطط العمل والأتمتة' },
-    home: '/knowledge',
-    pages: ['/knowledge', '/playbooks'],
+    home: '/mind/knowledge',
+    pages: ['/mind/knowledge', '/mind/playbooks', '/mind/automation'],
   },
   {
     id: 'toolbox',
     name: { en: 'Nigafiy Toolbox', ar: 'Nigafiy Toolbox' },
     job: { en: 'Quick network tools', ar: 'أدوات شبكة سريعة' },
     home: '/toolbox',
-    pages: ['/toolbox'],
+    pages: ['/toolbox', '/toolbox/subnet'],
   },
 ];
 

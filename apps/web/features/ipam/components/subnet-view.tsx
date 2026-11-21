@@ -7,6 +7,7 @@ import { Async, Button, Card, Fact } from '@/components/ui';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { localizeIpamEvidence } from '@/lib/localize';
 import { AddressTable } from './address-table';
 import { PlanModal } from './plan-modal';
 import { AddressModal } from './address-modal';
@@ -108,9 +109,9 @@ export function SubnetView({ id, onChanged }: { id: string; onChanged?: () => vo
                           </button>
                           <span className="font-medium">{tx.conflictKind[c.kind]}</span>
                         </p>
-                        <ul dir="ltr" className="mt-1 list-disc space-y-0.5 ps-5 text-start text-xs text-muted">
+                        <ul dir="auto" className="mt-1 list-disc space-y-0.5 ps-5 text-start text-xs text-muted">
                           {c.evidence.map((e) => (
-                            <li key={e}>{e}</li>
+                            <li key={e}>{localizeIpamEvidence(e, locale)}</li>
                           ))}
                         </ul>
                         <p className="mt-1 text-xs text-faint">{tx.conflictHelp[c.kind]}</p>

@@ -1,7 +1,6 @@
 'use client';
 
 import type { IpamHistoryEntry, IpamRecordKind, IpamSubnetDetail } from '@lan-detective/shared-types';
-import Link from 'next/link';
 import { useState } from 'react';
 import { Badge, Button, ErrorNote, Fact, Field, Input, Modal, Select, StatusBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
@@ -10,6 +9,7 @@ import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { ipamText } from '../text';
 import { ipToInt } from '../subnet-calc';
+import { DeviceLink } from '@/components/device-link';
 
 // ── one address: what is observed, what is documented, who used it ──────────
 
@@ -73,9 +73,9 @@ export function AddressModal({ subnet, ip, onClose, onChanged }: { subnet: IpamS
               {entry.devices.map((d) => (
                 <li key={d.id} className="flex flex-wrap items-center gap-2 text-[13px]">
                   <StatusBadge status={d.status} />
-                  <Link href={`/devices/${d.id}`} className="font-medium hover:text-accent-hover" dir="auto">
+                  <DeviceLink id={d.id} className="font-medium hover:text-accent-hover" dir="auto">
                     {d.label}
-                  </Link>
+                  </DeviceLink>
                   {d.mac && <span className="mono text-xs text-muted">{d.mac}</span>}
                   <span className="text-xs text-faint">
                     {tx.lastSeen} {relativeTime(d.last_seen_at, locale)}
@@ -178,9 +178,9 @@ export function AddressModal({ subnet, ip, onClose, onChanged }: { subnet: IpamS
           <ul className="divide-y divide-line text-[13px]">
             {history.data?.items.map((h) => (
               <li key={h.device_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-                <Link href={`/devices/${h.device_id}`} className="font-medium hover:text-accent-hover" dir="auto">
+                <DeviceLink id={h.device_id} className="font-medium hover:text-accent-hover" dir="auto">
                   {h.label}
-                </Link>
+                </DeviceLink>
                 {h.mac && <span className="mono text-xs text-muted">{h.mac}</span>}
                 <span className="ms-auto text-xs text-faint">
                   {relativeTime(h.first_seen_at, locale)} → {h.current ? tx.now : relativeTime(h.last_seen_at, locale)}

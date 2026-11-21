@@ -2,10 +2,13 @@
 
 import clsx from 'clsx';
 import { ArrowRight } from 'lucide-react';
+import { programForPath } from '@lan-detective/shared-types/routes';
 import Link from 'next/link';
+import { ProgramGlyph } from '@/features/platform';
 import type { ApiError } from '@/lib/api';
 import type { AttentionItem, AttentionReport } from '@/lib/attention';
-import { useI18n } from '@/lib/i18n';
+import { fill, useI18n } from '@/lib/i18n';
+import { programById } from '@/lib/programs';
 import { BUTTON_BASE, BUTTON_VARIANT, type Tone } from './ui';
 
 // Building blocks shared by every dashboard widget, so all of them look and behave the same:
@@ -20,7 +23,10 @@ export function ButtonLink({ href, children, variant = 'secondary', className }:
   );
 }
 
-/** Dashboard card: title with icon, a link to the feature's full page, and its own content. */
+/**
+ * Dashboard card: title with icon, the program that owns it (glyph and name, from the page it opens),
+ * a link to the feature's full page, and its own content.
+ */
 export function Widget({
   title,
   icon: Icon,
@@ -36,14 +42,23 @@ export function Widget({
   children: React.ReactNode;
   padded?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const owner = programById(programForPath(href));
   return (
-    <section className="flex h-full min-w-0 flex-col rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]">
+    <section data-program={owner.id} className="flex h-full min-w-0 flex-col rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]">
       <header className="flex min-h-12 items-center gap-2.5 px-4 pt-3">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-[7px] bg-raised text-muted">
           <Icon className="size-[15px]" aria-hidden />
         </span>
-        <h2 className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-fg">{title}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-[13.5px] font-semibold text-fg">{title}</h2>
+          {owner.id !== 'hub' && (
+            <p className="flex items-center gap-1 text-[11px] leading-tight text-faint" title={fill(t('platform.from'), { name: owner.name[locale] })}>
+              <ProgramGlyph id={owner.id} size={12} />
+              <bdi>{owner.shortName}</bdi>
+            </p>
+          )}
+        </div>
         {action}
         <Link href={href} className="group inline-flex shrink-0 items-center gap-1 rounded-[5px] px-1.5 py-1 text-xs font-medium text-accent-hover hover:bg-accent/10">
           {t('common.open')}

@@ -20,8 +20,10 @@ describe('module registry', () => {
         ['config-backup', 300_000, 727122, 'config-backup'],
         ['maintenance-watch', 30_000, 727105, 'maintenance'],
         ['notification-dispatch', 5_000, 727102, 'notifications'],
+        ['notification-escalation', 60_000, 727106, 'notifications'],
         ['playbook-engine', 5_000, 727140, 'playbooks'],
         ['retention', 3_600_000, 727103, 'system'],
+        ['router-schedules', 30_000, 727150, 'routers'],
         ['rollup', 600_000, 727104, 'monitoring'],
       ].sort(),
     );
@@ -69,7 +71,17 @@ describe('GET /api/v1/system/modules', () => {
     expect(res.body.modules.find((m: { name: string }) => m.name === 'endpoints').gateway_path).toBe('/api/v1/agent');
     expect(res.body.modules.find((m: { name: string }) => m.name === 'auth').public_path).toBe('/api/v1/auth');
     const jobs = res.body.jobs as Array<{ name: string; state: string; last_error: unknown }>;
-    expect(jobs.map((j) => j.name).sort()).toEqual(['collector-watch', 'config-backup', 'maintenance-watch', 'notification-dispatch', 'playbook-engine', 'retention', 'rollup']);
+    expect(jobs.map((j) => j.name).sort()).toEqual([
+      'collector-watch',
+      'config-backup',
+      'maintenance-watch',
+      'notification-dispatch',
+      'notification-escalation',
+      'playbook-engine',
+      'retention',
+      'rollup',
+      'router-schedules',
+    ]);
     for (const j of jobs) expect(j.state).toBe('not_scheduled'); // the test process does not run the scheduler
     expect(JSON.stringify(res.body)).not.toMatch(/postgres(ql)?:\/\//);
   });

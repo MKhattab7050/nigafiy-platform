@@ -197,6 +197,13 @@ describe('incident correlation and lifecycle', () => {
     let list = await incidents(a, 'active');
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ kind: 'device', severity: 'critical', fault_domain: 'device' });
+    // The device card's "Incidents" action (Milestone 4) lists only this device's incidents.
+    const laptop = devs.find((x) => x.hostname === 'laptop')!;
+    const forCore = await a.agent.get(`/api/v1/incidents?status=all&device_id=${core.id}`);
+    expect(forCore.status).toBe(200);
+    expect(forCore.body.items.map((i: { id: string }) => i.id)).toEqual([list[0]!.id]);
+    expect((await a.agent.get(`/api/v1/incidents?status=all&device_id=${laptop.id}`)).body.items).toHaveLength(0);
+    expect((await a.agent.get('/api/v1/incidents?device_id=not-a-uuid')).status).toBe(400);
     await telemetry(c, [sweep(scopeId, hosts, 5)]);
     expect(await incidents(a, 'active')).toHaveLength(0);
 

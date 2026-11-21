@@ -31,27 +31,27 @@ export default function IpamWidget() {
       const out: AttentionItem[] = [];
       for (const s of items) {
         if (s.conflicts > 0)
-          out.push({ id: `ipam-conflict-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.conflicts'), { count: s.conflicts, cidr: s.cidr }), action: { label: t('ipam.attn.check'), href: `/ipam?subnet=${s.id}` } });
+          out.push({ id: `ipam-conflict-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.conflicts'), { count: s.conflicts, cidr: s.cidr }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
         if (s.usable > 0 && share(s) >= NEARLY_FULL)
-          out.push({ id: `ipam-full-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.full'), { cidr: s.cidr, free: s.free }), action: { label: t('ipam.attn.check'), href: `/ipam?subnet=${s.id}` } });
+          out.push({ id: `ipam-full-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.full'), { cidr: s.cidr, free: s.free }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
       }
       return out;
     }),
   );
 
   return (
-    <Widget title={tx.title} icon={Network} href="/ipam">
+    <Widget title={tx.title} icon={Network} href="/radar/ipam">
       <Async query={query}>
         {({ items }) =>
           items.length === 0 ? (
-            <NextStep text={tx.emptyBody} label={tx.emptyAction} href="/discovery" />
+            <NextStep text={tx.emptyBody} label={tx.emptyAction} href="/radar/discovery" />
           ) : (
             <ul className="space-y-3">
               {items.slice(0, 5).map((s) => {
                 const p = share(s);
                 return (
                   <li key={s.id}>
-                    <Link href={`/ipam?subnet=${s.id}`} className="-mx-1.5 block rounded-[7px] px-1.5 py-1 transition-colors hover:bg-raised/60">
+                    <Link href={`/radar/ipam?subnet=${s.id}`} className="-mx-1.5 block rounded-[7px] px-1.5 py-1 transition-colors hover:bg-raised/60">
                       <Meter
                         warn={NEARLY_FULL - 10}
                         crit={NEARLY_FULL}

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Diagnosis, EvidenceItem } from '@lan-detective/shared-types';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { localizeDiagnosis, localizeIncidentTitle } from '@/lib/localize';
 import { ConfidenceBadge } from '@/components/ui';
 
 export function EvidenceList({ items }: { items: EvidenceItem[] }) {
@@ -47,7 +48,7 @@ export function Section({ title, children }: { title: string; children: React.Re
 /** Renders a Network Doctor result: conclusion first, then everything needed to verify it. */
 export function DiagnosisView({ diagnosis, compact }: { diagnosis: Diagnosis; compact?: boolean }) {
   const { t, locale } = useI18n();
-  const d = diagnosis;
+  const d = localizeDiagnosis(diagnosis, locale);
   const list = (items: string[], ordered = false) => {
     const Tag = ordered ? 'ol' : 'ul';
     return (
@@ -97,8 +98,8 @@ export function DiagnosisView({ diagnosis, compact }: { diagnosis: Diagnosis; co
           <ul className="divide-y divide-line rounded-md border border-line">
             {d.related_incidents.map((r) => (
               <li key={r.id} className="px-3 py-2.5">
-                <Link href={`/incidents/${r.id}`} className="text-[13px] font-medium text-accent-hover hover:underline" dir="auto">
-                  INC-{r.number} · {r.title}
+                <Link href={`/watch/incidents/${r.id}`} className="text-[13px] font-medium text-accent-hover hover:underline" dir="auto">
+                  INC-{r.number} · {localizeIncidentTitle(r.title, locale)}
                 </Link>
                 <p className="mt-0.5 text-xs text-muted" dir="auto">
                   <span title={absoluteTime(r.opened_at, locale)}>{relativeTime(r.opened_at, locale)}</span> — {r.resolution_note ?? t('dx.noNote')}

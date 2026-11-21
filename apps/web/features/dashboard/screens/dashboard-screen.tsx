@@ -11,6 +11,7 @@ import { FEATURES } from '@/features/registry';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { AttentionProvider } from '@/lib/attention';
+import { usePrograms } from '@/lib/programs-context';
 import { useI18n } from '@/lib/i18n';
 import { AttentionPanel } from '../components/attention-panel';
 import { InsightsPanel } from '../components/insights-panel';
@@ -33,8 +34,10 @@ const SPAN = { wide: 'md:col-span-2', full: 'md:col-span-2 xl:col-span-3' } as c
 export function DashboardScreen() {
   const { t } = useI18n();
   const { can, siteId } = useApp();
+  const { installed } = usePrograms();
   const insights = useQuery<InsightsReport>('/insights' + qs({ site_id: siteId }), ['events', 'devices', 'checks', 'collectors']);
-  const widgets = FEATURES.filter((f) => f.widget && (!f.minRole || can(f.minRole)) && (!f.widget.minRole || can(f.widget.minRole))).sort((a, b) => a.widget!.order - b.widget!.order);
+  // Widgets of a program this install does not offer are left out (its data is still collected, spec §6.1).
+  const widgets = FEATURES.filter((f) => f.widget && installed(f.program) && (!f.minRole || can(f.minRole)) && (!f.widget.minRole || can(f.widget.minRole))).sort((a, b) => a.widget!.order - b.widget!.order);
 
   return (
     <AttentionProvider>

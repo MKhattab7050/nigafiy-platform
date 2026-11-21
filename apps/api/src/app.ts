@@ -6,6 +6,7 @@ import { AppError, errorHandler } from './common/http.ts';
 import { env } from './config/env.ts';
 import { systemPool } from './infrastructure/db.ts';
 import { logger } from './infrastructure/logger.ts';
+import { limiterStore } from './infrastructure/rate-limit.ts';
 import type { ModuleManifest } from './infrastructure/module.ts';
 import { requireSession } from './modules/auth/index.ts';
 import { modules as registeredModules } from './modules/registry.ts';
@@ -57,8 +58,10 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
     }
   });
 
-  const limiter = (limit: number) =>
+  // Counters live in Redis when REDIS_URL is set (shared by every API instance), else in memory.
+  const limiter = (limit: number, name: string) =>
     rateLimit({
+      store: limiterStore(name),
       windowMs: 60_000,
       limit: env.NODE_ENV === 'test' ? 100_000 : limit,
       standardHeaders: 'draft-7',
@@ -68,12 +71,12 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
 
   // ── Collector-facing & Endpoint-agent-facing APIs (credential auth, own body limit) ──
   for (const m of modules) {
-    if (m.gateway) app.use(m.gateway.path, limiter(m.gateway.rateLimitPerMinute), m.gateway.router);
+    if (m.gateway) app.use(m.gateway.path, limiter(m.gateway.rateLimitPerMinute, `gateway:${m.gateway.path}`), m.gateway.router);
   }
 
   // ── User-facing API (session auth) ──
   const api = Router();
-  api.use(limiter(600));
+  api.use(limiter(600, 'api'));
   api.use(express.json({ limit: '100kb' }));
   for (const m of modules) {
     if (m.publicApi) api.use(m.publicApi.path, m.publicApi.router);

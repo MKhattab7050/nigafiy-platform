@@ -69,7 +69,7 @@ function RunNowModal({ playbook, onClose }: { playbook: Playbook; onClose: () =>
     setError(null);
     try {
       const run = await api<RunDetail>(`/playbooks/${playbook.id}/run`, { method: 'POST', body: { device_id: deviceId, dry_run: dryRun } });
-      router.push(`/playbooks/runs/${run.id}`);
+      router.push(`/mind/playbooks/runs/${run.id}`);
     } catch (e) {
       setError(e as ApiError);
       setBusy(false);
@@ -144,7 +144,7 @@ function Editor({ playbook, catalog, onSaved }: { playbook: Playbook | null; cat
         p = await api<Playbook>(`/playbooks/${playbook.id}`, { method: 'PATCH', body });
       } else {
         p = await api<Playbook>('/playbooks', { method: 'POST', body: { ...draft, ...extra } });
-        router.replace(`/playbooks/${p.id}`);
+        router.replace(`/mind/playbooks/${p.id}`);
       }
       setSaved(true);
       onSaved(p);
@@ -161,7 +161,7 @@ function Editor({ playbook, catalog, onSaved }: { playbook: Playbook | null; cat
     setError(null);
     try {
       await api(`/playbooks/${playbook.id}`, { method: 'DELETE' });
-      router.push('/playbooks');
+      router.push('/mind/playbooks');
     } catch (e) {
       setError(e);
       setConfirmDelete(false);
@@ -337,7 +337,7 @@ function EditorView({ id }: { id: string }) {
       description={playbook ? `${fill(tx.version, { v: playbook.version })}${playbook.created_by_email ? ` · ${fill(tx.createdBy, { who: playbook.created_by_email })}` : ''}` : undefined}
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/playbooks" className="inline-flex items-center gap-1 text-[13px] text-accent-hover hover:underline">
+          <Link href="/mind/playbooks" className="inline-flex items-center gap-1 text-[13px] text-accent-hover hover:underline">
             <ArrowLeft className="size-3.5 rtl:rotate-180" aria-hidden />
             {tx.back}
           </Link>
@@ -364,7 +364,7 @@ function EditorView({ id }: { id: string }) {
     return (
       <div className="space-y-5">
         {header}
-        {query.error.status === 404 ? <EmptyState title={tx.notFound} action={<Link href="/playbooks" className="text-accent-hover hover:underline">{tx.back}</Link>} /> : <ErrorNote error={query.error} onRetry={query.reload} />}
+        {query.error.status === 404 ? <EmptyState title={tx.notFound} action={<Link href="/mind/playbooks" className="text-accent-hover hover:underline">{tx.back}</Link>} /> : <ErrorNote error={query.error} onRetry={query.reload} />}
       </div>
     );
   if (!catalog.data || (!isNew && !query.data))

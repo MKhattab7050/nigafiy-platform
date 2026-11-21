@@ -400,7 +400,7 @@ describe('knowledge tenant isolation and search', () => {
     await a.agent.post('/api/v1/knowledge').set(CSRF).send({ title: 'Firewall draft notes' });
     const hits = (await a.agent.get('/api/v1/search?q=firewall')).body.items.filter((h: { kind: string }) => h.kind === 'knowledge');
     expect(hits).toHaveLength(2);
-    expect(hits[0]).toMatchObject({ id: entry, href: `/knowledge/${entry}`, status: 'published' });
+    expect(hits[0]).toMatchObject({ id: entry, href: `/mind/knowledge/${entry}`, status: 'published' });
     await setRole(a.email, a.organizationId, 'viewer');
     expect((await a.agent.get('/api/v1/search?q=firewall')).body.items.filter((h: { kind: string }) => h.kind === 'knowledge').map((h: { id: string }) => h.id)).toEqual([entry]);
     expect((await request(app).get('/api/v1/knowledge')).status).toBe(401);

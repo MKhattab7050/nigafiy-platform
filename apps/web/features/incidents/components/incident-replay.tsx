@@ -5,6 +5,7 @@ import type { IncidentDetail } from '@lan-detective/shared-types';
 import { Badge, EmptyState, Evidence, Tag, severityTone } from '@/components/ui';
 import { EVENT_TYPE_LABEL, absoluteTime, clockTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
+import { localizeEventTitle } from '@/lib/localize';
 
 export const PHASE_STYLE = { before: 'border-line-strong', during: 'border-crit/60', after: 'border-ok/60' } as const;
 
@@ -29,7 +30,7 @@ export function Replay({ incident }: { incident: IncidentDetail }) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className={`block text-[13px] leading-snug ${e.linked ? 'font-medium text-fg' : 'text-muted'}`} dir="auto">
-                    {e.title}
+                    {localizeEventTitle(e, locale)}
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-faint">
                     {EVENT_TYPE_LABEL[e.type]?.[locale] ?? e.type}

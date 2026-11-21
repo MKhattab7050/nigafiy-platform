@@ -2,7 +2,6 @@
 
 import type { SwitchPort } from '@lan-detective/shared-types';
 import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 import { Badge } from '@/components/ui';
 import { bps } from '@/lib/format';
@@ -12,6 +11,7 @@ import { PortActionsModal } from './port-actions';
 import { PortHistoryChart } from './port-history-chart';
 import { controlText } from '../control-text';
 import { portsText } from '../text';
+import { DeviceLink } from '@/components/device-link';
 
 export function speed(mbps: number): string {
   return mbps >= 1000 ? `${mbps / 1000} Gb/s` : mbps > 0 ? `${mbps} Mb/s` : '';
@@ -61,10 +61,10 @@ export function PortRow({ p, switchId, admin = false }: { p: SwitchPort; switchI
           </span>
         ))}
         {p.devices.map((d) => (
-          <Link key={d.mac} href={`/devices/${d.id}`} className="block truncate hover:text-accent-hover" dir="auto">
+          <DeviceLink key={d.mac} id={d.id} className="block truncate hover:text-accent-hover" dir="auto">
             {d.label} <span className="mono text-xs text-muted">{d.ip ?? d.mac}</span>
             {d.vlan > 0 && <span className="text-xs text-faint"> · VLAN {d.vlan}</span>}
-          </Link>
+          </DeviceLink>
         ))}
         {(p.role === 'trunk' || p.role === 'uplink') && p.mac_count > 0 ? (
           <span className="block text-xs text-faint tnum">

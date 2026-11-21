@@ -41,6 +41,13 @@
       {
         "from": "../../engine/bin/nigafiy-engine.exe",
         "to": "engine/nigafiy-engine.exe"
+      },
+      {
+        "from": "../../packages/brand/ico",
+        "to": "icons",
+        "filter": [
+          "*.ico"
+        ]
       }
     ],
     "win": {

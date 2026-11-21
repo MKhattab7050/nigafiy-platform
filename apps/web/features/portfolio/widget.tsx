@@ -22,7 +22,7 @@ export default function PortfolioWidget() {
             <div className="grid grid-cols-3 gap-2">
               <Metric label={t('pf.widget.sites')} value={r.items.length} href="/portfolio" />
               <Metric label={t('pf.widget.attention')} value={attention} tone={attention ? 'warn' : 'ok'} href="/portfolio" />
-              <Metric label={t('pf.widget.incidents')} value={incidents} tone={incidents ? 'warn' : 'idle'} href="/incidents" />
+              <Metric label={t('pf.widget.incidents')} value={incidents} tone={incidents ? 'warn' : 'idle'} href="/watch/incidents" />
             </div>
           );
         }}

@@ -1,7 +1,6 @@
 'use client';
 
 import { BellOff, CheckCheck, MonitorSmartphone, Search, ShieldAlert } from 'lucide-react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { DEVICE_TRUSTS, DEVICE_TYPES, type Device, type Paginated } from '@lan-detective/shared-types';
@@ -12,6 +11,7 @@ import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { DeviceLink } from '@/components/device-link';
 
 export const PAGE_SIZE = 50;
 export const SORTS = ['ip', 'name', 'status', 'last_seen', 'first_seen'] as const;
@@ -35,7 +35,7 @@ export function DevicesView() {
     (next: Record<string, string>) => {
       const merged = { status, type, trust, sort, q, page: String(page), ...next };
       if (!('page' in next)) merged.page = '1';
-      router.replace(`/devices${qs({ ...merged, sort: merged.sort === 'ip' ? '' : merged.sort, page: merged.page === '1' ? '' : merged.page })}`);
+      router.replace(`/radar/devices${qs({ ...merged, sort: merged.sort === 'ip' ? '' : merged.sort, page: merged.page === '1' ? '' : merged.page })}`);
     },
     [status, type, trust, sort, q, page, router],
   );
@@ -171,9 +171,9 @@ export function DevicesView() {
                               <DeviceIcon type={d.device_type} />
                             </span>
                             <div className="min-w-0">
-                              <Link href={`/devices/${d.id}`} className="block font-medium text-fg group-hover:text-accent-hover" dir="auto">
+                              <DeviceLink id={d.id} className="block font-medium text-fg group-hover:text-accent-hover" dir="auto">
                                 <span className="block truncate">{d.display_name || d.hostname || d.current_ip || d.primary_mac}</span>
-                              </Link>
+                              </DeviceLink>
                               <span className="mt-1 flex flex-wrap items-center gap-1">
                                 {d.trust !== 'known' && <Badge tone={d.trust === 'unwanted' ? 'crit' : 'warn'}>{t(`trust.${d.trust}`)}</Badge>}
                                 {d.alerts_muted && (

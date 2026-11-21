@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import clsx from 'clsx';
 import { ChevronDown, ExternalLink, Lightbulb } from 'lucide-react';
@@ -11,7 +11,9 @@ import { type ApiError, api } from '@/lib/api';
 import { type Query, useApp } from '@/lib/app';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
+import { localizeInsightEvidence } from '@/lib/localize';
 import { actionText, insightText } from '../insights-text';
+import { DeviceLink } from '@/components/device-link';
 
 export const INITIAL = 4;
 
@@ -112,9 +114,9 @@ export function InsightRow({
                   const r = resultOf.get(d.device_id);
                   return (
                     <li key={d.device_id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-2.5 py-2 text-xs">
-                      <Link href={`/devices/${d.device_id}`} className="min-w-0 truncate font-medium text-fg hover:underline" dir="auto">
+                      <DeviceLink id={d.device_id} className="min-w-0 truncate font-medium text-fg hover:underline" dir="auto">
                         {d.label}
-                      </Link>
+                      </DeviceLink>
                       {d.ip && (
                         <span className="mono text-muted" dir="ltr">
                           {d.ip}
@@ -171,7 +173,7 @@ export function InsightRow({
           {open && (
             <ul className="mt-2 list-disc space-y-0.5 ps-5 text-xs text-muted" dir="auto">
               {insight.evidence.map((e) => (
-                <li key={e}>{e}</li>
+                <li key={e}>{localizeInsightEvidence(e, locale)}</li>
               ))}
             </ul>
           )}
@@ -182,9 +184,10 @@ export function InsightRow({
 }
 
 /** The platform's own advice (GET /insights), each with the action that resolves it. The score itself sits in the status header. */
-export function InsightsPanel({ insights }: { insights: Query<InsightsReport> }) {
+/** `expanded`: start with every insight shown (Watch, Insights); the Hub home starts with the first few. */
+export function InsightsPanel({ insights, expanded = false }: { insights: Query<InsightsReport>; expanded?: boolean }) {
   const { t } = useI18n();
-  const [all, setAll] = useState(false);
+  const [all, setAll] = useState(expanded);
   const [kept, setKept] = useState<Record<string, { insight: Insight; result: DeviceMonitorBulk }>>({});
   const report = insights.data;
   const forget = (id: string) =>

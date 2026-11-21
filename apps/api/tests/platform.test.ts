@@ -1,10 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import path from 'node:path';
 import { PROGRAMS } from '@lan-detective/shared-types/programs';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { engineStatus } from '../src/modules/platform/engine.ts';
+import { installedPrograms } from '../src/modules/platform/index.ts';
 import { checkForUpdates, compareVersions } from '../src/modules/platform/updates.ts';
 import { CSRF, app, newAccount, setRole } from './helpers.ts';
 
@@ -55,6 +58,38 @@ describe('platform: programs, engine status, update check', () => {
     // Every page belongs to exactly one program.
     const pages = PROGRAMS.flatMap((p) => p.pages);
     expect(new Set(pages).size).toBe(pages.length);
+  });
+
+  it('reports programs left out by NIGAFIY_PROGRAMS as not installed, and Hub always installed', () => {
+    const some = installedPrograms('radar,watch');
+    const state = Object.fromEntries(some.items.map((p) => [p.id, [p.installed, p.install_source]]));
+    expect(state).toEqual({
+      hub: [true, 'bundled'],
+      radar: [true, 'bundled'],
+      watch: [true, 'bundled'],
+      guard: [false, null],
+      fleet: [false, null],
+      mind: [false, null],
+      toolbox: [false, null],
+    });
+    // Not installed programs are still listed (with their pages) so the UI can offer "install".
+    expect(some.items.find((p) => p.id === 'guard')?.pages).toContain('/guard/security');
+    expect(installedPrograms('all').items.every((p) => p.installed)).toBe(true);
+    expect(installedPrograms('hub').items.filter((p) => p.installed).map((p) => p.id)).toEqual(['hub']);
+  });
+
+  it('refuses to start with an unknown program id in NIGAFIY_PROGRAMS', () => {
+    const run = (value: string) =>
+      spawnSync(process.execPath, ['--input-type=module', '-e', "await import('./src/config/env.ts')"], {
+        cwd: path.resolve(import.meta.dirname, '..'),
+        env: { ...process.env, NIGAFIY_PROGRAMS: value, DATABASE_URL: 'postgres://x', APP_DATABASE_URL: 'postgres://x', APP_ENCRYPTION_KEY: 'a'.repeat(64) },
+        encoding: 'utf8',
+      });
+    const bad = run('hub,radar,bogus');
+    expect(bad.status).not.toBe(0);
+    expect(bad.stderr).toContain('NIGAFIY_PROGRAMS');
+    expect(bad.stderr).not.toContain('a'.repeat(64));
+    expect(run('Hub, Radar').status).toBe(0);
   });
 
   it('requires a session', async () => {

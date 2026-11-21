@@ -113,6 +113,7 @@ export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   upnp_risky_mapping: { en: 'Risky UPnP port mapping', ar: 'توجيه منفذ UPnP خطر' },
   playbook_notification: { en: 'Playbook notification', ar: 'إشعار من دليل تشغيل' },
   playbook_approval_requested: { en: 'Playbook approval requested', ar: 'طلب موافقة على دليل تشغيل' },
+  incident_escalated: { en: 'Incident escalated', ar: 'تصعيد حادثة' },
 };
 
 /** <input type="datetime-local"> value (local time, minute precision) ↔ ISO string. */

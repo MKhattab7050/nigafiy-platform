@@ -142,7 +142,7 @@ export function KnowledgeScreen() {
                   const excerpt = markdownToText(e.fix_steps || e.symptoms).slice(0, 220);
                   return (
                     <li key={e.id}>
-                      <Link href={`/knowledge/${e.id}`} className="block px-4 py-3 transition-colors hover:bg-raised">
+                      <Link href={`/mind/knowledge/${e.id}`} className="block px-4 py-3 transition-colors hover:bg-raised">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="min-w-0 text-[13.5px] font-medium text-fg" dir="auto">
                             {e.title}
@@ -195,7 +195,7 @@ export function KnowledgeScreen() {
             onCancel={() => setCreating(false)}
             onSaved={(e) => {
               setCreating(false);
-              router.push(`/knowledge/${e.id}`);
+              router.push(`/mind/knowledge/${e.id}`);
             }}
           />
         </Modal>

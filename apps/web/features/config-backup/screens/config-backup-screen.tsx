@@ -14,6 +14,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { TargetStatusBadge, VendorLabel } from '../components/status';
 import { type AddedCode, AddTargetForm, hourText } from '../components/target-form';
 import type { Suggestion, Suggestions, Target } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 const SSH_TONE: Record<Suggestion['ssh']['state'], Tone> = { open: 'ok', closed: 'idle', unknown: 'idle' };
 const SOURCE_TONE = { observed: 'ok', inferred: 'info', manual: 'idle' } as const;
@@ -108,9 +109,9 @@ function SuggestionsCard({ siteId, onAdded }: { siteId: string; onAdded: (id: st
                     <div className="min-w-0 space-y-1">
                       <p className="text-[13.5px] font-medium">
                         {s.device_id ? (
-                          <Link href={`/devices/${s.device_id}`} className="hover:underline" dir="auto">
+                          <DeviceLink id={s.device_id} className="hover:underline" dir="auto">
                             {s.name ?? s.address}
-                          </Link>
+                          </DeviceLink>
                         ) : (
                           <span dir="auto">{s.name ?? s.address}</span>
                         )}{' '}
@@ -191,7 +192,7 @@ function TargetsCard({ siteId }: { siteId: string }) {
                 {items.map((x) => (
                   <tr key={x.id}>
                     <td data-label={t('cb.col.device')}>
-                      <Link href={`/config-backup/${x.id}`} className="font-medium text-accent-hover hover:underline" dir="auto">
+                      <Link href={`/guard/config-backup/${x.id}`} className="font-medium text-accent-hover hover:underline" dir="auto">
                         {x.name}
                       </Link>
                       <span className="mono block text-xs text-muted" dir="ltr">
@@ -230,7 +231,7 @@ function SiteBackups({ siteId }: { siteId: string }) {
   const [adding, setAdding] = useState(false);
   const drivers = useQuery<Suggestions>(adding ? `/config-backup/suggestions${qs({ site_id: siteId })}` : null, [], 0);
   const timezone = sites.find((s) => s.id === siteId)?.timezone ?? 'UTC';
-  const goTo = (id: string, added: AddedCode) => router.push(`/config-backup/${id}?added=${added}`);
+  const goTo = (id: string, added: AddedCode) => router.push(`/guard/config-backup/${id}?added=${added}`);
   return (
     <div className="space-y-4">
       {can('admin') && !adding && (
@@ -262,7 +263,7 @@ export function ConfigBackupScreen() {
         <SiteBackups key={siteId} siteId={siteId} />
       ) : (
         <Card>
-          <EmptyState icon={<Archive />} title={t('cb.noSite')} action={<ButtonLink href="/discovery">{t('cb.toDiscovery')}</ButtonLink>}>
+          <EmptyState icon={<Archive />} title={t('cb.noSite')} action={<ButtonLink href="/radar/discovery">{t('cb.toDiscovery')}</ButtonLink>}>
             <p>{t('cb.noSiteHint')}</p>
           </EmptyState>
         </Card>

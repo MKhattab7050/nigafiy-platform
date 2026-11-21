@@ -5,6 +5,7 @@ import type { EndpointDetail } from '@lan-detective/shared-types';
 import { Badge, Button, Card, ErrorNote, Fact, Field, Input, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { localizeComplianceReason } from '@/lib/localize';
 import { capStateTone } from './helpers';
 import { endpointsText } from '../../text';
 
@@ -73,7 +74,7 @@ export function SecurityAndCapabilitiesTab({
             </Fact>
             {ep.compliance_reasons.length > 0 && (
               <Fact label={isAr ? 'ملاحظات الامتثال' : 'Findings'}>
-                <span className="text-warn">{ep.compliance_reasons.join(' · ')}</span>
+                <span className="text-warn">{ep.compliance_reasons.map((r) => localizeComplianceReason(r, locale)).join(' · ')}</span>
               </Fact>
             )}
             <Fact label={isAr ? 'جدار الحماية (Firewall)' : 'Host Firewall'}>

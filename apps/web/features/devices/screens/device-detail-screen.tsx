@@ -20,6 +20,7 @@ import { AvailabilityStrip, weekAvailability } from '../components/availability-
 import { Identification } from '../components/identification';
 import { ManagePanel } from '../components/manage-panel';
 import { ControlsPanel } from '../components/controls-panel';
+import { DEVICE_SECTION, DeviceActions } from '../components/device-actions';
 
 export function DeviceDetailScreen({ id }: { id: string }) {
   const { t, locale } = useI18n();
@@ -27,7 +28,7 @@ export function DeviceDetailScreen({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/devices" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
+      <Link href="/radar/devices" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
         <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
         {t('device.back')}
       </Link>
@@ -79,6 +80,7 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                   <dd className="tnum mt-1 text-[14px] font-medium">{week === null ? '—' : `${week.toFixed(2)}%`}</dd>
                 </div>
               </dl>
+              <DeviceActions device={d} />
               {d.status === 'unknown' && <p className="mb-4 rounded-[var(--radius-control)] border border-line-strong bg-raised px-3 py-2 text-[13px] text-muted">{t('device.statusUnknownHint')}</p>}
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
                 <div className="min-w-0 space-y-5">
@@ -111,35 +113,51 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                       </Fact>
                     </dl>
                   </Card>
+                  <div id={DEVICE_SECTION.identification} className="scroll-mt-20 rounded-[var(--radius-card)]">
                   <Card title={t('device.identification')} action={d.type_source === 'inferred' && d.type_confidence ? <ConfidenceBadge confidence={d.type_confidence} /> : undefined}>
                     <Identification device={d} typeLabel={typeLabel} />
                   </Card>
+                  </div>
                   <Card title={t('device.availability')}>
                     <AvailabilityStrip device={d} />
                   </Card>
+                  <div id={DEVICE_SECTION.events} className="scroll-mt-20 rounded-[var(--radius-card)]">
                   <Card title={t('device.events')} padded={false}>
                     {d.recent_events.length ? <EventList events={d.recent_events} showSite={false} linkDevice={false} /> : <EmptyState title={t('device.noEvents')} />}
                   </Card>
+                  </div>
                 </div>
                 <div className="min-w-0 space-y-5">
-                  <FeatureBoundary>
-                    <DeviceEndpointCard device={d} />
-                  </FeatureBoundary>
-                  <FeatureBoundary>
-                    <DevicePortCard deviceId={d.id} />
-                  </FeatureBoundary>
-                  <FeatureBoundary>
-                    <DeviceBackupCard deviceId={d.id} siteId={d.site_id} />
-                  </FeatureBoundary>
-                  <FeatureBoundary>
-                    <DeviceAccessCard deviceId={d.id} siteId={d.site_id} />
-                  </FeatureBoundary>
-                  <FeatureBoundary>
-                    <DeviceImpactCard deviceId={d.id} siteId={d.site_id} />
-                  </FeatureBoundary>
-                  <FeatureBoundary>
-                    <KnowledgeSuggestions deviceId={d.id} />
-                  </FeatureBoundary>
+                  <div id={DEVICE_SECTION.endpoint} className="scroll-mt-20 rounded-[var(--radius-card)] empty:hidden">
+                    <FeatureBoundary>
+                      <DeviceEndpointCard device={d} />
+                    </FeatureBoundary>
+                  </div>
+                  <div id={DEVICE_SECTION.port} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                    <FeatureBoundary>
+                      <DevicePortCard deviceId={d.id} />
+                    </FeatureBoundary>
+                  </div>
+                  <div id={DEVICE_SECTION.backup} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                    <FeatureBoundary>
+                      <DeviceBackupCard deviceId={d.id} siteId={d.site_id} />
+                    </FeatureBoundary>
+                  </div>
+                  <div id={DEVICE_SECTION.access} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                    <FeatureBoundary>
+                      <DeviceAccessCard deviceId={d.id} siteId={d.site_id} />
+                    </FeatureBoundary>
+                  </div>
+                  <div id={DEVICE_SECTION.impact} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                    <FeatureBoundary>
+                      <DeviceImpactCard deviceId={d.id} siteId={d.site_id} />
+                    </FeatureBoundary>
+                  </div>
+                  <div id={DEVICE_SECTION.knowledge} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                    <FeatureBoundary>
+                      <KnowledgeSuggestions deviceId={d.id} />
+                    </FeatureBoundary>
+                  </div>
                   <Card title={t('ctl.title')}>
                     <ControlsPanel device={d} onChanged={query.reload} />
                   </Card>

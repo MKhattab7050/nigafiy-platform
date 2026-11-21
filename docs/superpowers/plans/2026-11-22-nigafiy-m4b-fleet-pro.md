@@ -1,0 +1,92 @@
+# Milestone 4b: Fleet Pro — Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** every item in `docs/features/fleet-pro.md` works for real in Nigafiy Fleet: AnyDesk / TeamViewer / RustDesk-class live sessions plus RMM tools, with transparency that no policy can switch off.
+
+**Scope source:** `docs/features/fleet-pro.md` (the feature list is the acceptance list; nothing in it may be dropped or simplified). Mockups (approved 2026-11-21): `docs/design/mockups/Fleet.dc.html`, `FleetHome`, `FleetSession`, `FleetTools`, `FleetPolicy`, `FleetUser`. Master plan Part C rows "Fleet streaming", "Fleet Quick Support", "Fleet transparency".
+
+**Starts after:** Milestone 4 (programs: `/fleet/...` namespace, shared device card) and Track B2 (transient remote-desktop frames, better downscaling). Both are uncommitted as of 2026-11-22; check `git status` and `docs/roadmap/status.md` first.
+
+## What exists (do not redo)
+
+- Agent (`agents/endpoint-agent`, Go 1.27.3, no third-party modules yet) talks to the API by HTTPS polling (`/api/v1/agent/poll`, ~600 ms) and posts command results. API wakes waiters across instances with `LISTEN/NOTIFY` (`infrastructure/pg-listen.ts`).
+- Remote desktop JPEG path (`internal/remotedesktop`, `modules/endpoints/remote-desktop`), file manager, processes / services / software / logs / power / notify / allow-listed diagnostics (`internal/control`), enrollment, groups, policy, compliance, operator MFA.
+- Engine (`engine/`, `nigafiy-engine.exe`) supervises PG, API, web and Sensor; it is where the TURN relay and recordings store live.
+
+## Global constraints (in addition to the master plan's)
+
+- **Transparency cannot be disabled by any policy, flag or role:** session bar (operator, reason, live permissions, End), privacy-screen text (never plain black), recording mark, audit, the user's "IT activity" list, Ctrl+Alt+Shift+E to end. A test pins each of these.
+- No keylogging, credential capture, stealth install or covert interception. Typed text and file contents never reach the audit log (names, sizes, SHA-256 only).
+- Measured numbers only (fps, RTT, bandwidth, route, codec come from WebRTC stats / the encoder, never estimated).
+- The JPEG path stays as the fallback and is selected automatically when WebRTC cannot connect; the UI says which path is in use and why.
+- Every feature: migration, API with validation + RBAC + audit, agent side with Go tests, Fleet UI (EN + AR, RTL), feature doc in `docs/features/`, prerequisites documented. Viewer role sees no write buttons.
+- Toolchain: check whether a C compiler is available before choosing a cgo dependency. Prefer pure Go + Windows APIs through `golang.org/x/sys/windows` / COM syscalls (Media Foundation, DXGI, WASAPI). New Go modules (e.g. `github.com/pion/webrtc/v4`, `github.com/pion/turn/v4`) are allowed; pin versions and record them.
+- Migrations: next free number at start (`030` notification channels and `031` transient remote-desktop frames are taken). Each builder takes its own numbers as listed below and renumbers only if taken.
+- Never touch the owner's installed LAN Detective (ports 47100/47130/47133), never stop processes by image name, never scan networks, never commit. Each builder uses its own `LD_TEST_PG_PORT` (5450+).
+- Real-machine checks run on this Windows PC only through test binaries and a scratch data folder; the secure-desktop / Winlogon helper needs a service running as LocalSystem, which needs the owner's OK before it is installed here.
+
+## Waves
+
+Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks are independent of each other (different packages, different migrations) and run in parallel. Wave 3 closes the milestone.
+
+### Wave 1 — Session foundation (one builder)
+
+**Task 1: Session model, permission profiles, access policy** (migration `032`)
+- [ ] `fleet_permission_profiles` (built-ins View only / Support / Full admin + custom; flags: view, control, clipboard_in, clipboard_out, files, audio, record, restart, privacy_screen, block_input, shell).
+- [ ] Group access policy: attended (accept + timeout) / unattended, "user may refuse within N s", allowed hours, operator roles, MFA-to-connect, second-admin approval for unattended, operator IP allow-list.
+- [ ] `fleet_sessions` (+ participants for multi-operator, permissions granted, path used, end reason) and the audit events. Existing remote-desktop session rows migrate into it.
+- [ ] API: request → policy evaluation → (approval) → user accept → live; End from either side. Tests for every policy branch.
+
+**Task 2: Live control channel**
+- [ ] Agent ↔ API WebSocket (agent dials out, same auth as polling, falls back to polling) carrying session signalling and small messages; multi-instance through `LISTEN/NOTIFY`.
+- [ ] Agent service + per-session helper: the service launches a helper into the active console session (`WTSGetActiveConsoleSessionId`, `WTSQueryUserToken`, `CreateProcessAsUser`) and onto the Winlogon desktop for UAC / lock / sign-in screens; session switching; "nobody signed in". Helper ↔ service over a named pipe with an ACL.
+- [ ] Session bar in the helper (always on top, operator, reason, live permissions, End) and Ctrl+Alt+Shift+E. Tests: the bar cannot be suppressed by any profile or policy value.
+
+### Wave 2 — Parallel (one builder each)
+
+**Task 3: Streaming** — DXGI Desktop Duplication capture, H.264 through Media Foundation (hardware MFT when present, software otherwise), up to 60 fps / 4K, adaptive bitrate; `pion/webrtc` in the agent; TURN relay (`pion/turn`) inside the engine with per-session credentials; Fleet viewer in Chromium; measured stats; quality modes, colour depth, remote cursor; monitor pick / all side by side / one window each; automatic fallback to JPEG.
+
+**Task 4: Input and in-session tools** — view only / control / block local input; Secure Attention Sequence (`SendSAS`, needs the policy registry value documented); special keys and shortcut pass-through; keyboard layout mapping; privacy screen with the required text; clipboard both ways (text, images, files) per profile; drag-and-drop file transfer into the transfer manager; chat + message box; annotations + laser pointer.
+
+**Task 5: Reaching computers** (migration `033`) — address book (groups, tags, favourites, recent, online state, filters, bulk actions); connect by name / ID / code from Fleet and Hub search; Wake-on-LAN through the site Sensor then auto-connect; restart and reconnect (normal / Safe Mode with Networking) with automatic resume; "Request help" in the agent tray → Fleet + Watch item → attended session.
+
+**Task 6: Quick Support** (migration `034`) — `nigafiy-support.exe` (Go, no install, attended only): 9-digit code + one-time PIN, Accept dialog, session bar, exits and deletes its temp files at the end; engine-side rendezvous; rate limits and lockout on codes; audit.
+
+**Task 7: Recording, multi-operator, audio, printing** (migration `035`) — encrypted recordings stored by the engine with retention per policy, recording mark, playback in Fleet beside the audit timeline, user-side viewing when policy allows; invite / hand over to another operator, each named on the bar; remote audio (WASAPI loopback; codec chosen per toolchain check, off unless the profile allows); remote printing to the operator's printer.
+
+**Task 8: Remote shell, scripts and jobs** (migration `036`) — interactive PowerShell / shell, admin role only, off in the default policy, full transcript in the audit, listed in the user's IT activity; scripts library with parameters; jobs on one computer or a group, now or scheduled; results per computer; rerun failed.
+
+**Task 9: Patches, monitoring, inventory, compliance** (migration `037`) — Windows Update status via the WUA COM API; approve and install in maintenance windows; reboot policy with user postponement; CPU / memory / disk / service / event-log rules raising Watch alerts; inventory (hardware, software, licences seen, disk health, battery); compliance (firewall, Defender, BitLocker, pending updates, local admins) with "not measured" where the agent cannot measure.
+
+**Task 10: The user's side** — tray app: IT activity list (every session and background action, by whom), Request help, past recordings when allowed; the two-pane file manager with queue / resume / SHA-256 in Fleet.
+
+### Wave 3 — Close (lead)
+
+**Task 11: Gate and parity**
+- [ ] Walk every bullet of `docs/features/fleet-pro.md` in the running Fleet program (EN + AR) and record the result in `status.md`.
+- [ ] Full gate: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:agent`, `pnpm test:collector`, `pnpm test:engine`, desktop tests, `pnpm test:web`.
+- [ ] Not-verified list: anything that needs a second physical computer, another site through the relay, LocalSystem service install, or a real Windows Update cycle.
+
+## Results
+
+(Filled in at the end of the milestone.)
+
+## Progress (paused 2026-11-22)
+
+The owner paused Fleet Pro while the Wave 1 builder was still reading the code. **No code was written.**
+
+**Files that exist from Wave 1:** none. No migration `032`, no new API or agent files, no `docs/features/fleet-sessions.md`. `apps/api/src/modules/endpoints/fleet/service.ts` and `apps/web/.../fleet*` show as modified, but other builders made those changes before Wave 1 started.
+
+**Tested:** no new tests. Checks on the tree as it stands: `go build ./...` in `agents/endpoint-agent` passed, and `pnpm --filter ./apps/api typecheck` passed with exit 0. The full API suite and the Go tests were not run, and no test PostgreSQL was started on port 5450.
+
+**What the code reading found** (to save the next builder time):
+- **There is no endpoint "group" concept** (no table, no column). Task 1's "access policy per group" needs a small `fleet_groups` table plus `endpoints.fleet_group_id`, or it has to wait for Task 5's address book. When an endpoint has no group, the default can come from the existing `endpoints.policy.remote_desktop_consent`, which keeps the current remote-desktop API working.
+- **How remote-desktop sessions are stored today:** as `endpoints.rd_session` jsonb with a 12-character `randomToken` id, not a table row. The commands service uses that column to gate `rd_capture`/`rd_input`. Earlier sessions exist only as `endpoint.remote_desktop_started` / `_stopped` rows in `audit_logs`, so moving them into `fleet_sessions` means pairing those audit rows.
+- `tests/endpoints.test.ts` checks that the `endpoint.remote_desktop_%` audit actions are exactly [started, stopped]. New audit actions need another prefix, such as `fleet.session_*`.
+- **MFA to connect:** this can be a step-up TOTP check using `modules/auth/totp.ts` (`verifyTotp`) through `systemPool`, because `lan_app` has no grants on `users`. It has to respect `mfa_last_step` and the lockout.
+- **WebSocket:** the API has no WebSocket dependency, and neither the store nor node_modules has `ws`. The Go agent has no WebSocket client and uses only the standard library. Without adding packages, both sides would need a small RFC 6455 implementation for text frames, ping/pong and close.
+- `golang.org/x/sys` v0.50.0 is already in the local Go module cache. There is no C compiler on PATH.
+- Session signalling can use `endpoint_commands` with new internal kinds that are not in `CommandInput`. Polling then still works with no extra code. The WebSocket would push the same pending commands, woken through `pg_notify` on the endpoint id.
+
+**Still left in Wave 1:** everything in Task 1 and Task 2 (all boxes above stay unticked). This includes the feature doc and the gate run.

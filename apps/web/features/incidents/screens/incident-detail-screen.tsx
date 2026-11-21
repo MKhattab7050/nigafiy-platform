@@ -1,17 +1,19 @@
 'use client';
 
+import type { IncidentDetail } from '@lan-detective/shared-types';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import type { IncidentDetail } from '@lan-detective/shared-types';
+import { DeviceLink } from '@/components/device-link';
+import { FeatureBoundary } from '@/components/error-boundary';
 import { Async, Badge, Card, Fact, PageHeader, severityTone } from '@/components/ui';
+import { DiagnosisView } from '@/features/doctor';
+import { KnowledgeSuggestions } from '@/features/knowledge';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, duration, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
-import { DiagnosisView } from '@/features/doctor';
-import { FeatureBoundary } from '@/components/error-boundary';
-import { KnowledgeSuggestions } from '@/features/knowledge';
-import { Replay } from '../components/incident-replay';
+import { localizeIncidentActivity, localizeIncidentTitle } from '@/lib/localize';
 import { Actions } from '../components/incident-actions';
+import { Replay } from '../components/incident-replay';
 import { IncidentStatusBadge } from '../components/incident-status-badge';
 
 export function IncidentDetailScreen({ id }: { id: string }) {
@@ -20,7 +22,7 @@ export function IncidentDetailScreen({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/incidents" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
+      <Link href="/watch/incidents" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
         <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
         {t('incident.back')}
       </Link>
@@ -28,7 +30,7 @@ export function IncidentDetailScreen({ id }: { id: string }) {
         {(inc) => (
           <>
             <PageHeader
-              title={inc.title}
+              title={localizeIncidentTitle(inc.title, locale)}
               description={`INC-${inc.number} · ${t(`incident.kind.${inc.kind}` as Key)}${inc.site_name ? ` · ${inc.site_name}` : ''}`}
               actions={
                 <>
@@ -82,9 +84,9 @@ export function IncidentDetailScreen({ id }: { id: string }) {
                     )}
                     {inc.device_id && (
                       <Fact label={t('nav.devices')}>
-                        <Link href={`/devices/${inc.device_id}`} className="text-accent-hover hover:underline">
+                        <DeviceLink id={inc.device_id} className="text-accent-hover hover:underline">
                           {t('topo.openDevice')} →
-                        </Link>
+                        </DeviceLink>
                       </Fact>
                     )}
                   </dl>
@@ -97,7 +99,7 @@ export function IncidentDetailScreen({ id }: { id: string }) {
                     {inc.activity.map((a) => (
                       <li key={a.id} className="px-4 py-2.5">
                         <p className={`text-[13px] leading-relaxed ${a.kind === 'comment' ? 'text-fg' : 'text-muted'}`} dir="auto">
-                          {a.body}
+                          {localizeIncidentActivity(a.body, a.kind, locale)}
                         </p>
                         <p className="mt-0.5 text-[11px] text-faint">
                           {a.user_name ?? 'LAN Detective'} · <span title={absoluteTime(a.created_at, locale)}>{relativeTime(a.created_at, locale)}</span>

@@ -8,13 +8,14 @@ import { Async, Badge, Button, Card, EmptyState, ErrorNote, PageHeader } from '@
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { localizeDiagnosis } from '@/lib/localize';
 import { DiagnosisView } from '../components/diagnosis-view';
 import { domainTone } from '../components/domain-tone';
 import { FeatureBoundary } from '@/components/error-boundary';
 import { KnowledgeSuggestions } from '@/features/knowledge';
 
 export function DoctorScreen() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { siteId, can } = useApp();
   const query = useQuery<{ items: DoctorReport[] }>(`/doctor${qs({ site_id: siteId })}`, ['checks', 'collectors', 'events'], 20_000);
   const [busy, setBusy] = useState('');
@@ -63,7 +64,7 @@ export function DoctorScreen() {
                     <span className="flex flex-wrap items-center gap-2">
                       <span dir="auto">{r.site_name}</span>
                       <Badge tone={domainTone(r.diagnosis.fault_domain)}>
-                        <span dir="auto">{r.diagnosis.title}</span>
+                        <span dir="auto">{localizeDiagnosis(r.diagnosis, locale).title}</span>
                       </Badge>
                     </span>
                   }
@@ -73,7 +74,7 @@ export function DoctorScreen() {
                         {r.collectors_online} {t('doctor.collectorsOnline')}
                       </span>
                       {r.active_incident && (
-                        <Link href={`/incidents/${r.active_incident.id}`} className="text-xs font-medium text-accent-hover hover:underline">
+                        <Link href={`/watch/incidents/${r.active_incident.id}`} className="text-xs font-medium text-accent-hover hover:underline">
                           {t('doctor.viewIncident')} INC-{r.active_incident.number}
                         </Link>
                       )}

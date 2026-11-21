@@ -2,6 +2,7 @@
 
 import { ArrowLeft, ExternalLink, RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint } from '@lan-detective/shared-types';
 import clsx from 'clsx';
@@ -22,6 +23,7 @@ import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
 import { RemoteDesktopConsole } from '../components/remote-desktop/remote-desktop-console';
 import { endpointsText } from '../text';
+import { DeviceLink } from '@/components/device-link';
 
 export function EndpointDetailScreen({ id }: { id: string }) {
   const { locale, t } = useI18n();
@@ -33,7 +35,9 @@ export function EndpointDetailScreen({ id }: { id: string }) {
   const [range, setRange] = useState<'15m' | '1h' | '24h' | '7d'>('1h');
   const seriesQuery = useQuery<{ points: EndpointSeriesPoint[] }>(`/endpoints/${id}/series?range=${range}`, ['devices'], 15_000);
 
-  const [tab, setTab] = useState<Tab>('overview');
+  // ?tab=desktop / ?tab=files: opened from a device card's Fleet action (remote desktop, files).
+  const requested = useSearchParams().get('tab');
+  const [tab, setTab] = useState<Tab>(() => (requested as Tab | null) ?? 'overview');
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -74,7 +78,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/endpoints" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
+      <Link href="/fleet/endpoints" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
         <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
         {tx.back}
       </Link>
@@ -106,6 +110,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
             { value: 'security', label: tx.tabs.security },
             { value: 'commands', label: `${tx.tabs.commands} (${ep.commands.length})` },
           ];
+          // A requested tab this endpoint does not offer (capability off, unknown name) opens the overview.
+          const shown: Tab = availableTabs.some((o) => o.value === tab) ? tab : 'overview';
 
           return (
             <>
@@ -129,13 +135,13 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                       {tx.complianceStatus[ep.compliance_status] ?? ep.compliance_status}
                     </Badge>
                     {ep.device_id && (
-                      <Link
-                        href={`/devices/${ep.device_id}`}
+                      <DeviceLink
+                        id={ep.device_id}
                         className={clsx(BUTTON_BASE, BUTTON_SIZE.sm, BUTTON_VARIANT.secondary)}
                       >
                         {tx.openDevice}
                         <ExternalLink className="size-3.5" aria-hidden />
-                      </Link>
+                      </DeviceLink>
                     )}
                     {can('technician') && (
                       <Button
@@ -160,9 +166,9 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               {notice && <Notice className="mb-4">{notice}</Notice>}
 
               {/* Up to a dozen tabs: they scroll sideways inside their strip instead of widening the page. */}
-              <Tabs<Tab> value={tab} label={tx.title} onChange={setTab} options={availableTabs} />
+              <Tabs<Tab> value={shown} label={tx.title} onChange={setTab} options={availableTabs} />
 
-              {tab === 'overview' && (
+              {shown === 'overview' && (
                 <OverviewTab
                   ep={ep}
                   online={online}
@@ -175,7 +181,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'desktop' && (
+              {shown === 'desktop' && (
                 <RemoteDesktopConsole
                   ep={ep}
                   online={online}
@@ -185,7 +191,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'files' && (
+              {shown === 'files' && (
                 <RemoteFileManager
                   ep={ep}
                   online={online}
@@ -195,7 +201,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'processes' && (
+              {shown === 'processes' && (
                 <ProcessesTab
                   ep={ep}
                   online={online}
@@ -210,7 +216,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'services' && (
+              {shown === 'services' && (
                 <ServicesTab
                   ep={ep}
                   online={online}
@@ -226,11 +232,11 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'connections' && (
+              {shown === 'connections' && (
                 <ConnectionsTab ep={ep} search={connSearch} setSearch={setConnSearch} />
               )}
 
-              {tab === 'software' && (
+              {shown === 'software' && (
                 <SoftwareTab
                   ep={ep}
                   online={online}
@@ -246,7 +252,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'diagnostics' && (
+              {shown === 'diagnostics' && (
                 <DiagnosticsTab
                   ep={ep}
                   online={online}
@@ -257,11 +263,11 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 />
               )}
 
-              {tab === 'security' && (
+              {shown === 'security' && (
                 <SecurityAndCapabilitiesTab ep={ep} canAdmin={can('admin')} onReload={query.reload} />
               )}
 
-              {tab === 'commands' && (
+              {shown === 'commands' && (
                 <CommandsTab ep={ep} />
               )}
             </>

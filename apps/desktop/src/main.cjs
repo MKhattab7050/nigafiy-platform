@@ -8,6 +8,10 @@
 //  - Local mode (running from a source checkout, no remote server configured): opening the app starts
 //    LAN Detective itself on this computer (database, API, web app), signs in with a local account,
 //    asks once to scan the home network, enrolls this computer's collector and shows the dashboard.
+//  - Nigafiy programs (src/programs.cjs): one window per program, each with its own taskbar identity
+//    (AppUserModelID Nigafiy.<Program>). `--program=<id>` picks the window a launch opens, and
+//    `nigafiy://<program>/<path>` links open that program's window on the path. The protocol is
+//    registered only by a packaged build, never from a source checkout or a test run.
 const { app, BrowserWindow, Menu, Tray, ipcMain, shell, nativeImage, dialog, safeStorage, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -15,6 +19,7 @@ const { pathToFileURL } = require('node:url');
 const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 const { EngineStack } = require('./engine-stack.cjs');
+const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
 const SMOKE = process.argv.includes('--smoke');
 // Non-interactive check of local mode: consent comes from LD_DESKTOP_AUTO_CONSENT=1, then it reports and quits.
@@ -23,6 +28,14 @@ const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
 const PANEL_URL = pathToFileURL(PANEL_FILE).href;
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
 const BINARY_NAME = process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector';
+
+/** What this launch asked for: `--program=<id>` or a `nigafiy://` link (Hub by default). */
+const launch = launchRequest(process.argv);
+/** The program of the start-up window (`dashboard`); other programs get windows of their own. */
+const startProgram = launch.program;
+const ICON_DIR = app.isPackaged ? path.join(process.resourcesPath, 'icons') : path.join(__dirname, '..', '..', '..', 'packages', 'brand', 'ico');
+/** A request to open a program window that arrived before the server was ready. */
+let pendingOpen = null;
 
 let dashboard = null;
 let panel = null;
@@ -75,6 +88,91 @@ function serverOrigin() {
   }
 }
 
+/** Taskbar identity of a program window (Windows): its own AppUserModelID, icon and relaunch command. */
+function applyProgramIdentity(win, program) {
+  if (process.platform !== 'win32' || typeof win.setAppDetails !== 'function') return;
+  win.setAppDetails(windowDetails(program, { execPath: process.execPath, appPath: app.isPackaged ? null : app.getAppPath(), iconDir: ICON_DIR }));
+}
+
+/** The first page of the start-up window: the link's path, or the program's home. */
+function startUrl(origin) {
+  return programUrl(origin, launch.path ?? PROGRAM_HOME[startProgram]);
+}
+
+/** Stay on the configured server. Anything else opens in the user's own browser (https only). */
+function guardContents(contents) {
+  const external = (url) => {
+    try {
+      if (new URL(url).protocol === 'https:') void shell.openExternal(url);
+    } catch {
+      /* ignore malformed URL */
+    }
+  };
+  contents.on('will-navigate', (event, url) => {
+    let targetOrigin = null;
+    try {
+      targetOrigin = new URL(url).origin;
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    if (targetOrigin !== serverOrigin()) {
+      event.preventDefault();
+      external(url);
+    }
+  });
+  contents.setWindowOpenHandler(({ url }) => {
+    external(url);
+    return { action: 'deny' };
+  });
+  contents.session.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
+}
+
+/** Windows of the other programs: same session (one sign-in), same navigation rules, own taskbar group. */
+const programWindows = new ProgramWindows({
+  create: (program) => {
+    const win = new BrowserWindow({
+      width: 1440,
+      height: 900,
+      minWidth: 420,
+      minHeight: 600,
+      title: PROGRAM_NAME[program],
+      backgroundColor: '#070d1a',
+      icon: ICON,
+      autoHideMenuBar: true,
+      show: !SMOKE && !LOCAL_SMOKE,
+      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:dashboard' },
+    });
+    guardContents(win.webContents);
+    applyProgramIdentity(win, program);
+    return win;
+  },
+});
+
+/** Open (or focus) a program's window, on `appPath` when given. Waits for the server in local mode. */
+function openProgram(program, appPath = null) {
+  const origin = serverOrigin();
+  if (!origin || (localMode && !localShown)) {
+    pendingOpen = { program, path: appPath };
+    showDashboard();
+    return;
+  }
+  if (program === startProgram) {
+    showDashboard();
+    if (appPath && dashboard) void dashboard.webContents.loadURL(programUrl(origin, appPath));
+    return;
+  }
+  const existing = programWindows.get(program);
+  programWindows.open(program, !existing || appPath ? programUrl(origin, appPath ?? PROGRAM_HOME[program]) : undefined);
+}
+
+function openPending() {
+  if (!pendingOpen) return;
+  const next = pendingOpen;
+  pendingOpen = null;
+  openProgram(next.program, next.path);
+}
+
 function showPanel() {
   if (panel) {
     panel.show();
@@ -113,7 +211,7 @@ function showDashboard() {
       } catch {
         currentOrigin = null;
       }
-      if (currentOrigin !== origin) void dashboard.webContents.loadURL(origin);
+      if (currentOrigin !== origin) void dashboard.webContents.loadURL(startUrl(origin));
     }
     dashboard.show();
     dashboard.focus();
@@ -124,40 +222,17 @@ function showDashboard() {
     height: 900,
     minWidth: 420,
     minHeight: 600,
-    title: 'LAN Detective',
+    title: startProgram === 'hub' ? 'LAN Detective' : PROGRAM_NAME[startProgram],
     backgroundColor: '#070d1a',
     icon: ICON,
     autoHideMenuBar: true,
     show: !SMOKE && !LOCAL_SMOKE,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, partition: 'persist:dashboard' },
   });
+  applyProgramIdentity(dashboard, startProgram);
+  programWindows.adopt(startProgram, dashboard);
   const contents = dashboard.webContents;
-  // Stay on the configured server. Anything else opens in the user's own browser (https only).
-  const external = (url) => {
-    try {
-      if (new URL(url).protocol === 'https:') void shell.openExternal(url);
-    } catch {
-      /* ignore malformed URL */
-    }
-  };
-  contents.on('will-navigate', (event, url) => {
-    let targetOrigin = null;
-    try {
-      targetOrigin = new URL(url).origin;
-    } catch {
-      event.preventDefault();
-      return;
-    }
-    if (targetOrigin !== serverOrigin()) {
-      event.preventDefault();
-      external(url);
-    }
-  });
-  contents.setWindowOpenHandler(({ url }) => {
-    external(url);
-    return { action: 'deny' };
-  });
-  contents.session.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'clipboard-sanitized-write'));
+  guardContents(contents);
   contents.on('did-fail-load', (_event, code, description, _url, isMainFrame) => {
     const activeOrigin = serverOrigin();
     if (!isMainFrame || code === -3 || !activeOrigin) return; // -3 = navigation aborted (normal)
@@ -171,7 +246,7 @@ function showDashboard() {
         defaultId: 0,
       })
       .then(({ response }) => {
-        if (response === 0) void contents.loadURL(activeOrigin);
+        if (response === 0) void contents.loadURL(startUrl(activeOrigin));
         if (response === 1) showPanel();
       });
   });
@@ -185,7 +260,7 @@ function showDashboard() {
   dashboard.on('closed', () => (dashboard = null));
   void contents.loadURL(
     origin && (!localMode || localShown)
-      ? origin
+      ? startUrl(origin)
       : splashUrl(localError ?? 'Starting LAN Detective…', Boolean(localError)),
   );
   return dashboard;
@@ -202,6 +277,7 @@ function refreshTray() {
     Menu.buildFromTemplate([
       { label: 'Open dashboard', click: () => showDashboard() },
       { label: 'Collector on this computer…', click: () => showPanel() },
+      { label: 'Open program', submenu: PROGRAM_IDS.map((id) => ({ label: PROGRAM_NAME[id], click: () => openProgram(id) })) },
       { type: 'separator' },
       { label: modeLabel, enabled: false },
       { label: summary, enabled: false },
@@ -422,7 +498,8 @@ async function startLocal() {
     emitPanelState();
     refreshTray();
     if (!dashboard) showDashboard();
-    else await dashboard.webContents.loadURL(localUrls.webUrl);
+    else await dashboard.webContents.loadURL(startUrl(localUrls.webUrl));
+    openPending();
   } catch (err) {
     if (!localMode) return;
     setSplash(`LAN Detective could not start:\n${err.message}`, true);
@@ -440,7 +517,19 @@ function handle(channel, fn) {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => showDashboard());
+  // A second launch (a program launcher, a taskbar relaunch, a clicked nigafiy:// link) is handed here.
+  app.on('second-instance', (_event, argv) => {
+    const req = launchRequest(argv);
+    if (req.rejected) return void showDashboard(); // a nigafiy:// link that is not one of ours opens nothing else
+    const asked = req.link || argv.some((a) => typeof a === 'string' && a.startsWith('--program'));
+    if (asked) openProgram(req.program, req.path);
+    else showDashboard();
+  });
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    const parsed = parseNigafiyUrl(url);
+    if (parsed && app.isReady()) openProgram(parsed.program, parsed.path);
+  });
   app.on('before-quit', (e) => {
     if (!quitting) {
       e.preventDefault();
@@ -453,6 +542,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     app.setAppUserModelId('com.landetective.desktop');
+    // nigafiy:// is registered by the installed app only; a source checkout or a test run never writes HKCU\Software\Classes\nigafiy.
+    if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({
       binaryPath: collectorBinary(),
       // In a source checkout the collector identity is shared with `pnpm local`.
@@ -554,12 +645,13 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     showDashboard();
+    openPending();
 
     if (SMOKE) {
       // Start-up self-check used by `pnpm smoke`: prints what the app sees, then exits.
       setTimeout(async () => {
         const state = collector.getState();
-        console.log(JSON.stringify({ smoke: 'ok', binaryAvailable: state.binaryAvailable, enrolled: state.enrolled, status: state.status, hasServer: Boolean(state.settings.serverUrl), windows: BrowserWindow.getAllWindows().length, tray: Boolean(tray) }));
+        console.log(JSON.stringify({ smoke: 'ok', binaryAvailable: state.binaryAvailable, enrolled: state.enrolled, status: state.status, hasServer: Boolean(state.settings.serverUrl), windows: BrowserWindow.getAllWindows().length, tray: Boolean(tray), program: startProgram, protocolRegistered: app.isPackaged }));
         await quit();
       }, 2500);
     }

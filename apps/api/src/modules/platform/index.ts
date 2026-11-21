@@ -3,6 +3,7 @@ import path from 'node:path';
 import { PROGRAMS, type PlatformProgramsResponse } from '@lan-detective/shared-types/programs';
 import { Router } from 'express';
 import { auth, requireRole } from '../../common/http.ts';
+import { env } from '../../config/env.ts';
 import { defineModule } from '../../infrastructure/module.ts';
 import { engineStatus } from './engine.ts';
 import { cachedUpdateCheck, configuredSource } from './updates.ts';
@@ -27,11 +28,24 @@ const VERSION = (() => {
 
 const router: Router = Router();
 
+/**
+ * Programs this install offers, from NIGAFIY_PROGRAMS ("all" by default). Hub is always there: it is
+ * the engine's own UI. `bundled` = part of this single install; Milestone 5's per-program installers
+ * will register as `installed`.
+ */
+export function installedPrograms(setting: string = env.NIGAFIY_PROGRAMS): PlatformProgramsResponse {
+  const wanted = setting === 'all' ? null : new Set(setting.split(',').map((id) => id.trim()));
+  return {
+    items: PROGRAMS.map((p) => {
+      const installed = p.id === 'hub' || !wanted || wanted.has(p.id);
+      return { ...p, installed, install_source: installed ? 'bundled' : null };
+    }),
+  };
+}
+
 router.get('/platform/programs', (req, res) => {
   auth(req);
-  // One desktop install carries every program until Milestone 5 ships one installer per program.
-  const body: PlatformProgramsResponse = { items: PROGRAMS.map((p) => ({ ...p, installed: true, install_source: 'bundled' })) };
-  res.json(body);
+  res.json(installedPrograms());
 });
 
 router.get('/platform/engine', async (req, res) => {

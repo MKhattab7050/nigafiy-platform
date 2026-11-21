@@ -103,6 +103,86 @@
   --shadow-overlay: 0 24px 48px -12px rgb(16 24 40 / 0.22), 0 0 0 1px rgb(16 24 40 / 0.04);
 }
 
+/*
+ * Program accents (Nigafiy Milestone 4, spec §8; tokens from docs/design/mockups/README.md).
+ * The shell sets html[data-program] from the URL; the accent then drives the active sidebar item,
+ * primary buttons, links and focus rings. Fills keep white text at 4.5:1 or more (Watch's approved
+ * amber is darkened for fills, Radar uses its approved button shade); the ink shade (accent-hover)
+ * is at least 4.5:1 on the theme's surface. The hover fill (accent-strong) is darker than the fill
+ * in both themes, so white text stays at 4.5:1 or more on hover too. Status colours (ok / warn / crit / idle) are separate
+ * tokens and are never replaced by an accent.
+ */
+:root[data-program='hub'] {
+  --color-accent: #1466e6;
+  --color-accent-strong: #1158c7;
+  --color-accent-hover: #7aaaff;
+}
+:root[data-program='radar'] {
+  --color-accent: #00809d;
+  --color-accent-strong: #006d86;
+  --color-accent-hover: #4cc8e3;
+}
+:root[data-program='watch'] {
+  --color-accent: #a0650a;
+  --color-accent-strong: #8f5a00;
+  --color-accent-hover: #e9b45c;
+}
+:root[data-program='guard'] {
+  --color-accent: #d13438;
+  --color-accent-strong: #b42a2e;
+  --color-accent-hover: #ff8a8c;
+}
+:root[data-program='fleet'] {
+  --color-accent: #7a4fd6;
+  --color-accent-strong: #6a3fc4;
+  --color-accent-hover: #b39bff;
+}
+:root[data-program='mind'] {
+  --color-accent: #c239b3;
+  --color-accent-strong: #a32b96;
+  --color-accent-hover: #f08ae6;
+}
+:root[data-program='toolbox'] {
+  --color-accent: #2e8540;
+  --color-accent-strong: #246b33;
+  --color-accent-hover: #6fd389;
+}
+:root[data-theme='light'][data-program='hub'] {
+  --color-accent: #1466e6;
+  --color-accent-strong: #1158c7;
+  --color-accent-hover: #1158c7;
+}
+:root[data-theme='light'][data-program='radar'] {
+  --color-accent: #00809d;
+  --color-accent-strong: #006d86;
+  --color-accent-hover: #006d86;
+}
+:root[data-theme='light'][data-program='watch'] {
+  --color-accent: #a0650a;
+  --color-accent-strong: #8f5a00;
+  --color-accent-hover: #8f5a00;
+}
+:root[data-theme='light'][data-program='guard'] {
+  --color-accent: #d13438;
+  --color-accent-strong: #b42a2e;
+  --color-accent-hover: #b42a2e;
+}
+:root[data-theme='light'][data-program='fleet'] {
+  --color-accent: #7a4fd6;
+  --color-accent-strong: #6a3fc4;
+  --color-accent-hover: #6a3fc4;
+}
+:root[data-theme='light'][data-program='mind'] {
+  --color-accent: #c239b3;
+  --color-accent-strong: #a32b96;
+  --color-accent-hover: #a32b96;
+}
+:root[data-theme='light'][data-program='toolbox'] {
+  --color-accent: #2e8540;
+  --color-accent-strong: #246b33;
+  --color-accent-hover: #246b33;
+}
+
 html {
   color-scheme: dark;
   background: var(--color-bg);

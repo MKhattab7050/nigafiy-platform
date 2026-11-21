@@ -1,3 +1,4 @@
+import { legacyRedirect } from '@lan-detective/shared-types/routes';
 import { type NextRequest, NextResponse } from 'next/server';
 import { buildContentSecurityPolicy } from './lib/csp';
 
@@ -8,6 +9,16 @@ import { buildContentSecurityPolicy } from './lib/csp';
  * reads the locale cookie), so a per-request nonce costs nothing extra.
  */
 export function proxy(request: NextRequest) {
+  // Milestone 4 URL scheme: every pre-namespace URL, every program root and every device-action URL
+  // answers a permanent redirect from the one shared table (query string kept), before any CSP work.
+  const moved = legacyRedirect(request.nextUrl.pathname);
+  if (moved) {
+    const url = request.nextUrl.clone();
+    url.pathname = moved.path;
+    for (const [k, v] of Object.entries(moved.query ?? {})) url.searchParams.set(k, v);
+    return NextResponse.redirect(url, 308);
+  }
+
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
   const csp = buildContentSecurityPolicy(nonce, process.env.NODE_ENV === 'development');
 

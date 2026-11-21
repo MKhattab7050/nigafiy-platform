@@ -13,6 +13,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { EntryForm } from '../components/entry-form';
 import { EntryStats, KnowledgeStatusBadge, SourceLabel } from '../components/entry-meta';
 import { MarkdownView } from '../components/markdown-view';
+import { DeviceLink } from '@/components/device-link';
 
 const fmtDuration = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : s >= 60 ? `${Math.round(s / 60)} min` : `${s} s`);
 
@@ -41,7 +42,7 @@ export function KnowledgeDetailScreen({ id }: { id: string }) {
 
   return (
     <>
-      <Link href="/knowledge" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
+      <Link href="/mind/knowledge" className="mb-4 inline-flex items-center gap-1.5 rounded text-xs font-medium text-muted hover:text-fg">
         <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
         {t('kb.back')}
       </Link>
@@ -181,7 +182,7 @@ export function KnowledgeDetailScreen({ id }: { id: string }) {
                       </Fact>
                       {e.incident_id && (
                         <Fact label={t('kb.incident')}>
-                          <Link href={`/incidents/${e.incident_id}`} className="text-accent-hover hover:underline">
+                          <Link href={`/watch/incidents/${e.incident_id}`} className="text-accent-hover hover:underline">
                             INC-{e.incident_number}
                           </Link>
                           {e.incident_duration_seconds !== null && (
@@ -198,9 +199,9 @@ export function KnowledgeDetailScreen({ id }: { id: string }) {
                       )}
                       {e.device_id && (
                         <Fact label={t('kb.device')}>
-                          <Link href={`/devices/${e.device_id}`} className="text-accent-hover hover:underline" dir="auto">
+                          <DeviceLink id={e.device_id} className="text-accent-hover hover:underline" dir="auto">
                             {e.device_name ?? e.device_id}
-                          </Link>
+                          </DeviceLink>
                         </Fact>
                       )}
                       {e.site_name && <Fact label={t('kb.site')}>{e.site_name}</Fact>}
@@ -248,7 +249,7 @@ export function KnowledgeDetailScreen({ id }: { id: string }) {
                         {e.used_on.map((u) => (
                           <li key={u.incident_id} className="flex items-center justify-between gap-2 px-4 py-2 text-[13px]">
                             <span className="min-w-0">
-                              <Link href={`/incidents/${u.incident_id}`} className="text-accent-hover hover:underline">
+                              <Link href={`/watch/incidents/${u.incident_id}`} className="text-accent-hover hover:underline">
                                 INC-{u.incident_number}
                               </Link>{' '}
                               <span dir="auto">{u.incident_title}</span>
@@ -304,7 +305,7 @@ export function KnowledgeDetailScreen({ id }: { id: string }) {
                         setError(null);
                         try {
                           await api(`/knowledge/${e.id}`, { method: 'DELETE' });
-                          router.push('/knowledge');
+                          router.push('/mind/knowledge');
                         } catch (err) {
                           setError(err as ApiError);
                           setConfirmDelete(false);

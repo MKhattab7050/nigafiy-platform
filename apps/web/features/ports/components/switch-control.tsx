@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useState } from 'react';
 import { Async, Badge, Button, Card, ErrorNote, Field, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
@@ -12,6 +11,7 @@ import type { SwitchControl } from '../control-types';
 import { portsText } from '../text';
 import { RequestHistory } from './request-history';
 import { SnmpCredentialsFields, buildSnmpCredentials, initialCredentialsDraft, snmpCredentialsReady } from './snmp-credentials-fields';
+import { DeviceLink } from '@/components/device-link';
 
 /** Switch page → "Port control": write credentials, VLANs read, quarantine VLAN, change history. */
 export function SwitchControlCard({ switchId, admin }: { switchId: string; admin: boolean }) {
@@ -57,9 +57,9 @@ export function SwitchControlCard({ switchId, admin }: { switchId: string; admin
                   <ul className="mt-1 space-y-0.5 text-[13px]">
                     {c.quarantines.map((x) => (
                       <li key={x.id}>
-                        <Link href={`/devices/${x.device_id}`} className="hover:text-accent-hover" dir="auto">
+                        <DeviceLink id={x.device_id} className="hover:text-accent-hover" dir="auto">
                           {x.device_label}
-                        </Link>{' '}
+                        </DeviceLink>{' '}
                         <span className="mono text-xs text-muted">{x.port_name}</span> <Badge tone="warn">{cx.quarantineStatus[x.status] ?? x.status}</Badge>
                       </li>
                     ))}

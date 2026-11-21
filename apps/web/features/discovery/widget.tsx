@@ -32,14 +32,14 @@ export default function DiscoveryWidget() {
     attentionFrom([collectors, scopes], (co, sc) => {
       const list = inSite(co.items).filter((c) => c.status !== 'revoked');
       const items: AttentionItem[] = [];
-      if (list.length === 0) items.push({ id: 'collector-none', tone: 'info', text: t('discovery.widget.noCollector'), action: { label: t('discovery.widget.install'), href: '/discovery' } });
+      if (list.length === 0) items.push({ id: 'collector-none', tone: 'info', text: t('discovery.widget.noCollector'), action: { label: t('discovery.widget.install'), href: '/sensors' } });
       for (const c of list) {
         if (c.status === 'active' && c.connection_state === 'offline')
-          items.push({ id: `collector-off-${c.id}`, tone: 'crit', text: fill(t('discovery.attn.offline'), { name: c.name }), action: { label: t('discovery.attn.check'), href: '/discovery' } });
-        if (c.status === 'pending') items.push({ id: `collector-pending-${c.id}`, tone: 'info', text: fill(t('discovery.attn.pending'), { name: c.name }), action: { label: t('discovery.widget.install'), href: '/discovery' } });
+          items.push({ id: `collector-off-${c.id}`, tone: 'crit', text: fill(t('discovery.attn.offline'), { name: c.name }), action: { label: t('discovery.attn.check'), href: '/sensors' } });
+        if (c.status === 'pending') items.push({ id: `collector-pending-${c.id}`, tone: 'info', text: fill(t('discovery.attn.pending'), { name: c.name }), action: { label: t('discovery.widget.install'), href: '/sensors' } });
       }
       if (list.length > 0 && inSite(sc.items).filter((s) => s.enabled).length === 0)
-        items.push({ id: 'scope-none', tone: 'warn', text: t('discovery.attn.noScope'), action: { label: t('discovery.addScope'), href: '/discovery' } });
+        items.push({ id: 'scope-none', tone: 'warn', text: t('discovery.attn.noScope'), action: { label: t('discovery.addScope'), href: '/radar/discovery' } });
       return items;
     }),
   );
@@ -59,11 +59,11 @@ export default function DiscoveryWidget() {
   }
 
   return (
-    <Widget title={t('overview.collectors')} icon={Radar} href="/discovery">
+    <Widget title={t('overview.collectors')} icon={Radar} href="/radar/discovery">
       <Async query={collectors}>
         {(co) => {
           const list = inSite(co.items).filter((c) => c.status !== 'revoked');
-          if (list.length === 0) return <NextStep text={t('discovery.widget.noCollector')} label={t('discovery.widget.install')} href="/discovery" />;
+          if (list.length === 0) return <NextStep text={t('discovery.widget.noCollector')} label={t('discovery.widget.install')} href="/sensors" />;
           const ranges = scopes.data ? inSite(scopes.data.items) : null;
           return (
             <div className="space-y-3">

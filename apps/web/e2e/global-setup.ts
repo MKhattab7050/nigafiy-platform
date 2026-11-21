@@ -67,6 +67,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       ALLOW_LOOPBACK_SCOPES: 'false',
       // No engine for this throw-away stack (a real one may be running on this computer).
       ENGINE_CONTROL_URL: 'off',
+      // Nigafiy Mind is left out of this install, so the browser tests check the real "not installed"
+      // path (install notes, switcher, Hub programs page) against the API's own answer.
+      NIGAFIY_PROGRAMS: process.env.E2E_NIGAFIY_PROGRAMS ?? 'hub,radar,watch,guard,fleet,toolbox',
     },
   });
   api.stdout?.on('data', (d) => (apiLog += d));

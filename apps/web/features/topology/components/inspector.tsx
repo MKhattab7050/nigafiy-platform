@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from "@/lib/format";
 import { type Key, useI18n } from "@/lib/i18n";
+import { DeviceLink } from '@/components/device-link';
 
 export function EdgeEvidence({ edge }: { edge: TopologyEdge }) {
   const { t, locale } = useI18n();
@@ -147,12 +148,12 @@ export function Inspector({
         </div>
       ))}
       {n.device_id && (
-        <Link
-          href={`/devices/${n.device_id}`}
+        <DeviceLink
+          id={n.device_id}
           className="mt-4 inline-block text-[13px] font-medium text-accent-hover hover:underline"
         >
           {t("topo.openDevice")} →
-        </Link>
+        </DeviceLink>
       )}
     </Card>
   );

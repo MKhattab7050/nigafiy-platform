@@ -82,7 +82,7 @@ function PlaybookList({ items, onChanged, onTemplates }: { items: Playbook[]; on
         {items.map((p) => (
           <tr key={p.id}>
             <td data-label={tx.name}>
-              <Link href={`/playbooks/${p.id}`} className="font-medium text-fg hover:underline" dir="auto">
+              <Link href={`/mind/playbooks/${p.id}`} className="font-medium text-fg hover:underline" dir="auto">
                 {p.name}
               </Link>
               <p className="mt-0.5 text-xs text-muted">{p.site_name ?? tx.allSites}</p>
@@ -133,7 +133,7 @@ function TemplateCard({ template }: { template: Template }) {
     setError(null);
     try {
       const p = await api<Playbook>('/playbooks/from-template', { method: 'POST', body: { template: template.key, site_id: siteId ?? null } });
-      router.push(`/playbooks/${p.id}?created=1`);
+      router.push(`/mind/playbooks/${p.id}?created=1`);
     } catch (e) {
       setError(e as ApiError);
       setBusy(false);
@@ -227,7 +227,7 @@ export function PlaybooksScreen() {
         icon={<GitBranch />}
         actions={
           can('admin') ? (
-            <Link href="/playbooks/new" className={`${BUTTON_BASE} ${BUTTON_SIZE.md} ${BUTTON_VARIANT.primary}`}>
+            <Link href="/mind/playbooks/new" className={`${BUTTON_BASE} ${BUTTON_SIZE.md} ${BUTTON_VARIANT.primary}`}>
               <Plus className="size-4" aria-hidden />
               {tx.newPlaybook}
             </Link>
@@ -257,7 +257,7 @@ export function PlaybooksScreen() {
           <Card
             padded={false}
             action={
-              <Link href="/playbooks/runs" className="text-[13px] text-accent-hover hover:underline">
+              <Link href="/mind/playbooks/runs" className="text-[13px] text-accent-hover hover:underline">
                 {tx.allRuns}
               </Link>
             }

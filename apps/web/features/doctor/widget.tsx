@@ -9,11 +9,12 @@ import { NextStep, Widget } from '@/components/widget';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { localizeDiagnosis } from '@/lib/localize';
 import { domainTone } from './components/domain-tone';
 
 /** Dashboard: Network Doctor's live verdict per site, with the same "Run checks now" as the Doctor page (GET /doctor). */
 export default function DoctorWidget() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { siteId, can } = useApp();
   const query = useQuery<{ items: DoctorReport[] }>(`/doctor${qs({ site_id: siteId })}`, ['checks', 'collectors', 'events'], 20_000);
   const [busy, setBusy] = useState('');
@@ -35,11 +36,11 @@ export default function DoctorWidget() {
   }
 
   return (
-    <Widget title={t('overview.faultDomain')} icon={Stethoscope} href="/doctor">
+    <Widget title={t('overview.faultDomain')} icon={Stethoscope} href="/watch/doctor">
       <Async query={query}>
         {({ items }) =>
           items.length === 0 ? (
-            <NextStep text={t('doctor.noSites')} label={t('overview.setupCta')} href="/discovery" />
+            <NextStep text={t('doctor.noSites')} label={t('overview.setupCta')} href="/radar/discovery" />
           ) : (
             <div className="space-y-3">
               {error && <ErrorNote error={error} />}
@@ -49,7 +50,9 @@ export default function DoctorWidget() {
                 </p>
               )}
               <ul className="space-y-3">
-                {items.map((r) => (
+                {items.map((r) => {
+                  const dx = localizeDiagnosis(r.diagnosis, locale);
+                  return (
                   <li key={r.site_id} className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       {items.length > 1 && (
@@ -57,12 +60,12 @@ export default function DoctorWidget() {
                           {r.site_name}
                         </span>
                       )}
-                      <Badge tone={domainTone(r.diagnosis.fault_domain)}>
-                        <span dir="auto">{r.diagnosis.title}</span>
+                      <Badge tone={domainTone(dx.fault_domain)}>
+                        <span dir="auto">{dx.title}</span>
                       </Badge>
                     </div>
                     <p className="text-[13px] leading-relaxed text-muted" dir="auto">
-                      {r.diagnosis.summary}
+                      {dx.summary}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
                       {can('technician') && (
@@ -71,7 +74,7 @@ export default function DoctorWidget() {
                         </Button>
                       )}
                       {r.active_incident && (
-                        <Link href={`/incidents/${r.active_incident.id}`} className="text-xs font-medium text-accent-hover hover:underline">
+                        <Link href={`/watch/incidents/${r.active_incident.id}`} className="text-xs font-medium text-accent-hover hover:underline">
                           {t('doctor.viewIncident')} INC-{r.active_incident.number}
                         </Link>
                       )}
@@ -80,7 +83,8 @@ export default function DoctorWidget() {
                       </span>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )

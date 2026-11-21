@@ -259,14 +259,26 @@ export interface Overview {
   problem_devices: { id: string; name: string; current_ip: string | null; status: DeviceStatus; offline_events_7d: number }[];
 }
 
+export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy';
+
 export interface NotificationChannel {
   id: string;
-  kind: 'webhook' | 'email';
+  kind: NotificationChannelKind;
   name: string;
-  /** Webhook URL, or "mailto:" + recipients for email. */
+  /** Webhook URL, "mailto:" + recipients for email, masked target for Telegram/Slack/Discord, or ntfy topic URL. */
   url: string;
-  /** Email only: the non-secret SMTP settings. */
-  config: { host?: string; port?: number; security?: 'tls' | 'starttls' | 'none'; username?: string | null; from?: string };
+  /** Non-secret channel settings (SMTP params, Telegram chat_id, ntfy server/topic, etc.). */
+  config: {
+    host?: string;
+    port?: number;
+    security?: 'tls' | 'starttls' | 'none';
+    username?: string | null;
+    from?: string;
+    chat_id?: string;
+    message_thread_id?: number;
+    server_url?: string;
+    topic?: string;
+  };
   min_severity: Severity;
   event_types: string[] | null;
   enabled: boolean;
@@ -275,6 +287,23 @@ export interface NotificationChannel {
   last_delivery_status: string | null;
   last_delivery_at: string | null;
   last_delivery_error?: string | null;
+}
+
+export interface NotificationEscalation {
+  id: string;
+  site_id: string | null;
+  site_name: string | null;
+  name: string;
+  channel_id: string;
+  channel_name: string;
+  channel_kind: NotificationChannelKind;
+  min_severity: Severity;
+  delay_minutes: number;
+  repeat_interval_minutes: number | null;
+  max_repeats: number;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AuditEntry {
@@ -511,6 +540,21 @@ export interface AccessProfile {
   device_count: number;
 }
 
+export type AccessEnforcementMode = 'router_and_dns' | 'router_only' | 'dns_only' | 'none';
+export type DeviceEnforcementMode = 'router_and_dns' | 'router_only' | 'dns_only' | 'unprotected';
+
+export interface AccessEnforcementSummary {
+  mode: AccessEnforcementMode;
+  dns_active: boolean;
+  active_router_count: number;
+  online_collector_count: number;
+  /** True when DNS filtering is active on a single collector host (losing that host stops DNS resolution). */
+  single_point_of_failure: boolean;
+  doh_bypass_queries_24h: number;
+  doh_bypass_devices_24h: number;
+  top_doh_domains_24h: { domain: string; count: number }[];
+}
+
 export interface AccessDevice {
   id: string;
   name: string;
@@ -529,6 +573,11 @@ export interface AccessDevice {
   protected: boolean;
   queries_24h: number;
   blocked_24h: number;
+  enforcement_mode: DeviceEnforcementMode;
+  router_blocked: boolean;
+  router_scheduled: boolean;
+  doh_bypass_24h: number;
+  doh_domains_24h: string[];
 }
 
 export interface AccessPage {
@@ -543,6 +592,7 @@ export interface AccessPage {
     protected_devices: number;
     protected_within_minutes: number;
   };
+  enforcement: AccessEnforcementSummary;
   devices: AccessDevice[];
 }
 
@@ -906,7 +956,11 @@ export interface RemoteDesktopFrame {
   capture_ms: number;
   byte_length: number;
   capture_mode: string;
-  jpeg_base64: string;
+  /** The screen is identical to the previous frame: no image is sent, keep showing the previous one. */
+  unchanged?: boolean;
+  /** Absent when `unchanged`, or when the image was no longer available (`image_unavailable`). Never stored. */
+  jpeg_base64?: string;
+  image_unavailable?: boolean;
   captured_at: string;
 }
 

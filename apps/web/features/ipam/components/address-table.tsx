@@ -1,7 +1,6 @@
 'use client';
 
 import type { IpamAddress, IpamSubnetDetail } from '@lan-detective/shared-types';
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Badge, Card, Input, Segmented } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
@@ -9,6 +8,7 @@ import { Filter } from '../screens/ipam-screen';
 import { STATE_TONE } from './usage-bar';
 import { ipamText } from '../text';
 import { ipToInt } from '../subnet-calc';
+import { DeviceLink } from '@/components/device-link';
 
 export function AddressTable({ subnet, onPick }: { subnet: IpamSubnetDetail; onPick: (ip: string) => void }) {
   const { locale } = useI18n();
@@ -85,9 +85,9 @@ export function AddressTable({ subnet, onPick }: { subnet: IpamSubnetDetail; onP
                     <td className="px-3 py-2.5">
                       {d ? (
                         <>
-                          <Link href={`/devices/${d.id}`} className="block truncate hover:text-accent-hover" dir="auto">
+                          <DeviceLink id={d.id} className="block truncate hover:text-accent-hover" dir="auto">
                             {d.label}
-                          </Link>
+                          </DeviceLink>
                           <span className="mono text-xs text-muted">{d.mac ?? ''}</span>
                           {a.devices.length > 1 && <span className="text-xs text-faint"> +{a.devices.length - 1}</span>}
                         </>

@@ -6,6 +6,7 @@ import { Async, Card, EmptyState, Segmented } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
+import { localizeAuditAction } from '@/lib/localize';
 import { automationName } from '../automation-text';
 
 const LIMIT = 100;
@@ -60,7 +61,9 @@ export function AuditLog() {
                           <td className="whitespace-nowrap px-4 py-2 text-xs text-muted" title={absoluteTime(a.created_at, locale)}>
                             {relativeTime(a.created_at, locale)}
                           </td>
-                          <td className="mono px-3 py-2 text-start text-xs">{a.action}</td>
+                          <td className={locale === 'ar' ? 'px-3 py-2 text-start text-xs' : 'mono px-3 py-2 text-start text-xs'} title={a.action}>
+                            {localizeAuditAction(a.action, locale)}
+                          </td>
                           <td className={a.actor === 'user' ? 'mono px-3 py-2 text-start text-xs text-muted' : 'px-3 py-2 text-start text-xs text-accent-hover'} dir="auto">
                             {actorText(a)}
                           </td>

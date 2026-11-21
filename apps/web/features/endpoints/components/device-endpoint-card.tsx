@@ -59,7 +59,7 @@ function DeviceEndpointCardBody({ device, ep }: { device: DeviceDetail; ep: Endp
         )}
         <p className="text-xs text-muted">{tx.deviceCardEnrolled}</p>
         <Link
-          href={`/endpoints/${ep.id}`}
+          href={`/fleet/endpoints/${ep.id}`}
           className="inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-medium text-on-accent hover:bg-accent-strong"
         >
           <Cpu className="size-3.5" aria-hidden />
@@ -74,7 +74,7 @@ function DeviceEndpointCardBody({ device, ep }: { device: DeviceDetail; ep: Endp
       <p className="text-xs leading-relaxed text-muted">{tx.deviceCardNone}</p>
       {can('admin') && (
         <Link
-          href={`/endpoints?enroll_device=${encodeURIComponent(device.id)}`}
+          href={`/fleet/endpoints?enroll_device=${encodeURIComponent(device.id)}`}
           className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-raised px-3 text-xs font-medium text-fg hover:bg-line"
         >
           <Cpu className="size-3.5" aria-hidden />

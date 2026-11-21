@@ -124,7 +124,7 @@ export function CheckStatus({
           )}
           {check === 'banners' && schedule.due_devices !== undefined && <span className="text-muted">{fill(t('security.dueDevices'), { n: schedule.due_devices })}</span>}
           {failing && <Badge tone="warn">{t('security.failed')}</Badge>}
-          <Link href="/settings#automation" className="text-accent-hover hover:underline">
+          <Link href="/mind/automation" className="text-accent-hover hover:underline">
             {t('security.changeSchedule')}
           </Link>
         </div>

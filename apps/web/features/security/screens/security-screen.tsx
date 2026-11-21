@@ -103,7 +103,7 @@ function SiteChecks({ siteId }: { siteId: string }) {
           <div className="space-y-4">
             {d.collectors.length === 0 ? (
               <Card>
-                <EmptyState icon={<ShieldOff />} title={t('security.noCollector')} action={<ButtonLink href="/discovery">{t('security.toDiscovery')}</ButtonLink>}>
+                <EmptyState icon={<ShieldOff />} title={t('security.noCollector')} action={<ButtonLink href="/radar/discovery">{t('security.toDiscovery')}</ButtonLink>}>
                   <p>{t('security.noCollectorHint')}</p>
                 </EmptyState>
               </Card>
@@ -183,7 +183,7 @@ export function SecurityScreen() {
         <SiteChecks key={siteId} siteId={siteId} />
       ) : (
         <Card>
-          <EmptyState icon={<ShieldOff />} title={t('security.noSite')} action={<ButtonLink href="/discovery">{t('security.toDiscovery')}</ButtonLink>}>
+          <EmptyState icon={<ShieldOff />} title={t('security.noSite')} action={<ButtonLink href="/radar/discovery">{t('security.toDiscovery')}</ButtonLink>}>
             <p>{t('security.noSiteHint')}</p>
           </EmptyState>
         </Card>

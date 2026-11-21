@@ -17,7 +17,7 @@ export function LocationView({ loc }: { loc: PortLocation }) {
     <div className="space-y-1.5">
       <p className="flex flex-wrap items-center gap-2 text-sm">
         <Cable className="size-4 shrink-0 text-accent" aria-hidden />
-        <Link href={`/ports?switch=${loc.target_id}`} className="font-medium hover:text-accent-hover" dir="auto">
+        <Link href={`/radar/ports?switch=${loc.target_id}`} className="font-medium hover:text-accent-hover" dir="auto">
           {locationLine(loc, locale)}
         </Link>
         <Badge tone={TONE[loc.confidence]} dot={false}>

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { Incident } from '@lan-detective/shared-types';
 import { absoluteTime, duration, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
+import { localizeIncidentTitle } from '@/lib/localize';
 import { ConfidenceBadge, Tag, ToneIcon, severityTone } from '@/components/ui';
 import { IncidentStatusBadge } from './incident-status-badge';
 
@@ -13,13 +14,13 @@ export function IncidentRow({ incident, showSite, compact }: { incident: Inciden
   const tone = severityTone(incident.severity);
   const open = incident.status !== 'resolved';
   return (
-    <Link href={`/incidents/${incident.id}`} className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-raised/60">
+    <Link href={`/watch/incidents/${incident.id}`} className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-raised/60">
       <ToneIcon tone={open ? tone : 'idle'} className="mt-0.5 size-4" />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="mono text-xs text-faint">INC-{incident.number}</span>
           <span className="min-w-0 text-[13px] font-medium leading-snug text-fg group-hover:text-accent-hover" dir="auto">
-            {incident.title}
+            {localizeIncidentTitle(incident.title, locale)}
           </span>
         </span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">

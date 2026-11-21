@@ -1,12 +1,12 @@
 'use client';
 
 import { Globe, Router, ShieldQuestion, Wifi } from 'lucide-react';
-import Link from 'next/link';
 import type { Confidence } from '@lan-detective/shared-types';
 import { Badge, DataTable, EmptyState, InferredBadge, severityTone } from '@/components/ui';
 import { absoluteTime, pct, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { Banner, DhcpServer, Fingerprint, SecurityOverview, UpnpGateway, WifiLinkRow } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 // The raw measurements behind the findings. Everything a device or a nearby network said about
 // itself (SSIDs, page titles, UPnP descriptions, host names, server headers) is rendered as plain
@@ -155,9 +155,9 @@ function GatewayBlock({ g }: { g: UpnpGateway }) {
                     {m.internal_client}:{m.internal_port}
                   </Mono>
                   {m.device_id && (
-                    <Link href={`/devices/${m.device_id}`} className="ms-1.5 text-xs text-accent-hover hover:underline" dir="auto">
+                    <DeviceLink id={m.device_id} className="ms-1.5 text-xs text-accent-hover hover:underline" dir="auto">
                       {m.device_name ?? ''}
-                    </Link>
+                    </DeviceLink>
                   )}
                 </td>
                 <td data-label={t('security.upnp.description')} dir="auto" className="break-words">
@@ -335,9 +335,9 @@ export function Banners({ banners }: { banners: Banner[] }) {
         {banners.map((b) => (
           <tr key={`${b.device_id}-${b.ip}-${b.port}`}>
             <td data-label={t('security.f.device')}>
-              <Link href={`/devices/${b.device_id}`} className="text-accent-hover hover:underline" dir="auto">
+              <DeviceLink id={b.device_id} className="text-accent-hover hover:underline" dir="auto">
                 {b.device_name ?? b.ip}
-              </Link>
+              </DeviceLink>
             </td>
             <td data-label={t('security.banners.address')}>
               <Mono>
@@ -408,9 +408,9 @@ export function Fingerprints({ items }: { items: Fingerprint[] }) {
             <td data-label={t('security.fp.mac')}>
               <Mono>{f.mac}</Mono>
               {f.device_id && (
-                <Link href={`/devices/${f.device_id}`} className="block text-xs text-accent-hover hover:underline" dir="auto">
+                <DeviceLink id={f.device_id} className="block text-xs text-accent-hover hover:underline" dir="auto">
                   {f.device_name ?? ''}
-                </Link>
+                </DeviceLink>
               )}
             </td>
             <td data-label={t('security.fp.hostname')} dir="auto" className="break-words">

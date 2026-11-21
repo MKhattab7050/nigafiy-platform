@@ -33,25 +33,25 @@ export default function MonitoringWidget() {
         id: `check-${c.id}`,
         tone: c.state === 'down' ? ('crit' as const) : ('warn' as const),
         text: fill(t(c.state === 'down' ? 'monitoring.attn.down' : 'monitoring.attn.degraded'), { name: c.name }),
-        action: { label: t('monitoring.attn.action'), href: '/monitoring' },
+        action: { label: t('monitoring.attn.action'), href: '/watch/monitoring' },
       }));
     }),
   );
 
   return (
-    <Widget title={t('nav.monitoring')} icon={Activity} href="/monitoring">
+    <Widget title={t('nav.monitoring')} icon={Activity} href="/watch/monitoring">
       <Async query={overview}>
         {(o) => {
-          if (o.checks.total === 0) return <NextStep text={t('monitoring.widget.empty')} label={t('monitoring.addCheck')} href="/monitoring" />;
+          if (o.checks.total === 0) return <NextStep text={t('monitoring.widget.empty')} label={t('monitoring.addCheck')} href="/watch/monitoring" />;
           const a = o.availability_24h_pct;
           const list = (checks.data?.items ?? []).filter((c) => c.enabled).sort((x, y) => RANK[x.state] - RANK[y.state]);
           return (
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <Metric size="lg" label={t('overview.availability')} value={a === null ? '—' : pct(a, 2)} tone={a === null ? 'idle' : a >= 99.5 ? 'ok' : a >= 95 ? 'warn' : 'crit'} />
-                <Metric label={t('state.ok')} value={o.checks.ok} tone="ok" href="/monitoring" />
-                <Metric label={t('state.degraded')} value={o.checks.degraded} tone={o.checks.degraded ? 'warn' : 'idle'} href="/monitoring" />
-                <Metric label={t('state.down')} value={o.checks.down} tone={o.checks.down ? 'crit' : 'idle'} href="/monitoring" />
+                <Metric label={t('state.ok')} value={o.checks.ok} tone="ok" href="/watch/monitoring" />
+                <Metric label={t('state.degraded')} value={o.checks.degraded} tone={o.checks.degraded ? 'warn' : 'idle'} href="/watch/monitoring" />
+                <Metric label={t('state.down')} value={o.checks.down} tone={o.checks.down ? 'crit' : 'idle'} href="/watch/monitoring" />
               </div>
               <ProportionBar
                 label={t('nav.monitoring')}
@@ -67,7 +67,7 @@ export default function MonitoringWidget() {
                   <ul className="divide-y divide-line rounded-[8px] border border-line">
                     {list.slice(0, 5).map((c) => (
                       <li key={c.id}>
-                        <Link href="/monitoring" className="flex items-center gap-3 px-3 py-2 hover:bg-raised/60">
+                        <Link href="/watch/monitoring" className="flex items-center gap-3 px-3 py-2 hover:bg-raised/60">
                           <span className="min-w-0 flex-1 truncate text-[13px]" dir="auto">
                             {c.name}
                           </span>

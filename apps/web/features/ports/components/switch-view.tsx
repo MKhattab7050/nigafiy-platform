@@ -10,7 +10,6 @@ import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { STATUS_TONE } from './port-tones';
 import { PortRow } from './port-row';
-import { SwitchControlCard } from './switch-control';
 import {
   SnmpCredentialsFields,
   buildSnmpCredentials,
@@ -137,7 +136,6 @@ export function SwitchView({
               </div>
             )}
           </Card>
-          <SwitchControlCard switchId={s.id} admin={admin} />
           {editing && (
             <EditSwitchModal
               sw={s}

@@ -165,7 +165,7 @@ export function EndpointsScreen() {
             {suggestion?.existing_endpoint_id && (
               <Notice>
                 {t('endpoints.enroll.existing')}{' '}
-                <Link href={`/endpoints/${suggestion.existing_endpoint_id}`} className="font-medium text-accent-hover hover:underline">
+                <Link href={`/fleet/endpoints/${suggestion.existing_endpoint_id}`} className="font-medium text-accent-hover hover:underline">
                   {t('endpoints.enroll.openExisting')}
                 </Link>
               </Notice>

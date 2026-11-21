@@ -57,7 +57,7 @@ export function KnowledgeSuggestions({ incidentId, deviceId, rule, siteId }: { i
                 {data.items.map(({ entry, score, reasons }) => (
                   <li key={entry.id} className="space-y-1.5 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/knowledge/${entry.id}`} className="min-w-0 text-[13px] font-medium text-accent-hover hover:underline" dir="auto">
+                      <Link href={`/mind/knowledge/${entry.id}`} className="min-w-0 text-[13px] font-medium text-accent-hover hover:underline" dir="auto">
                         {entry.title}
                       </Link>
                       <Badge tone="info" dot={false}>

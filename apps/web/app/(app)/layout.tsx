@@ -4,6 +4,7 @@ import { LogoMark } from '@/components/logo';
 import { Shell } from '@/components/shell';
 import { AppProvider } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { ProgramsProvider } from '@/lib/programs-context';
 
 function Boot() {
   const { t } = useI18n();
@@ -18,7 +19,9 @@ function Boot() {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppProvider fallback={<Boot />}>
-      <Shell>{children}</Shell>
+      <ProgramsProvider>
+        <Shell>{children}</Shell>
+      </ProgramsProvider>
     </AppProvider>
   );
 }

@@ -88,7 +88,7 @@ export function RunsTable({ playbookId, pageSize = 25, paged = true, showPlayboo
                         {relativeTime(r.created_at, locale)}
                       </td>
                       <td>
-                        <Link href={`/playbooks/runs/${r.id}`} className="text-[13px] text-accent-hover hover:underline">
+                        <Link href={`/mind/playbooks/runs/${r.id}`} className="text-[13px] text-accent-hover hover:underline">
                           {tx.open}
                         </Link>
                       </td>
@@ -125,7 +125,7 @@ export function RunsScreen() {
         title={tx.runsTitle}
         description={tx.runsSubtitle}
         actions={
-          <Link href="/playbooks" className="text-[13px] text-accent-hover hover:underline">
+          <Link href="/mind/playbooks" className="text-[13px] text-accent-hover hover:underline">
             {tx.back}
           </Link>
         }
