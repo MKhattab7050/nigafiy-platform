@@ -142,8 +142,8 @@ func (c *Config) Validate() error {
 	c.allowed = c.allowed[:0]
 	for _, raw := range c.AllowedCIDRs {
 		p, err := netip.ParsePrefix(strings.TrimSpace(raw))
-		if err != nil || !p.Addr().Is4() {
-			problems = append(problems, fmt.Sprintf("allowed_cidrs: %q is not an IPv4 CIDR", raw))
+		if err != nil || p.Addr().Zone() != "" {
+			problems = append(problems, fmt.Sprintf("allowed_cidrs: %q is not an IPv4 or IPv6 CIDR", raw))
 			continue
 		}
 		c.allowed = append(c.allowed, p.Masked())
