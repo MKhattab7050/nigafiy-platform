@@ -14,6 +14,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
+const { EngineStack } = require('./engine-stack.cjs');
 
 const SMOKE = process.argv.includes('--smoke');
 // Non-interactive check of local mode: consent comes from LD_DESKTOP_AUTO_CONSENT=1, then it reports and quits.
@@ -33,7 +34,7 @@ const repoRoot = app.isPackaged ? null : findRepoRoot(__dirname);
 /** Installed app: the packaged database/API/web server (apps/desktop/scripts/bundle-backend.mjs). */
 const bundleDir = app.isPackaged ? path.join(process.resourcesPath, 'backend') : null;
 const hasBundle = Boolean(bundleDir && fs.existsSync(path.join(bundleDir, 'local.mjs')));
-/** @type {LocalStack | null} */
+/** @type {LocalStack | EngineStack | null} */
 let localStack = null;
 /** @type {{ webUrl: string, apiUrl: string } | null} */
 let localUrls = null;
@@ -41,6 +42,23 @@ let localApi = null;
 let localMode = false;
 let localShown = false;
 let localError = null;
+
+/** The Nigafiy engine (docs/desktop/engine.md): runs the stack; null when it is not built/bundled. */
+function engineBinary() {
+  const name = process.platform === 'win32' ? 'nigafiy-engine.exe' : 'nigafiy-engine';
+  const file = app.isPackaged ? path.join(process.resourcesPath, 'engine', name) : path.join(__dirname, '..', '..', '..', 'engine', 'bin', name);
+  return fs.existsSync(file) ? file : null;
+}
+
+/** Engine when available (it can also be the Windows service), the direct launcher otherwise. */
+function makeStack({ script, nodePath, env, dataDir }) {
+  const engineExe = engineBinary();
+  const onStatus = (m) => setSplash(m);
+  if (engineExe && !process.env.LD_DESKTOP_NO_ENGINE) {
+    return new EngineStack({ engineExe, dataDir, nodePath, script, env: { ...env, LD_DATA_DIR: dataDir }, onStatus });
+  }
+  return new LocalStack({ script, nodePath, env, onStatus });
+}
 
 function collectorBinary() {
   return app.isPackaged
@@ -336,11 +354,12 @@ async function startLocal() {
   showDashboard();
   if (hasBundle) {
     // Installed: Electron's own Node runs everything; data lives in the user's profile.
-    localStack = new LocalStack({
+    const dataDir = path.join(app.getPath('userData'), 'data');
+    localStack = makeStack({
       script: path.join(bundleDir, 'local.mjs'),
       nodePath: process.execPath,
-      env: { ELECTRON_RUN_AS_NODE: '1', LD_BUNDLE_DIR: bundleDir, LD_DATA_DIR: path.join(app.getPath('userData'), 'data') },
-      onStatus: (m) => setSplash(m),
+      env: { ELECTRON_RUN_AS_NODE: '1', LD_BUNDLE_DIR: bundleDir, LD_DATA_DIR: dataDir },
+      dataDir,
     });
   } else {
     const nodePath = findNode();
@@ -348,7 +367,7 @@ async function startLocal() {
       setSplash('Node.js 24 or newer is needed to run LAN Detective from source.\nInstall it from nodejs.org, then open the app again.', true);
       return;
     }
-    localStack = new LocalStack({ script: path.join(repoRoot, 'scripts', 'local.mjs'), nodePath, onStatus: (m) => setSplash(m) });
+    localStack = makeStack({ script: path.join(repoRoot, 'scripts', 'local.mjs'), nodePath, env: {}, dataDir: path.join(repoRoot, '.data') });
   }
   try {
     localUrls = await localStack.start();

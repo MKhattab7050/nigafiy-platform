@@ -13,7 +13,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import crypto from 'node:crypto';
 import dgram from 'node:dgram';
-import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,6 +40,24 @@ const desktop = typeof process.send === 'function';
 const emit = (msg) => {
   if (desktop && process.connected) process.send(msg);
 };
+// Started by the Nigafiy Engine (engine/, no Node IPC): --engine-status-file=<path> receives
+// { state: 'ready', webUrl, apiUrl, pid } or { state: 'error', message, pid }, written atomically
+// (temporary file + rename). Closing stdin is the engine's request to stop.
+const engineStatusFile = (() => {
+  const a = args.find((x) => x.startsWith('--engine-status-file='));
+  return a ? path.resolve(a.slice('--engine-status-file='.length)) : null;
+})();
+function writeEngineStatus(status) {
+  if (!engineStatusFile) return;
+  try {
+    mkdirSync(path.dirname(engineStatusFile), { recursive: true });
+    const tmp = `${engineStatusFile}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ ...status, pid: process.pid }), { mode: 0o600 });
+    renameSync(tmp, engineStatusFile);
+  } catch {
+    /* the engine then times out waiting and says so */
+  }
+}
 
 const c = { dim: '\x1b[2m', red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', cyan: '\x1b[36m', bold: '\x1b[1m', off: '\x1b[0m' };
 const say = (msg) => console.log(msg);
@@ -48,6 +66,7 @@ const warn = (msg) => say(`${c.yellow}!${c.off} ${msg}`);
 const fail = (msg) => {
   say(`${c.red}✘ ${msg}${c.off}`);
   emit({ type: 'error', message: msg });
+  writeEngineStatus({ state: 'error', message: msg });
   process.exitCode = 1;
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -217,6 +236,11 @@ process.on('SIGTERM', () => void shutdown());
 if (desktop) {
   process.on('disconnect', () => void shutdown());
   process.on('message', (m) => m === 'stop' && void shutdown());
+}
+if (engineStatusFile) {
+  process.stdin.on('end', () => void shutdown());
+  process.stdin.on('error', () => void shutdown());
+  process.stdin.resume();
 }
 
 // ── 1. database ──────────────────────────────────────────────────────────────
@@ -762,6 +786,7 @@ if (!noCollector && !bundleDir) {
 say('');
 say(`${c.bold}${c.green}Open ${webUrl}${c.off}   ${c.dim}(Ctrl+C to stop everything · logs in ${path.relative(process.cwd(), logDir) || logDir})${c.off}`);
 emit({ type: 'ready', webUrl, apiUrl });
+writeEngineStatus({ state: 'ready', webUrl, apiUrl });
 if (!noOpen && !desktop && /^https?:\/\/[^\s"&|<>^`$;]+$/.test(webUrl)) {
   const opener = win ? ['cmd', ['/c', 'start', '""', webUrl]] : process.platform === 'darwin' ? ['open', [webUrl]] : ['xdg-open', [webUrl]];
   try {

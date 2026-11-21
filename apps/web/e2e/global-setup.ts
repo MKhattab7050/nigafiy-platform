@@ -65,6 +65,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       WEB_ORIGIN: `http://127.0.0.1:${WEB_PORT}`,
       ALLOW_REGISTRATION: 'true',
       ALLOW_LOOPBACK_SCOPES: 'false',
+      // No engine for this throw-away stack (a real one may be running on this computer).
+      ENGINE_CONTROL_URL: 'off',
     },
   });
   api.stdout?.on('data', (d) => (apiLog += d));

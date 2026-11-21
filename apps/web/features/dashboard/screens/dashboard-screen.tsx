@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import type { InsightsReport } from '@lan-detective/shared-types';
 import { FeatureBoundary } from '@/components/error-boundary';
 import { PageHeader, SkeletonBlock } from '@/components/ui';
+import { EngineCard, ProgramsStrip } from '@/features/platform';
 import { FEATURES } from '@/features/registry';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
@@ -21,7 +22,8 @@ const SPAN = { wide: 'md:col-span-2', full: 'md:col-span-2 xl:col-span-3' } as c
 
 /**
  * The one dashboard, read top to bottom as a command centre:
- * status header (score + key counters) → network path, 24 h → what needs attention + advice →
+ * status header (score + key counters) → network path, 24 h → programs + engine health (Hub) →
+ * what needs attention + advice →
  * every feature's widget → quick actions.
  *
  * It owns no feature data itself: every widget in the grid is registered by its feature in
@@ -44,6 +46,14 @@ export function DashboardScreen() {
         <FeatureBoundary>
           <NetworkPulse />
         </FeatureBoundary>
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <FeatureBoundary>
+            <ProgramsStrip />
+          </FeatureBoundary>
+          <FeatureBoundary>
+            <EngineCard />
+          </FeatureBoundary>
+        </div>
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <FeatureBoundary>
             <AttentionPanel expected={widgets.filter((f) => f.widget!.attention).map((f) => f.id)} />

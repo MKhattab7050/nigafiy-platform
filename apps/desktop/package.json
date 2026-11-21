@@ -37,6 +37,10 @@
       {
         "from": "build/backend",
         "to": "backend"
+      },
+      {
+        "from": "../../engine/bin/nigafiy-engine.exe",
+        "to": "engine/nigafiy-engine.exe"
       }
     ],
     "win": {

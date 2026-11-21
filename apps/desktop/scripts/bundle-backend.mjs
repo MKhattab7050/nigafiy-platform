@@ -47,7 +47,7 @@ rmSync(sharedOut, { recursive: true, force: true });
 run('pnpm', ['--filter', '@lan-detective/shared-types', 'exec', 'tsc', '-p', '.', '--noEmit', 'false', '--outDir', path.join(sharedOut, 'dist')]);
 writeFileSync(
   path.join(sharedOut, 'package.json'),
-  JSON.stringify({ name: '@lan-detective/shared-types', private: true, type: 'module', main: 'dist/index.js', exports: { '.': './dist/index.js', './markdown': './dist/markdown.js' } }, null, 2),
+  JSON.stringify({ name: '@lan-detective/shared-types', private: true, type: 'module', main: 'dist/index.js', exports: { '.': './dist/index.js', './markdown': './dist/markdown.js', './programs': './dist/programs.js' } }, null, 2),
 );
 
 // 3. Web app as a standalone server. The API address is fixed at build time (Next.js rewrites).

@@ -87,6 +87,9 @@ importers:
       '@lan-detective/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types
+      '@nigafiy/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@xyflow/react':
         specifier: ^12.12.1
         version: 12.12.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(immer@11.2.9)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

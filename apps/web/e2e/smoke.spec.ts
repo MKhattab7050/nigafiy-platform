@@ -81,6 +81,35 @@ test('sign up, walk every main screen in English and Arabic, sign out and back i
   });
 });
 
+test('Hub home lists the programs and the engine and update state', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await page.goto('/register');
+  await page.getByLabel('Work email').fill(`hub-${Date.now()}@example.test`);
+  await page.getByLabel('Password').fill(`e2e-${crypto.randomUUID()}`);
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).not.toHaveURL(/\/register/);
+
+  const programs = page.locator('main').getByText('Programs', { exact: true });
+  await expect(programs).toBeVisible();
+  for (const name of ['Radar', 'Watch', 'Guard', 'Fleet', 'Mind', 'Toolbox']) {
+    await expect(page.getByRole('link', { name: `Open Nigafiy ${name}` })).toBeVisible();
+  }
+  await page.getByRole('link', { name: 'Open Nigafiy Radar' }).click();
+  await expect(page).toHaveURL(/\/devices$/);
+  await page.goto('/');
+  // The API in this test was not started by an engine, and no update source is configured: both say so.
+  await expect(page.locator('main')).toContainText('No engine is running on this computer');
+  await expect(page.locator('main')).toContainText('Update checks are off: no update source is configured.');
+  await page.screenshot({ path: test.info().outputPath('hub-home-en.png'), fullPage: true });
+
+  await page.context().addCookies([{ name: 'ld_locale', value: 'ar', url: page.url() }]);
+  await page.goto('/');
+  await expect(page.locator('main').getByText('البرامج', { exact: true })).toBeVisible();
+  await expect(page.locator('main')).toContainText('التحقق من التحديثات متوقف');
+  await page.screenshot({ path: test.info().outputPath('hub-home-ar.png'), fullPage: true });
+  expect(problems).toEqual([]);
+});
+
 test('every page carries a nonce-based Content-Security-Policy', async ({ request }) => {
   const res = await request.get('/login');
   const csp = res.headers()['content-security-policy'] ?? '';

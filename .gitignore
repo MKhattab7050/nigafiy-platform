@@ -12,6 +12,7 @@ collectors/lan-collector/spool/
 collectors/lan-collector/collector.yaml
 agents/endpoint-agent/bin/
 agents/endpoint-agent/state/
+engine/bin/
 apps/api/apps/
 apps/web/.next-*/
 .tools/

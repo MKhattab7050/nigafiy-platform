@@ -50,6 +50,18 @@ const schema = z.object({
   ALLOW_PRIVATE_WEBHOOKS: bool,
   /** Allow notification email through a mail relay on a private address. Meant for on-premise installs; keep off when hosting for others. */
   SMTP_ALLOW_PRIVATE_HOSTS: bool,
+  /**
+   * The local engine's control address (nigafiy-engine, docs/desktop/engine.md). Read-only status
+   * is shown on the Hub home. Must be a loopback http URL; "off" disables the lookup.
+   */
+  ENGINE_CONTROL_URL: z
+    .string()
+    .default('http://127.0.0.1:47140')
+    .refine((v) => v === 'off' || /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):\d{1,5}$/.test(v), 'must be http://127.0.0.1:<port> or "off"'),
+  /** Signed release manifest for update checks. Unset: update checks are off (and the Hub says so). */
+  NIGAFIY_UPDATE_MANIFEST_URL: z.preprocess((v) => (v === '' ? undefined : v), z.url({ protocol: /^https?$/ }).optional()),
+  /** Ed25519 public key (base64 of the 32 raw bytes) that release manifests must be signed with. */
+  NIGAFIY_UPDATE_PUBLIC_KEY: optionalNonEmpty,
 });
 
 export type Env = z.infer<typeof schema>;

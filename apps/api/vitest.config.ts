@@ -19,6 +19,8 @@ export default defineConfig({
       ALLOW_LOOPBACK_SCOPES: 'false',
       ALLOW_PRIVATE_WEBHOOKS: 'true',
       SMTP_ALLOW_PRIVATE_HOSTS: 'true',
+      // No engine in tests: nothing listens on this port.
+      ENGINE_CONTROL_URL: 'http://127.0.0.1:47199',
     },
   },
 });

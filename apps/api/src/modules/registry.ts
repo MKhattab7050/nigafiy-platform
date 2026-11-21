@@ -19,6 +19,7 @@ import { maintenanceModule } from './maintenance/index.ts';
 import { monitoringModule } from './monitoring/index.ts';
 import { notificationsModule } from './notifications/index.ts';
 import { overviewModule } from './overview/index.ts';
+import { platformModule } from './platform/index.ts';
 import { playbooksModule } from './playbooks/index.ts';
 import { portfolioModule } from './portfolio/index.ts';
 import { portsModule } from './ports/index.ts';
@@ -69,5 +70,6 @@ export const modules: readonly ModuleManifest[] = validateModules([
   impactModule,
   portfolioModule,
   configBackupModule,
+  platformModule,
   createSystemModule(() => modules),
 ]);

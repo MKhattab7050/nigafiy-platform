@@ -26,6 +26,21 @@ LAN Detective stack locally on `127.0.0.1` (`src/local-stack.cjs` → `scripts/l
 5. Choosing *Quit LAN Detective* from the tray (or closing during Windows shutdown) cleanly stops the
    collector and the local database/API/web process tree.
 
+### Through the Nigafiy engine (Milestone 3)
+
+When `nigafiy-engine.exe` is present (`engine/bin/` in a checkout, `resources/engine/` when installed),
+local mode goes through it instead of starting `local.mjs` itself (`src/engine-stack.cjs`):
+
+- An engine already answers on `127.0.0.1:47140` (the `NigafiyEngine` Windows service, or one still
+  running): the app uses its stack and leaves it running when the app quits.
+- None answers: the app starts `nigafiy-engine run --no-sensor` as a child, waits until `/v1/status`
+  reports the stack's web and API addresses, and shuts it down through `POST /v1/shutdown` (with the
+  token in `<data>/engine/control-token`) on Quit. The app keeps running the Sensor itself, as before.
+- `LD_DESKTOP_NO_ENGINE=1` forces the old direct launcher. See `docs/desktop/engine.md`.
+
+The Hub home (the dashboard) shows each program with an Open link, the engine's health and the
+update check (`GET /api/v1/platform/{programs,engine,updates}`).
+
 ### 2. Remote-server collector mode
 
 To connect this computer's collector and dashboard to a shared LAN Detective server instead:

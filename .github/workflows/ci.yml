@@ -37,6 +37,7 @@ jobs:
           cache-dependency-path: |
             collectors/lan-collector/go.sum
             agents/endpoint-agent/go.sum
+            engine/go.sum
 
       - name: Install
         run: pnpm install --frozen-lockfile
@@ -52,12 +53,16 @@ jobs:
         run: |
           (cd collectors/lan-collector && go vet ./...)
           (cd agents/endpoint-agent && go vet ./...)
+          (cd engine && go vet ./...)
 
       - name: Collector tests
         run: pnpm test:collector
 
       - name: Endpoint agent tests
         run: pnpm test:agent
+
+      - name: Engine tests
+        run: pnpm test:engine
 
       - name: API integration tests (real PostgreSQL + RLS)
         run: pnpm test
