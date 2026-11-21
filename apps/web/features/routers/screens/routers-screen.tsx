@@ -98,7 +98,7 @@ export function RoutersScreen() {
                       <tr key={r.id}>
                         <td>
                           <div className="min-w-0">
-                            <Link href={`/routers/${r.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline" dir="auto">
+                            <Link href={`/guard/routers/${r.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline" dir="auto">
                               {r.name}
                             </Link>
                             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -199,7 +199,7 @@ export function RoutersScreen() {
           onClose={() => setAdding(false)}
           onSaved={(newId) => {
             routersQuery.reload();
-            routerNav.push(`/routers/${newId}`);
+            routerNav.push(`/guard/routers/${newId}`);
           }}
         />
       )}

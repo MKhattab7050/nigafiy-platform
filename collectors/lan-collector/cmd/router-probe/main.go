@@ -259,7 +259,58 @@ func readOnly(ctx context.Context, d router.Driver) int {
 		return 1
 	}
 	printBlocked(blocked)
+
+	if sr, ok := d.(router.SettingsReader); ok {
+		settings, err := sr.Settings(ctx)
+		if err != nil {
+			printErr("settings", err)
+		} else {
+			printSettings(settings)
+		}
+	}
 	return 0
+}
+
+func printSettings(s router.Settings) {
+	if s.Overview != nil {
+		fmt.Println("\n== Overview")
+		if s.Overview.LANIP != "" {
+			fmt.Printf("LAN IP    %s\n", s.Overview.LANIP)
+		}
+		if s.Overview.UptimeSeconds != nil {
+			fmt.Printf("Uptime    %s\n", (time.Duration(*s.Overview.UptimeSeconds) * time.Second).String())
+		}
+		for _, w := range s.Overview.WAN {
+			fmt.Printf("WAN       %s  status=%s  type=%s  ip=%s  dns=%s\n", w.Name, w.Status, w.Type, w.IPv4, strings.Join(w.DNS, ","))
+		}
+	}
+	if len(s.WiFi) > 0 {
+		fmt.Printf("\n== Wi-Fi networks (%d)\n", len(s.WiFi))
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tBAND\tSSID\tENABLED\tGUEST\tHIDDEN\tSECURITY\tCLIENTS")
+		for _, w := range s.WiFi {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%v\t%s\t%d\n", w.ID, w.Band, w.SSID, w.Enabled, w.Guest, w.Hidden, w.Security, len(w.ClientMACs))
+		}
+		tw.Flush()
+	}
+	if len(s.Reservations) > 0 {
+		fmt.Printf("\n== DHCP reservations (%d)\n", len(s.Reservations))
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tMAC\tIP\tENABLED")
+		for _, r := range s.Reservations {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%v\n", r.ID, r.MAC, r.IP, r.Enabled)
+		}
+		tw.Flush()
+	}
+	if len(s.PortForwards) > 0 {
+		fmt.Printf("\n== Port forwards (%d)\n", len(s.PortForwards))
+		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(tw, "ID\tPROTO\tEXTERNAL\tINTERNAL\tOWNER\tDESCRIPTION")
+		for _, p := range s.PortForwards {
+			fmt.Fprintf(tw, "%s\t%s\t%d-%d\t%s:%d-%d\t%s\t%s\n", p.ID, p.Protocol, p.ExternalStart, p.ExternalEnd, p.InternalIP, p.InternalStart, p.InternalEnd, p.Owner, p.Description)
+		}
+		tw.Flush()
+	}
 }
 
 func printBlocked(blocked []router.BlockEntry) {

@@ -1,4 +1,5 @@
 import { defineModule } from '../../infrastructure/module.ts';
+import { runProductSchedules } from './product-schedule.ts';
 import { routersRouter } from './routes.ts';
 
 /**
@@ -9,14 +10,20 @@ import { routersRouter } from './routes.ts';
  *   collector-config.ts  the heartbeat `routers` block (lockout-aware)
  *   service.ts           router CRUD, certificate trust on first use, refresh, request queueing
  *   control.ts           block / unblock (ledger-aware, with protected-device guards), rate limit, schedule
+ *   product-schedule.ts  schedules LAN Detective enforces with the router's block (router-schedules job)
  *   settings.ts          router settings (overview, Wi-Fi, reservations, port forwards) and their controls; rename; reboot
  *   ingest.ts            router_result telemetry → clients, ledger, settings, health events, lockout pause
  *   controls.ts          GET /devices/:id/controls: one consolidated description from every module
  *
  * Nothing here acts without an explicit administrator request, except the collector's read-only
- * periodic refresh. Blocking is never automatic.
+ * periodic refresh and the schedules an administrator set (router-schedules job). Blocking is never
+ * automatic otherwise.
  */
-export const routersModule = defineModule({ name: 'routers', api: routersRouter });
+export const routersModule = defineModule({
+  name: 'routers',
+  api: routersRouter,
+  jobs: [{ name: 'router-schedules', everyMs: 30_000, lockKey: 727150, run: () => runProductSchedules() }],
+});
 
 export { buildRouterConfig } from './collector-config.ts';
 export { processRouterResult } from './ingest.ts';

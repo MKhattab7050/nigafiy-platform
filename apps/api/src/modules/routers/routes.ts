@@ -10,6 +10,7 @@ import {
   rateLimitSchema,
   rebootSchema,
   renameSchema,
+  reservationMacParams,
   reservationSchema,
   routerCreateSchema,
   routerListQuery,
@@ -30,7 +31,7 @@ import {
   trustCertificate,
   updateRouter,
 } from './service.ts';
-import { addPortForward, rebootRouter, removePortForward, removeReservation, renameOnRouter, reserveAddress, routerSettings, setWifi } from './settings.ts';
+import { addPortForward, rebootRouter, removePortForward, removeReservation, removeReservationByMac, renameOnRouter, reserveAddress, routerSettings, setWifi } from './settings.ts';
 
 export const routersRouter: Router = Router();
 
@@ -114,7 +115,7 @@ routersRouter.post('/routers/:id/schedule', requireRole('admin'), async (req, re
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   const body = parse(scheduleSchema, req.body);
-  res.status(202).json(await setSchedule(req, ctx, id, body.device_id, body.windows));
+  res.status(202).json(await setSchedule(req, ctx, id, body.device_id, body.windows, body.timezone));
 });
 
 // Router controls beyond blocking (docs/features/router-controls.md). Reads: any role; changes: admin.
@@ -148,6 +149,12 @@ routersRouter.delete('/routers/:id/reservations/:device_id', requireRole('admin'
   const ctx = auth(req);
   const { id, device_id } = parse(deviceParams, req.params);
   res.status(202).json(await removeReservation(req, ctx, id, device_id));
+});
+
+routersRouter.delete('/routers/:id/reservations/by-mac/:mac', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const { id, mac } = parse(reservationMacParams, req.params);
+  res.status(202).json(await removeReservationByMac(req, ctx, id, mac));
 });
 
 routersRouter.post('/routers/:id/port-forwards', requireRole('admin'), async (req, res) => {

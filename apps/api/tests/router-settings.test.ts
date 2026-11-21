@@ -330,6 +330,63 @@ describe('router settings and controls', () => {
     expect(audit.rows.map((x) => x.action)).toEqual(['router.add_port_forward', 'router.remove_port_forward']);
   });
 
+  it('forwards ports to a device whose MAC address is unknown (keyed by its LAN address)', async () => {
+    const s = await setup('rs-forward-nomac');
+    await reportSettings(s);
+    const noMac = s.devices['192.168.50.22']!;
+    // The device page offers it (it needs only the IP) …
+    const controls = await s.a.agent.get(`/api/v1/devices/${noMac}/controls`);
+    expect(controls.body.sections.router.routers[0].actions.port_forward).toMatchObject({ possible: true, method: 'POST' });
+    // … and the request is accepted, not refused with no_mac.
+    const ok = await s.a.agent.post(`/api/v1/routers/${s.routerId}/port-forwards`).set(CSRF).send({ device_id: noMac, description: 'nas', protocol: 'tcp', external_start: 45679 });
+    expect(ok.status).toBe(202);
+    const [cmd] = await commands(s.c, 'router_port_forward');
+    expect(cmd!.payload).toMatchObject({ request_id: ok.body.request_id, port_forward: { internal_ip: '192.168.50.22', external_start: 45679 } });
+    expect(cmd!.payload).not.toHaveProperty('mac');
+    const audit = await systemPool.query(`SELECT target_id, metadata FROM audit_logs WHERE organization_id = $1 AND action = 'router.add_port_forward'`, [s.a.organizationId]);
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({ target_id: noMac, metadata: { internal_ip: '192.168.50.22' } });
+    // A device of another site is still not found, and MAC-keyed controls still need the MAC.
+    const other = await setup('rs-forward-other');
+    const foreign = other.devices['192.168.50.20']!;
+    expect((await s.a.agent.post(`/api/v1/routers/${s.routerId}/port-forwards`).set(CSRF).send({ device_id: foreign, description: 'x', protocol: 'tcp', external_start: 45680 })).status).toBe(404);
+    expect((await s.a.agent.post(`/api/v1/routers/${s.routerId}/reservations`).set(CSRF).send({ device_id: noMac, ip: '192.168.50.61' })).body.error.code).toBe('no_mac');
+  });
+
+  it('removes a router reservation whose MAC matches no device record, by MAC, admin only, audited', async () => {
+    const s = await setup('rs-unreserve-mac');
+    const stray = { id: '8', mac: 'DE-AD-BE-EF-00-01', ip: '192.168.50.88', enabled: true };
+    await reportSettings(s, { ...SETTINGS, reservations: [...SETTINGS.reservations, stray] });
+    const g = await s.a.agent.get(`/api/v1/routers/${s.routerId}/settings`);
+    expect(g.body.reservations.find((x: { mac: string }) => x.mac === 'de:ad:be:ef:00:01')).toMatchObject({ device_id: null, ip: '192.168.50.88' });
+
+    const url = (mac: string) => `/api/v1/routers/${s.routerId}/reservations/by-mac/${encodeURIComponent(mac)}`;
+    expect((await s.a.agent.delete(url('not-a-mac')).set(CSRF)).status).toBe(400);
+    expect((await s.a.agent.delete(url('de:ad:be:ef:00:99')).set(CSRF)).body.error.code).toBe('not_reserved');
+
+    await setRole(s.a.email, s.a.organizationId, 'technician');
+    expect((await s.a.agent.delete(url('de:ad:be:ef:00:01')).set(CSRF)).status).toBe(403);
+    await setRole(s.a.email, s.a.organizationId, 'admin');
+
+    const del = await s.a.agent.delete(url('DE-AD-BE-EF-00-01')).set(CSRF);
+    expect(del.status).toBe(202);
+    const [cmd] = await commands(s.c, 'router_reservation');
+    expect(cmd!.payload).toEqual({ request_id: del.body.request_id, router_id: s.routerId, mac: 'de:ad:be:ef:00:01', clear: true });
+    expect((await s.a.agent.delete(url('de:ad:be:ef:00:01')).set(CSRF)).body.error.code).toBe('already_requested');
+    await complete(s, del.body.request_id, 'unreserve', { settings: { reservations: SETTINGS.reservations } });
+
+    const audit = await systemPool.query(`SELECT target_type, target_id, metadata FROM audit_logs WHERE organization_id = $1 AND action = 'router.unreserve'`, [s.a.organizationId]);
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({ target_type: 'router', target_id: s.routerId, metadata: { mac: 'de:ad:be:ef:00:01', ip: '192.168.50.88', device_id: null } });
+
+    // By MAC also works for a reservation that does belong to a known device; the request is linked to it.
+    const phone = s.devices['192.168.50.21']!;
+    const linked = await s.a.agent.delete(url('aa:bb:cc:00:00:21')).set(CSRF);
+    expect(linked.status).toBe(202);
+    const req = await systemPool.query(`SELECT device_id FROM router_requests WHERE id = $1`, [linked.body.request_id]);
+    expect(req.rows[0].device_id).toBe(phone);
+  });
+
   it('reboots only on explicit confirmation, and only administrators change anything', async () => {
     const s = await setup('rs-reboot');
     await reportSettings(s);

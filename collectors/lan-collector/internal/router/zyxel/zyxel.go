@@ -478,6 +478,12 @@ func (d *Driver) Blocked(ctx context.Context) ([]router.BlockEntry, error) {
 					if merr != nil {
 						continue
 					}
+					if p.Name == ldName(mac) {
+						out = append(out, router.BlockEntry{MAC: mac, Name: p.Name, Mechanism: mechanismSchedule,
+							Owner: router.OwnerProduct, Managed: true, Partial: true,
+							Detail: fmt.Sprintf("schedule set by LAN Detective: internet allowed %s on %s", p.TimeRangeList, p.Days)})
+						continue
+					}
 					out = append(out, router.BlockEntry{MAC: mac, Name: p.Name, Mechanism: "parental control profile",
 						Owner: router.OwnerAdmin, Partial: true,
 						Detail: fmt.Sprintf("profile %q: internet allowed %s on %s; not modified by LAN Detective", p.Name, p.TimeRangeList, p.Days)})
@@ -578,11 +584,16 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 			{Capability: router.CapClients, Supported: true, Mechanism: "DAL lanhosts"},
 			lease,
 			block,
-			{Capability: router.CapRateLimit, Supported: false,
-				Note: "not offered: the firmware only has global QoS classes/policers (a class can match a source MAC), which would change the administrator's QoS setup and limit upload only; not implemented"},
-			{Capability: router.CapSchedule, Supported: false,
-				Note: "not offered: schedules exist only as parental-control profiles (allowed-time windows) that the administrator owns; not implemented"},
 		}
+		rate, err := d.rateLimitCapability(ctx)
+		if err != nil {
+			return err
+		}
+		sched, err := d.scheduleCapability(ctx)
+		if err != nil {
+			return err
+		}
+		caps = append(caps, rate, sched)
 		caps = append(caps, extra...)
 		if d.info != nil && !TestedModels[d.info.Model] {
 			for i := range caps {

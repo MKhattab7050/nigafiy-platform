@@ -208,6 +208,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Drops forwarded traffic from the device MAC without modifying administrator rules"},
 		{Capability: router.CapRateLimit, Supported: true, Mechanism: mechLimit, Note: "Applies a per-IP simple queue tagged for this MAC (requires an observed IP)"},
 		{Capability: router.CapSchedule, Supported: true, Mechanism: mechSchedule, Note: "Drops forwarded traffic during the configured weekly time windows in the router's clock"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

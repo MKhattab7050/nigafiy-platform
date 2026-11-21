@@ -3,6 +3,7 @@ import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
+import { findProductSchedule, productScheduling, saveProductSchedule } from './product-schedule.ts';
 import { type CapabilityStatus, type RouterRow, assertControllable, expireStaleRequests, loadRouter, queueRequest } from './service.ts';
 
 // Explicit administrator control of devices on a router: block, unblock, rate limit, schedule.
@@ -154,9 +155,16 @@ export function changeBlocks(req: Request, ctx: AuthContext, routerId: string, d
   });
 }
 
-export async function oneDevice(db: Db, r: RouterRow, deviceId: string): Promise<DeviceRef & { mac: string }> {
+/** A device of the router's site, whether or not its MAC address is known (controls keyed by IP: port forwarding). */
+export async function siteDevice(db: Db, r: RouterRow, deviceId: string): Promise<DeviceRef> {
   const d = (await loadDevices(db, [deviceId])).get(deviceId);
   if (!d || d.site_id !== r.site_id) throw new AppError(404, 'not_found', 'Device not found on this router’s site');
+  return d;
+}
+
+/** A device of the router's site whose MAC address is known (controls keyed by MAC). */
+export async function oneDevice(db: Db, r: RouterRow, deviceId: string): Promise<DeviceRef & { mac: string }> {
+  const d = await siteDevice(db, r, deviceId);
   if (!d.mac) throw new AppError(409, 'no_mac', 'The device’s MAC address has not been observed');
   return d as DeviceRef & { mac: string };
 }
@@ -179,26 +187,45 @@ export function setRateLimit(req: Request, ctx: AuthContext, routerId: string, d
   });
 }
 
-/** Schedule pass-through: only for routers whose driver reports `schedule` as supported. */
+/**
+ * Schedule. On a router whose driver schedules devices itself, the windows are sent to the router.
+ * On a router that can block but not schedule (or ignores its own schedule), LAN Detective stores the
+ * windows and enforces them with the router's block (product-schedule.ts). A schedule stored that
+ * way stays in that mode until it is removed.
+ */
 export function setSchedule(
   req: Request,
   ctx: AuthContext,
   routerId: string,
   deviceId: string,
   windows: { days: number[]; start: string; end: string }[] | null,
+  timezone?: string,
 ) {
   return withTenant(ctx.organizationId, async (db) => {
     await expireStaleRequests(db);
     const r = await loadRouter(db, routerId, true);
+    const d = await oneDevice(db, r, deviceId);
+    const stored = await findProductSchedule(db, r.id, d.mac);
+    if (stored || productScheduling(r)) {
+      if (windows) {
+        assertCapability(r, 'block');
+        const guard = await protectedDevice(db, d, requesterAddress(req));
+        if (guard) throw new AppError(409, guard.code, guard.message);
+      }
+      return saveProductSchedule(db, req, ctx, r, d, windows, timezone ?? (await siteTimeZone(db, r.site_id)));
+    }
     assertCapability(r, 'schedule');
     assertControllable(r);
-    const d = await oneDevice(db, r, deviceId);
     if (windows) {
       const guard = await protectedDevice(db, d, requesterAddress(req));
       if (guard) throw new AppError(409, guard.code, guard.message);
     }
     const q = await queueRequest(db, ctx, r, windows ? 'schedule' : 'clear_schedule', { mac: d.mac, deviceId: d.id, params: windows ? { windows } : {} });
     await audit(db, req, windows ? 'router.schedule' : 'router.schedule.clear', { type: 'device', id: d.id }, { router_id: r.id, mac: d.mac, windows, request_id: q.request_id });
-    return q;
+    return { mode: 'router' as const, ...q };
   });
+}
+
+async function siteTimeZone(db: Db, siteId: string): Promise<string> {
+  return (await db.query<{ timezone: string }>(`SELECT timezone FROM sites WHERE id = $1`, [siteId])).rows[0]?.timezone ?? 'UTC';
 }

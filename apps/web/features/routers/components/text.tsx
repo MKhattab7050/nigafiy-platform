@@ -65,7 +65,7 @@ export function RouterErrorNote({ error, routerId, onRetry }: { error: unknown; 
 export function UpdateCredentialsLink({ routerId }: { routerId: string }) {
   const { t } = useI18n();
   return (
-    <Link href={`/routers/${routerId}?edit=credentials`} className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-line-strong bg-surface px-3 text-xs font-medium text-fg hover:bg-raised">
+    <Link href={`/guard/routers/${routerId}?edit=credentials`} className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] border border-line-strong bg-surface px-3 text-xs font-medium text-fg hover:bg-raised">
       <KeyRound className="size-3.5" aria-hidden />
       {t('routers.updateCredentials')}
     </Link>

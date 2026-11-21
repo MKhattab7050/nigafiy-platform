@@ -6,7 +6,7 @@ import { AppError, type AuthContext } from '../../common/http.ts';
 import { normalizeMac } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
-import { assertCapability, oneDevice, protectedDevice, requesterAddress } from './control.ts';
+import { assertCapability, oneDevice, protectedDevice, requesterAddress, siteDevice } from './control.ts';
 import { MANAGEMENT_PORTS, MAX_PORTS_PER_RULE, type PortForwardBody } from './schema.ts';
 import { type RouterAction, type RouterRow, assertControllable, expireStaleRequests, loadRouter, queueRequest } from './service.ts';
 
@@ -290,14 +290,41 @@ export function removeReservation(req: Request, ctx: AuthContext, routerId: stri
     const { r, settings } = await prepare(db, routerId, 'reservations');
     if (!settings?.reservations) throw settingsUnknown('reservations');
     const d = await oneDevice(db, r, deviceId);
-    const current = settings.reservations.find((x) => normalizeMac(x.mac) === d.mac);
-    if (!current) throw new AppError(404, 'not_reserved', 'The router has no reservation for this device');
-    await assertNotPending(db, r, ['reserve', 'unreserve'], { mac: d.mac });
-    const q = await queueRequest(db, ctx, r, 'unreserve', { mac: d.mac, deviceId: d.id });
-    await audit(db, req, 'router.unreserve', { type: 'device', id: d.id }, { router_id: r.id, router: r.name, mac: d.mac, ip: current.ip, request_id: q.request_id });
-    await notifyRealtime(db, ctx.organizationId, 'devices');
-    return q;
+    return unreserve(db, req, ctx, r, settings.reservations, d.mac, d.id);
   });
+}
+
+/**
+ * Remove a reservation by its MAC address, for entries the router lists whose MAC matches no device
+ * record (a device never seen on the network, or seen without its MAC). When a device of the site
+ * does have that MAC, the request is linked to it as usual.
+ */
+export function removeReservationByMac(req: Request, ctx: AuthContext, routerId: string, mac: string) {
+  return withTenant(ctx.organizationId, async (db) => {
+    const { r, settings } = await prepare(db, routerId, 'reservations');
+    if (!settings?.reservations) throw settingsUnknown('reservations');
+    const device = (
+      await db.query<{ id: string }>(`SELECT id FROM devices WHERE site_id = $1 AND primary_mac = $2::macaddr ORDER BY last_seen_at DESC LIMIT 1`, [r.site_id, mac])
+    ).rows[0];
+    return unreserve(db, req, ctx, r, settings.reservations, mac, device?.id ?? null);
+  });
+}
+
+async function unreserve(db: Db, req: Request, ctx: AuthContext, r: RouterRow, reservations: Reservation[], mac: string, deviceId: string | null) {
+  const current = reservations.find((x) => normalizeMac(x.mac) === mac);
+  if (!current) throw new AppError(404, 'not_reserved', deviceId ? 'The router has no reservation for this device' : 'The router lists no reservation for this MAC address (any more); read the router again');
+  await assertNotPending(db, r, ['reserve', 'unreserve'], { mac });
+  const q = await queueRequest(db, ctx, r, 'unreserve', { mac, deviceId });
+  await audit(db, req, 'router.unreserve', deviceId ? { type: 'device', id: deviceId } : { type: 'router', id: r.id }, {
+    router_id: r.id,
+    router: r.name,
+    mac,
+    ip: current.ip,
+    device_id: deviceId,
+    request_id: q.request_id,
+  });
+  await notifyRealtime(db, ctx.organizationId, 'devices');
+  return q;
 }
 
 /** Validates a new rule against the request rules and the rules the router last reported. Exported for tests of the rules. */
@@ -330,7 +357,8 @@ export function addPortForward(req: Request, ctx: AuthContext, routerId: string,
   return withTenant(ctx.organizationId, async (db) => {
     const { r, settings } = await prepare(db, routerId, 'port_forward');
     if (!settings?.port_forwards) throw settingsUnknown('port_forwards');
-    const d = await oneDevice(db, r, body.device_id);
+    // Keyed by the device's LAN address, like the control offered on the device page: the MAC is not needed.
+    const d = await siteDevice(db, r, body.device_id);
     if (!d.ip) throw new AppError(409, 'no_address', 'The device’s current IP address is not known');
     // Exposing the collector host or the router itself to the internet is never offered.
     const guard = await protectedDevice(db, d, null);

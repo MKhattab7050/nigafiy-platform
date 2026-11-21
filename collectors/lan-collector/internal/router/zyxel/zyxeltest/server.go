@@ -65,6 +65,13 @@ type Config struct {
 	// RotateSessionKey makes every change reply (DAL PUT/POST/DELETE) carry a new "sessionkey" that
 	// replaces the CSRF token, as some firmware does; the router's web UI adopts it from any reply.
 	RotateSessionKey bool
+	// QoS: nil QoS answers "unknown oid" for qos, qos_queue and qos_class.
+	QoS                   map[string]any
+	QoSQueues, QoSClasses []map[string]any
+	// ParentalWritable lets paren_ctl accept POST/PUT/DELETE (profiles start from ParentalProfiles).
+	ParentalWritable bool
+	// EasyMesh / OneConnect, when set, answer oid=WIFI_EasyMesh / one_connect (nil: unknown oid).
+	EasyMesh, OneConnect *bool
 }
 
 type sess struct {
@@ -101,6 +108,11 @@ type Server struct {
 
 	wlan, staticDHCP, nat []map[string]any
 	nextIndex             int
+
+	qos                   map[string]any
+	qosQueues, qosClasses []map[string]any
+	parentalOn            bool
+	pcp                   []map[string]any
 }
 
 // Start runs the double over TLS with a self-signed certificate (like the real device).
@@ -110,7 +122,12 @@ func Start(cfg Config) *Server {
 		panic(err)
 	}
 	s := &Server{cfg: cfg, priv: priv, sessions: map[string]*sess{}, hosts: append([]Host(nil), cfg.Hosts...),
-		wlan: cloneAll(cfg.WLAN), staticDHCP: cloneAll(cfg.StaticDHCP), nat: cloneAll(cfg.NAT), nextIndex: 100}
+		wlan: cloneAll(cfg.WLAN), staticDHCP: cloneAll(cfg.StaticDHCP), nat: cloneAll(cfg.NAT), nextIndex: 100,
+		qosQueues: cloneAll(cfg.QoSQueues), qosClasses: cloneAll(cfg.QoSClasses), parentalOn: cfg.ParentalEnable,
+		pcp: cloneAll(cfg.ParentalProfiles)}
+	if cfg.QoS != nil {
+		s.qos = cloneAll([]map[string]any{cfg.QoS})[0]
+	}
 	s.Server = httptest.NewTLSServer(http.HandlerFunc(s.serve))
 	return s
 }
@@ -128,6 +145,24 @@ func cloneAll(in []map[string]any) []map[string]any {
 		out = append(out, c)
 	}
 	return out
+}
+
+// QoSState returns copies of the QoS global object, queues and classes.
+func (s *Server) QoSState() (map[string]any, []map[string]any, []map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var g map[string]any
+	if s.qos != nil {
+		g = cloneAll([]map[string]any{s.qos})[0]
+	}
+	return g, cloneAll(s.qosQueues), cloneAll(s.qosClasses)
+}
+
+// Parental returns the global switch and copies of the profiles.
+func (s *Server) Parental() (bool, []map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parentalOn, cloneAll(s.pcp)
 }
 
 // WLAN, StaticDHCP and NAT return copies of the double's current tables.
@@ -377,6 +412,12 @@ func (s *Server) table(oid string) *[]map[string]any {
 		return &s.staticDHCP
 	case "nat":
 		return &s.nat
+	case "qos_queue":
+		return &s.qosQueues
+	case "qos_class":
+		return &s.qosClasses
+	case "paren_ctl":
+		return &s.pcp
 	}
 	var none []map[string]any
 	return &none
@@ -416,9 +457,40 @@ func (s *Server) dal(w http.ResponseWriter, r *http.Request, body []byte) {
 			}
 			reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": []any{map[string]any{
 				"MAC": map[string]any{"Filter_Enable": s.cfg.MACFilterEnable, "Restrict": s.cfg.MACFilterDeny}, "whitelist": wl}}})
+		case "WIFI_EasyMesh", "one_connect":
+			v, field := s.cfg.EasyMesh, "EasyMeshEnable"
+			if oid == "one_connect" {
+				v, field = s.cfg.OneConnect, "one_connect_Enable"
+			}
+			if v == nil {
+				reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "unknown oid"})
+				return
+			}
+			reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": []any{map[string]any{field: *v}}})
+		case "qos":
+			if s.qos == nil {
+				reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "unknown oid"})
+				return
+			}
+			reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": []any{s.qos}})
+		case "qos_queue", "qos_class":
+			if s.qos == nil {
+				reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "unknown oid"})
+				return
+			}
+			t := s.table(oid)
+			if len(*t) == 0 { // the real firmware answers null for an empty table
+				reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": nil})
+				return
+			}
+			objs := []any{}
+			for _, o := range *t {
+				objs = append(objs, o)
+			}
+			reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": objs})
 		case "paren_ctl":
-			objs := []any{map[string]any{"PrentalCtlEnable": s.cfg.ParentalEnable}}
-			for _, p := range s.cfg.ParentalProfiles {
+			objs := []any{map[string]any{"PrentalCtlEnable": s.parentalOn}}
+			for _, p := range s.pcp {
 				objs = append(objs, p)
 			}
 			reply(map[string]any{"result": "ZCFG_SUCCESS", "Object": objs})
@@ -454,11 +526,22 @@ func (s *Server) dal(w http.ResponseWriter, r *http.Request, body []byte) {
 			writeJSON(w, 403, map[string]any{"result": "ZCFG_FAIL"})
 			return
 		}
-		idx, _ := strconv.Atoi(r.URL.Query().Get("Index"))
-		s.Deletes = append(s.Deletes, Put{OID: oid, Body: map[string]any{"Index": float64(idx)}})
+		key := "Index"
+		switch oid {
+		case "qos_queue":
+			key = "idx"
+		case "qos_class":
+			key = "iid"
+		}
+		if oid == "paren_ctl" && !s.cfg.ParentalWritable {
+			reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "not supported"})
+			return
+		}
+		idx, _ := strconv.Atoi(r.URL.Query().Get(key))
+		s.Deletes = append(s.Deletes, Put{OID: oid, Body: map[string]any{key: float64(idx)}})
 		t := s.table(oid)
 		for i, o := range *t {
-			if v, _ := o["Index"].(float64); int(v) == idx {
+			if v, _ := o[key].(float64); int(v) == idx {
 				*t = append((*t)[:i], (*t)[i+1:]...)
 				reply(map[string]any{"result": "ZCFG_SUCCESS"})
 				return
@@ -495,6 +578,77 @@ func (s *Server) dal(w http.ResponseWriter, r *http.Request, body []byte) {
 			}
 			s.wlan[int(idx)-1]["wlEnable"] = en
 			reply(map[string]any{"result": "ZCFG_SUCCESS"})
+			return
+		case oid == "qos" && r.Method == http.MethodPut && s.qos != nil:
+			for k, v := range in {
+				s.qos[k] = v
+			}
+			reply(map[string]any{"result": "ZCFG_SUCCESS"})
+			return
+		case (oid == "qos_queue" || oid == "qos_class") && s.qos != nil:
+			key := "idx"
+			if oid == "qos_class" {
+				key = "iid"
+			}
+			t := s.table(oid)
+			if r.Method == http.MethodPost {
+				if oid == "qos_queue" && len(*t) >= 8 {
+					reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "too many queues"})
+					return
+				}
+				s.nextIndex++
+				n := float64(len(*t) + 1)
+				if oid == "qos_queue" {
+					in["Index"], in["idx"] = n, n
+					if rl, ok := in["ShapingRate"]; ok {
+						in["RateLimit"] = rl
+						delete(in, "ShapingRate")
+					}
+				} else {
+					in["iid"] = float64(s.nextIndex)
+				}
+				*t = append(*t, in)
+				reply(map[string]any{"result": "ZCFG_SUCCESS"})
+				return
+			}
+			want, _ := in[key].(float64)
+			for _, o := range *t {
+				if v, _ := o[key].(float64); v == want {
+					for k, v := range in {
+						if k != "ShapingRate" {
+							o[k] = v
+						}
+					}
+					reply(map[string]any{"result": "ZCFG_SUCCESS"})
+					return
+				}
+			}
+			reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "no such entry"})
+			return
+		case oid == "paren_ctl" && s.cfg.ParentalWritable:
+			if on, ok := in["PrentalCtlEnable"]; ok && len(in) == 1 {
+				s.parentalOn, _ = on.(bool)
+				reply(map[string]any{"result": "ZCFG_SUCCESS"})
+				return
+			}
+			if r.Method == http.MethodPost {
+				s.nextIndex++
+				in["Index"] = float64(s.nextIndex)
+				s.pcp = append(s.pcp, in)
+				reply(map[string]any{"result": "ZCFG_SUCCESS"})
+				return
+			}
+			want, _ := in["Index"].(float64)
+			for _, o := range s.pcp {
+				if v, _ := o["Index"].(float64); v == want {
+					for k, v := range in {
+						o[k] = v
+					}
+					reply(map[string]any{"result": "ZCFG_SUCCESS"})
+					return
+				}
+			}
+			reply(map[string]any{"result": "ZCFG_FAIL", "ReplyMsg": "no such profile"})
 			return
 		case (oid == "static_dhcp" || oid == "nat") && r.Method == http.MethodPost:
 			t := s.table(oid)

@@ -178,6 +178,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Manages host alias lan_detective_blocked (requires a LAN block rule referencing this alias)"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "pfSense limiters require policy-specific pipe rules"},
 		{Capability: router.CapSchedule, Supported: false, Note: "pfSense schedules are attached to firewall rules rather than per-MAC entries"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: false, Note: "pfSense is a dedicated firewall; manage Wi-Fi on your access points"},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: false, Note: "pfSense does not keep a separate client alias table outside DHCP static mappings"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

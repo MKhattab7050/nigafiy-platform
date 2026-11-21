@@ -98,6 +98,8 @@ export const scheduleSchema = z
       .min(1)
       .max(8)
       .nullable(),
+    // IANA time zone of the windows when LAN Detective enforces the schedule itself (default: the site's).
+    timezone: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -143,3 +145,11 @@ export const rebootSchema = z.object({ confirm: z.literal('reboot') }).strict();
 
 export const deviceParams = z.object({ id: z.uuid(), device_id: z.uuid() });
 export const ruleParams = z.object({ id: z.uuid(), rule_id: z.string().min(1).max(40) });
+/** DELETE /routers/:id/reservations/by-mac/:mac — a reservation whose MAC matches no device record. */
+export const reservationMacParams = z.object({
+  id: z.uuid(),
+  mac: z
+    .string()
+    .regex(/^[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}$/, 'must be a MAC address such as aa:bb:cc:dd:ee:ff')
+    .transform((v) => v.toLowerCase().replaceAll('-', ':')),
+});

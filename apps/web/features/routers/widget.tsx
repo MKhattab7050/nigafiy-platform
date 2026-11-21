@@ -19,7 +19,7 @@ export default function RoutersWidget() {
     attentionFrom([query], (data) =>
       data.items.flatMap((r): AttentionItem[] => {
         if (!r.enabled) return [];
-        const action = { label: t('routers.attn.open'), href: `/routers/${r.id}` };
+        const action = { label: t('routers.attn.open'), href: `/guard/routers/${r.id}` };
         if (r.delivery === 'awaiting_certificate') {
           return [{ id: `router-cert-${r.id}`, tone: 'warn' as const, text: fill(t('routers.attn.awaitingCertificate'), { name: r.name }), action }];
         }
@@ -41,11 +41,11 @@ export default function RoutersWidget() {
   );
 
   return (
-    <Widget title={t('nav.routers')} icon={Router} href="/routers">
+    <Widget title={t('nav.routers')} icon={Router} href="/guard/routers">
       <Async query={query}>
         {(data) => {
           if (data.items.length === 0) {
-            return <NextStep text={t('routers.widget.empty')} label={t('routers.add')} href="/routers" />;
+            return <NextStep text={t('routers.widget.empty')} label={t('routers.add')} href="/guard/routers" />;
           }
           const reachable = data.items.filter((r) => r.status === 'ok').length;
           const clients = data.items.reduce((sum, r) => sum + r.client_count, 0);

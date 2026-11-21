@@ -209,6 +209,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds a dedicated LD:-tagged entry to MULTIFILTER_MAC without altering administrator rules"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "Asuswrt bandwidth limiter NVRAM format varies across firmware generations"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Time-scheduling uses per-firmware bitmasks not uniformly exposed"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

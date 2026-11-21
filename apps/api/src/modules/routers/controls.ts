@@ -7,6 +7,7 @@ import { alertsControl, monitoringControl, trustControl, wakeControl } from '../
 import { deviceEndpointControl } from '../endpoints/index.ts';
 import { devicePortLocation } from '../ports/index.ts';
 import { capability, protectedDevice, requesterAddress } from './control.ts';
+import { PRODUCT_SCHEDULE_NOTE, findProductSchedule, presentProductSchedule, productScheduling } from './product-schedule.ts';
 import { ROUTER_SELECT, type RouterRow, delivery, loginPause } from './service.ts';
 import { lanAddressProblem, lanSubnet, loadSettings } from './settings.ts';
 
@@ -85,7 +86,24 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
         ? { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/unblock`, body: { device_ids: [d.id] } }
         : { possible: false, reason: ledger?.pre_existing || (onRouter.length && !ledger) ? 'blocked_by_administrator' : 'not_blocked_by_product' });
     const passThrough = (name: string, path: string) =>
-      capCheck(name) ?? notReady ?? (!d.mac ? { possible: false, reason: 'no_mac' } : { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/${path}` });
+      capCheck(name) ??
+      notReady ??
+      (!d.mac
+        ? { possible: false, reason: 'no_mac' }
+        : // The driver's note says what the router can do (e.g. "upload only"); the form shows it.
+          { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/${path}`, ...(capability(r, name)?.note ? { note: capability(r, name)?.note } : {}) });
+
+    // Schedule: on the router itself when its driver can, else enforced by LAN Detective with the router's block.
+    const productSchedule = d.mac ? await findProductSchedule(db, r.id, d.mac) : null;
+    const scheduleAction =
+      productSchedule || productScheduling(r)
+        ? (capCheck('block') ??
+          (!d.mac
+            ? { possible: false, reason: 'no_mac' }
+            : guard && !productSchedule
+              ? { possible: false, reason: guard.code, note: guard.message }
+              : { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/schedule`, mode: 'product', note: PRODUCT_SCHEDULE_NOTE }))
+        : passThrough('schedule', 'schedule');
 
     // Router controls beyond blocking: rename, reservation, port forwards (from the settings as last read).
     const { settings } = await loadSettings(db, r.id);
@@ -156,11 +174,13 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
       reservation: settings?.reservations ? reservation : null,
       port_forwards: settings?.port_forwards ? forwards.map((x) => ({ ...x, actions: { remove: removeForward(x.id) } })) : null,
       lan: { cidr: lan.cidr, source: lan.source },
+      // A schedule LAN Detective enforces itself (null: none; a schedule on the router itself is part of the router's own settings).
+      schedule: productSchedule ? presentProductSchedule(productSchedule) : null,
       actions: {
         block: blockAction,
         unblock: unblockAction,
         rate_limit: passThrough('rate_limit', 'rate-limit'),
-        schedule: passThrough('schedule', 'schedule'),
+        schedule: scheduleAction,
         rename: renameAction,
         reserve: reserveAction,
         unreserve: unreserveAction,
@@ -171,7 +191,7 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
   return {
     routers: items,
     protected: guard,
-    setup: routers.length ? null : { reason: 'no_router', href: '/routers', note: 'Add the site’s router to block devices on the network itself.' },
+    setup: routers.length ? null : { reason: 'no_router', href: '/guard/routers', note: 'Add the site’s router to block devices on the network itself.' },
   };
 }
 

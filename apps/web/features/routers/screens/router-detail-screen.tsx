@@ -15,6 +15,7 @@ import { CertTrustModal, DeleteRouterModal, EditRouterModal } from '../component
 import { RouterSettingsPanel } from '../components/router-settings-panel';
 import { ConnectionLabel, DELIVERY_TONE, Fingerprint, HEALTH_TONE, RouterErrorNote, deliveryText, leaseText } from '../components/text';
 import type { DeviceRef, QueuedRequest, RouterClient, RouterDetail } from '../types';
+import { DeviceLink } from '@/components/device-link';
 
 type DetailTab = 'clients' | 'settings' | 'blocks' | 'identity' | 'requests';
 
@@ -96,7 +97,7 @@ function RouterDetailView({ id }: { id: string }) {
           actionError={actionError}
           readNow={readNow}
           onReload={reloadAll}
-          onDeleted={() => routerNav.push('/routers')}
+          onDeleted={() => routerNav.push('/guard/routers')}
         />
       )}
     </Async>
@@ -201,7 +202,7 @@ function RouterDetailBody({
   return (
     <>
       <div className="mb-3">
-        <Link href="/routers" className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-fg">
+        <Link href="/guard/routers" className="inline-flex items-center gap-1.5 text-xs font-medium text-muted hover:text-fg">
           <ArrowLeft className="size-3.5 rtl:-scale-x-100" aria-hidden />
           {t('routers.back')}
         </Link>
@@ -387,9 +388,9 @@ function RouterDetailBody({
                         <td>
                           <div className="min-w-0">
                             {c.device_id ? (
-                              <Link href={`/devices/${c.device_id}`} className="font-medium text-fg hover:text-accent-hover hover:underline" dir="auto">
+                              <DeviceLink id={c.device_id} className="font-medium text-fg hover:text-accent-hover hover:underline" dir="auto">
                                 {c.device_label || c.hostname || c.ip || c.mac}
-                              </Link>
+                              </DeviceLink>
                             ) : (
                               <span className="font-medium text-fg" dir="auto">
                                 {c.hostname || c.ip || c.mac}
@@ -526,9 +527,9 @@ function RouterDetailBody({
                     <tr key={entry.id}>
                       <td data-label={t('routers.client.mac')}>
                         {entry.device_id ? (
-                          <Link href={`/devices/${entry.device_id}`} className="mono text-xs font-medium text-accent-hover hover:underline">
+                          <DeviceLink id={entry.device_id} className="mono text-xs font-medium text-accent-hover hover:underline">
                             {entry.mac}
-                          </Link>
+                          </DeviceLink>
                         ) : (
                           <span className="mono text-xs">{entry.mac}</span>
                         )}

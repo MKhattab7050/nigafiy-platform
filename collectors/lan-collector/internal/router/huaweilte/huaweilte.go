@@ -265,6 +265,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Blocks Wi-Fi MACs in blacklist mode (up to 10 slots per SSID); never alters whitelist mode"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "Huawei HiLink 4G/5G CPEs do not expose per-MAC speed limits"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Not exposed via HiLink XML API"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: false, Note: "HiLink 4G/5G CPEs do not expose a uniform static DHCP reservation endpoint"},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward, Note: "Supports single-port virtual server entries"},
+		{Capability: router.CapRename, Supported: false, Note: "HiLink host-list device names are read-only"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

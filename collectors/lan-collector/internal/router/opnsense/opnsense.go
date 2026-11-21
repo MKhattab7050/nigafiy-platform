@@ -165,6 +165,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds/removes the device IP in alias lan_detective_blocked (requires a LAN block rule matching this alias)"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "OPNsense traffic shaping uses dummynet pipes/queues configured per policy"},
 		{Capability: router.CapSchedule, Supported: false, Note: "OPNsense schedules attach to firewall rules rather than individual MAC entries"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: false, Note: "OPNsense is a dedicated firewall; manage Wi-Fi on your access points"},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: false, Note: "OPNsense DNAT port forwards use legacy MVC pages rather than the core REST API"},
+		{Capability: router.CapRename, Supported: false, Note: "OPNsense does not expose a separate client alias API"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

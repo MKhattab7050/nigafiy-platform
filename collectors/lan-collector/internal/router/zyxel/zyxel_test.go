@@ -121,11 +121,10 @@ func TestEndToEndBlockUnblock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !caps.Supports(router.CapClients) || !caps.Supports(router.CapBlock) || caps.Supports(router.CapRateLimit) || caps.Supports(router.CapSchedule) {
+	// This fixture has no QoS objects, so the speed limit is not offered; parental control answers,
+	// so the schedule is.
+	if !caps.Supports(router.CapClients) || !caps.Supports(router.CapBlock) || caps.Supports(router.CapRateLimit) || !caps.Supports(router.CapSchedule) {
 		t.Errorf("capabilities: %+v", caps)
-	}
-	if _, ok := d.(router.RateLimiter); ok {
-		t.Error("zyxel driver must not claim rate limiting")
 	}
 
 	ch, err := d.Block(ctx, "aa-bb-cc-00-00-01")

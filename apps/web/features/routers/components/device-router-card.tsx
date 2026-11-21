@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 import { type ControlAction, apiPath } from '@/lib/controls';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
-import type { DeviceRef, DeviceRouterControls, QueuedRequest } from '../types';
+import type { DeviceRef, DeviceRouterControls, ProductSchedule, QueuedRequest, ScheduleResponse } from '../types';
 import { BlockDialog } from './block-dialog';
 import { RequestProgress } from './request-progress';
 import { type Confirm, ConfirmModal, PortForwardForm, PortForwardTable } from './router-settings-panel';
@@ -43,7 +43,7 @@ export function DeviceRouterCard({
           )}
           <div className="flex flex-wrap gap-2">
             <Link
-              href="/routers"
+              href="/guard/routers"
               className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-control)] bg-accent px-3 text-xs font-medium text-on-accent hover:bg-accent-strong"
             >
               <Router className="size-3.5" aria-hidden />
@@ -97,12 +97,18 @@ function RouterDeviceRow({
   const [error, setError] = useState<unknown>(null);
 
   const [showLimit, setShowLimit] = useState(false);
-  const [downKbps, setDownKbps] = useState('5000');
-  const [upKbps, setUpKbps] = useState('2000');
+  // Empty means "no limit in that direction" (some routers can only limit one direction).
+  const [downKbps, setDownKbps] = useState('');
+  const [upKbps, setUpKbps] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
-  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
-  const [fromTime, setFromTime] = useState('22:00');
-  const [toTime, setToTime] = useState('07:00');
+  const stored = entry.schedule ?? null;
+  const [days, setDays] = useState<number[]>(stored?.windows[0]?.days ?? [0, 1, 2, 3, 4]);
+  const [fromTime, setFromTime] = useState(stored?.windows[0]?.start ?? '22:00');
+  const [toTime, setToTime] = useState(stored?.windows[0]?.end ?? '07:00');
+  const [scheduleSaved, setScheduleSaved] = useState<string | null>(null);
+  // LAN Detective enforces the schedule itself on this router: times are in this computer's time zone.
+  const productMode = !!stored || (entry.actions.schedule as { mode?: string }).mode === 'product';
+  const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const [busy, setBusy] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [newName, setNewName] = useState(device.label);
@@ -151,12 +157,19 @@ function RouterDeviceRow({
     setOrigin('top');
     setBusy(true);
     setError(null);
+    setScheduleSaved(null);
     try {
-      const q = await api<QueuedRequest>(`/routers/${entry.router_id}/schedule`, {
+      const q = await api<ScheduleResponse>(`/routers/${entry.router_id}/schedule`, {
         method: 'POST',
-        body: { device_id: device.id, windows },
+        body: { device_id: device.id, windows, ...(productMode && windows ? { timezone: localZone } : {}) },
       });
-      setActiveReq(q);
+      if (q.mode === 'product') {
+        // Stored and enforced by LAN Detective: there is no router request to follow.
+        setScheduleSaved(windows ? t('routers.schedule.saved') : t('routers.req.success.clear_schedule'));
+        onChanged();
+      } else {
+        setActiveReq(q);
+      }
       setShowSchedule(false);
     } catch (err) {
       setError(err);
@@ -173,7 +186,7 @@ function RouterDeviceRow({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Router className="size-4 text-muted" aria-hidden />
-          <Link href={`/routers/${entry.router_id}`} className="text-[13px] font-semibold text-fg hover:text-accent-hover hover:underline" dir="auto">
+          <Link href={`/guard/routers/${entry.router_id}`} className="text-[13px] font-semibold text-fg hover:text-accent-hover hover:underline" dir="auto">
             {entry.name}
           </Link>
           <span className="mono text-xs text-muted">{entry.address}</span>
@@ -305,19 +318,24 @@ function RouterDeviceRow({
           className="space-y-3 rounded-[var(--radius-control)] border border-line bg-surface p-3"
         >
           <p className="text-xs text-muted">{t('routers.section.limitHint')}</p>
+          {entry.actions.rate_limit.note && (
+            <p className="text-xs text-muted">
+              {t('routers.section.routerNote')} <span dir="ltr">{entry.actions.rate_limit.note}</span>
+            </p>
+          )}
           <div className="grid gap-2 sm:grid-cols-2">
             <Field label={t('routers.section.down')}>
               {(id) => (
                 <Input
                   id={id}
                   type="number"
-                  min={0}
+                  min={1}
                   max={10000000}
                   className="mono"
                   dir="ltr"
+                  placeholder={t('routers.section.noLimit')}
                   value={downKbps}
                   onChange={(e) => setDownKbps(e.target.value)}
-                  required
                 />
               )}
             </Field>
@@ -326,13 +344,13 @@ function RouterDeviceRow({
                 <Input
                   id={id}
                   type="number"
-                  min={0}
+                  min={1}
                   max={10000000}
                   className="mono"
                   dir="ltr"
+                  placeholder={t('routers.section.noLimit')}
                   value={upKbps}
                   onChange={(e) => setUpKbps(e.target.value)}
-                  required
                 />
               )}
             </Field>
@@ -348,6 +366,13 @@ function RouterDeviceRow({
         </form>
       )}
 
+      {stored && <StoredSchedule schedule={stored} />}
+      {scheduleSaved && (
+        <p className="text-xs text-muted" role="status">
+          {scheduleSaved}
+        </p>
+      )}
+
       {showSchedule && entry.actions.schedule.possible && (
         <form
           onSubmit={(e) => {
@@ -356,7 +381,13 @@ function RouterDeviceRow({
           }}
           className="space-y-3 rounded-[var(--radius-control)] border border-line bg-surface p-3"
         >
-          <p className="text-xs text-muted">{t('routers.section.scheduleHint')}</p>
+          {productMode ? (
+            <p className="text-xs text-muted">
+              {entry.actions.schedule.note ?? t('routers.schedule.productNote')} {fill(t('routers.schedule.zone'), { zone: localZone })}
+            </p>
+          ) : (
+            <p className="text-xs text-muted">{t('routers.section.scheduleHint')}</p>
+          )}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted">{t('routers.section.days')}</p>
             <div className="flex flex-wrap gap-1.5">
@@ -590,6 +621,40 @@ function RouterSettingsForDevice({
             </ActionButton>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A schedule LAN Detective enforces itself: what it is and what it is doing now. */
+function StoredSchedule({ schedule }: { schedule: ProductSchedule }) {
+  const { t, locale } = useI18n();
+  const state = schedule.removing
+    ? t('routers.schedule.removing')
+    : schedule.paused_until
+      ? fill(t('routers.schedule.paused'), { time: absoluteTime(schedule.paused_until, locale) })
+      : schedule.in_window
+        ? t('routers.schedule.inWindow')
+        : t('routers.schedule.outside');
+  return (
+    <div className="space-y-1 rounded-[var(--radius-control)] border border-line bg-surface px-3 py-2 text-xs text-muted">
+      <p>
+        <span className="font-medium text-fg">{t('routers.schedule.title')}: </span>
+        {schedule.windows.map((w) => (
+          <span key={`${w.days.join('')}-${w.start}-${w.end}`} dir="ltr" className="mono me-2">
+            {w.days.map((d) => t(`routers.day.${d}` as Key)).join(' ')} {w.start}–{w.end}
+          </span>
+        ))}
+        ({schedule.timezone})
+      </p>
+      <p>
+        {state}
+        {schedule.created_by_email && <> · {fill(t('routers.schedule.by'), { email: schedule.created_by_email })}</>}
+      </p>
+      {schedule.last_error && (
+        <p className="text-crit">
+          {t('routers.schedule.lastError')}: {schedule.last_error}
+        </p>
       )}
     </div>
   );

@@ -1,7 +1,6 @@
 'use client';
 
 import { Plus, Power, Trash2 } from 'lucide-react';
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Async, Badge, Button, Card, DataTable, EmptyState, Fact, Field, Input, Modal, Select, SkeletonBlock, Switch } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -11,6 +10,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { PortForwardRule, PortProtocol, QueuedRequest, RouterClient, RouterDetail, RouterReservation, RouterSettingsView, WifiNetwork } from '../types';
 import { RequestProgress } from './request-progress';
 import { RouterErrorNote } from './text';
+import { DeviceLink } from '@/components/device-link';
 
 // The router's own settings (docs/features/router-controls.md): overview, Wi-Fi networks, DHCP
 // reservations, port forwarding and restart. Everything shown is what the router last reported;
@@ -192,12 +192,11 @@ export function RouterSettingsPanel({
                           {canAdmin && (
                             <td>
                               <div className="flex justify-end">
-                                {x.device_id && (
-                                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm({ kind: 'unreserve', res: x })}>
-                                    <Trash2 className="size-3.5" aria-hidden />
-                                    {t('routers.res.remove')}
-                                  </Button>
-                                )}
+                                {/* Also for entries whose MAC matches no device record: removed by MAC. */}
+                                <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirm({ kind: 'unreserve', res: x })}>
+                                  <Trash2 className="size-3.5" aria-hidden />
+                                  {t('routers.res.remove')}
+                                </Button>
                               </div>
                             </td>
                           )}
@@ -257,7 +256,7 @@ export function RouterSettingsPanel({
                   c.kind === 'wifi_off'
                     ? await run('wifi', 'POST', { wifi_id: c.net.id, enabled: false, ...(c.net.main ? { confirm: true } : {}) })
                     : c.kind === 'unreserve'
-                      ? await run(`reservations/${c.res.device_id}`, 'DELETE')
+                      ? await run(c.res.device_id ? `reservations/${c.res.device_id}` : `reservations/by-mac/${encodeURIComponent(c.res.mac)}`, 'DELETE')
                       : c.kind === 'remove_forward'
                         ? await run(`port-forwards/${encodeURIComponent(c.rule.id)}`, 'DELETE')
                         : await run('reboot', 'POST', { confirm: 'reboot' });
@@ -290,9 +289,9 @@ function DeviceName({ id, label }: { id?: string | null; label?: string | null }
   const { t } = useI18n();
   if (id) {
     return (
-      <Link href={`/devices/${id}`} className="font-medium text-fg hover:text-accent-hover hover:underline">
+      <DeviceLink id={id} className="font-medium text-fg hover:text-accent-hover hover:underline">
         <bdi>{label ?? id}</bdi>
-      </Link>
+      </DeviceLink>
     );
   }
   return <span className="text-muted">{label ? <bdi>{label}</bdi> : t('routers.res.unknownDevice')}</span>;
@@ -626,7 +625,12 @@ export function ConfirmModal({
     action = t('routers.wifi.turnOff');
   } else if (c.kind === 'unreserve') {
     title = fill(t('routers.res.removeTitle'), { device: c.res.device_label ?? c.res.mac });
-    body = <p>{fill(t('routers.res.removeBody'), { ip: c.res.ip })}</p>;
+    body = (
+      <>
+        <p>{fill(t('routers.res.removeBody'), { ip: c.res.ip })}</p>
+        {!c.res.device_id && <p className="mt-2 text-sm text-muted">{t('routers.res.removeByMac')}</p>}
+      </>
+    );
     action = t('routers.res.remove');
   } else if (c.kind === 'remove_forward') {
     const r = c.rule;

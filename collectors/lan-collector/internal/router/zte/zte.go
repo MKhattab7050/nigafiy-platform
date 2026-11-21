@@ -348,6 +348,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds LD:-tagged MAC filter blacklist entries without touching whitelist mode or admin rules"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "ZTE ZXHN ISP firmware varies in QoS class definitions"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Not uniformly exposed across ZXHN builds"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: false, Note: "ZTE CGILua does not provide a uniform client alias API"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

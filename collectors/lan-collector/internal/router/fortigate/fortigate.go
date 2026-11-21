@@ -243,6 +243,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Quarantines/bans the device IP via FortiOS banned users monitor"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "FortiGate traffic shaping uses firewall shaping policies"},
 		{Capability: router.CapSchedule, Supported: false, Note: "FortiGate schedules attach to firewall policies"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: false, Note: "FortiWiFi/FortiAP SSIDs are managed via FortiOS wireless-controller profiles"},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward, Note: "Creates/removes FortiOS Virtual IPs (attach a WAN→LAN policy permitting the VIP if needed)"},
+		{Capability: router.CapRename, Supported: false, Note: "FortiGate device inventory aliases are read-only via the monitor API"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

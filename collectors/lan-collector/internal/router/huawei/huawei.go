@@ -406,6 +406,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Manages LD:-tagged entries in MAC blacklist mode; never alters whitelist mode or admin entries"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "Not uniformly supported across Huawei VDSL/ONT firmware builds"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Parental-control schedules differ across ISP firmware customizations"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

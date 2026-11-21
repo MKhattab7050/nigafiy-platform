@@ -209,6 +209,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Blocks/unblocks the device MAC in Tenda's online/blacklist table"},
 		{Capability: router.CapRateLimit, Supported: true, Mechanism: mechLimit, Note: "Sets per-MAC download/upload speed limits in Tenda Bandwidth Control"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Tenda parental-control schedules vary across models"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: false, Note: "Tenda client remarks are modified inline in QoS rather than a standalone rename API"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

@@ -249,6 +249,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds LD:-tagged entries in deny mode; refuses to overwrite administrator allow-list mode"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "HNAP1 QoS uses priority queues rather than per-MAC kbps limits"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Not uniformly supported across HNAP1 firmware"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: false, Note: "HNAP1 client nicknames vary across DIR/COVR firmware revisions"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

@@ -307,9 +307,14 @@ describe('router control', () => {
     expect(rl.status).toBe(409);
     expect(rl.body.error.code).toBe('unsupported_on_router');
     expect(rl.body.error.details.note).toContain('global QoS');
+    // A router that can block but not schedule: LAN Detective stores the schedule and enforces it with the block
+    // (tests/router-product-schedule.test.ts); nothing is sent to the router as a schedule.
     const sc = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows: [{ days: [1, 2], start: '22:00', end: '06:00' }] });
-    expect(sc.status).toBe(409);
-    expect(sc.body.error.code).toBe('unsupported_on_router');
+    expect(sc.status).toBe(202);
+    expect(sc.body).toMatchObject({ mode: 'product', schedule: { timezone: 'UTC' } });
+    expect((await command(s.c, 'router_schedule')).length).toBe(0);
+    const scOff = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows: null });
+    expect(scOff.status).toBe(202);
     expect((await command(s.c, 'router_rate_limit')).length).toBe(0);
 
     // A driver that does support it: the request passes through to the collector.

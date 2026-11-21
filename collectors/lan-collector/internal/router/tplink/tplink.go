@@ -264,6 +264,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Manages LD:-tagged blacklist entries; refuses to alter administrator whitelist mode"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "TP-Link home Archer QoS uses priority levels rather than uniform per-MAC kbps limits"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Not exposed uniformly across Archer firmware"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: false, Note: "TP-Link Archer firmware does not expose a client alias API"},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

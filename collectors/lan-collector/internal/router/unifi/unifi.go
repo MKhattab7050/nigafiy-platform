@@ -298,6 +298,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Disconnects and blocks the client MAC across the UniFi site"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "UniFi bandwidth limits are assigned via Wi-Fi profiles/user groups rather than per-device rates"},
 		{Capability: router.CapSchedule, Supported: false, Note: "UniFi does not expose per-MAC blocking schedules via stamgr"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
+		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
+		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename},
+		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
 

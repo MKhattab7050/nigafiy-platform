@@ -205,6 +205,23 @@ export interface DeviceRef {
 }
 
 /** The `router` section of GET /devices/:id/controls. */
+export interface ProductSchedule {
+  mode: 'product';
+  windows: { days: number[]; start: string; end: string }[];
+  timezone: string;
+  created_by_email: string | null;
+  updated_at: string;
+  removing: boolean;
+  in_window: boolean;
+  paused_until: string | null;
+  /** The schedule's own block is in effect (or on its way). */
+  blocking: boolean;
+  last_error: string | null;
+}
+
+/** POST /routers/:id/schedule: queued on the router, or stored and enforced by LAN Detective. */
+export type ScheduleResponse = (QueuedRequest & { mode?: 'router' }) | { mode: 'product'; outcome: string; schedule: ProductSchedule | null };
+
 export interface DeviceRouterControls {
   routers: {
     router_id: string;
@@ -243,6 +260,8 @@ export interface DeviceRouterControls {
     reservation?: RouterReservation | null;
     port_forwards?: (PortForwardRule & { actions: { remove: ControlAction } })[] | null;
     lan?: { cidr: string; source: 'collector_interface' | 'assumed_24' };
+    /** A schedule LAN Detective enforces itself with the router's block (null: none). */
+    schedule?: ProductSchedule | null;
     actions: {
       block: ControlAction;
       unblock: ControlAction;

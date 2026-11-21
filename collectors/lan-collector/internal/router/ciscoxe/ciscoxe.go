@@ -164,6 +164,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapBlock, Supported: false, Note: "IOS XE blocking depends on site-specific interface ACLs/VRFs; use Port Detective switch-port control or quarantine VLANs instead"},
 		{Capability: router.CapRateLimit, Supported: false, Note: "IOS XE QoS uses class-map/policy-map templates per interface"},
 		{Capability: router.CapSchedule, Supported: false, Note: "Not offered over generic RESTCONF"},
+		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
+		{Capability: router.CapWiFi, Supported: false, Note: "Cisco IOS XE RESTCONF driver is read-only; manage wireless via WLC/Catalyst Center"},
+		{Capability: router.CapReservations, Supported: false, Note: "Cisco IOS XE RESTCONF driver is intentionally read-only"},
+		{Capability: router.CapPortForward, Supported: false, Note: "Cisco IOS XE RESTCONF driver is intentionally read-only"},
+		{Capability: router.CapRename, Supported: false, Note: "Cisco IOS XE has no client alias table"},
+		{Capability: router.CapReboot, Supported: false, Note: "Reboot is intentionally disabled on enterprise Cisco IOS XE routers"},
 	}, nil
 }
 
