@@ -27,7 +27,22 @@ import (
 	"time"
 
 	"github.com/lan-detective/lan-collector/internal/router"
-	_ "github.com/lan-detective/lan-collector/internal/router/zyxel" // registers the "zyxel" driver
+	_ "github.com/lan-detective/lan-collector/internal/router/asus"
+	_ "github.com/lan-detective/lan-collector/internal/router/ciscoxe"
+	_ "github.com/lan-detective/lan-collector/internal/router/dlink"
+	_ "github.com/lan-detective/lan-collector/internal/router/fortigate"
+	_ "github.com/lan-detective/lan-collector/internal/router/huawei"
+	_ "github.com/lan-detective/lan-collector/internal/router/huaweilte"
+	_ "github.com/lan-detective/lan-collector/internal/router/mikrotik"
+	_ "github.com/lan-detective/lan-collector/internal/router/omada"
+	_ "github.com/lan-detective/lan-collector/internal/router/openwrt"
+	_ "github.com/lan-detective/lan-collector/internal/router/opnsense"
+	_ "github.com/lan-detective/lan-collector/internal/router/pfsense"
+	_ "github.com/lan-detective/lan-collector/internal/router/tenda"
+	_ "github.com/lan-detective/lan-collector/internal/router/tplink"
+	_ "github.com/lan-detective/lan-collector/internal/router/unifi"
+	_ "github.com/lan-detective/lan-collector/internal/router/zte"
+	_ "github.com/lan-detective/lan-collector/internal/router/zyxel"
 )
 
 func main() {
@@ -35,11 +50,12 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `usage: router-probe -router <private IP> [-vendor zyxel] [-user admin]
+	fmt.Fprintf(os.Stderr, `usage: router-probe -router <private IP> [-vendor %s] [-user admin]
                     [-transport https-pinned|https|http] [-pin <sha256>] [-port N]
                     [-block <MAC> | -unblock <MAC>]
 
-Read-only unless -block or -unblock is given. The password is prompted for on the terminal.`)
+Read-only unless -block or -unblock is given. The password is prompted for on the terminal.
+`, strings.Join(router.Vendors(), "|"))
 	flag.PrintDefaults()
 }
 

@@ -17,6 +17,21 @@ import (
 	"github.com/lan-detective/lan-collector/internal/agent"
 	"github.com/lan-detective/lan-collector/internal/config"
 	// Router drivers shipped in the collector (they register with internal/router).
+	_ "github.com/lan-detective/lan-collector/internal/router/asus"
+	_ "github.com/lan-detective/lan-collector/internal/router/ciscoxe"
+	_ "github.com/lan-detective/lan-collector/internal/router/dlink"
+	_ "github.com/lan-detective/lan-collector/internal/router/fortigate"
+	_ "github.com/lan-detective/lan-collector/internal/router/huawei"
+	_ "github.com/lan-detective/lan-collector/internal/router/huaweilte"
+	_ "github.com/lan-detective/lan-collector/internal/router/mikrotik"
+	_ "github.com/lan-detective/lan-collector/internal/router/omada"
+	_ "github.com/lan-detective/lan-collector/internal/router/openwrt"
+	_ "github.com/lan-detective/lan-collector/internal/router/opnsense"
+	_ "github.com/lan-detective/lan-collector/internal/router/pfsense"
+	_ "github.com/lan-detective/lan-collector/internal/router/tenda"
+	_ "github.com/lan-detective/lan-collector/internal/router/tplink"
+	_ "github.com/lan-detective/lan-collector/internal/router/unifi"
+	_ "github.com/lan-detective/lan-collector/internal/router/zte"
 	_ "github.com/lan-detective/lan-collector/internal/router/zyxel"
 )
 

@@ -6,7 +6,7 @@ import type { Collector, Site } from '@lan-detective/shared-types';
 import { Badge, Button, Fact, Field, Input, Modal, Notice, Select, Switch } from '@/components/ui';
 import { api } from '@/lib/api';
 import { absoluteTime, relativeTime } from '@/lib/format';
-import { fill, useI18n } from '@/lib/i18n';
+import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { FetchedCertificate, QueuedRequest, RouterDetail, RouterTransport, SiteRouter } from '../types';
 import { ROUTER_TRANSPORTS, ROUTER_VENDORS } from '../types';
 import { RequestProgress } from './request-progress';
@@ -200,7 +200,17 @@ export function RouterWizardModal({
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t('routers.vendor')} hint={t('routers.wizard.vendorHint')}>
                 {(id) => (
-                  <Select id={id} value={vendor} onChange={(e) => setVendor(e.target.value)}>
+                  <Select
+                    id={id}
+                    value={vendor}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const prevDefault = ROUTER_VENDORS.find((v) => v.value === vendor)?.defaultUser ?? 'admin';
+                      const nextDefault = ROUTER_VENDORS.find((v) => v.value === next)?.defaultUser ?? 'admin';
+                      if (username === prevDefault) setUsername(nextDefault);
+                      setVendor(next);
+                    }}
+                  >
                     {ROUTER_VENDORS.map((v) => (
                       <option key={v.value} value={v.value}>
                         {v.label}
@@ -222,6 +232,10 @@ export function RouterWizardModal({
                 )}
               </Field>
             </div>
+
+            <p className="rounded-[var(--radius-control)] border border-line bg-sunken px-3 py-2 text-xs leading-relaxed text-muted">
+              {t(`routers.vendorNote.${vendor}` as Key)}
+            </p>
 
             <Field label={t('routers.name')}>
               {(id) => (
@@ -300,6 +314,9 @@ export function RouterWizardModal({
         {step === 2 && (
           <form onSubmit={submitCredentials} className="space-y-4">
             <p className="text-[13px] leading-relaxed text-muted">{t('routers.wizard.credentialsIntro')}</p>
+            <p className="rounded-[var(--radius-control)] border border-line bg-sunken px-3 py-2 text-xs leading-relaxed text-muted">
+              {t(`routers.vendorNote.${vendor}` as Key)}
+            </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t('routers.wizard.username')}>
                 {(id) => (

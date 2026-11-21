@@ -1,7 +1,24 @@
 import { z } from 'zod';
 
 /** Router drivers shipped in the collector (collectors/lan-collector/internal/router/*). */
-export const ROUTER_VENDORS = ['zyxel'] as const;
+export const ROUTER_VENDORS = [
+  'mikrotik',
+  'huawei',
+  'huawei_lte',
+  'zte',
+  'tplink_archer',
+  'tenda',
+  'dlink',
+  'asus',
+  'zyxel',
+  'unifi',
+  'omada',
+  'openwrt',
+  'opnsense',
+  'pfsense',
+  'fortigate',
+  'cisco_xe',
+] as const;
 export const ROUTER_TRANSPORTS = ['https', 'https-pinned', 'http'] as const;
 export const MAX_ROUTERS_PER_SITE = 16;
 export const MAX_BULK_DEVICES = 50;

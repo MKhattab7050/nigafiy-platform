@@ -56,15 +56,21 @@ Expand beyond `zyxel` so company and home networks across major vendors work wit
 - Registration in collector `cmd/lan-collector` & `cmd/router-probe`, API `ROUTER_VENDORS` (`apps/api/src/modules/routers/schema.ts`), shared types, API tests, and Web UI vendor selector + EN/AR strings.
 
 Target vendor drivers (added incrementally, one vendor or clean group per commit):
-- [ ] **MikroTik RouterOS v7** (`internal/router/mikrotik`): REST API (`/rest/system/resource`, `/rest/ip/dhcp-server/lease`, `/rest/ip/arp`, `/rest/interface/wireless/registration-table` & `/rest/interface/wifi/registration-table`, firewall filter/address-list block tagged with Nigafiy comment, simple queue rate limits).
-- [ ] **Ubiquiti UniFi Network** (`internal/router/unifi`): UniFi OS & Classic Controller API (`/api/auth/login` + fallback `/api/login`, `/stat/sta`, `/stat/user`, `cmd/stamgr` `block-sta` / `unblock-sta`).
-- [ ] **OpenWrt** (`internal/router/openwrt`): ubus JSON-RPC (`/ubus` `session.login`, `luci-rpc.getDHCPLeases`, `luci-rpc.getHostHints`, `iwinfo.assoclist`, `uci` firewall block rule tagged for Nigafiy + `uci.commit` + firewall reload).
-- [ ] **OPNsense** (`internal/router/opnsense`): REST API with API key/secret Basic Auth (`/api/core/firmware/status`, `/api/diagnostics/interface/getArp`, `/api/dhcpv4/leases/searchLease`, firewall alias-based block + reconfigure).
-- [ ] **pfSense** (`internal/router/pfsense`): pfSense REST API v2 (`/api/v2/system/version`, `/api/v2/diagnostics/arp_table`, `/api/v2/services/dhcp_server/leases`, managed alias block + apply).
-- [ ] **FortiGate (FortiOS)** (`internal/router/fortigate`): FortiOS REST API (`/api/v2/monitor/system/status`, `/api/v2/monitor/user/device/query`, `/api/v2/monitor/user/banned/select`, `add_users`, `clear_users`).
-- [ ] **TP-Link Omada Controller** (`internal/router/omada`): Omada Controller Web/Open API (login, site clients, block/unblock client, rate limit).
-- [ ] **ASUS (Asuswrt / Merlin)** (`internal/router/asus`): Asuswrt HTTP API (`/login.cgi`, `appGet.cgi` client list + DHCP leases, `multifilter` / `MACList` per-device block ledger).
-- [ ] **Huawei / Home ISP Gateways & Cisco IOS XE RESTCONF** (`internal/router/cisco_xe` — RESTCONF `/restconf/data` ARP/DHCP & ACL block where supported).
+- [x] **MikroTik RouterOS v7** (`internal/router/mikrotik`): REST API (`/rest/system/resource`, `/rest/ip/dhcp-server/lease`, `/rest/ip/arp`, `/rest/interface/wireless/registration-table` & `/rest/interface/wifi/registration-table`, firewall filter/address-list block tagged with Nigafiy comment, simple queue rate limits).
+- [x] **Ubiquiti UniFi Network** (`internal/router/unifi`): UniFi OS & Classic Controller API (`/api/auth/login` + fallback `/api/login`, `/stat/sta`, `/stat/user`, `cmd/stamgr` `block-sta` / `unblock-sta`).
+- [x] **OpenWrt** (`internal/router/openwrt`): ubus JSON-RPC (`/ubus` `session.login`, `luci-rpc.getDHCPLeases`, `luci-rpc.getHostHints`, `iwinfo.assoclist`, `uci` firewall block rule tagged for Nigafiy + `uci.commit` + firewall reload).
+- [x] **OPNsense** (`internal/router/opnsense`): REST API with API key/secret Basic Auth (`/api/core/firmware/status`, `/api/diagnostics/interface/getArp`, `/api/dhcpv4/leases/searchLease`, firewall alias-based block + reconfigure).
+- [x] **pfSense** (`internal/router/pfsense`): pfSense REST API v2 (`/api/v2/system/version`, `/api/v2/diagnostics/arp_table`, `/api/v2/services/dhcp_server/leases`, managed alias block + apply).
+- [x] **FortiGate (FortiOS)** (`internal/router/fortigate`): FortiOS REST API (`/api/v2/monitor/system/status`, `/api/v2/monitor/user/device/query`, `/api/v2/monitor/user/banned/select`, `add_users`, `clear_users`).
+- [x] **TP-Link Omada Controller** (`internal/router/omada`): Omada Controller Web/Open API (login, site clients, block/unblock client, rate limit).
+- [x] **ASUS (Asuswrt / Merlin)** (`internal/router/asus`): Asuswrt HTTP API (`/login.cgi`, `appGet.cgi` client list + DHCP leases, `multifilter` / `MACList` per-device block ledger).
+- [x] **Cisco IOS XE RESTCONF** (`internal/router/ciscoxe` — vendor `cisco_xe`, RESTCONF `/restconf/data` ARP/DHCP read-only).
+- [x] **Huawei Home / ISP Gateways** (`internal/router/huawei` — vendor `huawei`, DG8045 / HG630 / HG633 / HG8145V5 / WS5200 / AX3, SCRAM-SHA-256 + HostInfo + MAC blacklist).
+- [x] **Huawei 4G/5G Home CPE** (`internal/router/huaweilte` — vendor `huawei_lte`, B315 / B525 / B535 / B818 / H122 / H155 — STC/Zain/Mobily/Vodafone/WE, HiLink XML API `password_type=4` + host-list + multi-macfilter).
+- [x] **ZTE ZXHN Gateways** (`internal/router/zte` — vendor `zte`, H168N / H188A / F660 / F670L / F680 — WE/Orange/Etisalat/Maroc Telecom, SHA-256 `login_entry` + `accessdev_landev_lua` + `localnet_macfilter_lua`).
+- [x] **TP-Link Home / Archer** (`internal/router/tplink` — vendor `tplink_archer`, C6 / C80 / AX10 / AX53 / VR400, RSA-PKCS1v1.5 `/cgi-bin/luci` `stok` + DHCP + Access Control blacklist).
+- [x] **D-Link DIR / EXO / COVR** (`internal/router/dlink` — vendor `dlink`, HNAP1 SOAP HMAC-MD5 `Login`, `GetDeviceSettings`, `GetClientInfo`, `GetMACFilters2`/`SetMACFilters2`).
+- [x] **Tenda Home Routers** (`internal/router/tenda` — vendor `tenda`, F3 / AC6 / AC10 / AC11 / AC23, `/login/Auth`, `/goform/getQos`, block/unblock + per-device rate limits).
 
 ---
 

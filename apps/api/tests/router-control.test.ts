@@ -430,4 +430,48 @@ describe('router control', () => {
     // Older collectors without the field keep working.
     expect((await heartbeat(c, { access_status: { enabled: true, listening: true } })).status).toBe(200);
   });
+
+  it('accepts all shipped router vendor drivers and rejects unknown vendors', async () => {
+    const a = await newAccount('rc-vendors');
+    await addScope(a, '192.168.60.0/24');
+    const vendors = [
+      'mikrotik',
+      'huawei',
+      'huawei_lte',
+      'zte',
+      'tplink_archer',
+      'tenda',
+      'dlink',
+      'asus',
+      'zyxel',
+      'unifi',
+      'omada',
+      'openwrt',
+      'opnsense',
+      'pfsense',
+      'fortigate',
+      'cisco_xe',
+    ];
+    for (let i = 0; i < vendors.length; i++) {
+      const res = await a.agent.post('/api/v1/routers').set(CSRF).send({
+        site_id: a.siteId,
+        name: `Router ${vendors[i]}`,
+        vendor: vendors[i],
+        address: `192.168.60.${i + 1}`,
+        transport: 'https',
+        credentials: { username: 'admin', password: PASSWORD },
+      });
+      expect(res.status, `vendor ${vendors[i]}`).toBe(201);
+      expect(res.body.vendor).toBe(vendors[i]);
+    }
+    const bad = await a.agent.post('/api/v1/routers').set(CSRF).send({
+      site_id: a.siteId,
+      name: 'Unknown',
+      vendor: 'not-a-vendor',
+      address: '192.168.60.99',
+      transport: 'https',
+      credentials: { username: 'admin', password: PASSWORD },
+    });
+    expect(bad.status).toBe(400);
+  });
 });

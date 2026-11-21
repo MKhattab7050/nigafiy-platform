@@ -3,7 +3,24 @@ import type { ControlAction } from '@/lib/controls';
 
 // Shapes of the routers API (apps/api/src/modules/routers). Kept here because they are owned by this feature.
 
-export const ROUTER_VENDORS = [{ value: 'zyxel', label: 'Zyxel' }] as const;
+export const ROUTER_VENDORS = [
+  { value: 'huawei', label: 'Huawei Home / ISP (DG8045 / HG630 / HG633 / HG8145V5 / AX3)', defaultUser: 'admin' },
+  { value: 'huawei_lte', label: 'Huawei 4G/5G Home CPE (B315 / B525 / B535 / B818 / H122 / H155)', defaultUser: 'admin' },
+  { value: 'zte', label: 'ZTE ZXHN (H168N / H188A / F660 / F670L / F680)', defaultUser: 'admin' },
+  { value: 'tplink_archer', label: 'TP-Link Home / Archer (C6 / C80 / AX10 / AX53 / VR400)', defaultUser: 'admin' },
+  { value: 'tenda', label: 'Tenda Home (F3 / AC6 / AC10 / AC11 / AC23)', defaultUser: 'admin' },
+  { value: 'dlink', label: 'D-Link (DIR-825 / DIR-842 / DIR-878 / EXO / COVR)', defaultUser: 'admin' },
+  { value: 'asus', label: 'ASUS (Asuswrt / Merlin)', defaultUser: 'admin' },
+  { value: 'zyxel', label: 'Zyxel (VMG3625-T50B / ZCFG)', defaultUser: 'admin' },
+  { value: 'mikrotik', label: 'MikroTik (RouterOS v7)', defaultUser: 'admin' },
+  { value: 'unifi', label: 'Ubiquiti UniFi Network', defaultUser: 'admin' },
+  { value: 'omada', label: 'TP-Link Omada Controller', defaultUser: 'admin' },
+  { value: 'openwrt', label: 'OpenWrt (ubus / LuCI)', defaultUser: 'root' },
+  { value: 'opnsense', label: 'OPNsense', defaultUser: '' },
+  { value: 'pfsense', label: 'Netgate pfSense (REST API v2)', defaultUser: 'api-key' },
+  { value: 'fortigate', label: 'Fortinet FortiGate (FortiOS)', defaultUser: 'api' },
+  { value: 'cisco_xe', label: 'Cisco IOS XE (RESTCONF)', defaultUser: 'admin' },
+] as const;
 export type RouterVendor = (typeof ROUTER_VENDORS)[number]['value'];
 export const ROUTER_TRANSPORTS = ['https-pinned', 'https', 'http'] as const;
 export type RouterTransport = (typeof ROUTER_TRANSPORTS)[number];
