@@ -95,7 +95,7 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
   });
 }
 
-function waitForCommandSignal(commandId: string, timeoutMs: number): Promise<void> {
+export function waitForCommandSignal(commandId: string, timeoutMs: number): Promise<void> {
   return new Promise((resolve) => {
     const event = `done:${commandId}`;
     const onDone = () => {
@@ -111,7 +111,8 @@ function waitForCommandSignal(commandId: string, timeoutMs: number): Promise<voi
 }
 
 /**
- * Waits on `commandEvents` (with a 400 ms fallback poll for multi-instance setups, up to `waitMs`)
+ * Waits on `commandEvents` (woken on every API instance through COMMAND_DONE_CHANNEL; a 400 ms
+ * re-check covers a lost notification, up to `waitMs`)
  * for the command to complete or fail. Once a frame capture or file download chunk is read and
  * returned to the caller, its base64 payload is stripped from `endpoint_commands`.
  */

@@ -17,6 +17,18 @@ export const ONLINE_WITHIN_MS = 120_000;
 export const commandEvents = new EventEmitter();
 commandEvents.setMaxListeners(0);
 
+/**
+ * Cross-instance wake-up: `applyCommandResults` notifies this channel with each finished command id
+ * (delivered on COMMIT to every API instance); the endpoints module's lifecycle turns it into a
+ * `done:<id>` event on that instance's `commandEvents`. Without it, a waiter on another instance
+ * would only notice through its fallback poll.
+ */
+export const COMMAND_DONE_CHANNEL = 'ld_command_done';
+
+export function signalCommandDone(commandId: string): void {
+  commandEvents.emit(`done:${commandId}`);
+}
+
 export const ENDPOINT_SUMMARY_SELECT = `
   SELECT e.id, e.site_id, s.name AS site_name, e.device_id, e.name,
          e.platform, e.status, e.connection_state,
@@ -90,6 +102,9 @@ export async function applyCommandResults(
     if (updated.rowCount) {
       completedIds.push(resItem.id);
     }
+  }
+  if (completedIds.length) {
+    await db.query(`SELECT pg_notify($1, id) FROM unnest($2::text[]) AS id`, [COMMAND_DONE_CHANNEL, completedIds]);
   }
   return completedIds;
 }

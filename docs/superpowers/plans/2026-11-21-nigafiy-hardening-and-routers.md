@@ -85,7 +85,10 @@ Target vendor drivers (added incrementally, one vendor or clean group per commit
 - [ ] Clean up `master` vs `phase-2-network-intelligence` divergence (with owner approval before merging/fast-forwarding `master`).
 
 #### Step B2: Multi-Instance Reliability, Secrets Lifecycle & Remote Desktop Pre-WebRTC Fixes
-- [ ] Replace in-memory `commandEvents` (`EventEmitter` in `apps/api/src/modules/endpoints/repo.ts`) with PostgreSQL `LISTEN/NOTIFY` so interactive endpoint commands work across multiple API instances.
+
+> **Parked (owner, 2026-11-21): "do the desktop app first".** Only the `commandEvents` item is done; the rest of B2 resumes after the desktop milestones (Track C, Milestones 2–4).
+
+- [x] Replace in-memory `commandEvents` (`EventEmitter` in `apps/api/src/modules/endpoints/repo.ts`) with PostgreSQL `LISTEN/NOTIFY` so interactive endpoint commands work across multiple API instances.
 - [ ] Add optional `REDIS_URL` store for `express-rate-limit` in `apps/api/src/app.ts` (falling back cleanly to memory store in single-node/local mode).
 - [ ] Add `APP_ENCRYPTION_KEY` key rotation CLI (`rotate-key`) re-encrypting all sealed columns in a single transaction + integration test.
 - [ ] Add documented DB Backup / Restore CLI (`pg_dump` / `pg_restore`) working with both `embedded-postgres` and external PostgreSQL.

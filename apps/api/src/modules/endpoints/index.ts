@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { defineModule } from '../../infrastructure/module.ts';
+import { onNotification, startListening, stopListening } from '../../infrastructure/pg-listen.ts';
 import { agentGatewayRouter } from './agent/routes.ts';
 import { commandsRouter } from './commands/routes.ts';
 import { enrollmentRouter } from './enrollment/routes.ts';
 import { fleetRouter } from './fleet/routes.ts';
 import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
+import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
 
 /**
  * Endpoint management (Windows, Linux, macOS agents).
@@ -21,10 +23,24 @@ import { remoteDesktopRouter } from './remote-desktop/routes.ts';
 const endpointsApi: Router = Router();
 endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, remoteDesktopRouter, commandsRouter);
 
+let unsubscribeCommandDone: (() => void) | null = null;
+
 export const endpointsModule = defineModule({
   name: 'endpoints',
   api: endpointsApi,
   gateway: { path: '/api/v1/agent', rateLimitPerMinute: 360, router: agentGatewayRouter },
+  lifecycle: {
+    // Results uploaded to another API instance wake this instance's waiters (interactive commands).
+    start: async () => {
+      unsubscribeCommandDone ??= onNotification(COMMAND_DONE_CHANNEL, (id) => id && signalCommandDone(id));
+      await startListening();
+    },
+    stop: async () => {
+      unsubscribeCommandDone?.();
+      unsubscribeCommandDone = null;
+      await stopListening();
+    },
+  },
 });
 
 export { payloadForAudit } from './repo.ts';

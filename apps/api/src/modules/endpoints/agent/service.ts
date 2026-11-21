@@ -5,7 +5,7 @@ import { withSystem, withTenant } from '../../../infrastructure/db.ts';
 import { emitEvent } from '../../events/index.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { evaluateCompliance, inferPlatformFromOs } from '../capabilities.ts';
-import { HEARTBEAT_INTERVAL_SECONDS, applyCommandResults, commandEvents, deliverPendingCommands, resolveDeviceLink } from '../repo.ts';
+import { HEARTBEAT_INTERVAL_SECONDS, applyCommandResults, deliverPendingCommands, signalCommandDone, resolveDeviceLink } from '../repo.ts';
 import type { AgentEnroll, AgentHeartbeat, AgentInventory, CommandResult, EndpointContext } from '../schema.ts';
 import { normalizeConnections } from './connections.ts';
 
@@ -244,7 +244,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
   });
 
   for (const id of completedIds) {
-    commandEvents.emit(`done:${id}`);
+    signalCommandDone(id); // this instance at once; others through COMMAND_DONE_CHANNEL
   }
   return response;
 }
@@ -264,7 +264,7 @@ export async function recordCommandResults(ep: EndpointContext, results: Command
     return ids;
   });
   for (const id of completedIds) {
-    commandEvents.emit(`done:${id}`);
+    signalCommandDone(id); // this instance at once; others through COMMAND_DONE_CHANNEL
   }
 }
 
