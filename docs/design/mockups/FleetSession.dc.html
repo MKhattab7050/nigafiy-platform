@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet live session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:inherit}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.25)">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 40px; padding: 4px 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">[Computer name]</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 10px; background: var(--chip); color: var(--okText); font-weight: 600"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11V8a6 6 0 0 1 12 0v3M5 11h14v10H5z"></path></svg>{{t.route}}</span>
+      <span dir="ltr" style="font-family: 'Cascadia Mono', Consolas, monospace">{{t.stats}}</span>
+      <span style="flex: 1"></span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--rec); font-weight: 600"><span style="width: 8px; height: 8px; border-radius: 4px; background: currentColor"></span>{{t.recording}}</span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div role="toolbar" aria-label="{{t.toolbar}}" style="display: flex; flex-wrap: wrap; align-items: stretch; gap: 2px; padding: 4px 8px; border-top: 1px solid var(--stroke); border-bottom: 1px solid var(--stroke); background: var(--layer)">
+      <sc-for list="{{tools}}" as="tl" hint-placeholder-count="16">
+        <a href="#" title="{{tl.label}}" style="{{tl.style}} display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 62px; min-height: 52px; padding-inline: 6px; border-radius: 5px; text-decoration: none; font-size: 11px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{tl.icon}}"></path></svg>
+          <span>{{tl.label}}</span>
+        </a>
+      </sc-for>
+      <span style="flex: 1"></span>
+      <a href="#" style="align-self: center; display: inline-flex; align-items: center; min-height: 34px; padding-inline: 14px; border-radius: 5px; background: #B3261E; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.end}}</a>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; background: var(--layer)">
+      <section aria-label="{{t.screenLabel}}" style="flex: 999 1 640px; min-width: 0; padding: 12px; display: flex; flex-direction: column; gap: 8px">
+        <div style="position: relative; aspect-ratio: 16 / 9; border-radius: 6px; background: #0f1115; overflow: hidden; display: flex; align-items: center; justify-content: center">
+          <div role="note" style="position: absolute; top: 0; inset-inline: 0; margin-inline: auto; width: max-content; max-width: 92%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 0 0 8px 8px; background: #2b1f4d; color: #fff; font-size: 12px">
+            <span style="width: 8px; height: 8px; border-radius: 4px; background: #ff8f86"></span>
+            <span>{{t.remoteBar}}</span>
+            <span style="padding: 2px 8px; border-radius: 4px; background: #B3261E; font-weight: 600">{{t.endShort}}</span>
+          </div>
+          <div style="color: #c5c5c5; font-size: 14px; text-align: center; padding: 16px; max-width: 480px">{{t.screen}}</div>
+          <div style="position: absolute; bottom: 10px; inset-inline-end: 10px; display: flex; gap: 6px">
+            <sc-for list="{{monitors}}" as="m" hint-placeholder-count="3">
+              <span style="{{m.style}} display: inline-flex; align-items: center; min-height: 26px; padding-inline: 10px; border-radius: 4px; font-size: 12px">{{m.label}}</span>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--fg2)">
+          <span style="font-weight: 600; color: var(--fg)">{{t.profile}}</span>
+          <sc-for list="{{perms}}" as="p" hint-placeholder-count="7">
+            <span style="{{p.style}} display: inline-flex; align-items: center; gap: 4px; min-height: 24px; padding-inline: 8px; border-radius: 12px">{{p.label}}</span>
+          </sc-for>
+        </div>
+      </section>
+      <aside aria-label="{{t.side}}" style="flex: 1 1 280px; max-width: 340px; border-inline-start: 1px solid var(--stroke); padding: 12px; display: flex; flex-direction: column; gap: 12px; background: var(--card)">
+        <div role="tablist" style="display: flex; gap: 2px; border-bottom: 1px solid var(--stroke)">
+          <sc-for list="{{sideTabs}}" as="st" hint-placeholder-count="3">
+            <a href="#" role="tab" style="{{st.style}} display: inline-flex; align-items: center; min-height: 34px; padding-inline: 10px; text-decoration: none; font-size: 13px">{{st.label}}</a>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px">
+          <sc-for list="{{chat}}" as="m" hint-placeholder-count="3">
+            <div style="{{m.style}} max-width: 85%; padding: 8px 10px; border-radius: 8px">
+              <div style="font-size: 11px; font-weight: 600; opacity: 0.8">{{m.who}}</div>{{m.text}}
+            </div>
+          </sc-for>
+          <div style="display: flex; gap: 6px"><span style="flex: 1; height: 32px; border-radius: 5px; border: 1px solid var(--stroke2); display: flex; align-items: center; padding-inline: 10px; color: var(--fg2); font-size: 12px">{{t.typeMsg}}</span><span style="display: inline-flex; align-items: center; padding-inline: 12px; border-radius: 5px; background: #6B3FC7; color: #fff; font-size: 12px; font-weight: 600">{{t.send}}</span></div>
+        </div>
+        <div style="height: 1px; background: var(--stroke)"></div>
+        <div style="font-size: 13px; font-weight: 600">{{t.transfers}}</div>
+        <sc-for list="{{transfers}}" as="x" hint-placeholder-count="2">
+          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px">
+            <div style="display: flex; gap: 6px"><span style="flex: 1; font-weight: 600">{{x.name}}</span><span style="color: var(--fg2)">{{x.state}}</span></div>
+            <div style="height: 4px; border-radius: 2px; background: var(--stroke)"><div style="width: {{x.pct}}; height: 4px; border-radius: 2px; background: #7A4FD6"></div></div>
+          </div>
+        </sc-for>
+        <div style="font-size: 12px; color: var(--fg2)">{{t.dropHint}}</div>
+        <div style="height: 1px; background: var(--stroke)"></div>
+        <div style="font-size: 13px; font-weight: 600">{{t.people}}</div>
+        <div style="font-size: 12px; color: var(--fg2)">{{t.peopleList}}</div>
+        <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.invite}}</a>
+      </aside>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":true},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? true;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#141218', mica: '#1c1a22', layer: '#222029', card: '#29262f', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#c6c0d2', accentText: '#b9a2ff', chip: 'rgba(108,203,95,0.14)', okText: '#6ccb5f', rec: '#ff8f86', on: 'rgba(185,162,255,0.18)', onFg: '#e4dbff', bubble: 'rgba(255,255,255,0.06)', mine: 'rgba(185,162,255,0.20)' }
+      : { desk: '#e5e0f0', mica: '#f3f0f9', layer: '#fbfafd', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#5B32B5', chip: '#e3f2e2', okText: '#0E7A0D', rec: '#B3261E', on: 'rgba(122,79,214,0.12)', onFg: '#3F2280', bubble: '#f2f0f6', mine: '#ece4fd' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', route: 'مباشر على الشبكة المحلية · مشفّر', stats: '[n] fps · [n] ms · [n] Mbps · H.264', recording: 'قيد التسجيل', toolbar: 'أدوات الجلسة', end: 'إنهاء الجلسة', endShort: 'إنهاء',
+      screenLabel: 'الشاشة البعيدة', remoteBar: 'ما يراه المستخدم: [اسم المشغّل] متصل · السبب: [السبب] · قيد التسجيل', screen: '[الصورة الحية للشاشة البعيدة، إطارات حقيقية من الوكيل فقط]',
+      profile: 'ملف الصلاحيات: دعم ·', side: 'لوحة الجلسة', typeMsg: 'اكتب رسالة للمستخدم', send: 'إرسال', transfers: 'النقل', dropHint: 'اسحب ملفات إلى الشاشة لإرسالها، وتُفحص بـ SHA-256 عند الوصول.',
+      people: 'في الجلسة', peopleList: '[اسم المشغّل] (أنت) · [اسم المستخدم] على الحاسوب', invite: 'دعوة زميل أو تسليم الجلسة',
+    } : {
+      mockup: 'Design mockup, not real data', route: 'Direct on the LAN · encrypted', stats: '[n] fps · [n] ms · [n] Mbps · H.264', recording: 'Recording', toolbar: 'Session tools', end: 'End session', endShort: 'End',
+      screenLabel: 'Remote screen', remoteBar: 'What the user sees: [operator] is connected · Reason: [reason] · Recording', screen: '[Live picture of the remote screen, real frames from the agent only]',
+      profile: 'Profile: Support ·', side: 'Session panel', typeMsg: 'Write to the user', send: 'Send', transfers: 'Transfers', dropHint: 'Drop files on the screen to send them; each is checked with SHA-256 on arrival.',
+      people: 'In this session', peopleList: '[Operator] (you) · [User name] at the computer', invite: 'Invite a colleague or hand over',
+    };
+    const toolList = ar ? [
+      ['الشاشات', 'M3 5h8v6H3zM13 5h8v6h-8zM6 15h12M9 19h6', true], ['الجودة', 'M4 18l5-6 4 4 7-9', false], ['عرض فقط', 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', false],
+      ['الحافظة', 'M8 4h8v3H8zM6 6H5v15h14V6h-1', false], ['الملفات', 'M3 6h6l2 2h10v11H3z', false], ['المحادثة', 'M4 5h16v11H9l-5 4z', true],
+      ['الصوت', 'M4 9h4l5-4v14l-5-4H4zM17 9a4 4 0 0 1 0 6', false], ['تسجيل', 'M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0', true], ['رسم', 'M4 20l4-1 11-11-3-3L5 16z', false],
+      ['شاشة الخصوصية', 'M3 5h18v12H3zM8 21h8M7 9l10 4', false], ['قفل إدخال المستخدم', 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z', false], ['Ctrl+Alt+Del', 'M4 7h16v10H4zM8 11h2M12 11h4M8 14h8', false],
+      ['تبديل المستخدم', 'M9 8m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 20a6 6 0 0 1 12 0M17 8h4M19 6v4', false], ['إعادة تشغيل وإعادة اتصال', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6', false], ['طباعة', 'M7 8V3h10v5M5 8h14v8H5zM8 14h8v6H8z', false], ['المزيد', 'M5 12h.5M12 12h.5M19 12h.5', false],
+    ] : [
+      ['Monitors', 'M3 5h8v6H3zM13 5h8v6h-8zM6 15h12M9 19h6', true], ['Quality', 'M4 18l5-6 4 4 7-9', false], ['View only', 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', false],
+      ['Clipboard', 'M8 4h8v3H8zM6 6H5v15h14V6h-1', false], ['Files', 'M3 6h6l2 2h10v11H3z', false], ['Chat', 'M4 5h16v11H9l-5 4z', true],
+      ['Audio', 'M4 9h4l5-4v14l-5-4H4zM17 9a4 4 0 0 1 0 6', false], ['Record', 'M12 12m-6 0a6 6 0 1 0 12 0a6 6 0 1 0-12 0', true], ['Draw', 'M4 20l4-1 11-11-3-3L5 16z', false],
+      ['Privacy screen', 'M3 5h18v12H3zM8 21h8M7 9l10 4', false], ['Block input', 'M7 11V8a5 5 0 0 1 10 0v3M6 11h12v9H6z', false], ['Ctrl+Alt+Del', 'M4 7h16v10H4zM8 11h2M12 11h4M8 14h8', false],
+      ['Switch user', 'M9 8m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 20a6 6 0 0 1 12 0M17 8h4M19 6v4', false], ['Restart, reconnect', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6', false], ['Print', 'M7 8V3h10v5M5 8h14v8H5zM8 14h8v6H8z', false], ['More', 'M5 12h.5M12 12h.5M19 12h.5', false],
+    ];
+    const tools = toolList.map((x) => ({ label: x[0], icon: x[1], style: x[2] ? 'background: var(--on); color: var(--onFg); font-weight: 600;' : 'color: var(--fg);' }));
+    const monitors = (ar ? ['١', '٢', 'الكل'] : ['1', '2', 'All']).map((l, i) => ({ label: l, style: i === 0 ? 'background: #7A4FD6; color: #fff; font-weight: 600;' : 'background: rgba(255,255,255,0.12); color: #fff;' }));
+    const permList = ar ? [['تحكم', 1], ['الحافظة في الاتجاهين', 1], ['الملفات', 1], ['التسجيل', 1], ['الصوت', 0], ['شاشة الخصوصية', 0], ['سطر الأوامر', 0]] : [['Control', 1], ['Clipboard both ways', 1], ['Files', 1], ['Recording', 1], ['Audio', 0], ['Privacy screen', 0], ['Shell', 0]];
+    const perms = permList.map((p) => ({ label: (p[1] ? '✓ ' : '— ') + p[0], style: p[1] ? 'background: var(--on); color: var(--onFg); font-weight: 600;' : 'border: 1px dashed var(--stroke2); color: var(--fg2);' }));
+    const sideTabs = (ar ? ['المحادثة', 'الملفات', 'معلومات'] : ['Chat', 'Files', 'Info']).map((l, i) => ({ label: l, style: i === 0 ? 'color: var(--fg); font-weight: 600; border-bottom: 3px solid #7A4FD6;' : 'color: var(--fg2); border-bottom: 3px solid transparent;' }));
+    const chat = ar ? [
+      { who: '[اسم المستخدم]', text: '[رسالة المستخدم]', style: 'background: var(--bubble); align-self: flex-start;' },
+      { who: 'أنت', text: '[ردّك]', style: 'background: var(--mine); align-self: flex-end;' },
+    ] : [
+      { who: '[User name]', text: '[The user’s message]', style: 'background: var(--bubble); align-self: flex-start;' },
+      { who: 'You', text: '[Your reply]', style: 'background: var(--mine); align-self: flex-end;' },
+    ];
+    const transfers = ar ? [{ name: '[اسم الملف]', state: 'تم · SHA-256 مطابق', pct: '100%' }, { name: '[اسم الملف]', state: '[n]٪ · [n] MB/s', pct: '58%' }]
+      : [{ name: '[File name]', state: 'Done · SHA-256 matches', pct: '100%' }, { name: '[File name]', state: '[n]% · [n] MB/s', pct: '58%' }];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, tools, monitors, perms, sideTabs, chat, transfers };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet user side</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5B32B5}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 600">{{t.title}}</h1>
+      <span style="font-size: 13px; color: var(--fg2); flex: 1 1 300px">{{t.sub}}</span>
+      <span style="font-size: 12px; color: var(--fg2)">{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch">
+      <section aria-labelledby="desk-h" style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+        <h2 id="desk-h" style="margin: 0; font-size: 14px; font-weight: 600; color: var(--fg2)">{{t.deskH}}</h2>
+        <div style="position: relative; min-height: 470px; border-radius: 8px; overflow: hidden; background: linear-gradient(135deg, #3b3360, #1f3a5c); display: flex; align-items: center; justify-content: center; padding: 64px 16px 56px">
+          <div role="status" style="position: absolute; top: 0; inset-inline: 0; margin-inline: auto; width: max-content; max-width: 94%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 0 0 10px 10px; background: #2b1f4d; color: #fff; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,0.3)">
+            <span style="width: 9px; height: 9px; border-radius: 5px; background: #ff8f86"></span>
+            <span style="font-weight: 600">{{t.barWho}}</span>
+            <span>{{t.barWhy}}</span>
+            <span style="opacity: 0.85">{{t.barPerms}}</span>
+            <span style="padding: 3px 10px; border-radius: 5px; background: rgba(255,255,255,0.14)">{{t.chat}}</span>
+            <span style="padding: 3px 10px; border-radius: 5px; background: #B3261E; font-weight: 600">{{t.end}}</span>
+          </div>
+          <div role="dialog" aria-labelledby="ask-h" style="width: 100%; max-width: 440px; border-radius: 8px; background: var(--card); color: var(--fg); box-shadow: 0 16px 48px rgba(0,0,0,0.4); padding: 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="width: 32px; height: 32px; border-radius: 8px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+              <h3 id="ask-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.askTitle}}</h3>
+            </div>
+            <div style="font-size: 13px"><span style="color: var(--fg2)">{{t.reasonL}}</span> {{t.reason}}</div>
+            <div style="font-size: 13px; font-weight: 600">{{t.allowL}}</div>
+            <sc-for list="{{asks}}" as="a" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 13px">
+                <span role="checkbox" aria-checked="{{a.aria}}" style="{{a.box}} width: 16px; height: 16px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px">{{a.tick}}</span>{{a.label}}
+              </div>
+            </sc-for>
+            <div style="font-size: 12px; color: var(--fg2)">{{t.timeout}}</div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end">
+              <span style="display: inline-flex; align-items: center; min-height: 34px; padding-inline: 16px; border-radius: 5px; border: 1px solid var(--stroke2); font-size: 13px">{{t.decline}}</span>
+              <span style="display: inline-flex; align-items: center; min-height: 34px; padding-inline: 16px; border-radius: 5px; background: #6B3FC7; color: #fff; font-size: 13px; font-weight: 600">{{t.accept}}</span>
+            </div>
+          </div>
+          <div style="position: absolute; bottom: 0; inset-inline: 0; height: 40px; background: rgba(20,20,28,0.85); display: flex; align-items: center; justify-content: flex-end; padding-inline: 14px; gap: 10px; color: #fff; font-size: 12px">
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.14)"><span style="width: 14px; height: 14px; border-radius: 4px; background: #4B5563; display: inline-block"></span>Nigafiy Agent</span>
+            <span dir="ltr">[time]</span>
+          </div>
+        </div>
+      </section>
+      <div style="flex: 1 1 300px; max-width: 380px; display: flex; flex-direction: column; gap: 14px">
+        <section aria-labelledby="tray-h" style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 10px">
+          <h2 id="tray-h" style="margin: 0; font-size: 15px; font-weight: 600">{{t.trayH}}</h2>
+          <span style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 34px; padding-inline: 14px; border-radius: 5px; background: #6B3FC7; color: #fff; font-size: 13px; font-weight: 600">{{t.request}}</span>
+          <div style="font-size: 13px; font-weight: 600">{{t.activity}}</div>
+          <sc-for list="{{acts}}" as="x" hint-placeholder-count="4">
+            <div style="display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid var(--stroke)">
+              <span>{{x.what}}</span><span style="font-size: 12px; color: var(--fg2)">{{x.who}}</span>
+            </div>
+          </sc-for>
+        </section>
+        <section aria-labelledby="qs-h" style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 8px">
+          <h2 id="qs-h" style="margin: 0; font-size: 15px; font-weight: 600">{{t.qsH}}</h2>
+          <div style="font-size: 12px; color: var(--fg2)">{{t.qsSub}}</div>
+          <div style="display: flex; gap: 16px; flex-wrap: wrap">
+            <div><div style="font-size: 12px; color: var(--fg2)">{{t.code}}</div><div dir="ltr" style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 22px; font-weight: 600; letter-spacing: 1px">### ### ###</div></div>
+            <div><div style="font-size: 12px; color: var(--fg2)">{{t.pin}}</div><div dir="ltr" style="font-family: 'Cascadia Mono', Consolas, monospace; font-size: 22px; font-weight: 600">####</div></div>
+          </div>
+          <div style="font-size: 12px; color: var(--fg2)">{{t.qsNote}}</div>
+        </section>
+        <section aria-labelledby="ps-h" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke)">
+          <h2 id="ps-h" style="margin: 0; padding: 10px 14px; font-size: 14px; font-weight: 600; background: var(--card)">{{t.psH}}</h2>
+          <div style="background: #0b0b10; color: #fff; padding: 22px 16px; text-align: center; font-size: 14px; display: flex; flex-direction: column; gap: 6px">
+            <span style="font-weight: 600">{{t.psLine1}}</span><span style="opacity: 0.8; font-size: 13px">{{t.psLine2}}</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1d1a24', card: '#2f2b37', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#c6c0d2' }
+      : { desk: '#e5e0f0', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', title: 'ما يراه الشخص على الحاسوب', sub: 'لا جلسة مخفية: شريط الجلسة ظاهر طول الوقت، والمستخدم يرى كل ما فُعل على جهازه.',
+      deskH: 'سطح مكتب المستخدم أثناء الطلب ثم أثناء الجلسة', barWho: '[اسم المشغّل] متصل بجهازك', barWhy: '· السبب: [السبب]', barPerms: '· تحكم · ملفات · قيد التسجيل', chat: 'محادثة', end: 'إنهاء الجلسة',
+      askTitle: '[اسم المشغّل] من دعم [الشركة] يريد الاتصال', reasonL: 'السبب:', reason: '[السبب كما كتبه المشغّل]', allowL: 'تسمح بـ:', timeout: 'يُرفض تلقائياً بعد [n] ثانية إن لم تختر. يمكنك إنهاء الجلسة في أي وقت.', decline: 'رفض', accept: 'قبول',
+      trayH: 'قائمة Nigafiy Agent', request: 'طلب مساعدة', activity: 'نشاط الدعم على هذا الحاسوب',
+      qsH: 'Nigafiy Support (دعم سريع)', qsSub: 'لحاسوب غير مُسجّل: يُشغَّل بدون تثبيت، ويُغلق ويُمسح نفسه بعد الجلسة.', code: 'الرمز', pin: 'رمز لمرة واحدة', qsNote: 'اقرأ الرمزين للمشغّل، ثم اضغط قبول عند ظهور الطلب. بموافقتك فقط.',
+      psH: 'شاشة الخصوصية كما تظهر على الشاشة الفعلية', psLine1: 'جلسة دعم فني جارية', psLine2: '[اسم المشغّل] · السبب: [السبب] · اضغط Ctrl+Alt+Shift+E لإنهائها',
+    } : {
+      mockup: 'Design mockup, not real data', title: 'What the person at the computer sees', sub: 'No hidden session: the session bar is always on screen, and the user can see everything done on their computer.',
+      deskH: 'The user’s desktop during the request, then the session', barWho: '[Operator] is connected to your computer', barWhy: '· Reason: [reason]', barPerms: '· control · files · recording', chat: 'Chat', end: 'End session',
+      askTitle: '[Operator] from [company] support wants to connect', reasonL: 'Reason:', reason: '[Reason as the operator typed it]', allowL: 'Allow:', timeout: 'Declined on its own after [n] s if you do not choose. You can end the session at any time.', decline: 'Decline', accept: 'Accept',
+      trayH: 'Nigafiy Agent tray', request: 'Request help', activity: 'Support activity on this computer',
+      qsH: 'Nigafiy Support (Quick Support)', qsSub: 'For a computer that is not enrolled: runs without installing, closes and removes itself after the session.', code: 'Code', pin: 'One-time PIN', qsNote: 'Read both to the operator, then click Accept when the request appears. Only with your OK.',
+      psH: 'Privacy screen, as the physical monitor shows it', psLine1: 'IT support session in progress', psLine2: '[Operator] · Reason: [reason] · Press Ctrl+Alt+Shift+E to end it',
+    };
+    const askList = ar ? [['رؤية الشاشة', 1], ['التحكم بالفأرة ولوحة المفاتيح', 1], ['نقل الملفات', 1], ['الحافظة', 0], ['تسجيل الجلسة (تطلبه سياسة شركتك)', 1]]
+      : [['See my screen', 1], ['Control mouse and keyboard', 1], ['Transfer files', 1], ['Clipboard', 0], ['Record the session (your company’s policy requires it)', 1]];
+    const asks = askList.map((a) => ({ label: a[0], aria: a[1] ? 'true' : 'false', tick: a[1] ? '✓' : '', box: a[1] ? 'background: #6B3FC7; border: 1px solid #6B3FC7;' : 'border: 1px solid var(--stroke2);' }));
+    const acts = ar ? [
+      { what: 'جلسة سطح مكتب بعيد، [n] دقيقة، مسجّلة', who: '[اسم المشغّل] · [التاريخ والوقت] · السبب: [السبب]' },
+      { what: 'تشغيل سكربت «[اسم السكربت]»', who: '[اسم المشغّل] · [التاريخ والوقت]' },
+      { what: 'تثبيت [n] تحديثات لـ Windows', who: 'السياسة · [التاريخ والوقت]' },
+      { what: 'فتح مدير الملفات (بدون جلسة)', who: '[اسم المشغّل] · [التاريخ والوقت]' },
+    ] : [
+      { what: 'Remote desktop session, [n] min, recorded', who: '[Operator] · [date and time] · Reason: [reason]' },
+      { what: 'Ran script “[script name]”', who: '[Operator] · [date and time]' },
+      { what: 'Installed [n] Windows updates', who: 'Policy · [date and time]' },
+      { what: 'Opened the file manager (no session)', who: '[Operator] · [date and time]' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, asks, acts };
+  }
+}
+</script>
+</body>
+</html>

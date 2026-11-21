@@ -31,7 +31,7 @@ a{color:#5B32B5}a:hover{color:#3F2280}
         <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ok)"><span style="width: 8px; height: 8px; border-radius: 4px; background: currentColor"></span>{{t.online}}</span>
       </div>
       <div role="tablist" style="display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--stroke)">
-        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="8">
+        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="12">
           <a href="#" role="tab" style="{{tb.style}} display: inline-flex; align-items: center; min-height: 38px; padding-inline: 12px; text-decoration: none; font-size: 14px">{{tb.label}}</a>
         </sc-for>
       </div>
@@ -90,7 +90,7 @@ class Component extends DCLogic {
       screen: '[Live screen of the computer, real frames from the agent only]', input: 'Allow mouse and keyboard', message: 'Send the user a message',
       compliance: 'Compliance', overall: 'Overall: unknown, because some items were not measured', network: 'On the network', networkText: 'Same machine in Radar: [192.168.1.x] · port [x] on [switch]', openRadar: 'Open in Nigafiy Radar',
     };
-    const tabNames = ar ? ['نظرة عامة', 'سطح المكتب البعيد', 'الملفات', 'العمليات', 'الخدمات', 'البرامج', 'السجلات', 'الأوامر'] : ['Overview', 'Remote desktop', 'Files', 'Processes', 'Services', 'Software', 'Logs', 'Commands'];
+    const tabNames = ar ? ['نظرة عامة', 'سطح المكتب البعيد', 'الملفات', 'PowerShell', 'العمليات', 'الخدمات', 'البرامج', 'التحديثات', 'المراقبة', 'السجلات', 'الأوامر', 'التسجيلات'] : ['Overview', 'Remote desktop', 'Files', 'PowerShell', 'Processes', 'Services', 'Software', 'Patches', 'Monitoring', 'Logs', 'Commands', 'Recordings'];
     const tabs = tabNames.map((l, i) => ({ label: l, style: i === 1 ? 'color: var(--fg); font-weight: 600; border-bottom: 3px solid #7A4FD6;' : 'color: var(--fg2); border-bottom: 3px solid transparent;' }));
     const checks = ar ? [
       { name: 'جدار الحماية', state: 'يعمل', color: 'var(--ok)', how: 'قاسه الوكيل' },

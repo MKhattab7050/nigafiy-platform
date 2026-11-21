@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet computers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5B32B5}a:hover{color:#3F2280}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Fleet</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <div style="display: flex; min-height: 740px; border-top: 1px solid var(--stroke)">
+      <nav aria-label="{{t.navLabel}}" style="flex: 0 0 208px; padding: 12px 8px; display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{nav}}" as="n" hint-placeholder-count="9">
+          <a href="#" style="{{n.style}} display: flex; align-items: center; gap: 10px; min-height: 36px; padding-inline: 10px; border-radius: 5px; text-decoration: none; font-size: 14px; color: var(--fg)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.icon}}"></path></svg>
+            <span style="flex: 1">{{n.label}}</span><span style="font-size: 12px; color: var(--fg2)">{{n.badge}}</span>
+          </a>
+        </sc-for>
+      </nav>
+      <main style="flex: 1; min-width: 0; background: var(--layer); border-inline-start: 1px solid var(--stroke); padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 600; flex: 1 1 auto">{{t.title}}</h1>
+          <label style="display: flex; align-items: center; gap: 8px; height: 34px; padding-inline: 10px; border-radius: 5px; border: 1px solid var(--stroke2); background: var(--card); font-size: 13px; color: var(--fg2); min-width: 240px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 11m-7 0a7 7 0 1 0 14 0a7 7 0 1 0-14 0M20 20l-4-4"></path></svg>{{t.search}}
+          </label>
+          <a href="#" style="display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding-inline: 12px; border-radius: 5px; border: 1px solid var(--stroke2); color: var(--fg); text-decoration: none; font-size: 13px">{{t.byCode}}</a>
+          <a href="#" style="display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding-inline: 14px; border-radius: 5px; background: #6B3FC7; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.enroll}}</a>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+            <span style="{{c.style}} display: inline-flex; align-items: center; min-height: 30px; padding-inline: 12px; border-radius: 15px; font-size: 13px">{{c.label}}</span>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+          <section aria-label="{{t.title}}" style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+            <div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: var(--sel); font-size: 13px">
+              <span style="font-weight: 600">{{t.selected}}</span>
+              <sc-for list="{{bulk}}" as="b" hint-placeholder-count="5">
+                <a href="#" style="color: var(--accentText); text-decoration: none">{{b}}</a>
+              </sc-for>
+            </div>
+            <div style="border-radius: 8px; border: 1px solid var(--stroke); background: var(--card); overflow: hidden">
+              <div style="display: grid; grid-template-columns: 28px 2.2fr 1.4fr 1fr 1.1fr 1fr 150px; gap: 10px; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--fg2); border-bottom: 1px solid var(--stroke)">
+                <span></span><span>{{t.cName}}</span><span>{{t.cState}}</span><span>{{t.cOs}}</span><span>{{t.cSite}}</span><span>{{t.cHealth}}</span><span></span>
+              </div>
+              <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+                <div style="{{r.bg}} display: grid; grid-template-columns: 28px 2.2fr 1.4fr 1fr 1.1fr 1fr 150px; gap: 10px; align-items: center; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--stroke)">
+                  <span role="checkbox" aria-checked="{{r.ariaChecked}}" aria-label="{{r.name}}" style="{{r.boxStyle}} width: 16px; height: 16px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; line-height: 1">{{r.tick}}</span>
+                  <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-weight: 600">{{r.name}}</span><span style="font-size: 12px; color: var(--fg2)">{{r.user}}</span></span>
+                  <span style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: {{r.stateColor}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.stateIcon}}"></path></svg>{{r.state}}</span>
+                  <span style="color: var(--fg2)">{{r.os}}</span>
+                  <span style="color: var(--fg2)">{{r.site}}</span>
+                  <span style="font-weight: 600; color: {{r.healthColor}}">{{r.health}}</span>
+                  <span style="display: flex; gap: 6px; justify-content: flex-end">
+                    <a href="#" style="{{r.actionStyle}} display: inline-flex; align-items: center; min-height: 30px; padding-inline: 12px; border-radius: 5px; text-decoration: none; font-size: 13px; font-weight: 600">{{r.action}}</a>
+                    <a href="#" aria-label="{{t.more}}" style="display: inline-flex; align-items: center; justify-content: center; width: 30px; min-height: 30px; border-radius: 5px; border: 1px solid var(--stroke); color: var(--fg); text-decoration: none">⋯</a>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-size: 12px; color: var(--fg2)">{{t.footnote}}</div>
+          </section>
+          <aside aria-labelledby="help-h" style="flex: 1 1 260px; max-width: 320px; display: flex; flex-direction: column; gap: 10px">
+            <h2 id="help-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.help}}</h2>
+            <sc-for list="{{help}}" as="h" hint-placeholder-count="2">
+              <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); border-inline-start: 3px solid #7A4FD6">
+                <span style="font-size: 13px; font-weight: 600">{{h.who}}</span>
+                <span style="font-size: 13px">{{h.note}}</span>
+                <span style="font-size: 12px; color: var(--fg2)">{{h.when}}</span>
+                <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 30px; padding-inline: 12px; border-radius: 5px; background: #6B3FC7; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.startAttended}}</a>
+              </div>
+            </sc-for>
+            <h2 style="margin: 8px 0 0; font-size: 16px; font-weight: 600">{{t.live}}</h2>
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); font-size: 13px">
+              <span style="font-weight: 600">{{t.liveWho}}</span>
+              <span style="color: var(--fg2)">{{t.liveWhat}}</span>
+              <a href="#" style="color: var(--accentText); font-size: 13px">{{t.join}}</a>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1d1a24', mica: '#221f2a', layer: '#28252f', card: '#2f2b37', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#c6c0d2', accentText: '#b9a2ff', sel: 'rgba(185,162,255,0.14)', ok: '#6ccb5f', warn: '#f7a64a', crit: '#ff8f86', unk: '#b8b8b8', live: '#b9a2ff' }
+      : { desk: '#e5e0f0', mica: '#f3f0f9', layer: '#fbfafd', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#5B32B5', sel: 'rgba(122,79,214,0.10)', ok: '#0E7A0D', warn: '#9D5300', crit: '#B3261E', unk: '#5C5C5C', live: '#5B32B5' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', navLabel: 'أقسام Fleet', title: 'الحواسيب', search: 'ابحث بالاسم أو المستخدم أو المعرّف', byCode: 'اتصال برمز', enroll: 'إضافة حاسوب',
+      selected: 'حاسوبان محددان:', cName: 'الحاسوب والمستخدم', cState: 'الحالة', cOs: 'النظام', cSite: 'الموقع', cHealth: 'الامتثال', more: 'المزيد',
+      footnote: 'الاتصال يتبع سياسة مجموعة الحاسوب: بموافقة المستخدم أو بدون حضور، وشريط الجلسة يظهر على شاشته دائماً.',
+      help: 'طلبات المساعدة', startAttended: 'بدء جلسة بموافقة المستخدم', live: 'جلسات جارية', liveWho: '[اسم المشغّل] على [اسم الحاسوب]', liveWhat: 'منذ [n] دقيقة · ملف الصلاحيات: دعم · قيد التسجيل', join: 'الانضمام بإذن المشغّل',
+    } : {
+      mockup: 'Design mockup, not real data', navLabel: 'Fleet sections', title: 'Computers', search: 'Search by name, user or ID', byCode: 'Connect by code', enroll: 'Add computer',
+      selected: '2 selected:', cName: 'Computer and user', cState: 'State', cOs: 'OS', cSite: 'Site', cHealth: 'Compliance', more: 'More',
+      footnote: 'Connecting follows the computer’s group policy: user accepts, or unattended. The session bar always shows on their screen.',
+      help: 'Help requests', startAttended: 'Start attended session', live: 'Live sessions', liveWho: '[Operator] on [Computer name]', liveWhat: '[n] min · profile: Support · recording', join: 'Join with the operator’s OK',
+    };
+    const navList = ar ? [
+      ['الحواسيب', 'M3 5h12v9H3zM6 18h6M9 14v4', '[n]'], ['الجلسات', 'M4 6h16v10H4zM10 20h4', '[n]'], ['الدعم السريع', 'M12 3l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 10l6-1z', ''],
+      ['السكربتات والمهام', 'M8 6l-5 6 5 6M16 6l5 6-5 6', ''], ['التحديثات', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6', '[n]'], ['المراقبة', 'M3 12h4l3-7 4 14 3-7h4', ''],
+      ['السياسات', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', ''], ['التسجيلات', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0', ''], ['سجل التدقيق', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7', ''],
+    ] : [
+      ['Computers', 'M3 5h12v9H3zM6 18h6M9 14v4', '[n]'], ['Sessions', 'M4 6h16v10H4zM10 20h4', '[n]'], ['Quick Support', 'M12 3l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 10l6-1z', ''],
+      ['Scripts and jobs', 'M8 6l-5 6 5 6M16 6l5 6-5 6', ''], ['Patches', 'M4 12a8 8 0 0 1 14-5l2-2v6h-6l2-2a5 5 0 1 0 1 6', '[n]'], ['Monitoring', 'M3 12h4l3-7 4 14 3-7h4', ''],
+      ['Policies', 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', ''], ['Recordings', 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0', ''], ['Audit log', 'M6 3h9l4 4v14H6zM9 12h7M9 16h7', ''],
+    ];
+    const nav = navList.map((n, i) => ({ label: n[0], icon: n[1], badge: n[2], style: i === 0 ? 'background: var(--sel); font-weight: 600; border-inline-start: 3px solid #7A4FD6;' : '' }));
+    const chipNames = ar ? ['الكل [n]', 'متصل [n]', 'في جلسة [n]', 'غير متصل [n]', 'يحتاج تحديثات [n]', '[مجموعة]'] : ['All [n]', 'Online [n]', 'In session [n]', 'Offline [n]', 'Needs updates [n]', '[Group]'];
+    const chips = chipNames.map((l, i) => ({ label: l, style: i === 0 ? 'background: #6B3FC7; color: #fff; font-weight: 600;' : 'background: var(--card); border: 1px solid var(--stroke); color: var(--fg);' }));
+    const bulk = ar ? ['تشغيل سكربت', 'تثبيت التحديثات', 'إرسال رسالة', 'تشغيل عن بُعد (WoL)', 'نقل لمجموعة'] : ['Run script', 'Install updates', 'Send message', 'Wake (WoL)', 'Move to group'];
+    const I = { ok: 'M5 12l5 5 9-10', live: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z', off: 'M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M8 8l8 8', warn: 'M12 4l9 16H3zM12 10v4M12 17v.5' };
+    const S = (k) => ({ ok: 'var(--ok)', live: 'var(--live)', off: 'var(--unk)', warn: 'var(--warn)', crit: 'var(--crit)', unk: 'var(--unk)' }[k]);
+    const primary = 'background: #6B3FC7; color: #fff;';
+    const secondary = 'border: 1px solid var(--stroke2); color: var(--fg);';
+    const L = ar ? { on: 'متصل', ses: 'في جلسة: [مشغّل]', off: 'غير متصل · منذ [n] س', help: 'طلب مساعدة', good: 'ممتثل', upd: 'تحديثات معلّقة', nm: 'غير مُقاس', connect: 'اتصال', wake: 'تشغيل ثم اتصال', join: 'الانضمام', win: 'Windows 11', win10: 'Windows 10', lin: 'Linux', site1: '[الموقع ١]', site2: '[الموقع ٢]', user: '[اسم المستخدم]', nouser: 'لا أحد مسجّل الدخول' }
+      : { on: 'Online', ses: 'In session: [operator]', off: 'Offline · [n] h ago', help: 'Asked for help', good: 'Compliant', upd: 'Updates pending', nm: 'Not measured', connect: 'Connect', wake: 'Wake and connect', join: 'Join', win: 'Windows 11', win10: 'Windows 10', lin: 'Linux', site1: '[Site 1]', site2: '[Site 2]', user: '[User name]', nouser: 'Nobody signed in' };
+    const rows = [
+      { name: '[Computer name]', user: L.user, state: L.on, k: 'ok', os: L.win, site: L.site1, health: L.good, hk: 'ok', action: L.connect, p: true, checked: 'checked' },
+      { name: '[Computer name]', user: L.user, state: L.ses, k: 'live', os: L.win, site: L.site1, health: L.good, hk: 'ok', action: L.join, p: false, checked: '' },
+      { name: '[Computer name]', user: L.user, state: L.help, k: 'warn', os: L.win10, site: L.site2, health: L.upd, hk: 'warn', action: L.connect, p: true, checked: 'checked' },
+      { name: '[Computer name]', user: L.nouser, state: L.on, k: 'ok', os: L.win, site: L.site2, health: L.upd, hk: 'warn', action: L.connect, p: true, checked: '' },
+      { name: '[Computer name]', user: '—', state: L.off, k: 'off', os: L.win, site: L.site1, health: L.nm, hk: 'unk', action: L.wake, p: false, checked: '' },
+      { name: '[Server name]', user: L.nouser, state: L.on, k: 'ok', os: L.lin, site: L.site1, health: L.good, hk: 'ok', action: L.connect, p: true, checked: '' },
+    ].map((r) => ({ ...r, stateColor: S(r.k), stateIcon: I[r.k === 'live' ? 'live' : r.k === 'off' ? 'off' : r.k === 'warn' ? 'warn' : 'ok'], healthColor: S(r.hk), actionStyle: r.p ? primary : secondary, bg: r.checked ? 'background: var(--sel);' : '', ariaChecked: r.checked ? 'true' : 'false', tick: r.checked ? '✓' : '', boxStyle: r.checked ? 'background: #6B3FC7; border: 1px solid #6B3FC7;' : 'border: 1px solid var(--stroke2);' }));
+    const help = ar ? [
+      { who: '[اسم المستخدم] على [اسم الحاسوب]', note: '«[ملاحظة المستخدم كما كتبها]»', when: 'من قائمة Nigafiy Agent · منذ [n] دقيقة' },
+      { who: '[اسم المستخدم] على [اسم الحاسوب]', note: '«[ملاحظة المستخدم كما كتبها]»', when: 'من قائمة Nigafiy Agent · منذ [n] دقيقة' },
+    ] : [
+      { who: '[User name] on [Computer name]', note: '“[The user’s note, as typed]”', when: 'From the Nigafiy Agent tray · [n] min ago' },
+      { who: '[User name] on [Computer name]', note: '“[The user’s note, as typed]”', when: 'From the Nigafiy Agent tray · [n] min ago' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, nav, chips, bulk, rows, help };
+  }
+}
+</script>
+</body>
+</html>

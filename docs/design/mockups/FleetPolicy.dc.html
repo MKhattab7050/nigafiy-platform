@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet access policy</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5B32B5}a:hover{color:#3F2280}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Fleet</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <main style="background: var(--layer); border-top: 1px solid var(--stroke); padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 14px; min-height: 740px; box-sizing: border-box">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+        <h1 style="margin: 0; font-size: 22px; font-weight: 600; flex: 1">{{t.title}}</h1>
+        <a href="#" style="display: inline-flex; align-items: center; min-height: 34px; padding-inline: 16px; border-radius: 5px; background: #6B3FC7; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.save}}</a>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start">
+        <div style="flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+          <section aria-labelledby="acc-h" style="padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 10px">
+            <h2 id="acc-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.access}}</h2>
+            <sc-for list="{{modes}}" as="m" hint-placeholder-count="2">
+              <div style="{{m.box}} display: flex; gap: 10px; padding: 10px 12px; border-radius: 6px">
+                <span role="radio" aria-checked="{{m.aria}}" style="flex: 0 0 auto; width: 16px; height: 16px; border-radius: 8px; border: 2px solid {{m.ring}}; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px"><span style="width: 8px; height: 8px; border-radius: 4px; background: {{m.dot}}"></span></span>
+                <span style="display: flex; flex-direction: column; gap: 2px; font-size: 13px"><span style="font-weight: 600">{{m.label}}</span><span style="color: var(--fg2)">{{m.desc}}</span></span>
+              </div>
+            </sc-for>
+            <sc-for list="{{rules}}" as="r" hint-placeholder-count="5">
+              <div style="display: flex; align-items: center; gap: 10px; font-size: 13px; padding-block: 4px">
+                <span style="flex: 1">{{r.label}}</span>
+                <span style="{{r.style}} display: inline-flex; align-items: center; min-height: 28px; padding-inline: 10px; border-radius: 5px; font-size: 12px; font-weight: 600">{{r.value}}</span>
+              </div>
+            </sc-for>
+          </section>
+          <section aria-labelledby="lock-h" style="padding: 14px 16px; border-radius: 8px; background: var(--lockBg); border: 1px solid var(--lockBorder); display: flex; flex-direction: column; gap: 6px; font-size: 13px">
+            <h2 id="lock-h" style="margin: 0; font-size: 14px; font-weight: 600">🔒 {{t.lockH}}</h2>
+            <sc-for list="{{locked}}" as="l" hint-placeholder-count="4"><span>· {{l}}</span></sc-for>
+          </section>
+        </div>
+        <section aria-labelledby="prof-h" style="flex: 2 1 560px; min-width: 0; padding: 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke); display: flex; flex-direction: column; gap: 10px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+            <h2 id="prof-h" style="margin: 0; font-size: 16px; font-weight: 600; flex: 1">{{t.profiles}}</h2>
+            <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.newProfile}}</a>
+          </div>
+          <div role="table" style="display: flex; flex-direction: column; font-size: 13px">
+            <div role="row" style="display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 8px; padding: 8px 4px; border-bottom: 1px solid var(--stroke); font-weight: 600; color: var(--fg2); font-size: 12px">
+              <sc-for list="{{head}}" as="h" hint-placeholder-count="5"><span role="columnheader">{{h}}</span></sc-for>
+            </div>
+            <sc-for list="{{matrix}}" as="row" hint-placeholder-count="12">
+              <div role="row" style="display: grid; grid-template-columns: 2fr repeat(4, 1fr); gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--stroke); align-items: center">
+                <span role="cell">{{row.name}}</span>
+                <sc-for list="{{row.cells}}" as="cl" hint-placeholder-count="4"><span role="cell" style="font-weight: 600; color: {{cl.color}}">{{cl.mark}}</span></sc-for>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size: 12px; color: var(--fg2)">{{t.profNote}}</div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1d1a24', mica: '#221f2a', layer: '#28252f', card: '#2f2b37', stroke: 'rgba(255,255,255,0.09)', stroke2: 'rgba(255,255,255,0.25)', fg: '#f3f3f3', fg2: '#c6c0d2', accentText: '#b9a2ff', sel: 'rgba(185,162,255,0.14)', ok: '#6ccb5f', lockBg: 'rgba(185,162,255,0.10)', lockBorder: 'rgba(185,162,255,0.35)' }
+      : { desk: '#e5e0f0', mica: '#f3f0f9', layer: '#fbfafd', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', stroke2: 'rgba(0,0,0,0.25)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#5B32B5', sel: 'rgba(122,79,214,0.10)', ok: '#0E7A0D', lockBg: '#f1ecfc', lockBorder: '#cdbdf2' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', title: 'سياسة الوصول: مجموعة [مجموعة]', save: 'حفظ السياسة', access: 'كيف يتم الاتصال',
+      lockH: 'لا يمكن إيقافه في أي سياسة', profiles: 'ملفات الصلاحيات', newProfile: 'ملف جديد',
+      profNote: 'المستخدم يرى في طلب الموافقة وعلى شريط الجلسة ما يسمح به الملف، ويمكنه إلغاء أي بند منها في الجلسات بموافقته.',
+    } : {
+      mockup: 'Design mockup, not real data', title: 'Access policy: group [group]', save: 'Save policy', access: 'How sessions start',
+      lockH: 'Cannot be turned off by any policy', profiles: 'Permission profiles', newProfile: 'New profile',
+      profNote: 'The user sees what the profile allows in the consent prompt and on the session bar, and can untick any item in attended sessions.',
+    };
+    const modeList = ar ? [['بموافقة المستخدم', 'يظهر طلب للمستخدم ويقبل أو يرفض. بدون رد خلال [n] ثانية يُرفض.', 1], ['بدون حضور', 'للخوادم والأجهزة بدون مستخدم. شريط الجلسة يظهر دائماً، ويمكن للمستخدم الرفض خلال [n] ثانية.', 0]]
+      : [['User accepts', 'The user gets a prompt and accepts or declines. No answer in [n] s means declined.', 1], ['Unattended', 'For servers and computers nobody uses. The session bar still shows, and the user may refuse within [n] s.', 0]];
+    const modes = modeList.map((m) => ({ label: m[0], desc: m[1], aria: m[2] ? 'true' : 'false', ring: m[2] ? '#6B3FC7' : 'var(--stroke2)', dot: m[2] ? '#6B3FC7' : 'transparent', box: m[2] ? 'background: var(--sel); border: 1px solid #6B3FC7;' : 'border: 1px solid var(--stroke);' }));
+    const on = 'background: var(--sel); color: var(--accentText);', field = 'border: 1px solid var(--stroke2); color: var(--fg);';
+    const rules = (ar ? [['MFA مطلوب للمشغّل قبل الاتصال', 'مفعّل', on], ['موافقة مسؤول ثانٍ للجلسات بدون حضور', 'مفعّل', on], ['الساعات المسموحة', '[الأيام] [من–إلى]', field], ['تسجيل الجلسات', 'دائماً · الاحتفاظ [n] يوم', field], ['عناوين المشغّلين المسموحة', '[نطاقات IP]', field]]
+      : [['Operator MFA before connecting', 'On', on], ['Second admin approves unattended sessions', 'On', on], ['Allowed hours', '[days] [from–to]', field], ['Session recording', 'Always · keep [n] days', field], ['Operator IP allow-list', '[IP ranges]', field]])
+      .map((r) => ({ label: r[0], value: r[1], style: r[2] }));
+    const locked = ar ? ['شريط الجلسة على شاشة المستخدم وزر إنهاء الجلسة', 'نص شاشة الخصوصية: من متصل ولماذا', 'علامة التسجيل أثناء التسجيل', 'سجل التدقيق ونشاط الدعم عند المستخدم']
+      : ['The session bar on the user’s screen and its End button', 'The privacy screen text: who is connected and why', 'The recording mark while recording', 'The audit log and the user’s support activity list'];
+    const head = ar ? ['الصلاحية', 'عرض فقط', 'دعم', 'مسؤول كامل', '[ملف مخصص]'] : ['Permission', 'View only', 'Support', 'Full admin', '[Custom]'];
+    const Y = { mark: '✓', color: 'var(--ok)' }, N = { mark: '—', color: 'var(--fg2)' };
+    const rowsDef = ar ? [
+      ['رؤية الشاشة', 1, 1, 1, 1], ['التحكم بالفأرة ولوحة المفاتيح', 0, 1, 1, 1], ['الحافظة إلى الحاسوب', 0, 1, 1, 0], ['الحافظة من الحاسوب', 0, 1, 1, 0], ['نقل الملفات', 0, 1, 1, 1],
+      ['الصوت', 0, 0, 1, 0], ['التسجيل', 1, 1, 1, 1], ['شاشة الخصوصية', 0, 0, 1, 0], ['قفل إدخال المستخدم', 0, 0, 1, 0], ['إعادة التشغيل وإعادة الاتصال', 0, 1, 1, 0], ['شاشة الدخول وUAC', 0, 1, 1, 0], ['PowerShell', 0, 0, 1, 0],
+    ] : [
+      ['See the screen', 1, 1, 1, 1], ['Mouse and keyboard', 0, 1, 1, 1], ['Clipboard to the computer', 0, 1, 1, 0], ['Clipboard from the computer', 0, 1, 1, 0], ['File transfer', 0, 1, 1, 1],
+      ['Audio', 0, 0, 1, 0], ['Recording', 1, 1, 1, 1], ['Privacy screen', 0, 0, 1, 0], ['Block user input', 0, 0, 1, 0], ['Restart and reconnect', 0, 1, 1, 0], ['Sign-in screen and UAC', 0, 1, 1, 0], ['PowerShell', 0, 0, 1, 0],
+    ];
+    const matrix = rowsDef.map((r) => ({ name: r[0], cells: r.slice(1).map((v) => (v ? Y : N)) }));
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, modes, rules, locked, head, matrix };
+  }
+}
+</script>
+</body>
+</html>

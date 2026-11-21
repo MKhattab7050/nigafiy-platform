@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nigafiy Fleet background tools</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#5B32B5}a:hover{color:#3F2280}
+</style>
+</helmet>
+<div dir="{{dir}}" lang="{{lang}}" style="{{vars}} min-height: 820px; box-sizing: border-box; padding: 24px; background: var(--desk); font-family: 'Segoe UI Variable Text', 'Segoe UI', 'IBM Plex Sans Arabic', system-ui, sans-serif; color: var(--fg)">
+  <div style="max-width: 1232px; margin: 0 auto; border-radius: 8px; overflow: hidden; border: 1px solid var(--stroke); background: var(--mica); box-shadow: 0 8px 32px rgba(0,0,0,0.18)">
+    <div style="display: flex; align-items: center; gap: 10px; height: 40px; padding-inline: 14px; font-size: 12px; color: var(--fg2)">
+      <div style="width: 18px; height: 18px; border-radius: 5px; background: #7A4FD6; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h12v9H3zM6 18h6M9 14v4M17 8h4v9h-6"></path></svg></div>
+      <span style="font-weight: 600; color: var(--fg)">Nigafiy Fleet</span>
+      <span style="flex: 1"></span>
+      <span>{{t.mockup}}</span>
+    </div>
+    <main style="background: var(--layer); border-top: 1px solid var(--stroke); padding: 18px 24px 24px; display: flex; flex-direction: column; gap: 14px; min-height: 740px; box-sizing: border-box">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px">
+        <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.back}}</a>
+        <h1 style="margin: 0; font-size: 22px; font-weight: 600">[Computer name]</h1>
+        <span style="font-size: 12px; color: var(--fg2)">{{t.noSession}}</span>
+      </div>
+      <section aria-labelledby="ft-h" style="display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+          <h2 id="ft-h" style="margin: 0; font-size: 16px; font-weight: 600; flex: 1">{{t.files}}</h2>
+          <span style="font-size: 12px; color: var(--fg2)">{{t.filesNote}}</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch">
+          <sc-for list="{{panes}}" as="p" hint-placeholder-count="2">
+            <div style="flex: 1 1 380px; min-width: 0; border-radius: 8px; border: 1px solid var(--stroke); background: var(--card); overflow: hidden">
+              <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--stroke); font-size: 13px"><span style="font-weight: 600">{{p.title}}</span><span dir="ltr" style="flex: 1; color: var(--fg2); font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12px; text-align: end">{{p.path}}</span></div>
+              <sc-for list="{{p.rows}}" as="r" hint-placeholder-count="4">
+                <div style="{{r.bg}} display: flex; align-items: center; gap: 10px; padding: 7px 12px; font-size: 13px; border-bottom: 1px solid var(--stroke)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{r.icon}}"></path></svg>
+                  <span style="flex: 1">{{r.name}}</span><span style="color: var(--fg2); font-size: 12px">{{r.size}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 6px; background: var(--card); border: 1px solid var(--stroke); font-size: 13px">
+          <span style="font-weight: 600">{{t.queue}}</span><span style="flex: 1; color: var(--fg2)">{{t.queueText}}</span>
+          <a href="#" style="color: var(--accentText)">{{t.pause}}</a>
+        </div>
+      </section>
+      <div style="display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start">
+        <section aria-labelledby="sh-h" style="flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+            <h2 id="sh-h" style="margin: 0; font-size: 16px; font-weight: 600">PowerShell</h2>
+            <span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; background: var(--warnBg); color: var(--warn); font-size: 12px; font-weight: 600">⚠ {{t.adminOnly}}</span>
+            <span style="font-size: 12px; color: var(--fg2); flex: 1 1 260px">{{t.shellNote}}</span>
+          </div>
+          <pre dir="ltr" style="margin: 0; padding: 12px 14px; border-radius: 6px; background: #14111c; color: #e4dbff; font-family: 'Cascadia Mono', Consolas, monospace; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; text-align: left; min-height: 170px">{{shell}}</pre>
+        </section>
+        <section aria-labelledby="jobs-h" style="flex: 1 1 320px; max-width: 420px; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 8px; background: var(--card); border: 1px solid var(--stroke)">
+          <h2 id="jobs-h" style="margin: 0; font-size: 16px; font-weight: 600">{{t.jobs}}</h2>
+          <sc-for list="{{jobs}}" as="j" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--stroke); font-size: 13px">
+              <span style="font-weight: 600">{{j.name}}</span>
+              <span style="color: var(--fg2); font-size: 12px">{{j.target}}</span>
+              <span style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px"><span style="color: var(--ok); font-weight: 600">✓ {{j.ok}}</span><span style="color: var(--crit); font-weight: 600">✕ {{j.fail}}</span><span style="color: var(--fg2)">{{j.wait}}</span><a href="#" style="color: var(--accentText)">{{j.action}}</a></span>
+            </div>
+          </sc-for>
+          <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 32px; padding-inline: 14px; border-radius: 5px; background: #6B3FC7; color: #fff; text-decoration: none; font-size: 13px; font-weight: 600">{{t.newJob}}</a>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"arabic":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const ar = this.props.arabic ?? false;
+    const c = dark
+      ? { desk: '#1d1a24', mica: '#221f2a', layer: '#28252f', card: '#2f2b37', stroke: 'rgba(255,255,255,0.09)', fg: '#f3f3f3', fg2: '#c6c0d2', accentText: '#b9a2ff', sel: 'rgba(185,162,255,0.14)', ok: '#6ccb5f', crit: '#ff8f86', warn: '#f7a64a', warnBg: 'rgba(247,166,74,0.14)' }
+      : { desk: '#e5e0f0', mica: '#f3f0f9', layer: '#fbfafd', card: '#ffffff', stroke: 'rgba(0,0,0,0.08)', fg: '#1a1a1a', fg2: '#5c5c5c', accentText: '#5B32B5', sel: 'rgba(122,79,214,0.10)', ok: '#0E7A0D', crit: '#B3261E', warn: '#9D5300', warnBg: '#fdf0e1' };
+    const vars = Object.entries(c).map(([k, v]) => '--' + k + ': ' + v + ';').join(' ');
+    const T = ar ? {
+      mockup: 'نموذج تصميم، ليس بيانات حقيقية', back: '← الحواسيب', noSession: 'بدون جلسة: لا يقاطع المستخدم، ويظهر في «نشاط الدعم» عنده',
+      files: 'نقل الملفات', filesNote: 'اسحب بين اللوحتين · استكمال بعد الانقطاع · SHA-256 لكل ملف · المسارات الحساسة محمية', queue: 'قائمة النقل:', queueText: '[n] ملفات · [n] MB من [n] MB · [n] MB/s', pause: 'إيقاف مؤقت',
+      adminOnly: 'للمسؤول فقط', shellNote: 'مغلق في السياسة الافتراضية · النص الكامل في سجل التدقيق · يظهر للمستخدم في نشاط الدعم',
+      jobs: 'السكربتات والمهام', newJob: 'مهمة جديدة',
+    } : {
+      mockup: 'Design mockup, not real data', back: '← Computers', noSession: 'No session: does not interrupt the user, and shows in their support activity',
+      files: 'File transfer', filesNote: 'Drag between panes · resumes after a drop · SHA-256 per file · protected paths guarded', queue: 'Queue:', queueText: '[n] files · [n] of [n] MB · [n] MB/s', pause: 'Pause',
+      adminOnly: 'Admin only', shellNote: 'Off in the default policy · full transcript in the audit log · listed in the user’s support activity',
+      jobs: 'Scripts and jobs', newJob: 'New job',
+    };
+    const F = 'M3 6h6l2 2h10v11H3z', D = 'M6 3h9l4 4v14H6z';
+    const panes = ar ? [
+      { title: 'هذا الحاسوب', path: 'C:\\Users\\[you]\\Downloads', rows: [{ name: '..', size: '', icon: F, bg: '' }, { name: '[مجلد]', size: '', icon: F, bg: '' }, { name: '[ملف]', size: '[n] MB', icon: D, bg: 'background: var(--sel);' }, { name: '[ملف]', size: '[n] KB', icon: D, bg: '' }] },
+      { title: '[اسم الحاسوب]', path: 'C:\\Users\\[user]\\Desktop', rows: [{ name: '..', size: '', icon: F, bg: '' }, { name: '[مجلد]', size: '', icon: F, bg: '' }, { name: '[ملف]', size: '[n] MB', icon: D, bg: '' }, { name: '[ملف]', size: '[n] KB', icon: D, bg: '' }] },
+    ] : [
+      { title: 'This computer', path: 'C:\\Users\\[you]\\Downloads', rows: [{ name: '..', size: '', icon: F, bg: '' }, { name: '[Folder]', size: '', icon: F, bg: '' }, { name: '[File]', size: '[n] MB', icon: D, bg: 'background: var(--sel);' }, { name: '[File]', size: '[n] KB', icon: D, bg: '' }] },
+      { title: '[Computer name]', path: 'C:\\Users\\[user]\\Desktop', rows: [{ name: '..', size: '', icon: F, bg: '' }, { name: '[Folder]', size: '', icon: F, bg: '' }, { name: '[File]', size: '[n] MB', icon: D, bg: '' }, { name: '[File]', size: '[n] KB', icon: D, bg: '' }] },
+    ];
+    const shell = 'PS C:\\> Get-Service -Name [service]\n[real output from the agent]\nPS C:\\> Restart-Service -Name [service]\n[real output from the agent]\nPS C:\\> _';
+    const jobs = ar ? [
+      { name: '[اسم السكربت]', target: 'على مجموعة [مجموعة] · الآن', ok: '[n] تم', fail: '[n] فشل', wait: '[n] في الانتظار (غير متصل)', action: 'إعادة الفاشل' },
+      { name: '[اسم السكربت]', target: 'كل [يوم] [ساعة] · [n] حاسوب', ok: '[n] تم', fail: '[n] فشل', wait: '', action: 'النتائج' },
+      { name: 'تثبيت تحديثات Windows', target: 'نافذة الصيانة [يوم] [ساعة] · يمكن للمستخدم التأجيل', ok: '[n] تم', fail: '[n] فشل', wait: '[n] بانتظار إعادة التشغيل', action: 'التفاصيل' },
+    ] : [
+      { name: '[Script name]', target: 'On group [group] · now', ok: '[n] done', fail: '[n] failed', wait: '[n] waiting (offline)', action: 'Rerun failed' },
+      { name: '[Script name]', target: 'Every [day] [time] · [n] computers', ok: '[n] done', fail: '[n] failed', wait: '', action: 'Results' },
+      { name: 'Install Windows updates', target: 'Maintenance window [day] [time] · user may postpone', ok: '[n] done', fail: '[n] failed', wait: '[n] waiting for restart', action: 'Details' },
+    ];
+    return { vars, dir: ar ? 'rtl' : 'ltr', lang: ar ? 'ar' : 'en', t: T, panes, shell, jobs };
+  }
+}
+</script>
+</body>
+</html>

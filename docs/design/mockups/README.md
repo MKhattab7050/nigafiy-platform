@@ -12,6 +12,11 @@ Live canvas: https://claude.ai/artifact/UgAvbazdgsCatGmPwfqQnd (private to the o
 | Watch (`Watch.dc.html`) | Incident with the Network Doctor path (LAN → gateway → internet → DNS), evidence tagged observed / inferred, ruled out, steps, before/during/after timeline |
 | Guard (`Guard.dc.html`) | Protection overview cards (DNS filter off until turned on, routers, quarantined ports, config changes) and security findings with how each was found |
 | Fleet (`Fleet.dc.html`) | Computer page with tabs; a remote session shows the on-screen notice, reason and audit line, an End session button, and compliance where unmeasured items say "not measured" |
+| Fleet Pro: computers (`FleetHome.dc.html`) | Address book with groups, filters, bulk actions, Wake and connect, help requests from the tray, live sessions others can join |
+| Fleet Pro: live session (`FleetSession.dc.html`) | AnyDesk-class viewer: measured fps/latency/route, monitors, quality, view only, clipboard, files, chat, audio, record, draw, privacy screen, block input, Ctrl+Alt+Del, switch user, restart and reconnect, print, invite; the user's session bar shown inside the picture |
+| Fleet Pro: user side (`FleetUser.dc.html`) | Consent prompt with per-permission ticks and timeout, the session bar with End, the tray's Request help and support activity, Quick Support code, the privacy screen text |
+| Fleet Pro: tools (`FleetTools.dc.html`) | Two-pane file transfer with queue, admin-only PowerShell with transcript, scripts and jobs on groups and schedules, patch windows |
+| Fleet Pro: policy (`FleetPolicy.dc.html`) | Attended or unattended, MFA, second-admin approval, hours, recording retention, IP allow-list, permission profiles matrix, and what no policy can turn off |
 | Mind (`Mind.dc.html`) | Playbook run with an approval gate on the disruptive step, the two-person rule, a related knowledge article, and the assistant shown as off by default |
 | Toolbox (`Toolbox.dc.html`) | Tool tabs, Ping run from a chosen Sensor inside authorized scopes, and the subnet calculator |
 
