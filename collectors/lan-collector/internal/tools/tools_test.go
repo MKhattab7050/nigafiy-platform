@@ -104,15 +104,15 @@ func TestRun(t *testing.T) {
 		t.Fatalf("ports open_ports: %+v", out)
 	}
 	for _, bad := range []Request{
-		{Tool: "tcp", Target: "192.168.1.9"},              // no port
-		{Tool: "tcp", Target: "8.8.8.8", Port: 53},        // public IP refused for TCP check
-		{Tool: "tcp", Target: "127.0.0.1", Port: 22},      // loopback refused unless explicitly allowed
-		{Tool: "ping", Target: "-n 100000 192.168.1.9"},   // not a target
-		{Tool: "dns", Target: "192.168.1.9"},              // needs a name
-		{Tool: "rdns", Target: "example.com"},             // needs an address
-		{Tool: "ports", Target: "8.8.8.8"},                // public IP refused for port scan
-		{Tool: "ports", Target: "127.0.0.1"},              // loopback refused unless explicitly allowed
-		{Tool: "shell", Target: "192.168.1.9"},            // not on the list
+		{Tool: "tcp", Target: "192.168.1.9"},            // no port
+		{Tool: "tcp", Target: "8.8.8.8", Port: 53},      // public IP refused for TCP check
+		{Tool: "tcp", Target: "127.0.0.1", Port: 22},    // loopback refused unless explicitly allowed
+		{Tool: "ping", Target: "-n 100000 192.168.1.9"}, // not a target
+		{Tool: "dns", Target: "192.168.1.9"},            // needs a name
+		{Tool: "rdns", Target: "example.com"},           // needs an address
+		{Tool: "ports", Target: "8.8.8.8"},              // public IP refused for port scan
+		{Tool: "ports", Target: "127.0.0.1"},            // loopback refused unless explicitly allowed
+		{Tool: "shell", Target: "192.168.1.9"},          // not on the list
 		{Tool: "traceroute", Target: "$(reboot)"},
 	} {
 		if _, err := r.Run(ctx, bad); err == nil {

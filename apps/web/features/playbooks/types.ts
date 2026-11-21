@@ -151,6 +151,7 @@ export interface RunDetail extends Run {
   device_label: string | null;
   next_run_at: string | null;
   can_cancel: boolean;
+  devices: { id: string; label: string }[];
   steps: RunStep[];
 }
 

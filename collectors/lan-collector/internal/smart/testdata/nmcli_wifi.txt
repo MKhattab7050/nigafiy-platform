@@ -1,0 +1,5 @@
+*:HomeNet:AA\:BB\:CC\:00\:11\:22:5180 MHz:78:WPA2 WPA3:866 Mbit/s
+ :HomeNet:AA\:BB\:CC\:00\:11\:23:2437 MHz:64:WPA2:130 Mbit/s
+ :Cafe\: Free\\Wifi:DE\:AD\:BE\:EF\:00\:01:2412 MHz:30::54 Mbit/s
+ :Corp:DE\:AD\:BE\:EF\:00\:02:5955 MHz:41:WPA2 802.1X:1201 Mbit/s
+ ::DE\:AD\:BE\:EF\:00\:03:2462 MHz:12:WPA1:54 Mbit/s

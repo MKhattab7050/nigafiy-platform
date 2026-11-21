@@ -80,7 +80,8 @@ func ssdpSearch(st string) []byte {
 func ParseSSDPLocation(msg []byte) (string, bool) {
 	r := textproto.NewReader(bufio.NewReader(bytes.NewReader(msg)))
 	status, err := r.ReadLine()
-	if err != nil || !strings.HasPrefix(status, "HTTP/1.1 200") {
+	// "HTTP/1.1 200 OK" (UPnP 1.0 devices sometimes answer HTTP/1.0).
+	if err != nil || !(strings.HasPrefix(status, "HTTP/1.1 200") || strings.HasPrefix(status, "HTTP/1.0 200")) {
 		return "", false
 	}
 	h, _ := r.ReadMIMEHeader()
@@ -306,6 +307,11 @@ func MappingFromFields(f map[string]string) (UPnPMapping, bool) {
 // AuditGateway reads one gateway's description, external address and port mappings.
 func AuditGateway(ctx context.Context, address, location string, client *http.Client) UPnPGateway {
 	gw := UPnPGateway{Address: address, Mappings: []UPnPMapping{}}
+	// Re-checked here too (DiscoverIGD already does): the description is read only from the gateway itself.
+	if lu, err := url.Parse(location); err != nil || lu.Hostname() != address || (lu.Scheme != "http" && lu.Scheme != "https") {
+		gw.Error = "the description URL points away from the gateway; not followed"
+		return gw
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil)
 	if err != nil {
 		gw.Error = "invalid description URL"
@@ -351,9 +357,8 @@ func AuditGateway(ctx context.Context, address, location string, client *http.Cl
 				gw.Error = "the gateway refuses to list port mappings (UPnP error 606: action not authorized)"
 				break
 			}
-			if !errors.As(err, &fault) {
-				gw.Error = cleanText(fmt.Sprintf("listing stopped at entry %d: %s", i, err.Error()), 300)
-			}
+			// Any other failure (an unexpected UPnP error code too) is reported, never a silent stop.
+			gw.Error = cleanText(fmt.Sprintf("listing stopped at entry %d: %s", i, err.Error()), 300)
 			break
 		}
 		if m, ok := MappingFromFields(f); ok {

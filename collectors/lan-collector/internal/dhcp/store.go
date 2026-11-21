@@ -215,12 +215,27 @@ func writeAtomic(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameReplacing(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	syncDir(dir)
 	return nil
+}
+
+// renameReplacing renames tmp over path. On Windows the rename fails with "access denied" while
+// another handle has path open (an antivirus scan, the search indexer, or a reader loading the
+// table), so it retries for up to about half a second before giving up.
+func renameReplacing(tmp, path string) error {
+	err := os.Rename(tmp, path)
+	if runtime.GOOS != "windows" {
+		return err
+	}
+	for i := 0; err != nil && errors.Is(err, os.ErrPermission) && i < 10; i++ {
+		time.Sleep(50 * time.Millisecond)
+		err = os.Rename(tmp, path)
+	}
+	return err
 }
 
 // syncDir makes the rename itself durable on Unix. Windows has no directory handle to flush and

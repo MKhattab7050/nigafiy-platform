@@ -57,6 +57,9 @@ type RemoteConfig struct {
 	// Routers lists the site's routers this collector may read and control. It carries the router
 	// administrator credentials, so — like SNMP — it is never written to the on-disk cache.
 	Routers json.RawMessage `json:"routers,omitempty"`
+	// SmartChecks holds the smart-check schedules and "run now" requests (agent/smartchecks.go).
+	// Not secret: it is cached on disk (without the "run now" requests).
+	SmartChecks json.RawMessage `json:"smart_checks,omitempty"`
 }
 
 type Command struct {

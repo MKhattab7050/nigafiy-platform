@@ -125,6 +125,22 @@ export const FEATURES: Feature[] = [
     placement: 'network',
     widget: { component: lazy(() => import('./routers/widget')), order: 65, attention: true },
   },
+  {
+    id: 'security',
+    route: '/security',
+    label: 'nav.security',
+    icon: ShieldCheck,
+    placement: 'network',
+    widget: { component: lazy(() => import('./security/widget')), order: 66, attention: true },
+  },
+  {
+    id: 'config-backup',
+    route: '/config-backup',
+    label: 'nav.configBackup',
+    icon: History,
+    placement: 'network',
+    widget: { component: lazy(() => import('./config-backup/widget')), order: 67, attention: true },
+  },
 
   {
     id: 'endpoints',
@@ -192,6 +208,20 @@ export const FEATURES: Feature[] = [
     icon: ShieldCheck,
     placement: 'tools',
     widget: { component: lazy(() => import('./access/widget')), order: 90, attention: true },
+  },
+  {
+    id: 'playbooks',
+    route: '/playbooks',
+    label: 'nav.playbooks',
+    icon: GitBranch,
+    placement: 'tools',
+    badge: {
+      path: () => '/playbook-approvals?page_size=100',
+      topics: ['events'],
+      count: (data) => (data as { items: unknown[] }).items.length,
+      label: 'nav.pendingApprovals',
+    },
+    widget: { component: lazy(() => import('./playbooks/widget')), order: 95, attention: true },
   },
 
   // ── Phase 6: knowledge memory, digital twin impact, multi-site portfolio, optional AI assistant ──

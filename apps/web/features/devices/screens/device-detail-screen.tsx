@@ -9,6 +9,7 @@ import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
 import { DeviceEndpointCard } from '@/features/endpoints';
 import { DevicePortCard } from '@/features/ports';
+import { DeviceBackupCard } from '@/features/config-backup';
 import { DeviceAccessCard } from '@/features/access';
 import { DeviceImpactCard } from '@/features/impact';
 import { KnowledgeSuggestions } from '@/features/knowledge';
@@ -126,6 +127,9 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                   </FeatureBoundary>
                   <FeatureBoundary>
                     <DevicePortCard deviceId={d.id} />
+                  </FeatureBoundary>
+                  <FeatureBoundary>
+                    <DeviceBackupCard deviceId={d.id} siteId={d.site_id} />
                   </FeatureBoundary>
                   <FeatureBoundary>
                     <DeviceAccessCard deviceId={d.id} siteId={d.site_id} />

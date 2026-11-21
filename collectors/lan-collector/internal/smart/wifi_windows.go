@@ -21,13 +21,13 @@ import (
 // when the list comes back empty or access is denied, the error says so.
 
 var (
-	wlanapi                    = windows.NewLazySystemDLL("wlanapi.dll")
-	procWlanOpenHandle         = wlanapi.NewProc("WlanOpenHandle")
-	procWlanCloseHandle        = wlanapi.NewProc("WlanCloseHandle")
-	procWlanEnumInterfaces     = wlanapi.NewProc("WlanEnumInterfaces")
-	procWlanGetNetworkBssList  = wlanapi.NewProc("WlanGetNetworkBssList")
-	procWlanQueryInterface     = wlanapi.NewProc("WlanQueryInterface")
-	procWlanFreeMemory         = wlanapi.NewProc("WlanFreeMemory")
+	wlanapi                   = windows.NewLazySystemDLL("wlanapi.dll")
+	procWlanOpenHandle        = wlanapi.NewProc("WlanOpenHandle")
+	procWlanCloseHandle       = wlanapi.NewProc("WlanCloseHandle")
+	procWlanEnumInterfaces    = wlanapi.NewProc("WlanEnumInterfaces")
+	procWlanGetNetworkBssList = wlanapi.NewProc("WlanGetNetworkBssList")
+	procWlanQueryInterface    = wlanapi.NewProc("WlanQueryInterface")
+	procWlanFreeMemory        = wlanapi.NewProc("WlanFreeMemory")
 )
 
 const (

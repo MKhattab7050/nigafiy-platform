@@ -1,0 +1,4 @@
+HTTP/1.1 200 OK
+LOCATION: http://192.168.1.40:8008/ssdp/device-desc.xml
+ST: urn:dial-multiscreen-org:service:dial:1
+

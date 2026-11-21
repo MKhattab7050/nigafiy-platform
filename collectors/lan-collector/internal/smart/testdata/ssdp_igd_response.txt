@@ -1,0 +1,8 @@
+HTTP/1.1 200 OK
+CACHE-CONTROL: max-age=1800
+EXT:
+LOCATION: http://192.168.1.2:1900/igd.xml
+SERVER: Linux/3.4 UPnP/1.0 miniupnpd/2.1
+ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1
+USN: uuid:12345678-1234-1234-1234-0025960a1b2c::urn:schemas-upnp-org:device:InternetGatewayDevice:1
+

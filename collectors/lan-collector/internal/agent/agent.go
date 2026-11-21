@@ -28,6 +28,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/router"
 	"github.com/lan-detective/lan-collector/internal/scope"
+	"github.com/lan-detective/lan-collector/internal/smart"
 	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
 	"github.com/lan-detective/lan-collector/internal/tools"
@@ -72,6 +73,17 @@ type Deps struct {
 	ConfigBackup func(ctx context.Context, t configbackup.Target, opts configbackup.Options) (*configbackup.Result, error)
 	// SSHProbe checks whether an address answers SSH, without logging in (configbackup.Probe); nil disables the check.
 	SSHProbe func(ctx context.Context, address string, port int, opts configbackup.Options) configbackup.ProbeResult
+	// Smart network checks (smartchecks.go); nil disables each one on this collector.
+	// SmartInterfaces lists the host's IPv4 interfaces inside the authorized scopes (smart.Interfaces when nil).
+	SmartInterfaces func(allowed []netip.Prefix) []smart.DHCPInterface
+	// SmartDHCP sends one DHCPDISCOVER per interface and collects the offers (rogue DHCP).
+	SmartDHCP func(ctx context.Context, ifaces []smart.DHCPInterface, listen time.Duration) []smart.DHCPInterfaceResult
+	// SmartUPnP audits the UPnP Internet Gateway Devices of the authorized networks (read-only actions).
+	SmartUPnP func(ctx context.Context, locals []netip.Addr, allowed []netip.Prefix) []smart.UPnPGateway
+	// SmartWiFi reads the host's Wi-Fi link and the networks its adapter lists.
+	SmartWiFi func(ctx context.Context) (smart.WiFiReport, error)
+	// SmartBanners fetches GET / and the TLS certificate of each target's web ports.
+	SmartBanners func(ctx context.Context, targets []netip.Addr, ports []int, allowed []netip.Prefix) smart.BannerReport
 }
 
 // SystemDeps returns the real implementations.
@@ -99,6 +111,13 @@ func SystemDeps() Deps {
 		RouterCertificate: router.FetchCertificate,
 		ConfigBackup:      configbackup.Run,
 		SSHProbe:          configbackup.Probe,
+		SmartInterfaces:   smart.Interfaces,
+		SmartDHCP: func(ctx context.Context, ifaces []smart.DHCPInterface, listen time.Duration) []smart.DHCPInterfaceResult {
+			return smart.DHCPProbe(ctx, ifaces, listen, smart.ListenDHCPClient)
+		},
+		SmartUPnP:    smart.AuditUPnP,
+		SmartWiFi:    smart.ReadWiFi,
+		SmartBanners: smart.ProbeBanners,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
 			defer mu.Unlock()
@@ -167,6 +186,13 @@ type Agent struct {
 	toolSlots chan struct{}
 	wake      chan struct{}
 	routers   routerState
+
+	// Smart checks: the scheduler, the DHCP fingerprints the passive listener overheard, and
+	// whether that listener is running (set once in Run, before the loops start).
+	smartRuns     smartState
+	fingerprints  *smart.FingerprintTable
+	dhcpListening bool
+	dhcpListenErr string
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -196,6 +222,8 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	ag.access.lists = lists
 	ag.access.server = dnsfilter.NewServer(lists, log)
 	ag.routers = newRouterState()
+	ag.smartRuns = newSmartState()
+	ag.fingerprints = smart.NewFingerprintTable()
 	return ag, nil
 }
 
@@ -212,11 +240,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		namesSaved = a.dhcp.Persist(ctx, filepath.Join(a.cfg.StateDir, dhcp.FileName), dhcp.SaveDebounce, func(err error) {
 			a.log.Warn("could not save DHCP-learned device names", "error", err.Error())
 		})
-		// Passive only: listens for the names devices broadcast when they join. Never sends.
-		err := dhcp.Listen(ctx, a.deps.DHCPListen, a.dhcp, func(r dhcp.Request) {
+		// Passive only: listens for the names devices broadcast when they join. Never sends. Every
+		// client message also feeds the DHCP fingerprint table (smart check dhcp_fingerprints).
+		err := dhcp.ListenObserve(ctx, a.deps.DHCPListen, a.dhcp, func(r dhcp.Request) {
 			a.log.Info("learned a device name from DHCP", "mac", r.MAC, "hostname", r.Hostname, "vendor_class", r.VendorClass)
-		})
+		}, a.observeDHCP)
+		a.dhcpListening = err == nil
 		if err != nil {
+			a.dhcpListenErr = err.Error()
 			a.log.Warn("passive DHCP name learning is off: cannot listen on the DHCP port (needs CAP_NET_BIND_SERVICE on Linux; on Windows no local DHCP server and an inbound firewall rule for UDP 67)", "error", err.Error())
 		} else {
 			a.log.Info("passive DHCP name learning is on", "listen", a.deps.DHCPListen)
@@ -224,7 +255,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop, a.smartLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -233,6 +264,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	wg.Wait()
 	a.cmdWG.Wait()
+	a.smartRuns.wg.Wait()
 	// Graceful shutdown: whatever was measured but not yet uploaded goes to disk for the next start.
 	a.flushQueueToSpool()
 	<-namesSaved
@@ -410,6 +442,8 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 	cached := rc
 	cached.SNMP = nil
 	cached.Routers = nil
+	// Smart-check schedules are not secret and are cached; pending "run now" requests are not.
+	cached.SmartChecks = cacheableSmartChecks(rc.SmartChecks)
 	if raw, err := json.Marshal(cached); err == nil {
 		_ = os.WriteFile(a.configPath(), raw, 0o600)
 	}

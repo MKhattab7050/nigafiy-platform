@@ -225,7 +225,7 @@ func TestTTLExpiryAndValidationOnLoadAndSave(t *testing.T) {
 			},
 			{
 				// Empty hostname and vendor class
-				MAC: "00:11:22:33:44:99",
+				MAC:       "00:11:22:33:44:99",
 				FirstSeen: now, LastSeen: now,
 			},
 		},

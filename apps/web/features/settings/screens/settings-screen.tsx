@@ -10,6 +10,7 @@ import { Notifications } from '../components/notifications';
 import { AuditLog } from '../components/audit-log';
 import { Automation } from '../components/automation';
 import { MaintenanceWindows } from '../components/maintenance-windows';
+import { SystemHealth } from '../components/system-health';
 import { TeamManagement } from '../components/team-management';
 
 export function SettingsScreen() {
@@ -46,6 +47,9 @@ export function SettingsScreen() {
         <AccountSecurity />
         <MaintenanceWindows />
         <Automation />
+        <div id="system" className="scroll-mt-20">
+          <SystemHealth />
+        </div>
         {can('admin') ? (
           <>
             <TeamManagement />

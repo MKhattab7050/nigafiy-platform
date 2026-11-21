@@ -61,6 +61,8 @@ func ChannelOf(mhz int) (int, string) {
 	switch {
 	case mhz == 2484:
 		return 14, "2.4"
+	case mhz == 5935: // 6 GHz channel 2, below the 5955 MHz start of the regular 6 GHz raster
+		return 2, "6"
 	case mhz >= 2412 && mhz <= 2472:
 		return (mhz - 2407) / 5, "2.4"
 	case mhz >= 5955 && mhz <= 7115:
@@ -213,6 +215,29 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
+}
+
+// Normalize keeps only what the protocol can carry faithfully: a network whose frequency does not
+// map to a known band (unknown or zero frequency) is left out instead of being guessed, the list is
+// capped, and a link without a known band is dropped while Connected stays true.
+func (r *WiFiReport) Normalize() {
+	kept := r.Networks[:0]
+	for _, n := range r.Networks {
+		if n.Band == "" || n.FrequencyMHz < 2000 || n.FrequencyMHz > 7200 {
+			continue
+		}
+		kept = append(kept, n)
+	}
+	if kept == nil {
+		kept = []WiFiNetwork{}
+	}
+	if len(kept) > maxNetworks {
+		kept, r.Truncated = kept[:maxNetworks], true
+	}
+	r.Networks = kept
+	if r.Link != nil && (r.Link.Band == "" || r.Link.FrequencyMHz < 2000 || r.Link.FrequencyMHz > 7200) {
+		r.Link = nil
+	}
 }
 
 // ── NetworkManager (Linux) ──

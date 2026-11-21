@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/lan-detective/lan-collector/internal/identify"
+	"unicode"
+	"unicode/utf8"
 )
 
 // DHCPInterface is one network interface of the collector host to probe.
@@ -48,9 +48,11 @@ type DHCPOffer struct {
 
 // DHCPInterfaceResult is the outcome of probing one interface.
 type DHCPInterfaceResult struct {
-	Name          string      `json:"name"`
-	Address       string      `json:"address"`
-	MAC           string      `json:"mac,omitempty"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	MAC     string `json:"mac,omitempty"`
+	// ScopeID is the authorized scope the interface address lies in (set by the agent).
+	ScopeID       string      `json:"scope_id,omitempty"`
 	ListenError   string      `json:"listen_error,omitempty"`
 	ListenSeconds float64     `json:"listen_seconds,omitempty"`
 	Offers        []DHCPOffer `json:"offers"`
@@ -72,9 +74,9 @@ func BuildDiscover(mac net.HardwareAddr, xid uint32) []byte {
 	binary.BigEndian.PutUint16(msg[10:12], 0x8000) // broadcast flag
 	copy(msg[28:34], mac)
 	msg = append(msg, dhcpCookie...)
-	msg = append(msg, 53, 1, 1)                     // DHCPDISCOVER
-	msg = append(msg, 55, 6, 1, 3, 6, 15, 51, 54)   // ask for mask, routers, DNS, domain, lease, server id
-	msg = append(msg, 57, 2, 0x05, 0xdc)            // max message size 1500
+	msg = append(msg, 53, 1, 1)                   // DHCPDISCOVER
+	msg = append(msg, 55, 6, 1, 3, 6, 15, 51, 54) // ask for mask, routers, DNS, domain, lease, server id
+	msg = append(msg, 57, 2, 0x05, 0xdc)          // max message size 1500
 	msg = append(msg, 255)
 	for len(msg) < 300 { // BOOTP minimum size; some relays drop shorter packets
 		msg = append(msg, 0)
@@ -151,19 +153,27 @@ func ParseOffer(msg []byte, xid uint32, source netip.Addr) (DHCPOffer, bool) {
 	return o, true
 }
 
-// cleanText makes device-supplied text safe (no control characters) and bounded to max bytes.
+// cleanText makes device-supplied text safe (valid UTF-8, no control characters, trimmed) and
+// bounded to max bytes, cut on a character boundary. It does not use identify.Clean, which caps
+// every string at 100 bytes and would silently shorten the 300-byte fields (errors, TLS names).
 func cleanText(s string, max int) string {
-	s = identify.Clean(s)
+	s = strings.ToValidUTF8(s, "")
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
 	if len(s) > max {
 		s = s[:max]
-		for len(s) > 0 && !validUTF8Tail(s) {
+		for len(s) > 0 && !utf8.ValidString(s) {
 			s = s[:len(s)-1]
 		}
+		s = strings.TrimSpace(s)
 	}
 	return s
 }
-
-func validUTF8Tail(s string) bool { return strings.ToValidUTF8(s, "�") == s }
 
 // Interfaces returns the collector host's IPv4 interfaces whose address lies in one of allowed,
 // each once (the first matching address). Loopback, down and MAC-less interfaces are skipped.

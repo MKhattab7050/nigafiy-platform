@@ -38,6 +38,7 @@ type fakeCloud struct {
 	acked       []string
 	scopes      []map[string]string
 	checks      []map[string]any
+	smart       map[string]any // the smart_checks configuration key; nil leaves it out
 }
 
 func (f *fakeCloud) handler() http.Handler {
@@ -86,15 +87,15 @@ func (f *fakeCloud) handler() http.Handler {
 		if f.pendingCmd != "" {
 			commands = append(commands, map[string]string{"id": f.pendingCmd, "kind": "run_discovery"})
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"server_time": time.Now(),
-			"config": map[string]any{
-				"heartbeat_interval_seconds": 1,
-				"discovery":                  map[string]any{"interval_seconds": 300, "scopes": f.scopes},
-				"checks":                     f.checks,
-			},
-			"commands": commands,
-		})
+		config := map[string]any{
+			"heartbeat_interval_seconds": 1,
+			"discovery":                  map[string]any{"interval_seconds": 300, "scopes": f.scopes},
+			"checks":                     f.checks,
+		}
+		if f.smart != nil {
+			config["smart_checks"] = f.smart
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"server_time": time.Now(), "config": config, "commands": commands})
 	}))
 	mux.HandleFunc("/api/v1/collector/telemetry", authed(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
