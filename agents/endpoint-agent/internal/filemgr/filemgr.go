@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -58,6 +59,9 @@ type Request struct {
 	DataBase64         string   `json:"data_base64,omitempty"`
 	ExpectedSHA256     string   `json:"expected_sha256,omitempty"`
 	AllowedRoots       []string `json:"allowed_roots,omitempty"`
+	// Overwrite lets an upload replace an existing file. The operator confirms it in a dialog first;
+	// without it an upload never touches a file that already exists.
+	Overwrite bool `json:"overwrite,omitempty"`
 }
 
 type Response struct {
@@ -73,6 +77,8 @@ type Response struct {
 	DataBase64 string      `json:"data_base64,omitempty"`
 	SHA256     string      `json:"sha256,omitempty"`
 	Message    string      `json:"message,omitempty"`
+	// Overwritten is set when an upload replaced a file that already existed (with Overwrite).
+	Overwritten bool `json:"overwritten,omitempty"`
 }
 
 // ValidateAndCleanPath rejects traversal segments, null bytes, relative paths, and
@@ -195,11 +201,28 @@ func isSameOrSubpath(child, root string) bool {
 	return strings.HasPrefix(c, r)
 }
 
+// Windows DPAPI master keys and Credential Manager / Vault stores, wherever the profile lives
+// (C:/Users/<name>, C:/Windows/ServiceProfiles/..., the SYSTEM profile under System32).
+var dpapiSegments = []string{
+	"/appdata/roaming/microsoft/credentials",
+	"/appdata/roaming/microsoft/protect",
+	"/appdata/roaming/microsoft/vault",
+	"/appdata/local/microsoft/credentials",
+	"/appdata/local/microsoft/vault",
+	"/programdata/microsoft/vault",
+	"/system32/microsoft/protect",
+}
+
 func isForbiddenCredentialPath(clean string) bool {
 	lower := strings.ToLower(filepath.ToSlash(clean))
 	if strings.HasSuffix(lower, "/.ssh") || strings.Contains(lower, "/.ssh/") ||
 		strings.HasSuffix(lower, "/credential.json") || lower == "credential.json" {
 		return true
+	}
+	for _, seg := range dpapiSegments {
+		if strings.HasSuffix(lower, seg) || strings.Contains(lower, seg+"/") {
+			return true
+		}
 	}
 	forbidden := []string{
 		"/etc/shadow",
@@ -445,7 +468,7 @@ func Execute(req Request) (Response, error) {
 		if err != nil {
 			return Response{}, err
 		}
-		return uploadChunk(clean, req.Offset, req.Append, req.DataBase64, req.ExpectedSHA256)
+		return uploadChunk(clean, req.Offset, req.DataBase64, req.ExpectedSHA256, req.Overwrite)
 
 	default:
 		return Response{}, fmt.Errorf("unsupported file manager operation: %s", req.Op)
@@ -513,6 +536,13 @@ func searchDir(rootClean, queryLower string, showHidden bool) (Response, error) 
 			return nil
 		}
 		if path == rootClean {
+			return nil
+		}
+		// Never walk into (or name the files of) a credential store.
+		if isForbiddenCredentialPath(path) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		depth := strings.Count(filepath.ToSlash(path), "/") - rootDepth
@@ -617,7 +647,56 @@ func downloadChunk(clean string, offset int64, length int64) (Response, error) {
 	}, nil
 }
 
-func uploadChunk(clean string, offset int64, appendMode bool, dataB64 string, expectedSHA256 string) (Response, error) {
+// uploadTracker remembers the uploads this agent started (created, or overwrote after
+// confirmation) and where their next chunk must begin, so a continuation chunk can only extend a
+// file its own upload created. An agent restart forgets them: the operator uploads again.
+type uploadTracker struct {
+	mu sync.Mutex
+	m  map[string]trackedUpload
+}
+
+type trackedUpload struct {
+	next int64
+	at   time.Time
+}
+
+var uploads = &uploadTracker{m: map[string]trackedUpload{}}
+
+func uploadKey(p string) string { return strings.ToLower(filepath.Clean(p)) }
+
+func (u *uploadTracker) continues(p string, offset int64) bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	t, ok := u.m[uploadKey(p)]
+	return ok && t.next == offset && time.Since(t.at) < time.Hour
+}
+
+func (u *uploadTracker) advance(p string, next int64) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	for k, t := range u.m {
+		if time.Since(t.at) > time.Hour {
+			delete(u.m, k)
+		}
+	}
+	u.m[uploadKey(p)] = trackedUpload{next: next, at: time.Now()}
+}
+
+func (u *uploadTracker) forget(p string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	delete(u.m, uploadKey(p))
+}
+
+// ErrUploadTargetExists starts the error an upload gets when its target already exists and the
+// request did not carry an operator-confirmed overwrite; the web console looks for this text.
+const ErrUploadTargetExists = "upload target already exists"
+
+// uploadChunk writes one chunk. The first chunk (offset 0) creates the file; replacing an existing
+// file needs an explicit, operator-confirmed overwrite. A later chunk continues the file this upload
+// created: it must start exactly where the file ends, so it can never write into another file.
+// (The "append" flag older consoles send is implied by offset > 0 and otherwise ignored.)
+func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 string, overwrite bool) (Response, error) {
 	raw, err := base64.StdEncoding.DecodeString(dataB64)
 	if err != nil {
 		return Response{}, errors.New("invalid base64 upload payload")
@@ -625,12 +704,40 @@ func uploadChunk(clean string, offset int64, appendMode bool, dataB64 string, ex
 	if len(raw) > MaxChunkBytes*2 {
 		return Response{}, errors.New("upload chunk exceeds maximum permitted chunk size")
 	}
-	flags := os.O_CREATE | os.O_WRONLY
-	if !appendMode && offset == 0 {
+	if offset < 0 {
+		return Response{}, errors.New("upload offset must not be negative")
+	}
+	firstChunk := offset == 0
+	existing, statErr := os.Lstat(clean)
+	exists := statErr == nil
+	if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+		return Response{}, fmt.Errorf("stat upload target failed: %w", statErr)
+	}
+	if exists && !existing.Mode().IsRegular() {
+		return Response{}, fmt.Errorf("%s is a folder, link or special file and cannot be replaced by an upload", filepath.Base(clean))
+	}
+	overwritten := false
+	flags := os.O_WRONLY
+	switch {
+	case firstChunk && !exists:
+		flags |= os.O_CREATE | os.O_EXCL
+	case firstChunk && !overwrite:
+		return Response{}, fmt.Errorf("%s: %s (confirm the overwrite to replace it)", ErrUploadTargetExists, filepath.Base(clean))
+	case firstChunk:
 		flags |= os.O_TRUNC
+		overwritten = true
+	case !exists:
+		return Response{}, errors.New("upload continuation refused: the file this upload started is missing")
+	case !uploads.continues(clean, offset):
+		return Response{}, fmt.Errorf("upload continuation refused: no upload of %s started here at that offset", filepath.Base(clean))
+	case existing.Size() != offset:
+		return Response{}, fmt.Errorf("upload continuation refused: the file is %d bytes, the chunk starts at %d", existing.Size(), offset)
 	}
 	f, err := os.OpenFile(clean, flags, 0o644)
 	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return Response{}, fmt.Errorf("%s: %s (confirm the overwrite to replace it)", ErrUploadTargetExists, filepath.Base(clean))
+		}
 		return Response{}, fmt.Errorf("open for upload failed: %w", err)
 	}
 	defer f.Close()
@@ -639,16 +746,14 @@ func uploadChunk(clean string, offset int64, appendMode bool, dataB64 string, ex
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
 			return Response{}, fmt.Errorf("seek for upload failed: %w", err)
 		}
-	} else if appendMode {
-		if _, err := f.Seek(0, io.SeekEnd); err != nil {
-			return Response{}, fmt.Errorf("seek to end failed: %w", err)
-		}
 	}
 	n, err := f.Write(raw)
 	if err != nil {
+		uploads.forget(clean)
 		return Response{}, fmt.Errorf("write failed: %w", err)
 	}
 	_ = f.Close()
+	uploads.advance(clean, offset+int64(n))
 
 	info, err := os.Stat(clean)
 	if err != nil {
@@ -670,14 +775,19 @@ func uploadChunk(clean string, offset int64, appendMode bool, dataB64 string, ex
 		}
 	}
 
+	msg := fmt.Sprintf("Uploaded %d bytes to %s", n, filepath.Base(clean))
+	if overwritten {
+		msg = fmt.Sprintf("Overwrote %s with %d bytes (operator-confirmed)", filepath.Base(clean), n)
+	}
 	return Response{
-		Op:        "upload",
-		Path:      clean,
-		TotalSize: info.Size(),
-		Offset:    offset,
-		BytesRead: int64(n),
-		SHA256:    sumHex,
-		Message:   fmt.Sprintf("Uploaded %d bytes to %s", n, filepath.Base(clean)),
+		Op:          "upload",
+		Path:        clean,
+		TotalSize:   info.Size(),
+		Offset:      offset,
+		BytesRead:   int64(n),
+		SHA256:      sumHex,
+		Message:     msg,
+		Overwritten: overwritten,
 	}, nil
 }
 
@@ -738,4 +848,3 @@ func moveItem(src, dst string) error {
 	}
 	return os.RemoveAll(src)
 }
-

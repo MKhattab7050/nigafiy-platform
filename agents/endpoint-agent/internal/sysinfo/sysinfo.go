@@ -81,6 +81,9 @@ type SecurityPosture struct {
 	PendingUpdates   *int   `json:"pending_updates,omitempty"`
 	LastUpdateDate   string `json:"last_update_date,omitempty"`
 	OSBuild          string `json:"os_build,omitempty"`
+	// Checks is the evidence behind the fields above (compliance.go); MeasuredAt is the newest measurement.
+	Checks     []Evidence `json:"checks,omitempty"`
+	MeasuredAt string     `json:"measured_at,omitempty"`
 }
 
 type Health struct {
@@ -195,6 +198,7 @@ func CollectHealth(ctx context.Context, started time.Time) Health {
 	} else {
 		collectUnixHealth(ctx, &h)
 	}
+	ApplyEvidence(&h.Security, ComplianceEvidence())
 	if len(h.Disks) > 0 {
 		maxPct := 0.0
 		for _, d := range h.Disks {
@@ -269,11 +273,9 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		`$cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue; ` +
 		`$bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue; ` +
 		`$cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1; ` +
-		`$fwReg = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile' -Name EnableFirewall -ErrorAction SilentlyContinue; ` +
-		`$avCim = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpComputerStatus -ErrorAction SilentlyContinue; ` +
 		`$ntos = Get-Item "$env:SystemRoot\System32\ntoskrnl.exe" -ErrorAction SilentlyContinue; ` +
 		`$disks = @([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' } | ForEach-Object { @{ mount=$_.Name.TrimEnd('\'); fs=$_.DriveFormat; total=[math]::Round($_.TotalSize/1GB,1); free=[math]::Round($_.AvailableFreeSpace/1GB,1) } }); ` +
-		`@{ caption=$os.Caption; build=$os.BuildNumber; mfg=$cs.Manufacturer; model=$cs.Model; serial=$bios.SerialNumber; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; av=if($null -ne $avCim){[bool]$avCim.AntivirusEnabled}else{$null}; fw=if($null -ne $fwReg){[bool]($fwReg.EnableFirewall -eq 1)}else{$null}; last_hf=if($ntos){$ntos.LastWriteTime.ToString('yyyy-MM-dd')}else{''}; disks=$disks } | ConvertTo-Json -Depth 4 -Compress`
+		`@{ caption=$os.Caption; build=$os.BuildNumber; mfg=$cs.Manufacturer; model=$cs.Model; serial=$bios.SerialNumber; total_kb=$os.TotalVisibleMemorySize; free_kb=$os.FreePhysicalMemory; boot=if($os.LastBootUpTime){[int]((Get-Date)-$os.LastBootUpTime).TotalSeconds}else{0}; cpu_name=$cpu.Name; cpu_load=$cpu.LoadPercentage; last_hf=if($ntos){$ntos.LastWriteTime.ToString('yyyy-MM-dd')}else{''}; disks=$disks } | ConvertTo-Json -Depth 4 -Compress`
 	cmd := exec.CommandContext(c, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
 	hideWindow(cmd)
 	out, err := cmd.Output()
@@ -291,8 +293,6 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 		Boot    int64           `json:"boot"`
 		CPUName string          `json:"cpu_name"`
 		CPULoad float64         `json:"cpu_load"`
-		AV      *bool           `json:"av"`
-		FW      *bool           `json:"fw"`
 		LastHF  string          `json:"last_hf"`
 		Disks   json.RawMessage `json:"disks"`
 	}
@@ -311,11 +311,10 @@ func collectWindowsHealth(ctx context.Context, h *Health) {
 	if data.Serial != "" {
 		h.SerialNumber = truncate(data.Serial, 120)
 	}
+	// Firewall, antivirus, BitLocker and updates are measured with evidence in compliance.go.
 	h.Security = SecurityPosture{
-		FirewallEnabled:  data.FW,
-		AntivirusEnabled: data.AV,
-		LastUpdateDate:   truncate(data.LastHF, 40),
-		OSBuild:          truncate(data.Build, 40),
+		LastUpdateDate: truncate(data.LastHF, 40),
+		OSBuild:        truncate(data.Build, 40),
 	}
 	if data.CPUName != "" {
 		h.CPUModel = truncate(data.CPUName, 160)
@@ -1330,4 +1329,3 @@ func collectConnections(ctx context.Context, procByPID map[int]string) []Connect
 	}
 	return ParseNetstat(string(out), procByPID)
 }
-

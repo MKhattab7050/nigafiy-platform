@@ -46,9 +46,39 @@ type Result struct {
 	Data   json.RawMessage `json:"data,omitempty"`
 }
 
-// Runner executes validated control actions. Exec can be overridden in unit tests.
+// Runner executes validated control actions. Exec can be overridden in unit tests, and GOOS,
+// LookPath and FileExists let tests build the Linux and macOS command lines on any host.
 type Runner struct {
 	Exec func(ctx context.Context, name string, args ...string) (string, error)
+	// GOOS overrides runtime.GOOS (tests only).
+	GOOS string
+	// LookPath reports whether a program is installed; nil uses exec.LookPath.
+	LookPath func(name string) bool
+	// FileExists reports whether an absolute path exists; nil uses os.Stat.
+	FileExists func(path string) bool
+}
+
+func (r Runner) goos() string {
+	if r.GOOS != "" {
+		return r.GOOS
+	}
+	return runtime.GOOS
+}
+
+func (r Runner) has(name string) bool {
+	if r.LookPath != nil {
+		return r.LookPath(name)
+	}
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+func (r Runner) exists(path string) bool {
+	if r.FileExists != nil {
+		return r.FileExists(path)
+	}
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func DefaultRunner() Runner {
@@ -60,6 +90,13 @@ func DefaultRunner() Runner {
 			sysinfo.HideWindow(cmd)
 			out, err := cmd.CombinedOutput()
 			text := strings.TrimSpace(string(out))
+			if keepTail(ctx) {
+				// The caller keeps the newest lines itself (TailLogLines); hand it the end of the output.
+				if len(text) > 256*1024 {
+					text = text[len(text)-256*1024:]
+				}
+				return text, err
+			}
 			if len(text) > 16000 {
 				text = text[:16000]
 			}
@@ -93,7 +130,7 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 				return Result{ID: cmd.ID, OK: false, Error: err.Error()}
 			}
 		}
-		if runtime.GOOS == "windows" && r.Exec != nil {
+		if r.goos() == "windows" && r.Exec != nil {
 			out, err := r.Exec(ctx, "taskkill", "/PID", pidStr, "/F")
 			if err != nil {
 				return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
@@ -135,12 +172,12 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		}
 		var out string
 		var err error
-		if runtime.GOOS == "windows" {
+		if r.goos() == "windows" {
 			psCmd := map[string]string{"start": "Start-Service", "stop": "Stop-Service", "restart": "Restart-Service"}[p.Action]
 			safeName := strings.ReplaceAll(p.Service, "'", "''")
 			script := fmt.Sprintf("$ErrorActionPreference = 'Stop'; %s -Name '%s' -Force", psCmd, safeName)
 			out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-		} else if runtime.GOOS == "darwin" {
+		} else if r.goos() == "darwin" {
 			lcAction := map[string]string{"start": "start", "stop": "stop", "restart": "kickstart"}[p.Action]
 			out, err = r.Exec(ctx, "launchctl", lcAction, p.Service)
 		} else {
@@ -162,42 +199,16 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		if r.Exec == nil {
 			return Result{ID: cmd.ID, OK: false, Error: "Execution disabled"}
 		}
-		var out string
-		var err error
 		switch p.Action {
-		case "lock":
-			if runtime.GOOS == "windows" {
-				out, err = r.Exec(ctx, "rundll32.exe", "user32.dll,LockWorkStation")
-			} else if runtime.GOOS == "darwin" {
-				out, err = r.Exec(ctx, "pmset", "displaysleepnow")
-			} else {
-				out, err = r.Exec(ctx, "loginctl", "lock-sessions")
-			}
-		case "logoff":
-			if runtime.GOOS == "windows" {
-				out, err = r.Exec(ctx, "shutdown", "/l")
-			} else {
-				err = errors.New("logoff is only supported on Windows workstations")
-			}
-		case "restart":
-			if runtime.GOOS == "windows" {
-				out, err = r.Exec(ctx, "shutdown", "/r", "/t", "5", "/c", "Restart requested by IT administrator (LAN Detective)")
-			} else {
-				out, err = r.Exec(ctx, "shutdown", "-r", "+1", "Restart requested by IT administrator")
-			}
-		case "shutdown":
-			if runtime.GOOS == "windows" {
-				out, err = r.Exec(ctx, "shutdown", "/s", "/t", "5", "/c", "Shutdown requested by IT administrator (LAN Detective)")
-			} else {
-				out, err = r.Exec(ctx, "shutdown", "-h", "+1", "Shutdown requested by IT administrator")
-			}
+		case "lock", "logoff", "restart", "shutdown":
 		default:
 			return Result{ID: cmd.ID, OK: false, Error: "Unsupported power action"}
 		}
+		msg, err := r.powerAction(ctx, p.Action)
 		if err != nil {
-			return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
+			return Result{ID: cmd.ID, OK: false, Error: err.Error()}
 		}
-		return Result{ID: cmd.ID, OK: true, Output: fmt.Sprintf("Power action '%s' executed", p.Action)}
+		return Result{ID: cmd.ID, OK: true, Output: msg}
 
 	case "notify_user":
 		var p struct {
@@ -210,21 +221,12 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		if r.Exec == nil {
 			return Result{ID: cmd.ID, OK: false, Error: "Execution disabled"}
 		}
-		full := strings.TrimSpace(p.Title + ": " + p.Message)
-		if len(full) > 500 {
-			full = full[:500]
-		}
-		var out string
-		var err error
-		if runtime.GOOS == "windows" {
-			out, err = r.Exec(ctx, "msg", "*", "/TIME:60", full)
-		} else {
-			out, err = r.Exec(ctx, "wall", full)
-		}
+		delivery, err := r.notifyUser(ctx, p.Title, p.Message)
 		if err != nil {
-			return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
+			return Result{ID: cmd.ID, OK: false, Error: err.Error()}
 		}
-		return Result{ID: cmd.ID, OK: true, Output: "Message delivered to user session"}
+		raw, _ := json.Marshal(delivery)
+		return Result{ID: cmd.ID, OK: true, Output: delivery.Summary, Data: raw}
 
 	case "fs_op":
 		var req filemgr.Request
@@ -288,24 +290,15 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		if r.Exec == nil {
 			return Result{ID: cmd.ID, OK: false, Error: "Execution disabled"}
 		}
-		var out string
-		var err error
-		if runtime.GOOS == "windows" {
-			args := []string{p.Action, "--id", p.PackageID, "--silent", "--accept-package-agreements", "--accept-source-agreements"}
-			if p.Action == "uninstall" {
-				args = []string{"uninstall", "--id", p.PackageID, "--silent"}
-			}
-			out, err = r.Exec(ctx, "winget", args...)
-		} else if runtime.GOOS == "darwin" {
-			out, err = r.Exec(ctx, "brew", p.Action, "--", p.PackageID)
-		} else {
-			aptCmd := map[string]string{"install": "install", "upgrade": "install", "uninstall": "remove"}[p.Action]
-			out, err = r.Exec(ctx, "apt-get", aptCmd, "-y", "--", p.PackageID)
+		name, args, err := r.packageCommand(p.Action, p.PackageID)
+		if err != nil {
+			return Result{ID: cmd.ID, OK: false, Error: err.Error()}
 		}
+		out, err := r.Exec(ctx, name, args...)
 		if err != nil {
 			return Result{ID: cmd.ID, OK: false, Error: firstNonEmpty(out, err.Error())}
 		}
-		return Result{ID: cmd.ID, OK: true, Output: firstNonEmpty(out, fmt.Sprintf("Software %s (%s) completed", p.Action, p.PackageID))}
+		return Result{ID: cmd.ID, OK: true, Output: firstNonEmpty(out, fmt.Sprintf("Software %s (%s) completed with %s", p.Action, p.PackageID, name))}
 
 	case "fetch_logs":
 		var p struct {
@@ -321,7 +314,7 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		}
 		var out string
 		var err error
-		if runtime.GOOS == "windows" {
+		if r.goos() == "windows" {
 			logName := "System"
 			if strings.EqualFold(p.Source, "application") {
 				logName = "Application"
@@ -330,8 +323,10 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 			}
 			script := fmt.Sprintf("Get-WinEvent -LogName %s -MaxEvents %d -ErrorAction SilentlyContinue | Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-Table -AutoSize -Wrap | Out-String -Width 200", logName, p.Lines)
 			out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
-		} else if runtime.GOOS == "darwin" {
-			out, err = r.Exec(ctx, "log", "show", "--last", "15m", "--style", "compact")
+		} else if r.goos() == "darwin" {
+			// `log show` has no line limit: read the newest output and keep the requested count.
+			out, err = r.Exec(withTailOutput(ctx), "log", "show", "--last", "15m", "--style", "compact")
+			out = TailLogLines(out, p.Lines, 150)
 		} else {
 			out, err = r.Exec(ctx, "journalctl", "-n", strconv.Itoa(p.Lines), "--no-pager", "-o", "short-iso")
 		}
@@ -356,17 +351,17 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		var err error
 		switch p.Tool {
 		case "ipconfig":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "ipconfig", "/all")
-			} else if runtime.GOOS == "darwin" {
+			} else if r.goos() == "darwin" {
 				out, err = r.Exec(ctx, "ifconfig", "-a")
 			} else {
 				out, err = r.Exec(ctx, "ip", "addr")
 			}
 		case "route":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "route", "print")
-			} else if runtime.GOOS == "darwin" {
+			} else if r.goos() == "darwin" {
 				out, err = r.Exec(ctx, "netstat", "-rn")
 			} else {
 				out, err = r.Exec(ctx, "ip", "route")
@@ -383,13 +378,13 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 			}
 			out, err = r.Exec(ctx, "nslookup", target)
 		case "whoami":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "whoami", "/all")
 			} else {
 				out, err = r.Exec(ctx, "id")
 			}
 		case "systeminfo":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "systeminfo")
 			} else {
 				out, err = r.Exec(ctx, "uname", "-a")
@@ -397,19 +392,19 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		case "netstat":
 			out, err = r.Exec(ctx, "netstat", "-ano")
 		case "gpresult":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "gpresult", "/r")
 			} else {
 				return Result{ID: cmd.ID, OK: false, Error: "gpresult is only supported on Windows"}
 			}
 		case "df":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", "Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize | Out-String")
 			} else {
 				out, err = r.Exec(ctx, "df", "-h")
 			}
 		case "uptime":
-			if runtime.GOOS == "windows" {
+			if r.goos() == "windows" {
 				out, err = r.Exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", "(Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime | Format-List | Out-String")
 			} else {
 				out, err = r.Exec(ctx, "uptime")
@@ -436,7 +431,7 @@ func firstNonEmpty(a, b string) string {
 
 func (r Runner) verifyProcessName(ctx context.Context, pidStr, expectedName string) error {
 	var actual string
-	if runtime.GOOS == "windows" {
+	if r.goos() == "windows" {
 		out, err := r.Exec(ctx, "tasklist", "/FI", "PID eq "+pidStr, "/FO", "CSV", "/NH")
 		if err != nil {
 			return errors.New(firstNonEmpty(out, err.Error()))
