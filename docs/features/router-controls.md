@@ -123,3 +123,31 @@ reservation and port forwards on that router.
 
 Migration adds to `site_routers`: `settings jsonb` and `settings_at timestamptz`, and extends the
 `router_requests.action` check with the new actions.
+
+## Driver tests (protocol test doubles only)
+
+Each driver's `controls_test.go` runs against a protocol test double of the vendor API served by
+`httptest.NewTLSServer` with its own self-signed certificate, reached through the pinned-certificate
+transport (`TransportHTTPSPinned` + `PinSHA256`), exactly as a router with a factory certificate is
+reached in the product. For Cisco IOS XE, FortiGate, MikroTik, Omada, OpenWrt, OPNsense, pfSense and
+UniFi the suites cover:
+
+- the success path of every control the driver offers (settings read, Wi-Fi, reservations, port
+  forwards, rename, reboot), with the router-side state checked after each change;
+- the router refusing a change (HTTP error, vendor error code, ubus ACL denial): the driver returns
+  an error (`ErrRejected` where the vendor reports a refusal) and the router state is unchanged;
+- input refused before anything is sent (multicast / zero MACs, management ports, reservations
+  outside the LAN, malformed Wi-Fi ids);
+- a wrong password / API key (`ErrBadCredentials`) and a certificate that does not match the pin
+  (`ErrCertificate`, nothing sent);
+- no secret leaks: the password / API key, session tokens and Wi-Fi keys present in the fake router's
+  answers never appear in `Settings`, a `Change` or an error text.
+
+Two driver fixes came out of these tests: the Cisco IOS XE settings read now reports a rejected login,
+a pin mismatch or an unreachable router as an error instead of an empty overview, and the UniFi
+reboot reports such a failure instead of "no UniFi gateway device found".
+
+OPNsense port forwards stay refused: the capability is `supported: false` with a note naming the
+detected firmware. Newer OPNsense releases expose a destination-NAT API (`/api/firewall/d_nat`), but
+its rule format differs between releases and has not been verified against a real firewall, so the
+driver does not write it; port forwards are managed under Firewall → NAT → Port Forward.

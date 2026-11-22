@@ -30,26 +30,28 @@ var (
 	_ router.Rebooter           = (*Driver)(nil)
 )
 
-func (d *Driver) findGateway(ctx context.Context) map[string]any {
+// findGateway returns the site's gateway device, or nil when the site has none. The error is a
+// failure to ask (login, certificate, transport), which a caller about to act on the gateway reports.
+func (d *Driver) findGateway(ctx context.Context) (map[string]any, error) {
 	devs, err := d.call(ctx, "settings", http.MethodGet, "/stat/device", nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	for _, dev := range devs {
 		t := strings.ToLower(str(dev["type"]))
 		if t == "udm" || t == "ugw" || t == "uxg" {
-			return dev
+			return dev, nil
 		}
 	}
 	if len(devs) > 0 {
-		return devs[0]
+		return devs[0], nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (d *Driver) readOverview(ctx context.Context) (*router.Overview, error) {
 	ov := &router.Overview{LANIP: d.target.Address.String()}
-	if gw := d.findGateway(ctx); gw != nil {
+	if gw, _ := d.findGateway(ctx); gw != nil {
 		if up, ok := intOf(gw["uptime"]); ok && up > 0 {
 			sec := int64(up)
 			ov.UptimeSeconds = &sec
@@ -444,7 +446,10 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 }
 
 func (d *Driver) Reboot(ctx context.Context) (router.Change, error) {
-	gw := d.findGateway(ctx)
+	gw, err := d.findGateway(ctx)
+	if err != nil {
+		return router.Change{}, err
+	}
 	if gw == nil {
 		return router.Change{}, router.Errorf(router.ErrNotFound, "reboot", "no UniFi gateway device found in site")
 	}
