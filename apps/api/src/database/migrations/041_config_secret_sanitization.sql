@@ -67,3 +67,66 @@ ALTER TABLE device_quarantines
   ADD COLUMN auto_release_minutes integer CHECK (auto_release_minutes IS NULL OR auto_release_minutes BETWEEN 5 AND 43200),
   ADD COLUMN auto_release_attempted_at timestamptz;
 CREATE INDEX device_quarantines_auto_release_idx ON device_quarantines (activated_at) WHERE status = 'active' AND auto_release_minutes IS NOT NULL;
+
+-- Administrator-confirmed configuration restore (modules/configbackup/restore.ts). One row per
+-- request: a fresh backup first (pre_run_id, trigger 'restore'), then the `config_restore` command to
+-- the site's collector, which applies the version's sealed raw copy with the vendor's
+-- commit-confirmed method and reads the configuration back over a new SSH session (verify_run_id: that
+-- read-back is stored as a normal version). Statuses:
+--   pre_backup → pending → verified | failed | rolled_back;  pre_backup / pending → expired | failed
+-- Never stores configuration text or credentials (those stay in config_backup_raw / the target).
+CREATE TABLE config_backup_restores (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id    uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
+  site_id            uuid NOT NULL,
+  target_id          uuid NOT NULL,
+  version_id         uuid NOT NULL REFERENCES config_backup_versions (id) ON DELETE CASCADE,
+  version_number     integer NOT NULL,
+  sha256             text NOT NULL,
+  method             text NOT NULL,
+  status             text NOT NULL CHECK (status IN ('pre_backup', 'pending', 'verified', 'failed', 'rolled_back', 'expired')),
+  reason             text NOT NULL CHECK (length(reason) BETWEEN 10 AND 500),
+  confirm_minutes    integer NOT NULL CHECK (confirm_minutes BETWEEN 1 AND 10),
+  collector_id       uuid,
+  pre_run_id         uuid,
+  verify_run_id      uuid,
+  command_id         uuid,
+  after_version_id   uuid,
+  committed          boolean,
+  confirmed          boolean,
+  rolled_back        boolean,
+  steps              jsonb NOT NULL DEFAULT '[]',
+  error_kind         text,
+  error              text,
+  requested_by       uuid,
+  requested_by_email text,
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  expires_at         timestamptz NOT NULL,
+  completed_at       timestamptz,
+  UNIQUE (organization_id, id),
+  FOREIGN KEY (organization_id, target_id) REFERENCES config_backup_targets (organization_id, id) ON DELETE CASCADE
+);
+-- At most one restore in progress per device.
+CREATE UNIQUE INDEX config_backup_restores_open ON config_backup_restores (target_id) WHERE status IN ('pre_backup', 'pending');
+CREATE INDEX config_backup_restores_target ON config_backup_restores (target_id, created_at DESC);
+ALTER TABLE config_backup_restores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON config_backup_restores FOR ALL TO lan_app
+  USING (organization_id = app_current_org()) WITH CHECK (organization_id = app_current_org());
+GRANT SELECT, INSERT, UPDATE, DELETE ON config_backup_restores TO lan_app;
+
+-- The restore command, added to whatever the allowed list is at this point (see 028).
+DO $$
+DECLARE
+  def   text;
+  kinds text[];
+BEGIN
+  SELECT pg_get_constraintdef(oid) INTO def FROM pg_constraint
+   WHERE conname = 'collector_commands_kind_check' AND conrelid = 'collector_commands'::regclass;
+  SELECT coalesce(array_agg(DISTINCT m[1]), '{}') INTO kinds FROM regexp_matches(coalesce(def, ''), '''([a-z_]+)''', 'g') AS m;
+  IF NOT 'config_restore' = ANY (kinds) THEN
+    kinds := kinds || 'config_restore'::text;
+  END IF;
+  ALTER TABLE collector_commands DROP CONSTRAINT IF EXISTS collector_commands_kind_check;
+  EXECUTE format('ALTER TABLE collector_commands ADD CONSTRAINT collector_commands_kind_check CHECK (kind IN (%s))',
+                 (SELECT string_agg(quote_literal(k2), ', ' ORDER BY k2) FROM unnest(kinds) AS k2));
+END $$;

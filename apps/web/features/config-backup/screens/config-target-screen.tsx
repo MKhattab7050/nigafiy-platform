@@ -13,6 +13,7 @@ import { CredentialsCard } from '../components/credentials-form';
 import { HostKeyPanel } from '../components/host-key-panel';
 import { TargetStatusBadge, VendorLabel } from '../components/status';
 import { ADDED_CODES, type AddedCode, TargetSettingsCard, hourText } from '../components/target-form';
+import { RestoreHistory } from '../components/restore';
 import { VersionList } from '../components/version-list';
 import type { BackupRun, Target, TargetDetail } from '../types';
 import { DeviceLink } from '@/components/device-link';
@@ -234,7 +235,8 @@ function TargetView({ id }: { id: string }) {
                   {can('admin') && <TargetSettingsCard key={x.updated_at} target={x} drivers={x.drivers} onSaved={query.reload} />}
                 </div>
               </div>
-              <VersionList key={x.latest_version_id ?? 'none'} targetId={x.id} />
+              <VersionList key={x.latest_version_id ?? 'none'} targetId={x.id} onRestore={query.reload} />
+              <RestoreHistory targetId={x.id} />
               <RunsCard runs={x.runs} />
             </div>
             {confirmDelete && (

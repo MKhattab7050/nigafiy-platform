@@ -1,6 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { auditSystem } from '../../common/audit.ts';
-import { type CollectorContext, type ConfigBackupProbeResultItem, type ConfigBackupResultItem, ItemRejected } from '../../common/collector-protocol.ts';
+import { type CollectorContext, type ConfigBackupProbeResultItem, type ConfigBackupResultItem, type ConfigRestoreResultItem, ItemRejected } from '../../common/collector-protocol.ts';
 import { decryptSecret, encryptSecret } from '../../common/crypto.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
@@ -8,6 +8,7 @@ import { notifyRealtime } from '../realtime/index.ts';
 import { diffLines } from './diff.ts';
 import { normalizeConfig } from './normalize.ts';
 import { fingerprintKey, prepareConfig, resanitizeTarget } from './resanitize.ts';
+import { continueAfterBackup, processRestoreResult } from './restore.ts';
 import { REDACTED_MARK } from './sanitize.ts';
 import { MAX_CONFIG_BYTES } from './schema.ts';
 
@@ -26,9 +27,18 @@ interface Target {
   last_error_kind: string | null;
 }
 
-export async function processConfigBackupItem(db: Db, c: CollectorContext, item: ConfigBackupResultItem | ConfigBackupProbeResultItem): Promise<void> {
+export async function processConfigBackupItem(
+  db: Db,
+  c: CollectorContext,
+  item: ConfigBackupResultItem | ConfigBackupProbeResultItem | ConfigRestoreResultItem,
+): Promise<void> {
   if (item.type === 'config_backup_probe_result') await processProbeResult(db, c, item);
-  else await processBackupResult(db, c, item);
+  else if (item.type === 'config_restore_result') await processRestoreResult(db, c, item);
+  else {
+    await processBackupResult(db, c, item);
+    // The backup before a restore: the restore continues (or stops) from here.
+    await continueAfterBackup(db, c, item.run_id);
+  }
   await notifyRealtime(db, c.organizationId, 'devices');
 }
 

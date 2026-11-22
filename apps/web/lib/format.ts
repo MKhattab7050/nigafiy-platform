@@ -106,6 +106,8 @@ export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   config_changed: { en: 'Configuration changed', ar: 'تغيّر الإعدادات' },
   config_backup_failed: { en: 'Config backup failed', ar: 'فشل نسخ الإعدادات' },
   config_host_key_changed: { en: 'SSH host key changed', ar: 'تغيّر مفتاح SSH للجهاز' },
+  config_restored: { en: 'Configuration restored', ar: 'استُعيدت الإعدادات' },
+  config_restore_failed: { en: 'Configuration restore failed', ar: 'فشلت استعادة الإعدادات' },
   dhcp_no_offer: { en: 'No DHCP offer', ar: 'لا يوجد عرض DHCP' },
   dhcp_offer_restored: { en: 'DHCP offers back', ar: 'عادت عروض DHCP' },
   rogue_dhcp_server: { en: 'Rogue DHCP server', ar: 'خادم DHCP غير مصرّح' },

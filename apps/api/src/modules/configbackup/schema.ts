@@ -93,3 +93,22 @@ export const diffQuery = z.object({ from: z.uuid(), to: z.uuid(), context: z.coe
 export const versionsQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
 
 export const probeSchema = z.object({ site_id: z.uuid() }).strict();
+
+/** A restore: the backup before it plus the restore itself must finish within this time. */
+export const RESTORE_TTL_MINUTES = 30;
+/** The `config_restore` command must start within this time after the backup before it. */
+export const RESTORE_COMMAND_TTL_MINUTES = 15;
+
+export const restorePreviewQuery = z.object({ version_id: z.uuid() });
+
+export const restoreRequestSchema = z
+  .object({
+    version_id: z.uuid(),
+    /** The device name, typed by the administrator. */
+    confirm: z.string().max(200),
+    reason: z.string().trim().min(10).max(500),
+    /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`). */
+    confirm_minutes: z.number().int().min(1).max(10).default(5),
+  })
+  .strict();
+export type RestoreRequest = z.infer<typeof restoreRequestSchema>;

@@ -8,16 +8,19 @@ import { configBackupRouter } from './routes.ts';
  *
  *   schema.ts       request validation, limits
  *   credentials.ts  SSH credentials (sealed at rest; decrypted only for the site's collector)
- *   commands.ts     adds the secrets to a pending `config_backup` command in the heartbeat answer
+ *   commands.ts     adds the secrets to a pending `config_backup` / `config_restore` command in the heartbeat answer
  *   service.ts      targets, runs, host-key decisions, versions, diffs, suggestions, SSH checks
  *   ingest.ts       config_backup_result / config_backup_probe_result telemetry → versions, events
  *   normalize.ts    volatile-line removal and the content hash (unchanged configs are stored once)
  *   diff.ts         bounded Myers line diff and unified-diff output
  *   detect.ts       vendor suggestion from the SSH banner, SNMP sysDescr and OUI (inferred)
  *   schedule.ts     daily backup time in the site's time zone
+ *   restore.ts      administrator-confirmed restore (Junos commit confirmed, verified by a read-back)
  *   jobs.ts         expiry, scheduled daily backups, daily SSH reachability check
  *
- * Nothing here changes a device: there is no restore and no configuration push.
+ * The only thing here that changes a device is the restore: owner / admin only, typed device name and
+ * reason, a fresh backup first, Juniper Junos only (commit confirmed, rolls back by itself), verified
+ * by reading the configuration back. Every other vendor gets "restore not supported".
  */
 export const configBackupModule = defineModule({
   name: 'config-backup',

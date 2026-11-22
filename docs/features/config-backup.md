@@ -15,6 +15,7 @@ Nobody has backed up a real switch through the full path yet.
 | API (targets, credentials, runs, versions, diff, host keys) | `apps/api/src/modules/configbackup` |
 | Wire format and the driver list | `apps/api/src/common/config-backup-protocol.ts` |
 | Collector side (SSH session, vendor drivers) | `collectors/lan-collector/internal/configbackup`, `internal/agent/configbackup.go` |
+| Restore | API `modules/configbackup/restore.ts`; collector `internal/configbackup/restore.go`, `internal/agent/configrestore.go` |
 | Screens | `apps/web/features/config-backup` (`/config-backup`, `/config-backup/[id]`, and a card on the device page) |
 
 ## The screens
@@ -69,6 +70,8 @@ Nobody has backed up a real switch through the full path yet.
 | Check SSH on suggestions, Back up now | technician |
 | Add, change and delete targets; credentials; trust or forget a host key | admin |
 | Read the configuration content, the diff, and downloads | admin |
+| Restore a version to the device (preview, typed name, reason) | admin (owner included) |
+| See the restore history | any |
 
 Write actions are hidden below the needed role. When the server still refuses an action (403 or 409),
 the screen shows the server's message.
@@ -147,3 +150,65 @@ the structure stays, idempotent, keyed) and `tests/config-backup.test.ts` (API n
 raw copies are sealed, a changed community shows as a changed fingerprint, legacy rows converted by the
 job). Not verified against configurations from real devices; vendor syntax not covered by a rule
 (an unusual keyword) would stay visible — report it and add a rule.
+
+## Restore (migration 041)
+
+An administrator can write an earlier version back to the device. Only **Juniper Junos** is supported,
+because Junos can apply a configuration with `commit confirmed`: if the change is not confirmed in time,
+the device rolls it back by itself. Every other vendor shows **"Restore not supported"** with the reason;
+download the version and restore it by hand. No other vendor is attempted.
+
+**Before anything is sent** (`restore.ts`, checked at preview and again at request):
+- the vendor is Junos (`driver`, or the detected driver);
+- the target is ready (in an authorized scope, credentials set and accepted, host key not changed);
+- the SSH host key is pinned (a restore never trusts a key on first use);
+- a sealed raw copy of the version exists (versions stored before raw copies existed cannot be restored);
+- the version is not already the latest, and no other backup or restore of the device is running;
+- a collector of the site is online.
+
+**Flow.**
+1. `GET /config-backup/targets/:id/restore-preview?version_id=` (admin, audited
+   `config_backup.restore.preview`): the diff from the latest backup to the version (sanitized text),
+   whether a restore is possible, and the name to type.
+2. `POST /config-backup/targets/:id/restore` (admin) with `version_id`, `confirm` (the device name exactly),
+   `reason` (10–500 characters) and `confirm_minutes` (1–10, default 5). A wrong name returns 422
+   `confirm_mismatch`. A `config_backup_restores` row is created (`pre_backup`), a fresh backup is queued
+   (run trigger `restore`), and `config_backup.restore.request` is audited with the reason.
+3. When that backup succeeds, the `config_restore` command is queued (`pending`). If it fails, the restore
+   fails with "Nothing was changed on the device". If the device already runs the version, the restore is
+   `verified` without applying anything.
+4. The stored command holds only the restore id. The credentials, the pinned host key, and the version's
+   raw text (decrypted from `config_backup_raw`, gzip + base64) are added only in the heartbeat answer to
+   the site's own collector, while the restore is pending. If anything changed (credentials rejected, host
+   key changed, vendor changed, raw copy gone), the command is withdrawn and the restore fails
+   (`withdrawn`, audited).
+5. The collector (`configrestore.go`) writes the restore id to its at-most-once ledger before touching the
+   device. It never starts an expired command. Then `Restore()` runs: `configure exclusive`,
+   `load override terminal`, `commit confirmed N`. It reads the configuration back over a **second** SSH
+   session and compares it with the restored text. If they match, it runs `commit` (confirm). If not, or if
+   the second session fails, it runs `rollback 1` + `commit` (rolled back).
+6. The read-back is reported as a normal backup of the restore's verification run, so it becomes a version.
+   Then `config_restore_result` reports the steps and flags, never text or credentials. The server marks
+   the restore `verified` only when the verification version's hash equals the restored version's hash.
+   Otherwise it is `rolled_back` (the collector put the previous configuration back) or `failed`
+   (including `verify_mismatch`). It audits `config_backup.restore.result` (actor `collector`) and emits
+   `config_restored` or `config_restore_failed`. The failure event is critical when the change was
+   committed but neither confirmed nor rolled back.
+7. A restore whose backup or result does not arrive in time becomes `expired` (audited
+   `config_backup.restore.expired`), and its command is withdrawn.
+
+The screen: on the device page, every version except the latest has **Restore** (admin). The dialog shows
+the diff, the rollback timer, the typed name and the reason, or the honest "not supported / not possible
+now" text. The **Restores** card lists every restore with its status, reason, flags and the device steps.
+
+**Tested:**
+- `tests/config-restore.test.ts`: roles, unsupported vendor, typed name, validation, backup first,
+  secrets only in the heartbeat answer, the real raw text delivered, verified by hash, rolled back, failed
+  pre-backup, withdrawn, expired, audit rows free of secrets.
+- `internal/configbackup/restore_test.go` against an SSH test double of the Junos CLI: success, mangled
+  read-back, device unreachable after commit, syntax error, locked configuration, refusals, host key
+  changed.
+- `internal/agent/configrestore_test.go`: at-most-once, expiry, nothing leaked.
+
+**Not tested:** it has never run against a real Junos device. Junos output and prompt text were modelled
+from the documentation, not captured from a device.

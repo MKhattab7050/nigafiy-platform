@@ -46,6 +46,8 @@ export const TRIGGER_EVENT_TYPES = [
   'config_changed',
   'config_backup_failed',
   'config_host_key_changed',
+  'config_restored',
+  'config_restore_failed',
   // switch port control (modules/ports/control)
   'switch_port_changed',
   'switch_port_change_failed',

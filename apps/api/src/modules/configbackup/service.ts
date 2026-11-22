@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { audit } from '../../common/audit.ts';
+import { audit, auditSystem } from '../../common/audit.ts';
 import { CONFIG_BACKUP_DRIVERS } from '../../common/config-backup-protocol.ts';
 import { decryptSecret } from '../../common/crypto.ts';
 import { AppError, type AuthContext, notFound } from '../../common/http.ts';
@@ -140,7 +140,26 @@ export async function expireStale(db: Db): Promise<void> {
   const probes = await db.query<{ id: string }>(
     `UPDATE config_backup_probe_runs SET status = 'expired', completed_at = now() WHERE status = 'pending' AND expires_at < now() RETURNING id`,
   );
-  const commandIds = runs.rows.map((r) => r.command_id).filter((x): x is string => !!x);
+  // Restores: the backup before it failed to report, or the restore itself was not reported in time.
+  const restores = await db.query<{ id: string; organization_id: string; site_id: string; target_id: string; was: string; command_id: string | null }>(
+    `UPDATE config_backup_restores r SET status = 'expired', error_kind = 'expired', completed_at = now(),
+            error = CASE WHEN o.was = 'pre_backup' THEN 'The backup before the restore did not finish in time. Nothing was changed on the device.'
+                         ELSE 'The collector did not report the restore in time. Check the device: Junos rolls an unconfirmed commit back by itself.' END
+      FROM (SELECT id, status AS was FROM config_backup_restores WHERE status IN ('pre_backup', 'pending')) o
+      WHERE r.id = o.id AND (r.expires_at < now()
+             OR (o.was = 'pre_backup' AND EXISTS (SELECT 1 FROM config_backup_runs x WHERE x.id = r.pre_run_id AND x.status = 'expired')))
+      RETURNING r.id, r.organization_id, r.site_id, r.target_id, o.was, r.command_id`,
+  );
+  for (const r of restores.rows) {
+    await auditSystem(db, r.organization_id, {
+      automation: 'config_restore',
+      action: 'config_backup.restore.expired',
+      target: { type: 'config_backup_target', id: r.target_id },
+      siteId: r.site_id,
+      metadata: { restore_id: r.id, stage: r.was },
+    });
+  }
+  const commandIds = [...runs.rows, ...restores.rows].map((r) => r.command_id).filter((x): x is string => !!x);
   if (commandIds.length) {
     await db.query(`UPDATE collector_commands SET status = 'completed', completed_at = now() WHERE id = ANY($1) AND status <> 'completed'`, [commandIds]);
   }
@@ -351,7 +370,7 @@ export async function removeTarget(req: Request, ctx: AuthContext, id: string): 
 
 // ── runs ───────────────────────────────────────────────────────────────────
 
-const READINESS_ERRORS: Record<Exclude<Readiness, 'ready'>, string> = {
+export const READINESS_ERRORS: Record<Exclude<Readiness, 'ready'>, string> = {
   disabled: 'Backups of this device are disabled',
   out_of_scope: 'The device address is no longer inside an authorized network range of the site',
   no_credentials: 'Set the SSH credentials of this device first',
@@ -460,7 +479,7 @@ export function listVersions(organizationId: string, targetId: string, limit: nu
   });
 }
 
-interface VersionWithContent {
+export interface VersionWithContent {
   id: string;
   target_id: string;
   number: number;
@@ -471,7 +490,7 @@ interface VersionWithContent {
   target_name: string;
 }
 
-async function loadVersion(db: Db, id: string): Promise<VersionWithContent & { content: string }> {
+export async function loadVersion(db: Db, id: string): Promise<VersionWithContent & { content: string }> {
   const v = (
     await db.query<VersionWithContent>(
       `SELECT v.id, v.target_id, v.number, v.sha256, v.captured_at, c.content_enc, c.sanitized, t.name AS target_name

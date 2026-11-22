@@ -61,7 +61,7 @@ export function applyTelemetryBatch(c: CollectorContext, batch: TelemetryBatch):
           await processToolResult(db, c, item);
         } else if (item.type === 'router_result') {
           await processRouterResult(db, c, item);
-        } else if (item.type === 'config_backup_result' || item.type === 'config_backup_probe_result') {
+        } else if (item.type === 'config_backup_result' || item.type === 'config_backup_probe_result' || item.type === 'config_restore_result') {
           await processConfigBackupItem(db, c, item);
         } else if (item.type === 'smart_check') {
           await processSmartCheck(db, c, item, now);
