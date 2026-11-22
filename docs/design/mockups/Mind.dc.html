@@ -103,7 +103,6 @@ class Component extends DCLogic {
       [ar ? 'بانتظار الموافقة' : 'Waiting for approval', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v5l3 2', '[n]'],
       [ar ? 'المعرفة' : 'Knowledge', 'M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM8 7h6', ''],
       [ar ? 'الأتمتة' : 'Automation', 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3', ''],
-      [ar ? 'المساعد' : 'Assistant', 'M12 3v4M12 17v4M3 12h4M17 12h4', ''],
     ];
     const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], badge: n[2], style: i === 1 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #C239B3;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
     const done = { dotBg: 'var(--ok)', dotFg: '#fff', border: 'var(--stroke)', stateColor: 'var(--ok)', gate: false };
