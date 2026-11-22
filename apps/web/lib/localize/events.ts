@@ -13,6 +13,14 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
   const d = (ev.details ?? {}) as Record<string, unknown>;
   const t = ev.title;
 
+  // Watch-check transitions (ingest/checks.ts transitionTitle)
+  if (ev.type.startsWith('check_')) {
+    const w = t.match(/^(.+): (certificate expired|certificate expires in (\d+) days|critical threshold crossed|warning threshold crossed)$/);
+    if (w) {
+      const what = w[2] === 'certificate expired' ? 'انتهت صلاحية الشهادة' : w[3] !== undefined ? `تنتهي صلاحية الشهادة بعد ${ltr(w[3])} يوم` : w[2]!.startsWith('critical') ? 'تجاوز حد الخطورة' : 'تجاوز حد التحذير';
+      return `${w[1]}: ${what}`;
+    }
+  }
   switch (ev.type) {
     case 'device_discovered': {
       const ip = str(d.ip);

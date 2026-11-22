@@ -9,7 +9,7 @@ import { diagnoseDhcp } from './smart-rules.ts';
 
 const CHECK_FACTS_SQL = `
   SELECT c.id, c.name, c.kind, c.role, c.target, c.port, c.state, c.last_result_at, c.last_latency_ms, c.last_loss_pct,
-         c.last_error, c.last_resolved_target, c.latency_warn_ms,
+         c.last_error, c.last_resolved_target, c.latency_warn_ms, c.config, c.last_value, c.last_details,
          coalesce(r.samples, 0)::int AS recent_samples, coalesce(r.ok, 0)::int AS recent_ok,
          r.latency::float8 AS recent_latency_ms, r.loss::float8 AS recent_loss_pct,
          b.latency::float8 AS baseline_latency_ms, coalesce(b.samples, 0)::int AS baseline_samples

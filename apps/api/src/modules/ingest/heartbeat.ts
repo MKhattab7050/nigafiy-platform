@@ -50,7 +50,7 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
       [c.siteId],
     );
     const checks = await db.query(
-      `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
+      `SELECT id, kind, target, port, interval_seconds, config, snmp_target_id FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
       [c.siteId],
     );
     // A wake, router or toolbox request that could not be delivered within 10 / 10 / 5 minutes expires: waking a computer

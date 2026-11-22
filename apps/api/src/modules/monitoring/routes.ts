@@ -4,24 +4,25 @@ import type { CheckSeriesPoint, DefaultChecksRestored, MonitoringCheck } from '@
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { isIPv4 } from '../../common/net.ts';
-import { withTenant } from '../../infrastructure/db.ts';
+import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { refreshSiteCorrelation, resolveOpenIncidentByKey } from '../correlation/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { AUTO_GATEWAY, restoreDefaultChecks } from './defaults.ts';
+import { CHECK_KINDS, type Kind, SNMP_PRESET_CATALOG, assertWatchTarget, parseConfig } from './kinds.ts';
 
 export const monitoringRouter: Router = Router();
 
 const CHECK_SELECT = `
   SELECT c.id, c.site_id, s.name AS site_name, c.name, c.kind, c.role, c.target, c.port, c.interval_seconds, c.failure_threshold,
          c.latency_warn_ms, c.loss_warn_pct, c.enabled, c.state, c.state_changed_at, c.last_result_at, c.last_latency_ms,
-         c.last_loss_pct, c.last_error, c.last_resolved_target
+         c.last_loss_pct, c.last_error, c.last_resolved_target, c.config, c.snmp_target_id, c.last_value, c.last_details
     FROM monitoring_checks c JOIN sites s ON s.id = c.site_id`;
 
 const HOSTNAME = /^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 const checkBase = z.object({
   name: z.string().trim().min(1).max(80),
-  kind: z.enum(['icmp', 'tcp', 'dns']),
+  kind: z.enum(CHECK_KINDS),
   role: z.enum(['gateway', 'internet', 'dns', 'service']).default('service'),
   target: z.string().trim().min(1).max(253),
   port: z.number().int().min(1).max(65535).nullable().default(null),
@@ -30,16 +31,52 @@ const checkBase = z.object({
   latency_warn_ms: z.number().min(1).max(60_000).nullable().default(null),
   loss_warn_pct: z.number().min(0).max(100).nullable().default(null),
   enabled: z.boolean().default(true),
+  /** Settings of the watch kinds (http / https / tls_expiry / snmp_oid), validated per kind in kinds.ts. */
+  config: z.record(z.string(), z.unknown()).optional(),
+  /** snmp_oid: the Port Detective device to read (its stored credentials are reused). */
+  snmp_target_id: z.uuid().nullable().default(null),
 });
 
-function assertValidTarget(kind: string, target: string, port: number | null): void {
+function assertValidTarget(kind: Kind, target: string, port: number | null): void {
   const hostOk = isIPv4(target) || HOSTNAME.test(target);
+  if (kind === 'snmp_oid') {
+    if (port !== null) throw new AppError(400, 'invalid_target', 'An SNMP check reads the port configured for its device');
+    return; // the target is the configured SNMP device
+  }
   if (kind === 'icmp' && target !== AUTO_GATEWAY && !hostOk) throw new AppError(400, 'invalid_target', `Target must be an IPv4 address, a hostname, or "${AUTO_GATEWAY}"`);
   if (kind !== 'icmp' && !hostOk) throw new AppError(400, 'invalid_target', 'Target must be an IPv4 address or a hostname');
   if (kind === 'dns' && isIPv4(target)) throw new AppError(400, 'invalid_target', 'A DNS check needs a hostname to resolve');
-  if (kind === 'tcp' && port === null) throw new AppError(400, 'invalid_target', 'A TCP check needs a port');
-  if (kind !== 'tcp' && port !== null) throw new AppError(400, 'invalid_target', 'Only TCP checks take a port');
+  if ((kind === 'tcp' || kind === 'tls_expiry') && port === null) {
+    throw new AppError(400, 'invalid_target', kind === 'tcp' ? 'A TCP check needs a port' : 'A certificate check needs a port (443 for HTTPS)');
+  }
+  if (!['tcp', 'tls_expiry', 'http', 'https'].includes(kind) && port !== null) throw new AppError(400, 'invalid_target', 'Only TCP, HTTP(S) and certificate checks take a port');
 }
+
+/** Validates a watch check's config and target; returns the config to store and, for snmp_oid, the device address. */
+async function prepareKind(
+  db: Db,
+  siteId: string,
+  kind: Kind,
+  target: string,
+  rawConfig: unknown,
+  snmpTargetId: string | null,
+): Promise<{ config: Record<string, unknown>; target: string; snmpTargetId: string | null }> {
+  const config = parseConfig(kind, rawConfig);
+  if (kind === 'snmp_oid') {
+    if (!snmpTargetId) throw new AppError(400, 'invalid_target', 'Choose the SNMP device (from Port Detective) to read');
+    const t = (await db.query<{ host: string }>(`SELECT host(host) AS host FROM snmp_targets WHERE id = $1 AND site_id = $2`, [snmpTargetId, siteId])).rows[0];
+    if (!t) throw new AppError(400, 'invalid_target', 'That SNMP device is not configured at this site');
+    return { config, target: t.host, snmpTargetId };
+  }
+  if (snmpTargetId) throw new AppError(400, 'invalid_target', 'Only SNMP checks reference an SNMP device');
+  if (kind === 'http' || kind === 'https' || kind === 'tls_expiry') await assertWatchTarget(db, siteId, target, config.allow_public === true);
+  return { config, target, snmpTargetId: null };
+}
+
+/** The presets of the SNMP check form, with their vendor notes. */
+monitoringRouter.get('/checks/snmp-presets', (_req, res) => {
+  res.json({ items: SNMP_PRESET_CATALOG });
+});
 
 monitoringRouter.get('/checks', async (req, res) => {
   const ctx = auth(req);
@@ -56,18 +93,41 @@ monitoringRouter.get('/checks', async (req, res) => {
 
 monitoringRouter.post('/checks', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
-  const body = parse(checkBase.extend({ site_id: z.uuid() }), req.body);
+  const body = parse(checkBase.extend({ site_id: z.uuid(), target: z.string().trim().max(253).default('') }), req.body);
+  if (body.kind !== 'snmp_oid' && !body.target) throw new AppError(400, 'invalid_target', 'A target is required');
   assertValidTarget(body.kind, body.target, body.port);
   const check = await withTenant(ctx.organizationId, async (db) => {
     if (!(await db.query(`SELECT 1 FROM sites WHERE id = $1`, [body.site_id])).rowCount) throw notFound('Site');
+    const prepared = await prepareKind(db, body.site_id, body.kind, body.target, body.config, body.snmp_target_id);
     const inserted = await db.query<{ id: string }>(
       `INSERT INTO monitoring_checks (organization_id, site_id, name, kind, role, target, port, interval_seconds, failure_threshold,
-                                      latency_warn_ms, loss_warn_pct, enabled)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-      [ctx.organizationId, body.site_id, body.name, body.kind, body.role, body.target, body.port, body.interval_seconds, body.failure_threshold, body.latency_warn_ms, body.loss_warn_pct, body.enabled],
+                                      latency_warn_ms, loss_warn_pct, enabled, config, snmp_target_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+      [
+        ctx.organizationId,
+        body.site_id,
+        body.name,
+        body.kind,
+        body.role,
+        prepared.target,
+        body.port,
+        body.interval_seconds,
+        body.failure_threshold,
+        body.latency_warn_ms,
+        body.loss_warn_pct,
+        body.enabled,
+        JSON.stringify(prepared.config),
+        prepared.snmpTargetId,
+      ],
     );
     const id = inserted.rows[0]!.id;
-    await audit(db, req, 'check.created', { type: 'monitoring_check', id }, { name: body.name, kind: body.kind, target: body.target });
+    await audit(db, req, 'check.created', { type: 'monitoring_check', id }, {
+      name: body.name,
+      kind: body.kind,
+      target: prepared.target,
+      ...(body.port !== null ? { port: body.port } : {}),
+      ...(Object.keys(prepared.config).length ? { config: prepared.config } : {}),
+    });
     return (await db.query<MonitoringCheck>(`${CHECK_SELECT} WHERE c.id = $1`, [id])).rows[0]!;
   });
   res.status(201).json(check);
@@ -84,15 +144,32 @@ monitoringRouter.patch('/checks/:id', requireRole('admin'), async (req, res) => 
       latency_warn_ms: z.number().min(1).max(60_000).nullable(),
       loss_warn_pct: z.number().min(0).max(100).nullable(),
       enabled: z.boolean(),
+      config: z.record(z.string(), z.unknown()),
     }).partial().strict(),
     req.body,
   );
   const check = await withTenant(ctx.organizationId, async (db) => {
+    const current = (
+      await db.query<{ site_id: string; kind: Kind; target: string; snmp_target_id: string | null }>(
+        `SELECT site_id, kind, target, snmp_target_id FROM monitoring_checks WHERE id = $1 FOR UPDATE`,
+        [id],
+      )
+    ).rows[0];
+    if (!current) throw notFound('Check');
     const sets: string[] = [];
     const values: unknown[] = [id];
-    for (const [key, value] of Object.entries(body)) {
+    const { config: rawConfig, ...plain } = body;
+    for (const [key, value] of Object.entries(plain)) {
       values.push(value);
       sets.push(`${key} = $${values.length}`); // keys come from the strict schema above, never from the client verbatim
+    }
+    let auditBody: Record<string, unknown> = plain;
+    if (rawConfig !== undefined) {
+      // Kind, target and device stay as created; the settings are replaced as a whole and re-validated.
+      const prepared = await prepareKind(db, current.site_id, current.kind, current.target, rawConfig, current.snmp_target_id);
+      values.push(JSON.stringify(prepared.config));
+      sets.push(`config = $${values.length}`);
+      auditBody = { ...plain, config: prepared.config };
     }
     if (body.enabled === false) sets.push(`state = 'unknown'`, `pending_state = NULL`, `pending_count = 0`);
     if (sets.length) await db.query(`UPDATE monitoring_checks SET ${sets.join(', ')} WHERE id = $1`, values);
@@ -103,7 +180,7 @@ monitoringRouter.patch('/checks/:id', requireRole('admin'), async (req, res) => 
       await refreshSiteCorrelation(db, ctx.organizationId, row.site_id);
       await notifyRealtime(db, ctx.organizationId, 'events');
     }
-    await audit(db, req, 'check.updated', { type: 'monitoring_check', id }, body);
+    await audit(db, req, 'check.updated', { type: 'monitoring_check', id }, auditBody);
     await notifyRealtime(db, ctx.organizationId, 'checks');
     return row;
   });
@@ -191,7 +268,9 @@ monitoringRouter.get('/checks/:id/series', async (req, res) => {
                 (sum(latency_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE latency_avg IS NOT NULL), 0))::float8 AS latency_ms,
                 max(latency_max)::float8 AS latency_max_ms,
                 (sum(loss_avg * samples) / nullif(sum(samples) FILTER (WHERE loss_avg IS NOT NULL), 0))::float8 AS loss_pct,
-                (sum(jitter_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE jitter_avg IS NOT NULL), 0))::float8 AS jitter_ms
+                (sum(jitter_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE jitter_avg IS NOT NULL), 0))::float8 AS jitter_ms,
+                (sum(value_avg * ok_samples) / nullif(sum(ok_samples) FILTER (WHERE value_avg IS NOT NULL), 0))::float8 AS value,
+                min(value_min)::float8 AS value_min, max(value_max)::float8 AS value_max
            FROM check_results_hourly
           WHERE check_id = $1 AND bucket >= $2 AND bucket < $3
           GROUP BY 1 ORDER BY 1`,
@@ -205,7 +284,10 @@ monitoringRouter.get('/checks/:id/series', async (req, res) => {
               (avg(latency_ms) FILTER (WHERE ok))::float8 AS latency_ms,
               (max(latency_ms) FILTER (WHERE ok))::float8 AS latency_max_ms,
               avg(loss_pct)::float8 AS loss_pct,
-              (avg(jitter_ms) FILTER (WHERE ok))::float8 AS jitter_ms
+              (avg(jitter_ms) FILTER (WHERE ok))::float8 AS jitter_ms,
+              (avg(value) FILTER (WHERE ok))::float8 AS value,
+              (min(value) FILTER (WHERE ok))::float8 AS value_min,
+              (max(value) FILTER (WHERE ok))::float8 AS value_max
          FROM check_results
         WHERE check_id = $1 AND ts >= $2 AND ts < $3
         GROUP BY 1 ORDER BY 1`,

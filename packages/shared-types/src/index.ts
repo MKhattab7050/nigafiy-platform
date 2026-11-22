@@ -26,7 +26,76 @@ export type DeviceType = (typeof DEVICE_TYPES)[number];
 /** `unknown` = we currently have no working collector to observe it; NOT the same as offline. */
 export type DeviceStatus = 'online' | 'offline' | 'unknown';
 export type Severity = 'info' | 'warning' | 'critical';
-export type CheckKind = 'icmp' | 'tcp' | 'dns';
+export type CheckKind = 'icmp' | 'tcp' | 'dns' | 'http' | 'https' | 'tls_expiry' | 'snmp_oid';
+
+/** http / https check settings (config of a MonitoringCheck). */
+export interface HttpCheckConfig {
+  path: string;
+  method: 'GET' | 'HEAD';
+  expect_status: { min: number; max: number };
+  body_match: { mode: 'substring' | 'regex'; pattern: string; negate: boolean } | null;
+  follow_redirects: boolean;
+  max_redirects: number;
+  /** https only. */
+  tls_verify?: boolean;
+  /** https only: lower-case hex SHA-256 of the leaf certificate (DER). */
+  pin_sha256?: string | null;
+  allow_public: boolean;
+}
+
+export interface TlsExpiryCheckConfig {
+  sni: string | null;
+  warn_days: number;
+  critical_days: number;
+  allow_public: boolean;
+}
+
+export type SnmpCheckPreset = 'cpu' | 'memory' | 'temperature' | 'link_status' | 'custom';
+export type SnmpComparison = 'gt' | 'lt' | 'eq' | 'ne';
+
+export interface SnmpOidCheckConfig {
+  preset: SnmpCheckPreset;
+  oid: string;
+  ratio_oid: string | null;
+  scale: number;
+  comparison: SnmpComparison;
+  warn: number | null;
+  critical: number | null;
+  unit: string;
+}
+
+export interface SnmpPresetEntry {
+  preset: Exclude<SnmpCheckPreset, 'custom'>;
+  oid: string;
+  ratio_oid?: string;
+  comparison: SnmpComparison;
+  warn: number | null;
+  critical: number | null;
+  unit: string;
+  note: string;
+}
+
+/** Evidence of the last sample of a watch check (what the collector observed). */
+export interface CheckSampleDetails {
+  status_code?: number;
+  final_url?: string;
+  redirects?: number;
+  body_bytes?: number;
+  body_matched?: boolean;
+  tls_version?: string;
+  cert_subject?: string;
+  cert_issuer?: string;
+  cert_not_before?: string;
+  cert_not_after?: string;
+  cert_sha256?: string;
+  cert_dns_names?: string[];
+  verified?: boolean;
+  verify_error?: string;
+  oid?: string;
+  raw_value?: string;
+  ratio_raw?: string;
+  value_type?: string;
+}
 export type CheckRole = 'gateway' | 'internet' | 'dns' | 'service';
 export type CheckState = 'unknown' | 'ok' | 'degraded' | 'down';
 export type CollectorStatus = 'pending' | 'active' | 'revoked';
@@ -231,6 +300,13 @@ export interface MonitoringCheck {
   last_loss_pct: number | null;
   last_error: string | null;
   last_resolved_target: string | null;
+  /** Settings of the watch kinds; {} for icmp / tcp / dns. */
+  config: Partial<HttpCheckConfig & TlsExpiryCheckConfig & SnmpOidCheckConfig> & Record<string, unknown>;
+  /** snmp_oid: the Port Detective device read. */
+  snmp_target_id: string | null;
+  /** Measured value of the last sample: TLS days remaining, the OID value, the HTTP status code. */
+  last_value: number | null;
+  last_details: CheckSampleDetails | null;
 }
 
 export interface CheckSeriesPoint {
@@ -241,6 +317,10 @@ export interface CheckSeriesPoint {
   latency_max_ms: number | null;
   loss_pct: number | null;
   jitter_ms: number | null;
+  /** Average / min / max measured value (snmp_oid, tls_expiry, http status) in the bucket. */
+  value?: number | null;
+  value_min?: number | null;
+  value_max?: number | null;
 }
 
 export interface Overview {

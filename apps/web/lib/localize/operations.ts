@@ -180,6 +180,23 @@ export function localizeIncidentTitle(title: string, locale: Locale): string {
   m = title.match(/^(.+): (?:down|not responding)$/);
   if (m) return `${m[1]}: لا يستجيب`;
 
+  m = title.match(/^(.+): (certificate expired|certificate expires in (\d+) days|critical threshold crossed|warning threshold crossed|target not allowed|certificate not trusted|unexpected certificate|unexpected page content|the device does not answer SNMP|the device does not have this OID|HTTP (\d{3}))$/);
+  if (m) {
+    const AR: Record<string, string> = {
+      'certificate expired': 'انتهت صلاحية الشهادة',
+      'critical threshold crossed': 'تجاوز حد الخطورة',
+      'warning threshold crossed': 'تجاوز حد التحذير',
+      'target not allowed': 'الهدف غير مسموح به',
+      'certificate not trusted': 'الشهادة غير موثوقة',
+      'unexpected certificate': 'شهادة غير متوقعة',
+      'unexpected page content': 'محتوى صفحة غير متوقع',
+      'the device does not answer SNMP': 'الجهاز لا يجيب على SNMP',
+      'the device does not have this OID': 'الجهاز لا يحتوي على هذا المعرّف',
+    };
+    const what = m[3] !== undefined ? `تنتهي صلاحية الشهادة بعد ${ltr(m[3])} يوم` : m[4] !== undefined ? ltr(`HTTP ${m[4]}`) : (AR[m[2]!] ?? m[2]!);
+    return `${m[1]}: ${what}`;
+  }
+
   m = title.match(/^(.+): service is not listening$/);
   if (m) return `${m[1]}: الخدمة لا تستمع على المنفذ`;
 

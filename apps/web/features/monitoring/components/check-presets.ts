@@ -42,6 +42,8 @@ export function inferRole(kind: CheckKind, target: string): CheckRole {
   const t = target.trim();
   if (t === AUTO_GATEWAY) return 'gateway';
   if (kind === 'dns') return 'dns';
+  // Web pages, certificates and device metrics are services; the admin can still pick a path role.
+  if (kind !== 'icmp' && kind !== 'tcp') return 'service';
   if (IPV4.test(t) && !isLocalIPv4(t)) return 'internet';
   return 'service';
 }

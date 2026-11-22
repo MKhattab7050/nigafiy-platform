@@ -40,6 +40,10 @@ type Check struct {
 	Target          string `json:"target"`
 	Port            *int   `json:"port"`
 	IntervalSeconds int    `json:"interval_seconds"`
+	// Config holds the settings of the watch kinds (http, https, tls_expiry, snmp_oid).
+	Config json.RawMessage `json:"config,omitempty"`
+	// SNMPTargetID is the Port Detective device an snmp_oid check reads (its credentials arrive with the SNMP config).
+	SNMPTargetID string `json:"snmp_target_id,omitempty"`
 }
 
 type RemoteConfig struct {

@@ -92,6 +92,30 @@ const discoveryRunSchema = z
   })
   .strict();
 
+const detailText = (max: number) => z.string().max(max);
+const checkDetailsSchema = z
+  .object({
+    status_code: z.number().int().min(100).max(599).optional(),
+    final_url: detailText(500).optional(),
+    redirects: z.number().int().min(0).max(20).optional(),
+    body_bytes: z.number().int().min(0).max(1_048_576).optional(),
+    body_matched: z.boolean().optional(),
+    tls_version: detailText(16).optional(),
+    cert_subject: detailText(300).optional(),
+    cert_issuer: detailText(300).optional(),
+    cert_not_before: timestamp.optional(),
+    cert_not_after: timestamp.optional(),
+    cert_sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+    cert_dns_names: z.array(detailText(253)).max(20).optional(),
+    verified: z.boolean().optional(),
+    verify_error: detailText(300).optional(),
+    oid: detailText(128).optional(),
+    raw_value: detailText(120).optional(),
+    ratio_raw: detailText(120).optional(),
+    value_type: detailText(32).optional(),
+  })
+  .strict();
+
 const checkResultSchema = z
   .object({
     type: z.literal('check_result'),
@@ -103,6 +127,10 @@ const checkResultSchema = z
     jitter_ms: z.number().min(0).max(120_000).optional(),
     error: z.string().max(300).optional(),
     resolved_target: z.string().max(253).optional(),
+    /** Watch checks: the measured value (TLS days remaining, the OID value, the HTTP status code). */
+    value: z.number().min(-1e15).max(1e15).optional(),
+    /** Watch checks: evidence of this sample (never the response body itself). */
+    details: checkDetailsSchema.optional(),
   })
   .strict();
 

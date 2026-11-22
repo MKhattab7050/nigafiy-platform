@@ -40,7 +40,19 @@ export interface InsightFacts {
   /** Collectors that are enrolled (active). */
   collectors: { id: string; name: string; last_heartbeat_at: Date | null; gateway_ip: string | null }[];
   scopes: number;
-  checks: { id: string; name: string; role: 'gateway' | 'internet' | 'dns' | 'service'; state: 'unknown' | 'ok' | 'degraded' | 'down'; last_latency_ms: number | null; last_loss_pct: number | null }[];
+  checks: {
+    id: string;
+    name: string;
+    role: 'gateway' | 'internet' | 'dns' | 'service';
+    state: 'unknown' | 'ok' | 'degraded' | 'down';
+    last_latency_ms: number | null;
+    last_loss_pct: number | null;
+    /** Watch checks (optional for older callers): kind, last error, measured value, certificate expiry seen. */
+    kind?: string;
+    last_error?: string | null;
+    last_value?: number | null;
+    cert_not_after?: string | null;
+  }[];
   openIncidents: { id: string; title: string; severity: Severity }[];
   /** ip_mac_changed events in the last 24 hours. */
   ipConflicts: { ip: string; at: Date }[];
@@ -69,6 +81,8 @@ export interface InsightFacts {
 
 const COLLECTOR_SILENT_MS = 3 * 60_000;
 const DAY_MS = 24 * 3600_000;
+/** Certificates seen by watch checks are reported this many days before they expire. */
+export const CERT_WARN_DAYS = 30;
 const SEVERITY_RANK: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
 
 const link = (code: string, label: string, href: string): InsightAction => ({ code, label, kind: 'link', href });
@@ -225,6 +239,47 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       });
       deduct('slow_internet', 'High internet latency', 5);
     }
+  }
+
+  // ── certificates seen by watch checks (tls_expiry, https) ──
+  const certDays = (c: InsightFacts['checks'][number]): number | null => {
+    if (c.kind === 'tls_expiry' && !c.last_error && c.last_value != null) return c.last_value;
+    if (c.kind === 'https' && c.cert_not_after) return (new Date(c.cert_not_after).getTime() - f.now.getTime()) / DAY_MS;
+    return null;
+  };
+  const expiring = f.checks
+    .map((c) => ({ c, days: certDays(c) }))
+    .filter((x): x is { c: InsightFacts['checks'][number]; days: number } => x.days !== null && x.days <= CERT_WARN_DAYS)
+    .sort((a, b) => a.days - b.days);
+  if (expiring.length) {
+    const soonest = expiring[0]!.days;
+    add({
+      id: 'certificates-expiring',
+      code: 'certificate_expiring',
+      params: { count: expiring.length, checks: list(expiring.map((x) => x.c.name)), days: Math.floor(soonest) },
+      severity: soonest <= 7 ? 'critical' : 'warning',
+      category: 'availability',
+      title: soonest < 0 ? `${expiring.length} certificate(s) expired or expiring soon` : `${expiring.length} certificate(s) expire within ${CERT_WARN_DAYS} days`,
+      detail: 'Clients that verify certificates will refuse these services once the certificate expires. Renew and install the new certificate before then.',
+      evidence: expiring.map((x) => (x.days < 0 ? `${x.c.name}: expired ${Math.ceil(-x.days)} day(s) ago` : `${x.c.name}: expires in ${Math.floor(x.days)} day(s)`)),
+      actions: [link('open_monitoring', 'See the checks', '/watch/monitoring')],
+    });
+    deduct('certificate_expiring', 'Certificates expiring', soonest <= 7 ? 15 : 5);
+  }
+  const refused = f.checks.filter((c) => (c.last_error ?? '').startsWith('refused:'));
+  if (refused.length) {
+    add({
+      id: 'watch-refused',
+      code: 'watch_refused',
+      params: { count: refused.length, checks: list(refused.map((c) => c.name)) },
+      severity: 'warning',
+      category: 'setup',
+      title: `${refused.length} check(s) cannot run: the target is not allowed`,
+      detail: 'The collector refuses to connect to addresses outside the authorized ranges of the site, and to public hosts unless the check allows them. Nothing is sent to these targets.',
+      evidence: refused.map((c) => `${c.name}: ${c.last_error}`),
+      actions: [link('open_monitoring', 'Open the checks', '/watch/monitoring')],
+    });
+    deduct('watch_refused', 'Checks refused by the scope rule', 5);
   }
 
   const criticalDown = f.devices.filter((d) => d.is_critical && d.status === 'offline');

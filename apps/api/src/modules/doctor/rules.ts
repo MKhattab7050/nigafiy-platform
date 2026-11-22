@@ -1,4 +1,5 @@
-import type { CheckRole, CheckState, Confidence, Diagnosis, EvidenceItem, FaultDomain } from '@lan-detective/shared-types';
+import type { CheckKind, CheckRole, CheckState, Confidence, Diagnosis, EvidenceItem, FaultDomain } from '@lan-detective/shared-types';
+import { WATCH_KIND_LABEL, diagnoseWatch } from './watch-rules.ts';
 
 /**
  * Network Doctor — deterministic rule engine (rules-v1).
@@ -17,7 +18,7 @@ export const ENGINE = 'rules-v1';
 export interface CheckFacts {
   id: string;
   name: string;
-  kind: 'icmp' | 'tcp' | 'dns';
+  kind: CheckKind;
   role: CheckRole;
   target: string;
   port: number | null;
@@ -36,6 +37,10 @@ export interface CheckFacts {
   /** Average latency of successful samples over the previous 7 days (excluding the last hour). */
   baseline_latency_ms: number | null;
   baseline_samples: number;
+  /** Watch checks: settings, measured value and evidence of the last sample (optional for older callers). */
+  config?: Record<string, unknown>;
+  last_value?: number | null;
+  last_details?: Record<string, unknown> | null;
 }
 
 export interface NetworkFacts {
@@ -62,7 +67,7 @@ function describe(c: CheckFacts): EvidenceItem {
     value = `Responding but degraded: latency ${fmtMs(c.last_latency_ms)}${c.kind === 'icmp' ? `, loss ${fmtPct(c.last_loss_pct)}` : ''}${base}${window}`;
   } else if (c.state === 'ok') value = `Healthy: latency ${fmtMs(c.last_latency_ms)}${c.kind === 'icmp' ? `, loss ${fmtPct(c.last_loss_pct)}` : ''}${window}`;
   else value = 'No measurements yet';
-  return { label: `${c.name} → ${targetOf(c)}`, value, basis: 'observed', source: `${c.kind.toUpperCase()} check from the site collector`, observed_at: iso(c.last_result_at) };
+  return { label: `${c.name} → ${targetOf(c)}`, value, basis: 'observed', source: `${WATCH_KIND_LABEL[c.kind] ?? c.kind.toUpperCase()} check from the site collector`, observed_at: iso(c.last_result_at) };
 }
 
 const worst = (states: CheckState[]): CheckState => (['down', 'degraded', 'ok', 'unknown'] as const).find((s) => states.includes(s)) ?? 'unknown';
@@ -336,12 +341,14 @@ export function diagnoseService(f: ServiceFacts): Core {
     };
   }
   const hostUp: EvidenceItem[] = f.host ? [{ label: `Host ${f.host.name}`, value: 'Online in discovery sweeps', basis: 'observed', source: 'Discovery (ICMP + neighbour table)', observed_at: iso(f.host.last_seen_at) }] : [];
-  if (c.kind === 'tcp' && /refused/.test(error)) {
+  const watch = diagnoseWatch({ ...c, config: c.config ?? {}, last_value: c.last_value ?? null, last_details: c.last_details ?? null }, evidence, hostUp);
+  if (watch) return watch;
+  if ((c.kind === 'tcp' || c.kind === 'http' || c.kind === 'https' || c.kind === 'tls_expiry') && /refused/.test(error)) {
     return {
       rule: 'service-port-refused',
       fault_domain: 'service',
       title: `${c.name}: service is not listening`,
-      summary: `The host answered the connection attempt to port ${c.port} with a refusal. The machine is up and reachable, but nothing is accepting connections on that port.`,
+      summary: `The host answered the connection attempt to port ${c.port ?? (c.kind === 'http' ? 80 : 443)} with a refusal. The machine is up and reachable, but nothing is accepting connections on that port.`,
       probable_cause: 'The service process is stopped or crashed (or is listening on a different port/interface).',
       confidence: 'high',
       confidence_reason: 'An active refusal (TCP RST) can only come from a reachable host with no listener on the port.',

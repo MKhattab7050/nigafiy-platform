@@ -32,6 +32,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
 	"github.com/lan-detective/lan-collector/internal/tools"
+	"github.com/lan-detective/lan-collector/internal/watch"
 	"github.com/lan-detective/lan-collector/internal/wol"
 )
 
@@ -86,6 +87,10 @@ type Deps struct {
 	SmartWiFi func(ctx context.Context) (smart.WiFiReport, error)
 	// SmartBanners fetches GET / and the TLS certificate of each target's web ports.
 	SmartBanners func(ctx context.Context, targets []netip.Addr, ports []int, allowed []netip.Prefix) smart.BannerReport
+	// Watch checks (watch.go): one HTTP(S) request, one TLS certificate read, one SNMP GET. nil disables each kind.
+	WatchHTTP func(ctx context.Context, spec watch.HTTPSpec, g watch.Guard) watch.Result
+	WatchTLS  func(ctx context.Context, spec watch.TLSSpec, g watch.Guard) watch.Result
+	SNMPGet   watch.SNMPGetter
 }
 
 // SystemDeps returns the real implementations.
@@ -121,6 +126,9 @@ func SystemDeps() Deps {
 		SmartUPnP:    smart.AuditUPnP,
 		SmartWiFi:    smart.ReadWiFi,
 		SmartBanners: smart.ProbeBanners,
+		WatchHTTP:    watch.HTTP,
+		WatchTLS:     watch.TLSExpiry,
+		SNMPGet:      snmp.GetValues,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
 			defer mu.Unlock()
@@ -744,6 +752,9 @@ func (a *Agent) runCheck(ctx context.Context, chk cloud.Check) {
 		res = a.deps.TCPCheck(ctx, chk.Target, *chk.Port)
 	case "dns":
 		res = a.deps.DNSCheck(ctx, chk.Target)
+	case "http", "https", "tls_expiry", "snmp_oid":
+		a.runWatchCheck(ctx, chk, ts)
+		return
 	default:
 		return // unknown kinds are ignored, never guessed at
 	}
