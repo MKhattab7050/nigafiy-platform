@@ -135,7 +135,7 @@ ssoRouter.get('/:id/start', ssoLimiter, async (req, res) => {
   const { id } = parse(z.object({ id: z.uuid() }), req.params);
   const { login_hint } = parse(z.object({ login_hint: z.string().trim().max(254).optional() }), req.query);
   const p = await loadProvider(id);
-  if (!p || !p.enabled) {
+  if (!p?.enabled) {
     await fail(req, res, null, new SsoError('sso_unknown_provider', 'This sign-in option is not available'));
     return;
   }
@@ -248,7 +248,7 @@ ssoRouter.get('/oidc/callback', ssoLimiter, async (req, res) => {
     req.query,
   );
   const found = q.state ? await loadRequest(q.state, 'open') : null;
-  if (!found || found.p.kind !== 'oidc') {
+  if (found?.p.kind !== 'oidc') {
     await fail(req, res, found?.p ?? null, new SsoError('sso_request_expired', 'This sign-in has expired or was already used. Start again.'));
     return;
   }
@@ -312,7 +312,7 @@ ssoRouter.post('/saml/acs', ssoLimiter, express.urlencoded({ extended: false, li
 ssoRouter.get('/finish', ssoLimiter, async (req, res) => {
   const { request } = parse(z.object({ request: z.string().max(100) }), req.query);
   const found = await loadRequest(request, 'completed');
-  if (!found || !found.r.completed_user_id) {
+  if (!found?.r.completed_user_id) {
     await fail(req, res, found?.p ?? null, new SsoError('sso_request_expired', 'This sign-in has expired or was already used. Start again.'));
     return;
   }
@@ -329,7 +329,7 @@ ssoRouter.get('/finish', ssoLimiter, async (req, res) => {
       [r.completed_user_id, p.organization_id],
     );
     const u = user.rows[0];
-    if (!u || u.status !== 'active') throw new SsoError('account_deactivated', 'Your account has been deactivated in this organization');
+    if (u?.status !== 'active') throw new SsoError('account_deactivated', 'Your account has been deactivated in this organization');
     await finishSignIn(req, res, p, { userId: r.completed_user_id!, email: u.email, role: u.role, jitCreated: false, roleChangedFrom: null, hasTotp: u.has_totp });
   } catch (err) {
     await fail(req, res, p, err);

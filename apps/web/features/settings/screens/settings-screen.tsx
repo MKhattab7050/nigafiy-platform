@@ -8,6 +8,7 @@ import { type Key, useI18n } from '@/lib/i18n';
 import { AccountSecurity } from '../components/account-security';
 import { AuditLog } from '../components/audit-log';
 import { MovedCard } from '../components/moved-card';
+import { SsoProviders } from '../components/sso-providers';
 import { SystemHealth } from '../components/system-health';
 import { TeamManagement } from '../components/team-management';
 
@@ -50,6 +51,9 @@ export function SettingsScreen() {
         {can('admin') ? (
           <>
             <TeamManagement />
+            <div id="sso" className="scroll-mt-20">
+              <SsoProviders />
+            </div>
             <AuditLog />
           </>
         ) : (

@@ -46,8 +46,8 @@ async function createOidc(owner: TestAccount, extra: Record<string, unknown> = {
 async function oidcSignIn(agent: ReturnType<typeof request.agent>, providerId: string, claims: Record<string, unknown>, tamper?: Parameters<OidcIdp['issueCode']>[2]) {
   const start = await agent.get(`/api/v1/auth/sso/${providerId}/start`);
   expect(start.status).toBe(302);
-  expect(start.headers.location).toMatch(new RegExp(`^${idp.issuer}/authorize\\?`));
-  const { code, state } = idp.issueCode(start.headers.location, claims, tamper);
+  expect(start.headers.location!).toMatch(new RegExp(`^${idp.issuer}/authorize\\?`));
+  const { code, state } = idp.issueCode(start.headers.location!, claims, tamper);
   return { res: await agent.get('/api/v1/auth/sso/oidc/callback').query({ state, code }), state, code };
 }
 
@@ -126,7 +126,7 @@ describe('OIDC sign-in', () => {
     const email = `jit-user@${domain}`;
     const { res } = await oidcSignIn(browser, id, { sub: 'sub-jit-1', email, email_verified: true, name: 'Jit User', groups: ['helpdesk', 'staff'] });
     expect(res.status).toBe(303);
-    expect(res.headers.location).toBe(`${WEB}/`);
+    expect(res.headers.location!).toBe(`${WEB}/`);
     // PKCE + client_secret_basic reached the token endpoint.
     const tokenReq = idp.tokenRequests.at(-1)!;
     expect(tokenReq.body.get('code_verifier')).toBeTruthy();
@@ -153,7 +153,7 @@ describe('OIDC sign-in', () => {
     // Second sign-in: same subject → same user; the mapping now says admin → role synced and audited.
     const again = request.agent(app);
     const second = await oidcSignIn(again, id, { sub: 'sub-jit-1', email, email_verified: true, groups: ['net-admins'] });
-    expect(second.res.headers.location).toBe(`${WEB}/`);
+    expect(second.res.headers.location!).toBe(`${WEB}/`);
     expect((await again.get('/api/v1/auth/me')).body.role).toBe('admin');
     expect((await auditActions(owner.organizationId)).some((a) => a.action === 'sso.role_synced')).toBe(true);
 
@@ -176,25 +176,25 @@ describe('OIDC sign-in', () => {
     ];
     for (const [tamper, code] of cases) {
       const { res } = await oidcSignIn(request.agent(app), id, claims, tamper);
-      expect(res.headers.location, JSON.stringify(tamper)).toBe(`${WEB}/login?sso_error=${code}`);
+      expect(res.headers.location!, JSON.stringify(tamper)).toBe(`${WEB}/login?sso_error=${code}`);
     }
     // Unverified email, foreign domain.
-    expect((await oidcSignIn(request.agent(app), id, { ...claims, email_verified: false })).res.headers.location).toContain('sso_error=sso_email_unverified');
-    expect((await oidcSignIn(request.agent(app), id, { ...claims, email: 'x@other-domain.test' })).res.headers.location).toContain('sso_error=sso_domain_not_allowed');
+    expect((await oidcSignIn(request.agent(app), id, { ...claims, email_verified: false })).res.headers.location!).toContain('sso_error=sso_email_unverified');
+    expect((await oidcSignIn(request.agent(app), id, { ...claims, email: 'x@other-domain.test' })).res.headers.location!).toContain('sso_error=sso_domain_not_allowed');
 
     // The callback in a different browser than the one that started the sign-in.
     const a = request.agent(app);
     const start = await a.get(`/api/v1/auth/sso/${id}/start`);
-    const issued = idp.issueCode(start.headers.location, claims);
+    const issued = idp.issueCode(start.headers.location!, claims);
     const stolen = await request(app).get('/api/v1/auth/sso/oidc/callback').query(issued);
-    expect(stolen.headers.location).toContain('sso_error=sso_browser_mismatch');
+    expect(stolen.headers.location!).toContain('sso_error=sso_browser_mismatch');
 
     // A state is single use.
     const b = request.agent(app);
     const ok = await oidcSignIn(b, id, claims);
-    expect(ok.res.headers.location).toBe(`${WEB}/`);
+    expect(ok.res.headers.location!).toBe(`${WEB}/`);
     const replay = await b.get('/api/v1/auth/sso/oidc/callback').query({ state: ok.state, code: ok.code });
-    expect(replay.headers.location).toContain('sso_error=sso_request_expired');
+    expect(replay.headers.location!).toContain('sso_error=sso_request_expired');
 
     const failures = (await auditActions(owner.organizationId)).filter((x) => x.action === 'auth.sso_failed');
     expect(failures.length).toBeGreaterThanOrEqual(cases.length + 3);
@@ -207,22 +207,22 @@ describe('OIDC sign-in', () => {
     const { id } = await createOidc(owner, { jit_provisioning: false, allowed_email_domains: [ownerDomain] });
     // The owner (a member) links by email; owners are never re-mapped.
     const ok = await oidcSignIn(request.agent(app), id, { sub: 'owner-sub', email: owner.email, email_verified: true, groups: ['helpdesk'] });
-    expect(ok.res.headers.location).toBe(`${WEB}/`);
+    expect(ok.res.headers.location!).toBe(`${WEB}/`);
     expect((await systemPool.query(`SELECT role FROM memberships WHERE organization_id = $1 AND role = 'owner'`, [owner.organizationId])).rowCount).toBe(1);
     const stranger = await oidcSignIn(request.agent(app), id, { sub: 's', email: `stranger-${randomUUID().slice(0, 6)}@${ownerDomain}`, email_verified: true });
-    expect(stranger.res.headers.location).toContain('sso_error=sso_not_member');
+    expect(stranger.res.headers.location!).toContain('sso_error=sso_not_member');
 
     // JIT on, but the address belongs to an existing account of another organization.
     const outsider = await newAccount('oidc-outsider');
     await owner.agent.patch(`/api/v1/sso/providers/${id}`).set(CSRF).send({ jit_provisioning: true });
     const attach = await oidcSignIn(request.agent(app), id, { sub: 'o', email: outsider.email, email_verified: true });
-    expect(attach.res.headers.location).toContain('sso_error=sso_account_exists');
+    expect(attach.res.headers.location!).toContain('sso_error=sso_account_exists');
     expect((await systemPool.query(`SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.email = $1 AND m.organization_id = $2`, [outsider.email, owner.organizationId])).rowCount).toBe(0);
 
     // A deactivated member is refused.
     await systemPool.query(`UPDATE memberships SET status = 'deactivated' WHERE organization_id = $1 AND user_id = (SELECT id FROM users WHERE email = $2)`, [owner.organizationId, owner.email]);
     const deact = await oidcSignIn(request.agent(app), id, { sub: 'owner-sub', email: owner.email, email_verified: true });
-    expect(deact.res.headers.location).toContain('sso_error=account_deactivated');
+    expect(deact.res.headers.location!).toContain('sso_error=account_deactivated');
   });
 
   it('with trust_idp_mfa off, the organization MFA policy still applies after SSO', async () => {
@@ -231,16 +231,16 @@ describe('OIDC sign-in', () => {
     await systemPool.query(`UPDATE organizations SET mfa_required = 'all' WHERE id = $1`, [owner.organizationId]);
     const browser = request.agent(app);
     const { res } = await oidcSignIn(browser, id, { sub: 'mfa-1', email: `mfa@${domain}`, email_verified: true });
-    expect(res.headers.location).toMatch(new RegExp(`^${WEB}/login#sso_mfa_setup=[\\w-]+$`));
+    expect(res.headers.location!).toMatch(new RegExp(`^${WEB}/login#sso_mfa_setup=[\\w-]+$`));
     expect((await browser.get('/api/v1/auth/me')).status).toBe(401); // no session before MFA
-    const token = decodeURIComponent(res.headers.location.split('=')[1]!);
+    const token = decodeURIComponent(res.headers.location!.split('=')[1]!);
     const row = await systemPool.query<{ purpose: string; sso_provider_id: string }>(`SELECT purpose, sso_provider_id FROM auth_tokens WHERE token_hash = encode(sha256($1::bytea), 'hex')`, [token]);
     expect(row.rows[0]).toEqual({ purpose: 'mfa_enroll', sso_provider_id: id });
 
     // Default (trust_idp_mfa on): the identity provider handles MFA, the session starts directly.
     await owner.agent.patch(`/api/v1/sso/providers/${id}`).set(CSRF).send({ trust_idp_mfa: true });
     const direct = await oidcSignIn(request.agent(app), id, { sub: 'mfa-1', email: `mfa@${domain}`, email_verified: true });
-    expect(direct.res.headers.location).toBe(`${WEB}/`);
+    expect(direct.res.headers.location!).toBe(`${WEB}/`);
   });
 });
 
@@ -272,9 +272,9 @@ describe('SAML sign-in', () => {
   async function begin(agent: ReturnType<typeof request.agent>, providerId: string) {
     const start = await agent.get(`/api/v1/auth/sso/${providerId}/start`);
     expect(start.status).toBe(302);
-    expect(start.headers.location).toMatch(/^https:\/\/idp\.test\/sso\?SAMLRequest=/);
-    const relay = new URL(start.headers.location).searchParams.get('RelayState')!;
-    return { requestId: authnRequestId(start.headers.location), relay };
+    expect(start.headers.location!).toMatch(/^https:\/\/idp\.test\/sso\?SAMLRequest=/);
+    const relay = new URL(start.headers.location!).searchParams.get('RelayState')!;
+    return { requestId: authnRequestId(start.headers.location!), relay };
   }
 
   const post = (agent: ReturnType<typeof request.agent>, xml: string, relay: string) =>
@@ -298,20 +298,20 @@ describe('SAML sign-in', () => {
     // The IdP's POST arrives without the browser's cookie (SameSite=Lax): no session yet.
     const acs = await request(app).post('/api/v1/auth/sso/saml/acs').type('form').send({ SAMLResponse: b64(xml), RelayState: relay });
     expect(acs.status).toBe(303);
-    expect(acs.headers.location).toBe(`${WEB}/api/v1/auth/sso/finish?request=${relay}`);
-    expect(acs.headers['set-cookie']?.join(';') ?? '').not.toContain('ld_session');
+    expect(acs.headers.location!).toBe(`${WEB}/api/v1/auth/sso/finish?request=${relay}`);
+    expect(String(acs.headers['set-cookie'] ?? '')).not.toContain('ld_session');
     // Another browser cannot finish it.
     const thief = await request(app).get(`/api/v1/auth/sso/finish?request=${relay}`);
-    expect(thief.headers.location).toContain('sso_error=sso_browser_mismatch');
+    expect(thief.headers.location!).toContain('sso_error=sso_browser_mismatch');
     // The browser that started it can.
     const fin = await browser.get(`/api/v1/auth/sso/finish?request=${relay}`);
-    expect(fin.headers.location).toBe(`${WEB}/`);
+    expect(fin.headers.location!).toBe(`${WEB}/`);
     const me = await browser.get('/api/v1/auth/me');
     expect(me.body.user.email).toBe(email);
     expect(me.body.role).toBe('admin');
     // Replaying the same response is refused.
     const replay = await post(request.agent(app), xml, relay);
-    expect(replay.headers.location).toContain('sso_error=sso_request_expired');
+    expect(replay.headers.location!).toContain('sso_error=sso_request_expired');
     expect((await auditActions(owner.organizationId)).map((a) => a.action)).toEqual(expect.arrayContaining(['sso.user_provisioned', 'auth.sso_login']));
     // HTTP-POST binding for the AuthnRequest: an auto-submitting form, locked down by its own CSP.
     await owner.agent.patch(`/api/v1/sso/providers/${id}`).set(CSRF).send({ saml_request_binding: 'post' });
@@ -354,7 +354,7 @@ describe('SAML sign-in', () => {
       const browser = request.agent(app);
       const { requestId, relay } = await begin(browser, id);
       const res = await post(browser, make({ requestId }), relay);
-      expect(res.headers.location, label).toBe(`${WEB}/login?sso_error=${code}`);
+      expect(res.headers.location!, label).toBe(`${WEB}/login?sso_error=${code}`);
     }
     expect((await systemPool.query(`SELECT 1 FROM users WHERE email = $1`, [email])).rowCount).toBe(0);
     const failures = (await auditActions(owner.organizationId)).filter((a) => a.action === 'auth.sso_failed');
