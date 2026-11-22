@@ -16,4 +16,4 @@ export const authModule = defineModule({
   api: teamRouter,
 });
 
-export { requireSession } from './session.ts';
+export { readCookie, requireSession, resolveSessionToken, SESSION_COOKIE } from './session.ts';

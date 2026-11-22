@@ -1,4 +1,6 @@
 import express, { Router } from 'express';
+import { z } from 'zod';
+import { endSessionByUser } from '../remote-desktop/service.ts';
 import { rateLimit } from 'express-rate-limit';
 import { AppError, parse } from '../../../common/http.ts';
 import { env } from '../../../config/env.ts';
@@ -69,4 +71,12 @@ agentGatewayRouter.post('/inventory', requireEndpointAgent, async (req, res) => 
   const body = parse(agentInventorySchema, req.body);
   await recordInventory(ep, body);
   res.json({ ok: true });
+});
+
+// The person at the computer pressed "End session" on the remote support banner.
+const rdSessionEndSchema = z.object({ session_id: z.string().min(1).max(64) }).strict();
+agentGatewayRouter.post('/rd-session/end', requireEndpointAgent, async (req, res) => {
+  const ep = req.endpoint!;
+  const body = parse(rdSessionEndSchema, req.body);
+  res.json({ ok: true, ended: await endSessionByUser(ep, body.session_id) });
 });

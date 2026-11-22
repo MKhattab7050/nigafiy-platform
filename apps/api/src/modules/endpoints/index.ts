@@ -10,6 +10,7 @@ import { remoteDesktopRouter } from './remote-desktop/routes.ts';
 import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
 import { RD_FRAME_CHANNEL, onFrameNotification } from './remote-desktop/frames.ts';
 import { AGENT_WAKE_CHANNEL, onAgentWakeNotification } from './agent/wake.ts';
+import { streamHub } from './remote-desktop/stream-hub.ts';
 
 /**
  * Endpoint management (Windows, Linux, macOS agents).
@@ -18,7 +19,8 @@ import { AGENT_WAKE_CHANNEL, onAgentWakeNotification } from './agent/wake.ts';
  *   fleet/           fleet & inventory reads
  *   enrollment/      register endpoints, re-issue enrollment tokens, revoke
  *   policy/          per-endpoint policy (compliance is evaluated in capabilities.ts)
- *   remote-desktop/  live remote desktop sessions (frames/input travel as commands)
+ *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
+ *                    WebSocket stream hub (stream-hub.ts) and the HTTP command fallback
  *   file-manager/    remote file operations (travel as fs_op commands)
  *   commands/        every remote action queued for an agent
  */
@@ -41,6 +43,8 @@ export const endpointsModule = defineModule({
       unsubscribeFrames ??= onNotification(RD_FRAME_CHANNEL, onFrameNotification);
       // A command queued on any instance wakes the agent's long poll held here (agent/wake.ts).
       unsubscribeWake ??= onNotification(AGENT_WAKE_CHANNEL, onAgentWakeNotification);
+      // Live remote desktop streams: session state and socket routing between instances.
+      streamHub().start();
       await startListening();
     },
     stop: async () => {
@@ -50,6 +54,7 @@ export const endpointsModule = defineModule({
       unsubscribeFrames = null;
       unsubscribeWake?.();
       unsubscribeWake = null;
+      await streamHub().stop();
       await stopListening();
     },
   },

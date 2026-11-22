@@ -1005,6 +1005,56 @@ export interface RemoteDesktopSession {
   scale: number;
   consent_mode: 'unattended' | 'prompt';
   recording_enabled: boolean;
+  /** Fleet Pro: the session's history row (fleet_sessions.id). */
+  fleet_session_id?: string;
+  /** waiting_consent: the person at the computer has not answered yet; frames and input wait. */
+  state?: 'waiting_consent' | 'active';
+  reason?: string | null;
+}
+
+export type FleetSessionState = 'waiting_consent' | 'active' | 'ended';
+export type FleetConsentResult = 'pending' | 'not_required' | 'accepted' | 'denied' | 'timeout' | 'unavailable';
+export type FleetSessionEndReason = 'operator' | 'user' | 'consent_denied' | 'consent_timeout' | 'consent_unavailable' | 'replaced' | 'revoked' | 'expired';
+
+/** One remote support session (fleet_sessions). Frames are never stored: only relay counts. */
+export interface FleetSession {
+  id: string;
+  endpoint_id: string;
+  endpoint_name?: string;
+  public_id: string;
+  operator_email: string | null;
+  reason: string | null;
+  state: FleetSessionState;
+  consent_mode: 'unattended' | 'prompt';
+  consent_result: FleetConsentResult;
+  consent_error: string | null;
+  consent_decided_at: string | null;
+  banner_state: 'pending' | 'shown' | 'unavailable' | 'not_supported';
+  banner_error: string | null;
+  transport: 'http' | 'ws';
+  stream_connected_at: string | null;
+  desktop_mode: string | null;
+  display_index: number;
+  quality: number | null;
+  scale: number | null;
+  frames_relayed: number;
+  bytes_relayed: number;
+  clipboard_to_remote: number;
+  clipboard_from_remote: number;
+  started_at: string;
+  accepted_at: string | null;
+  ended_at: string | null;
+  end_reason: FleetSessionEndReason | null;
+  ended_by_email: string | null;
+  source: 'live' | 'audit_backfill';
+}
+
+/** GET /endpoints/:id/remote-desktop/session */
+export interface FleetSessionStatus {
+  session: RemoteDesktopSession | null;
+  fleet_session: FleetSession | null;
+  /** The agent's live socket is connected (on any API instance). */
+  stream_connected: boolean;
 }
 
 export interface EndpointDisk {

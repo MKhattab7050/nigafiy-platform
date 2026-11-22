@@ -24,6 +24,8 @@ import (
 
 	"github.com/lan-detective/endpoint-agent/internal/config"
 	"github.com/lan-detective/endpoint-agent/internal/control"
+	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/lan-detective/endpoint-agent/internal/rdstream"
 	"github.com/lan-detective/endpoint-agent/internal/sysinfo"
 )
 
@@ -36,6 +38,10 @@ type Deps struct {
 	CollectHealth    func(ctx context.Context, started time.Time) sysinfo.Health
 	CollectInventory func(ctx context.Context) sysinfo.Inventory
 	ExecuteCommand   func(ctx context.Context, cmd control.Command) control.Result
+	// Desktop does the remote-desktop work (capture, input, consent, banner, clipboard): in this
+	// process, or through the session helper when the agent runs as a service. Nil: commands of a
+	// remote desktop session go to ExecuteCommand (as before Fleet Pro).
+	Desktop desktop.Desktop
 }
 
 func SystemDeps() Deps {
@@ -44,6 +50,7 @@ func SystemDeps() Deps {
 		CollectHealth:    sysinfo.CollectHealth,
 		CollectInventory: sysinfo.CollectInventory,
 		ExecuteCommand:   runner.Execute,
+		Desktop:          desktop.NewLocal(),
 	}
 }
 
@@ -91,6 +98,8 @@ type Agent struct {
 	wakeHeartbeat chan struct{}
 	wakeInventory chan struct{}
 	cmdSem        chan struct{}
+
+	sessions *rdstream.Manager
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -129,7 +138,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	}
 	transport := &http.Transport{TLSClientConfig: tlsCfg, MaxIdleConns: 4, IdleConnTimeout: 90 * time.Second, Proxy: http.ProxyFromEnvironment}
 	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &Agent{
+	a := &Agent{
 		cfg:           cfg,
 		deps:          deps,
 		log:           log,
@@ -144,7 +153,27 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
 		cmdSem:        make(chan struct{}, 16),
-	}, nil
+	}
+	if deps.Desktop != nil {
+		a.sessions = rdstream.NewManager(rdstream.Config{
+			ServerURL:  a.baseURL,
+			TLS:        tlsCfg,
+			Credential: a.currentCredential,
+			UserAgent:  "lan-endpoint-agent/" + version,
+			Desktop:    deps.Desktop,
+			Log:        log,
+			NotifyEnded: func(ctx context.Context, sessionID string) error {
+				return a.post(ctx, "/rd-session/end", map[string]any{"session_id": sessionID}, true, nil)
+			},
+		})
+	}
+	return a, nil
+}
+
+func (a *Agent) currentCredential() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.credential
 }
 
 type credentialFile struct {
@@ -172,6 +201,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		}(fn)
 	}
 	wg.Wait()
+	// Stopping the agent ends any open session here: its banner goes, its stream closes.
+	if a.sessions != nil {
+		a.sessions.Close("", "agent_stopped")
+	}
+	if a.deps.Desktop != nil {
+		_ = a.deps.Desktop.Close()
+	}
 	return nil
 }
 
@@ -467,7 +503,10 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 		}
 	}
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
-	res := a.deps.ExecuteCommand(ctx, cmd)
+	res, handled := a.sessionCommand(ctx, cmd)
+	if !handled {
+		res = a.deps.ExecuteCommand(ctx, cmd)
+	}
 
 	// Deliver result immediately over /command-result if supported; fall back to heartbeat queue.
 	var ack struct {

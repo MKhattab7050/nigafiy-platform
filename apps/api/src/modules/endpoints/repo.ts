@@ -5,6 +5,7 @@ import { randomToken, sha256 } from '../../common/crypto.ts';
 import { normalizeMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { holdFrame, publishFrame } from './remote-desktop/frames.ts';
+import { applySessionOpenResult } from './remote-desktop/sessions.ts';
 import type { commandResultSchema } from './schema.ts';
 
 // Queries shared by several concerns of the endpoints module (fleet, enrollment, agent gateway,
@@ -75,7 +76,7 @@ export async function applyCommandResults(
 ): Promise<string[]> {
   const completedIds: string[] = [];
   for (const resItem of results) {
-    const updated = await db.query<{ kind: string }>(
+    const updated = await db.query<{ kind: string; payload: Record<string, unknown>; organization_id: string }>(
       `UPDATE endpoint_commands
           SET status = $3,
               output = $4,
@@ -85,7 +86,7 @@ export async function applyCommandResults(
               payload = CASE WHEN kind = 'fs_op' AND payload->>'op' = 'upload' THEN payload - 'data_base64' ELSE payload END,
               completed_at = $7
         WHERE id = $1 AND endpoint_id = $2 AND status IN ('pending', 'delivered')
-        RETURNING kind`,
+        RETURNING kind, payload, organization_id`,
       [
         resItem.id,
         endpointId,
@@ -99,12 +100,17 @@ export async function applyCommandResults(
     const image = resItem.data?.jpeg_base64;
     if (resItem.ok && updated.rows[0]?.kind === 'rd_capture' && typeof image === 'string' && image.length > 0) {
       // Relayed only while the session is open: a frame arriving after "stop" is discarded.
-      const open = await db.query(`SELECT 1 FROM endpoints WHERE id = $1 AND rd_session IS NOT NULL`, [endpointId]);
+      const open = await db.query(`SELECT 1 FROM endpoints WHERE id = $1 AND rd_session IS NOT NULL AND coalesce(rd_session->>'state', 'active') = 'active'`, [endpointId]);
       if (open.rowCount) {
         const frame = resItem.data as unknown as RemoteDesktopFrame;
         holdFrame(endpointId, resItem.id, frame);
         await publishFrame(db, endpointId, resItem.id, frame);
       }
+    }
+    const row = updated.rows[0];
+    if (row?.kind === 'rd_session_open') {
+      // Consent answered (or impossible), banner shown or not: the session goes live or ends.
+      await applySessionOpenResult(db, row.organization_id, endpointId, row.payload, resItem.ok, (resItem.data ?? null) as Parameters<typeof applySessionOpenResult>[5], resItem.error ?? null);
     }
     if (updated.rowCount) {
       completedIds.push(resItem.id);

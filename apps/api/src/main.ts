@@ -7,6 +7,7 @@ import { closePools } from './infrastructure/db.ts';
 import { logger } from './infrastructure/logger.ts';
 import { startJobs, stopJobs } from './infrastructure/scheduler.ts';
 import { modules } from './modules/registry.ts';
+import { streamHub } from './modules/endpoints/remote-desktop/stream-hub.ts';
 import { scheduledJobsOf } from './modules/system/index.ts';
 
 // The database may still be starting (container order, crash recovery): wait for it instead of dying.
@@ -36,6 +37,10 @@ if (env.HTTPS_PORT && env.TLS_CERT_FILE && env.TLS_KEY_FILE) {
   if (env.HOST) httpsServer.listen(env.HTTPS_PORT, env.HOST, onHttps);
   else httpsServer.listen(env.HTTPS_PORT, onHttps);
 }
+
+// Live Remote Desktop streams (WebSocket upgrades on both listeners; the endpoints module starts the hub).
+streamHub().attach(server);
+if (httpsServer) streamHub().attach(httpsServer);
 
 // A module whose start-up fails is logged; the API keeps serving every other module.
 for (const m of modules) {

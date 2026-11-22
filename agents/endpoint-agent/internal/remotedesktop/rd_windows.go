@@ -15,18 +15,18 @@ import (
 )
 
 var (
-	user32                = syscall.NewLazyDLL("user32.dll")
-	gdi32                 = syscall.NewLazyDLL("gdi32.dll")
+	user32                 = syscall.NewLazyDLL("user32.dll")
+	gdi32                  = syscall.NewLazyDLL("gdi32.dll")
 	procSetProcessDPIAware = user32.NewProc("SetProcessDPIAware")
-	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
-	dpiOnce               sync.Once
-	procGetDC            = user32.NewProc("GetDC")
-	procReleaseDC        = user32.NewProc("ReleaseDC")
-	procSetCursorPos     = user32.NewProc("SetCursorPos")
-	procMouseEvent       = user32.NewProc("mouse_event")
-	procKeybdEvent       = user32.NewProc("keybd_event")
-	procSendInput        = user32.NewProc("SendInput")
-	procVkKeyScanW       = user32.NewProc("VkKeyScanW")
+	procGetSystemMetrics   = user32.NewProc("GetSystemMetrics")
+	dpiOnce                sync.Once
+	procGetDC              = user32.NewProc("GetDC")
+	procReleaseDC          = user32.NewProc("ReleaseDC")
+	procSetCursorPos       = user32.NewProc("SetCursorPos")
+	procMouseEvent         = user32.NewProc("mouse_event")
+	procKeybdEvent         = user32.NewProc("keybd_event")
+	procSendInput          = user32.NewProc("SendInput")
+	procVkKeyScanW         = user32.NewProc("VkKeyScanW")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
@@ -46,8 +46,8 @@ const (
 	smCyVirtualScreen = 79
 	smCMonitors       = 80
 
-	srcCopy        = 0x00CC0020
-	captureBlt     = 0x40000000
+	srcCopy          = 0x00CC0020
+	captureBlt       = 0x40000000
 	biRGB            = 0
 	dibRGBColors     = 0
 	inputKeyboard    = 1
@@ -476,3 +476,9 @@ func mapKeyToVK(k string) byte {
 	}
 	return 0
 }
+
+// Backend names the capture/input mechanism.
+func Backend() string { return "gdi" }
+
+// Permissions: Windows has no per-app screen privacy permission.
+func Permissions() map[string]string { return nil }

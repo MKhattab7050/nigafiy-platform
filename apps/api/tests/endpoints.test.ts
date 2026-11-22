@@ -318,11 +318,16 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     const silentInput = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'x' });
     expect(silentInput.status).toBe(409);
 
-    // A policy that demands the user's consent is refused: the agent cannot ask for it.
+    // A policy that demands the user's consent: the session waits for the answer and nothing is
+    // captured or controlled meanwhile (the consent flow itself is in fleet-pro.test.ts).
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'prompt' });
-    const refused = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
-    expect(refused.status).toBe(409);
-    expect(refused.body.error.code).toBe('consent_unavailable');
+    const asked = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    expect(asked.status).toBe(200);
+    expect(asked.body.session.state).toBe('waiting_consent');
+    const early = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_capture' });
+    expect(early.status).toBe(409);
+    expect(early.body.error.code).toBe('consent_pending');
+    expect((await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({})).status).toBe(200);
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'unattended' });
 
     // Start a Remote Desktop session
@@ -476,7 +481,8 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
       `SELECT action FROM audit_logs WHERE target_id = $1 AND action LIKE 'endpoint.remote_desktop_%' ORDER BY created_at`,
       [epId],
     );
-    expect(sessionAudit.rows.map((r) => r.action)).toEqual(['endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped']);
+    // The first pair is the session that waited for consent under the "prompt" policy.
+    expect(sessionAudit.rows.map((r) => r.action)).toEqual(['endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped', 'endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped']);
     // A result arriving after the session ended (stop expired its capture) is not relayed.
     await request(app)
       .post('/api/v1/agent/command-result')

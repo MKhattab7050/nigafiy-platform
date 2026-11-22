@@ -9,11 +9,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Authenticates `Authorization: Bearer lda_<endpoint-id>.<secret>` and loads the tenant binding from the database. */
 export async function requireEndpointAgent(req: Request, _res: Response, next: NextFunction): Promise<void> {
-  const header = req.headers.authorization ?? '';
+  const ep = await authenticateAgentCredential(req.headers.authorization);
+  if (!ep) throw new AppError(401, 'invalid_endpoint_credential', 'Endpoint credential is missing, invalid or revoked');
+  req.endpoint = ep;
+  next();
+}
+
+/** The endpoint an `Authorization` header authenticates, or null (also used by the agent's WebSocket upgrade). */
+export async function authenticateAgentCredential(authorization: string | undefined): Promise<EndpointContext | null> {
+  const header = authorization ?? '';
   const match = /^Bearer lda_([0-9a-f-]{36})\.([A-Za-z0-9_-]{20,100})$/.exec(header);
-  if (!match || !UUID.test(match[1]!)) {
-    throw new AppError(401, 'invalid_endpoint_credential', 'Endpoint credential is missing, invalid or revoked');
-  }
+  if (!match || !UUID.test(match[1]!)) return null;
   const { rows } = await systemPool.query<{
     id: string;
     organization_id: string;
@@ -29,10 +35,8 @@ export async function requireEndpointAgent(req: Request, _res: Response, next: N
     [match[1]],
   );
   const row = rows[0];
-  if (!row?.credential_hash || !safeEqual(row.credential_hash, sha256(match[2]!))) {
-    throw new AppError(401, 'invalid_endpoint_credential', 'Endpoint credential is missing, invalid or revoked');
-  }
-  req.endpoint = {
+  if (!row?.credential_hash || !safeEqual(row.credential_hash, sha256(match[2]!))) return null;
+  return {
     id: row.id,
     organizationId: row.organization_id,
     siteId: row.site_id,
@@ -41,5 +45,4 @@ export async function requireEndpointAgent(req: Request, _res: Response, next: N
     platform: row.platform,
     connectionState: row.connection_state,
   };
-  next();
 }

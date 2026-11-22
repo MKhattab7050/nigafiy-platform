@@ -27,11 +27,11 @@ func TestNextPollDelay(t *testing.T) {
 		n    int
 		want time.Duration
 	}{
-		{time.Millisecond, 2, 0},        // commands: poll again at once
-		{19 * time.Second, 0, 0},        // the server held the poll: poll again at once
-		{30 * time.Millisecond, 0, iv},  // an old server answered at once: do not spin
-		{9 * time.Second, 0, iv},        // shorter than half the wait: treat as not held
-		{10 * time.Second, 0, 0},        // exactly half: held
+		{time.Millisecond, 2, 0},       // commands: poll again at once
+		{19 * time.Second, 0, 0},       // the server held the poll: poll again at once
+		{30 * time.Millisecond, 0, iv}, // an old server answered at once: do not spin
+		{9 * time.Second, 0, iv},       // shorter than half the wait: treat as not held
+		{10 * time.Second, 0, 0},       // exactly half: held
 	}
 	for _, c := range cases {
 		if got := nextPollDelay(lp, iv, c.took, c.n); got != c.want {
