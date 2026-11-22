@@ -201,6 +201,17 @@ export function DevicesView() {
                         </td>
                         <td data-label={t('devices.col.ip')} className="text-start">
                           <span className="mono">{d.current_ip ?? '—'}</span>
+                          {(() => {
+                            // IPv6 addresses besides the current one (a dual-stack device, or more than one IPv6 address).
+                            const extra = d.ipv6_addresses.filter((ip) => ip !== d.current_ip);
+                            if (!extra.length) return null;
+                            return (
+                              <span className="block max-w-[16rem] truncate text-xs text-muted" title={extra.join('\n')}>
+                                <span className="mono">{extra[0]}</span>
+                                {extra.length > 1 && <span className="ms-1">+{extra.length - 1} {t('devices.moreIpv6')}</span>}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td data-label={t('devices.col.mac')}>
                           <div className="min-w-0">

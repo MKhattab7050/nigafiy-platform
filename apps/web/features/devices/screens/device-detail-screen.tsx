@@ -164,6 +164,34 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                   <Card title={t('device.manage')}>
                     <ManagePanel device={d} onSaved={query.reload} />
                   </Card>
+                  <Card title={t('device.addresses')} padded={false}>
+                    <p className="px-4 pt-3 text-xs leading-relaxed text-muted">{t('device.addresses.hint')}</p>
+                    <table className="w-full text-[13px]">
+                      <tbody className="divide-y divide-line">
+                        {d.addresses.map((a) => (
+                          <tr key={a.ip}>
+                            <td className="px-4 py-2 text-start align-top">
+                              <span className="mono break-all">{a.ip}</span>
+                              <span className="mt-0.5 block text-xs text-muted">
+                                {t(`device.addresses.scope.${a.address_scope}` as Key)}
+                                {a.current && <span className="ms-1.5 text-accent-hover">· {t('device.addresses.current')}</span>}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 text-end align-top text-xs text-muted">
+                              <span className="block" title={`${absoluteTime(a.first_seen_at, locale)} → ${absoluteTime(a.last_seen_at, locale)}`}>
+                                {relativeTime(a.first_seen_at, locale)} → {relativeTime(a.last_seen_at, locale)}
+                              </span>
+                              {a.sources.length > 0 && (
+                                <span className="block">
+                                  {t('device.addresses.observedVia')}: <span className="mono">{a.sources.join(', ')}</span>
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Card>
                   <Card title={t('device.ipHistory')} padded={false}>
                     <table className="w-full text-[13px]">
                       <tbody className="divide-y divide-line">
