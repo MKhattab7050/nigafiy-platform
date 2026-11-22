@@ -41,7 +41,7 @@ func boolp(b bool) *bool { return &b }
 func intp(i int) *int    { return &i }
 
 func TestGuardRule(t *testing.T) {
-	g := Guard{Scopes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")}}
+	g := Guard{Scopes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24"), netip.MustParsePrefix("fd00:1::/64"), netip.MustParsePrefix("2a01:4f8:1:2::/64")}}
 	cases := []struct {
 		addr, why string
 		public    bool
@@ -57,7 +57,15 @@ func TestGuardRule(t *testing.T) {
 		{"203.0.113.5", "documentation range", true, false},
 		{"1.1.1.1", "public without opt-in", false, false},
 		{"1.1.1.1", "public with opt-in", true, true},
-		{"::1", "IPv6", true, false},
+		{"::1", "IPv6 loopback outside every scope", true, false},
+		{"fd00:1::5", "IPv6 unique-local inside the scope", false, true},
+		{"fd00:2::5", "IPv6 unique-local outside every scope", true, false},
+		{"2a01:4f8:1:2::9", "global IPv6 inside a scope is a LAN address", false, true},
+		{"2606:4700:4700::1111", "public IPv6 without opt-in", false, false},
+		{"2606:4700:4700::1111", "public IPv6 with opt-in", true, true},
+		{"fe80::1", "IPv6 link-local", true, false},
+		{"2001:db8::1", "IPv6 documentation", true, false},
+		{"ff02::1", "IPv6 multicast", true, false},
 	}
 	for _, c := range cases {
 		g.AllowPublic = c.public

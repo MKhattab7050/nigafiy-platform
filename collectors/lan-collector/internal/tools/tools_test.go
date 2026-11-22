@@ -24,8 +24,11 @@ func TestValidTarget(t *testing.T) {
 		"host;reboot":        false,
 		"$(id)":              false,
 		"1.2.3.4 -t":         false,
-		"::1":                false, // IPv4 only
-		"fe80::1":            false,
+		"::1":                true, // syntax only: the scope rule decides
+		"fd00::5":            true,
+		"fe80::1":            true,  // refused later by the scope rule (link-local)
+		"fe80::1%eth0":       false, // no zones
+		"::ffff:192.0.2.1":   false, // IPv4-mapped
 		"a..b":               false,
 	} {
 		if got := ValidTarget(target); got != want {
@@ -68,6 +71,24 @@ func TestParseTraceUnix(t *testing.T) {
 	}
 	if hops := ParseTrace("20 hops is the maximum\nnothing here\n"); len(hops) != 0 {
 		t.Fatalf("prose parsed as hops: %+v", hops)
+	}
+}
+
+func TestParseTraceIPv6(t *testing.T) {
+	win := "\r\r\nTracing route to 2606:4700:4700::1111 over a maximum of 20 hops\r\r\n\r\r\n" +
+		"  1    <1 ms    <1 ms    <1 ms  fd00:70::1 \r\r\n" +
+		"  2     *        *        *     Request timed out.\r\r\n" +
+		"  3    12 ms    11 ms    12 ms  2606:4700:4700::1111 \r\r\n"
+	want := []Hop{{N: 1, Address: "fd00:70::1", RTTMs: []float64{1, 1, 1}}, {N: 2}, {N: 3, Address: "2606:4700:4700::1111", RTTMs: []float64{12, 11, 12}}}
+	if got := ParseTrace(win); !reflect.DeepEqual(got, want) {
+		t.Fatalf("windows: got %+v\r\nwant %+v", got, want)
+	}
+	unix := "traceroute to 2606:4700:4700::1111 (2606:4700:4700::1111), 20 hops max, 80 byte packets\r\n" +
+		" 1  fd00:70::1  0.512 ms  0.4 ms\r\n" +
+		" 2  2606:4700:4700::1111  10.1 ms  10.3 ms\r\n"
+	want = []Hop{{N: 1, Address: "fd00:70::1", RTTMs: []float64{0.512, 0.4}}, {N: 2, Address: "2606:4700:4700::1111", RTTMs: []float64{10.1, 10.3}}}
+	if got := ParseTrace(unix); !reflect.DeepEqual(got, want) {
+		t.Fatalf("unix: got %+v\r\nwant %+v", got, want)
 	}
 }
 
@@ -174,6 +195,38 @@ func TestScopeRule(t *testing.T) {
 		{Tool: "ping", Target: "240.0.0.1", InScope: in},
 		{Tool: "ping", Target: "0.0.0.0", InScope: in},
 		{Tool: "ping", Target: "127.0.0.1", InScope: func(netip.Addr) bool { return true }}, // loopback not allowed
+	} {
+		before := icmpCalls
+		if _, err := r.Run(ctx, req); err == nil {
+			t.Errorf("expected %s %s to be refused", req.Tool, req.Target)
+		}
+		if icmpCalls != before {
+			t.Errorf("%s %s: probe ran although the target was refused", req.Tool, req.Target)
+		}
+	}
+	// IPv6: unique-local and global addresses inside a scope are LAN addresses.
+	scope6 := netip.MustParsePrefix("fd00:70::/64")
+	global6 := netip.MustParsePrefix("2a01:4f8:70:1::/64")
+	in6 := func(a netip.Addr) bool { return scope6.Contains(a) || global6.Contains(a) }
+	for _, req := range []Request{
+		{Tool: "ping", Target: "fd00:70::5", InScope: in6},
+		{Tool: "rdns", Target: "fd00:70::5", InScope: in6},
+		{Tool: "ping", Target: "2a01:4f8:70:1::9", InScope: in6},
+		{Tool: "ping", Target: "2606:4700:4700::1111", InScope: in6}, // public IPv6: diagnostics allowed
+	} {
+		if _, err := r.Run(ctx, req); err != nil {
+			t.Errorf("expected %s %s to be allowed: %v", req.Tool, req.Target, err)
+		}
+	}
+	for _, req := range []Request{
+		{Tool: "ping", Target: "fd00:71::5", InScope: in6},                                // unique-local, outside every scope
+		{Tool: "ping", Target: "fe80::1", InScope: func(netip.Addr) bool { return true }}, // link-local: never
+		{Tool: "ping", Target: "ff02::1", InScope: in6},                                   // multicast
+		{Tool: "ping", Target: "2001:db8::1", InScope: in6},                               // documentation
+		{Tool: "ping", Target: "2002:c000:201::1", InScope: in6},                          // 6to4
+		{Tool: "ping", Target: "::", InScope: in6},                                        // unspecified
+		{Tool: "ping", Target: "::1", InScope: func(netip.Addr) bool { return true }},     // loopback not allowed
+		{Tool: "tcp", Target: "2606:4700:4700::1111", Port: 443, InScope: in6},            // public port check
 	} {
 		before := icmpCalls
 		if _, err := r.Run(ctx, req); err == nil {

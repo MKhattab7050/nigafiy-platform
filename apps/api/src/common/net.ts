@@ -50,10 +50,6 @@ export function discoveryMethod(cidr: string): DiscoveryMethod {
   return addr.kind() === 'ipv6' && prefix < IPV6_SWEEP_MIN_PREFIX ? 'neighbor' : 'sweep';
 }
 
-export const IPV6_SWEEP_REFUSED =
-  `An IPv6 prefix larger than /${IPV6_SWEEP_MIN_PREFIX} cannot be swept address by address (a /64 holds 18,446,744,073,709,551,616 addresses). ` +
-  "IPv6 discovery reads the collector host's neighbour table and sends one echo request to the all-nodes group (ff02::1) of the link instead.";
-
 /**
  * A scope is only accepted when it is
  *  - IPv4: an RFC 1918 private range (or loopback in dev/test) no larger than /20;
@@ -83,24 +79,67 @@ export function validateScope(input: string): ScopeValidation {
   return { ok: true, cidr: `${network.toString()}/${prefix}` };
 }
 
+/**
+ * IPv6 address classes, defined by explicit prefixes so the collector can apply exactly the same
+ * table (collectors/lan-collector/internal/scope/ipv6.go):
+ *   loopback ::1, link_local fe80::/10 (RFC 4291), unique_local fc00::/7 (RFC 4193),
+ *   global: global unicast 2000::/3 (RFC 3587) minus the special-purpose blocks inside it,
+ *   other: everything else (unspecified, multicast, IPv4-mapped / translated, special purpose).
+ */
+export type IPv6Class = 'loopback' | 'link_local' | 'unique_local' | 'global' | 'other';
+
+const V6_SPECIAL_IN_GLOBAL: [ipaddr.IPv6, number][] = [
+  '2001::/23', // IETF protocol assignments (RFC 2928): Teredo 2001::/32, benchmarking, ORCHID, AMT…
+  '2001:db8::/32', // documentation (RFC 3849)
+  '2002::/16', // 6to4 relays (RFC 3056)
+  '2620:4f:8000::/48', // AS112 (RFC 7534)
+  '3fff::/20', // documentation (RFC 9637)
+].map((c) => ipaddr.IPv6.parseCIDR(c));
+
+export function ipv6Class(addr: ipaddr.IPv6): IPv6Class {
+  if (addr.isIPv4MappedAddress()) return 'other';
+  const first = addr.parts[0]!;
+  if (addr.parts.every((p, i) => p === (i === 7 ? 1 : 0))) return 'loopback';
+  if ((first & 0xffc0) === 0xfe80) return 'link_local';
+  if ((first & 0xfe00) === 0xfc00) return 'unique_local';
+  if ((first & 0xe000) === 0x2000) return V6_SPECIAL_IN_GLOBAL.some((r) => addr.match(r)) ? 'other' : 'global';
+  return 'other';
+}
+
+/** Where an observed address lives: an IPv4 address, or the IPv6 class (link-local addresses are only meaningful on one link). */
+export type AddressScope = 'ipv4' | 'link_local' | 'unique_local' | 'global' | 'other';
+export function addressScope(ip: string): AddressScope {
+  const a = ipaddr.parse(ip);
+  if (a.kind() === 'ipv4') return 'ipv4';
+  const c = ipv6Class(a as ipaddr.IPv6);
+  return c === 'loopback' ? 'other' : c;
+}
+
+/** Orders addresses: IPv4 before IPv6, then numerically. */
+export function compareIp(a: string, b: string): number {
+  const x = ipaddr.parse(a).toByteArray();
+  const y = ipaddr.parse(b).toByteArray();
+  if (x.length !== y.length) return x.length - y.length;
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+  return 0;
+}
+
 function validateScope6(addr: ipaddr.IPv6, prefix: number): ScopeValidation {
   if (addr.isIPv4MappedAddress()) return { ok: false, code: 'ipv6_mapped', reason: 'IPv4-mapped IPv6 ranges are not scopes: authorize the IPv4 range instead' };
   const network = ipaddr.IPv6.networkAddressFromCIDR(`${addr.toString()}/${prefix}`);
   const cidr = `${network.toString()}/${prefix}`;
-  const range = network.range();
-  if (range === 'loopback' && prefix === 128 && env.ALLOW_LOOPBACK_SCOPES) return { ok: true, cidr };
+  const cls = ipv6Class(network);
+  if (cls === 'loopback' && prefix === 128 && env.ALLOW_LOOPBACK_SCOPES) return { ok: true, cidr };
   if (prefix < MAX_SCOPE_IPV6_PREFIX) {
     return { ok: false, code: 'ipv6_too_large', reason: `IPv6 scope is too large: the maximum size is /${MAX_SCOPE_IPV6_PREFIX} (one site); a LAN is normally a /64` };
   }
-  // The address classes are /16 or larger blocks and the special-purpose ones are /32 or larger, so a
-  // /48-or-longer prefix lies inside exactly one class: the class of its network address.
-  // ipaddr.js calls everything unlisted "unicast"; global unicast is only 2000::/3 (RFC 3587).
-  const globalUnicast = range === 'unicast' && (network.parts[0]! & 0xe000) === 0x2000;
-  if (range !== 'uniqueLocal' && range !== 'linkLocal' && !globalUnicast) {
+  // Every class boundary is a /23 or shorter except AS112 (/48), so a /48-or-longer prefix lies inside
+  // exactly one class: the class of its network address.
+  if (cls !== 'unique_local' && cls !== 'link_local' && cls !== 'global') {
     return {
       ok: false,
       code: 'ipv6_not_lan',
-      reason: 'Only IPv6 LAN prefixes can be monitored: unique-local (fc00::/7), link-local (fe80::/10) or global unicast; tunnelling, translation, documentation and multicast ranges are refused',
+      reason: 'Only IPv6 LAN prefixes can be monitored: unique-local (fc00::/7), link-local (fe80::/10) or global unicast (2000::/3); tunnelling, translation, documentation, multicast and other special-purpose ranges are refused',
     };
   }
   return { ok: true, cidr };
@@ -140,14 +179,18 @@ export function classifyTarget(ip: string): TargetClass {
     return { kind: 'global', family: 4 };
   }
   if (!isIPv6(ip)) return { kind: 'refused', reason: 'not an IP address' };
-  const range = ipaddr.IPv6.parse(ip).range();
-  if (range === 'loopback') return { kind: 'loopback', family: 6 };
-  if (range === 'uniqueLocal') return { kind: 'local', family: 6 };
-  if (range === 'unicast' && (ipaddr.IPv6.parse(ip).parts[0]! & 0xe000) === 0x2000) return { kind: 'global', family: 6 };
-  if (range === 'linkLocal') {
-    return { kind: 'refused', reason: "an IPv6 link-local address (fe80::/10) only has a meaning on one interface: use the device's unique-local or global address" };
+  switch (ipv6Class(ipaddr.IPv6.parse(ip))) {
+    case 'loopback':
+      return { kind: 'loopback', family: 6 };
+    case 'unique_local':
+      return { kind: 'local', family: 6 };
+    case 'global':
+      return { kind: 'global', family: 6 };
+    case 'link_local':
+      return { kind: 'refused', reason: "an IPv6 link-local address (fe80::/10) only has a meaning on one interface: use the device's unique-local or global address" };
+    default:
+      return { kind: 'refused', reason: 'unspecified, multicast, IPv4-mapped, tunnelling / translation, documentation or other special-purpose IPv6 address' };
   }
-  return { kind: 'refused', reason: 'unspecified, multicast, IPv4-mapped, tunnelling / translation or reserved IPv6 address' };
 }
 
 export function normalizeMac(mac: string): string {

@@ -25,21 +25,6 @@ var private = []netip.Prefix{
 
 var loopback = netip.MustParsePrefix("127.0.0.0/8")
 
-// IPv6 address classes a LAN scope may be in (RFC 4193, RFC 4291, RFC 3587).
-var (
-	uniqueLocal   = netip.MustParsePrefix("fc00::/7")
-	linkLocal     = netip.MustParsePrefix("fe80::/10")
-	globalUnicast = netip.MustParsePrefix("2000::/3")
-	// Tunnelling and translation prefixes inside 2000::/3 that are not a LAN: 6to4, Teredo, the
-	// IPv4/IPv6 translation prefix. Refused so a scope can never point at relays on the internet.
-	notLAN = []netip.Prefix{
-		netip.MustParsePrefix("2002::/16"),
-		netip.MustParsePrefix("2001::/32"),
-		netip.MustParsePrefix("64:ff9b::/96"),
-	}
-	loopback6 = netip.MustParsePrefix("::1/128")
-)
-
 const (
 	// MinIPv6PrefixBits is the largest IPv6 scope accepted: a /48 (a whole site). Larger ranges are
 	// not one organisation's LAN.
@@ -115,21 +100,21 @@ func (p Policy) check6(prefix netip.Prefix) error {
 	if addr.Is4In6() {
 		return fmt.Errorf("IPv4-mapped IPv6 ranges are not scopes: authorize the IPv4 range instead")
 	}
-	if p.AllowLoopback && prefix == loopback6 {
+	cls := ClassOf(addr)
+	if p.AllowLoopback && cls == ClassLoopback && prefix.Bits() == 128 {
 		return nil
 	}
 	if prefix.Bits() < MinIPv6PrefixBits {
 		return fmt.Errorf("IPv6 scope is larger than the /%d maximum", MinIPv6PrefixBits)
 	}
-	for _, r := range notLAN {
-		if r.Overlaps(prefix) {
-			return fmt.Errorf("IPv6 tunnelling and translation prefixes (6to4, Teredo, NAT64) are not LAN ranges")
-		}
-	}
-	if contains(uniqueLocal, prefix) || contains(linkLocal, prefix) || contains(globalUnicast, prefix) {
+	// Every class boundary is a /23 or shorter except AS112 (/48), so a /48-or-longer prefix lies
+	// inside exactly one class: the class of its network address.
+	switch cls {
+	case ClassUniqueLocal, ClassLinkLocal, ClassGlobal:
 		return nil
 	}
-	return fmt.Errorf("not an IPv6 LAN range (unique-local fc00::/7, link-local fe80::/10 or global unicast 2000::/3)")
+	return fmt.Errorf("not an IPv6 LAN range (unique-local fc00::/7, link-local fe80::/10 or global unicast 2000::/3; " +
+		"tunnelling, translation, documentation, multicast and other special-purpose ranges are refused)")
 }
 
 func contains(outer, inner netip.Prefix) bool {
@@ -144,9 +129,6 @@ func Sweepable(prefix netip.Prefix) error {
 	}
 	return nil
 }
-
-// IsLinkLocal reports whether an address is IPv6 link-local (fe80::/10).
-func IsLinkLocal(a netip.Addr) bool { return a.Is6() && !a.Is4In6() && linkLocal.Contains(a.WithZone("")) }
 
 // Hosts lists the probeable addresses of a prefix. For IPv4 the network and broadcast addresses
 // are skipped for anything larger than a /31. For IPv6 the all-zero subnet-router anycast address

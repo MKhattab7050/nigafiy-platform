@@ -1,7 +1,6 @@
-import ipaddr from 'ipaddr.js';
 import { z } from 'zod';
 import { AppError } from '../../common/http.ts';
-import { isIPv4 } from '../../common/net.ts';
+import { classifyTarget, isIP } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 
 /**
@@ -155,28 +154,28 @@ export function parseConfig(kind: Kind, raw: unknown): Record<string, unknown> {
 /**
  * The target rule for http / https / tls_expiry — the same one the collector applies to every resolved
  * address (internal/watch/guard.go), and the same principle as webhook / e-mail destinations:
- *   - an IPv4 address of the local kind (private, loopback, link-local, CGNAT) must lie inside an
- *     enabled authorized scope of the site;
+ *   - an address of the local kind (IPv4 private, loopback, link-local, CGNAT; IPv6 unique-local) must
+ *     lie inside an enabled authorized scope of the site;
+ *   - a global IPv6 address inside a scope is a LAN address; outside every scope it is public;
  *   - a public address is allowed only with the check's explicit allow_public opt-in;
- *   - unspecified, broadcast, multicast and reserved addresses are refused;
- *   - a host name is passed on: the collector resolves it on its own network and refuses the check
+ *   - unspecified, broadcast, multicast and reserved addresses are refused, and so is IPv6 link-local
+ *     (classifyTarget in common/net.ts);
+ *   - a host name is passed on: the collector resolves it (IPv4) on its own network and refuses the check
  *     when any address it resolves to breaks the rule (the API cannot know internal names).
  */
 export async function assertWatchTarget(db: Db, siteId: string, target: string, allowPublic: boolean): Promise<void> {
-  if (!isIPv4(target)) return;
-  const range = ipaddr.IPv4.parse(target).range();
-  if (['unspecified', 'broadcast', 'multicast', 'reserved'].includes(range)) {
-    throw new AppError(422, 'out_of_scope', 'This address cannot be a check target (unspecified, broadcast, multicast or reserved)');
-  }
-  const local = range === 'private' || range === 'loopback' || range === 'linkLocal' || range === 'carrierGradeNat';
-  if (!local) {
+  if (!isIP(target)) return;
+  const cls = classifyTarget(target);
+  if (cls.kind === 'refused') throw new AppError(422, 'out_of_scope', `This address cannot be a check target (${cls.reason})`);
+  const inScope = (await db.query(`SELECT 1 FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr LIMIT 1`, [siteId, target])).rowCount! > 0;
+  if (inScope) return;
+  if (cls.kind === 'global') {
     if (!allowPublic) {
       throw new AppError(422, 'public_not_allowed', 'This is a public internet address: turn on "allow public host" for this check to reach it');
     }
     return;
   }
-  const inScope = await db.query(`SELECT 1 FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr LIMIT 1`, [siteId, target]);
-  if (!inScope.rowCount) throw new AppError(422, 'out_of_scope', 'This address is not inside an authorized network scope of the site');
+  throw new AppError(422, 'out_of_scope', 'This address is not inside an authorized network scope of the site');
 }
 
 // ───────────────────────── classification ─────────────────────────

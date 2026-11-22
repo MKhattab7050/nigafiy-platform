@@ -1,7 +1,7 @@
 import ipaddr from 'ipaddr.js';
 import type { Confidence, ScopeSuggestion, ScopeSuggestionSource, ScopeSuggestions } from '@lan-detective/shared-types';
 import { notFound } from '../../common/http.ts';
-import { MAX_SCOPE_HOSTS_PREFIX, MAX_SCOPE_IPV6_PREFIX, validateScope } from '../../common/net.ts';
+import { MAX_SCOPE_HOSTS_PREFIX, MAX_SCOPE_IPV6_PREFIX, ipv6Class, validateScope } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 
 /**
@@ -35,10 +35,11 @@ interface Candidate {
 }
 
 const networkOf = (ip: string, prefix: number) => `${ipaddr.IPv4.networkAddressFromCIDR(`${ip}/${prefix}`).toString()}/${prefix}`;
+/** Family-aware: an IPv4 range never contains an IPv6 one and vice versa. */
 const contains = (outer: string, inner: string) => {
-  const [oa, op] = ipaddr.IPv4.parseCIDR(outer);
-  const [ia, ip] = ipaddr.IPv4.parseCIDR(inner);
-  return op <= ip && ia.match(oa, op);
+  const [oa, op] = ipaddr.parseCIDR(outer);
+  const [ia, ip] = ipaddr.parseCIDR(inner);
+  return oa.kind() === ia.kind() && op <= ip && ia.match(oa, op);
 };
 
 /**
@@ -48,9 +49,8 @@ const contains = (outer: string, inner: string) => {
  *   longer than /64 (a DHCPv6 /128 host address) or link-local → nothing: the link's prefix is not reported
  */
 function ipv6Candidate(col: CollectorNetworkFacts, iface: string, address: string, ip: ipaddr.IPv6, prefix: number): Candidate | null {
-  const range = ip.range();
-  const global = range === 'unicast' && (ip.parts[0]! & 0xe000) === 0x2000;
-  if ((range !== 'uniqueLocal' && !global) || prefix > 64) return null;
+  const cls = ipv6Class(ip);
+  if ((cls !== 'unique_local' && cls !== 'global') || prefix > 64) return null;
   const source: ScopeSuggestionSource = { kind: 'interface', collector_id: col.id, collector_name: col.name, interface: iface, reported: address };
   const seen = `Collector "${col.name}" has address ${address} on interface ${iface}`;
   const net = (p: number) => `${ipaddr.IPv6.networkAddressFromCIDR(`${ip.toString()}/${p}`).toString()}/${p}`;

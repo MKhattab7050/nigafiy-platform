@@ -85,7 +85,8 @@ describe('network scope authorization', () => {
     expect(validateScope('8.8.8.0/24').ok).toBe(false); // public
     expect(validateScope('10.0.0.0/8').ok).toBe(false); // too large
     expect(validateScope('127.0.0.0/24').ok).toBe(false); // loopback only in dev/test mode
-    expect(validateScope('fd00::/64').ok).toBe(false);
+    expect(validateScope('fd00::/64')).toEqual({ ok: true, cidr: 'fd00::/64' }); // IPv6 LAN prefix (tests/ipv6.test.ts)
+    expect(validateScope('2001:db8::/64').ok).toBe(false); // documentation range
     expect(validateScope('not-a-cidr').ok).toBe(false);
   });
 

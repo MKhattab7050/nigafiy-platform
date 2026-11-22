@@ -38,17 +38,17 @@ const (
 	tracerouteTimeout = 75 * time.Second
 )
 
-// A target is an IPv4 address or a host name. The pattern cannot start with "-", so a target can
+// A target is an IPv4 or IPv6 address or a host name (names are resolved to IPv4). The pattern cannot start with "-", so a target can
 // never be read as an option by a program it is handed to.
 var hostname = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,62}))*\.?$`)
 
-// ValidTarget reports whether s is an IPv4 address or a syntactically valid host name.
+// ValidTarget reports whether s is an IPv4 or IPv6 address (without zone) or a syntactically valid host name.
 func ValidTarget(s string) bool {
 	if len(s) == 0 || len(s) > 253 {
 		return false
 	}
-	if ip := net.ParseIP(s); ip != nil {
-		return ip.To4() != nil
+	if a, err := netip.ParseAddr(s); err == nil {
+		return a.Zone() == "" && !a.Is4In6()
 	}
 	return hostname.MatchString(s)
 }
@@ -60,9 +60,11 @@ type Runner struct {
 	AllowLoopback bool
 }
 
+// resolveIPv4 returns an address literal as is (IPv4 or IPv6, canonical form) and resolves a name to
+// its first IPv4 address. Names are not resolved to IPv6 (AAAA): see docs/features/ipv6.md.
 func resolveIPv4(ctx context.Context, host string) (string, error) {
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.String(), nil
+	if a, err := netip.ParseAddr(host); err == nil {
+		return a.String(), nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -79,7 +81,7 @@ func round(ms float64) float64 { return float64(int(ms*100+0.5)) / 100 }
 // an answer at all (bad request, name does not resolve); "host did not reply" is a result, not an error.
 func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 	if !ValidTarget(req.Target) {
-		return nil, errors.New("the target is not an IPv4 address or a host name")
+		return nil, errors.New("the target is not an IPv4 or IPv6 address or a host name")
 	}
 	switch req.Tool {
 	case "ping":
@@ -153,9 +155,9 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		return out, nil
 
 	case "rdns":
-		ip := net.ParseIP(req.Target)
-		if ip == nil {
-			return nil, errors.New("reverse DNS needs an IPv4 address")
+		ip, err := netip.ParseAddr(req.Target)
+		if err != nil {
+			return nil, errors.New("reverse DNS needs an IPv4 or IPv6 address")
 		}
 		if err := r.CheckTarget(req.Tool, ip.String(), req.InScope); err != nil {
 			return nil, err
@@ -193,7 +195,7 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		reached := len(hops) > 0 && hops[len(hops)-1].Address == ip
+		reached := len(hops) > 0 && sameAddr(hops[len(hops)-1].Address, ip)
 		return map[string]any{"resolved": ip, "hops": hops, "reached": reached, "max_hops": maxHops, "method": raw}, nil
 
 	case "ports":
@@ -299,11 +301,23 @@ type Hop struct {
 	RTTMs   []float64 `json:"rtt_ms,omitempty"`
 }
 
+func sameAddr(a, b string) bool {
+	x, err1 := netip.ParseAddr(a)
+	y, err2 := netip.ParseAddr(b)
+	return err1 == nil && err2 == nil && x == y
+}
+
 // traceroute runs the operating system's own route tracer with numeric output. The only variable
-// argument is an IPv4 address that was parsed and re-formatted by net.ParseIP.
+// argument is an IPv4 or IPv6 address that was parsed and re-formatted by netip.ParseAddr.
 func traceroute(ctx context.Context, ip string) ([]Hop, string, error) {
-	if net.ParseIP(ip) == nil {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
 		return nil, "", errors.New("not an address")
+	}
+	ip = a.String()
+	family := "-4"
+	if a.Is6() {
+		family = "-6"
 	}
 	ctx, cancel := context.WithTimeout(ctx, tracerouteTimeout)
 	defer cancel()
@@ -311,10 +325,10 @@ func traceroute(ctx context.Context, ip string) ([]Hop, string, error) {
 	var method string
 	if runtime.GOOS == "windows" {
 		method = "tracert (ICMP)"
-		cmd = exec.CommandContext(ctx, "tracert", "-d", "-h", strconv.Itoa(maxHops), "-w", "1000", ip)
+		cmd = exec.CommandContext(ctx, "tracert", family, "-d", "-h", strconv.Itoa(maxHops), "-w", "1000", ip)
 	} else {
 		method = "traceroute (UDP)"
-		cmd = exec.CommandContext(ctx, "traceroute", "-n", "-m", strconv.Itoa(maxHops), "-w", "1", "-q", "2", ip)
+		cmd = exec.CommandContext(ctx, "traceroute", family, "-n", "-m", strconv.Itoa(maxHops), "-w", "1", "-q", "2", ip)
 	}
 	hideWindow(cmd)
 	out, err := cmd.Output()
@@ -336,6 +350,20 @@ var (
 	ipv4    = regexp.MustCompile(`\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b`)
 	rtt     = regexp.MustCompile(`(<?\d+(?:\.\d+)?)\s*ms`)
 )
+
+// hopIPv6 returns the first IPv6 address of a hop line (tracert -6 / traceroute -6 output), or "".
+func hopIPv6(rest string) string {
+	for _, f := range strings.Fields(rest) {
+		f = strings.Trim(f, "()[]")
+		if !strings.Contains(f, ":") {
+			continue
+		}
+		if a, err := netip.ParseAddr(f); err == nil && a.Is6() {
+			return a.WithZone("").String()
+		}
+	}
+	return ""
+}
 
 // ParseTrace reads the hop lines of Windows tracert and Unix traceroute -n output. Lines that are
 // not hops (headers, "Trace complete.") are ignored; a hop of only "*" has no address.
@@ -366,6 +394,8 @@ func ParseTrace(output string) []Hop {
 		}
 		// The address comes after the times on Windows and before them on Unix; times never look like addresses.
 		if a := ipv4.FindString(rest); a != "" && net.ParseIP(a) != nil {
+			hop.Address = a
+		} else if a := hopIPv6(rest); a != "" {
 			hop.Address = a
 		}
 		hops = append(hops, hop)

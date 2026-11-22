@@ -4,13 +4,22 @@ import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { Collector, CollectorCreated, NetworkScope, Site } from '@lan-detective/shared-types';
 import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
-import { type ApiError, api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { absoluteTime, browserTimeZone, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { ScopeSuggestionList, useScopeSuggestions } from './scope-suggestions';
 import { SiteEditModal } from './site-edit';
 import { SiteSensors } from './site-sensors';
+
+const SCOPE_ERROR_CODES = ['invalid_cidr', 'too_large', 'not_private', 'ipv6_too_large', 'ipv6_not_lan', 'ipv6_mapped'] as const;
+
+/** A refused scope carries a machine-readable reason: show it in the reader's language. */
+function localizeScopeError(error: ApiError, t: ReturnType<typeof useI18n>['t']): ApiError {
+  const code = error.code === 'invalid_scope' ? error.info?.reason_code : undefined;
+  if (typeof code !== 'string' || !(SCOPE_ERROR_CODES as readonly string[]).includes(code)) return error;
+  return new ApiError(error.status, error.code, t(`discovery.scopeError.${code as (typeof SCOPE_ERROR_CODES)[number]}`), error.details, error.info);
+}
 
 export function SiteSection({ site, scopes, collectors, reload, onToken }: { site: Site; scopes: NetworkScope[]; collectors: Collector[]; reload: () => void; onToken: (c: CollectorCreated) => void }) {
   const { t, locale } = useI18n();
@@ -61,8 +70,8 @@ export function SiteSection({ site, scopes, collectors, reload, onToken }: { sit
         );
       }}
     >
-      <div className="grid items-end gap-2 sm:grid-cols-[12rem_1fr_auto]">
-        <Field label={t('discovery.cidr')}>{(id) => <Input id={id} value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="192.168.1.0/24" required dir="ltr" className="mono" />}</Field>
+      <div className="grid items-end gap-2 sm:grid-cols-[16rem_1fr_auto]">
+        <Field label={t('discovery.cidr')}>{(id) => <Input id={id} value={cidr} onChange={(e) => setCidr(e.target.value)} placeholder="192.168.1.0/24 · fd00::/64" required dir="ltr" className="mono" maxLength={49} />}</Field>
         <Field label={t('discovery.label')}>{(id) => <Input id={id} value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} />}</Field>
         <Button type="submit" busy={busy === 'scope'} disabled={!attested || !cidr}>
           <Plus className="size-4" aria-hidden />
@@ -89,7 +98,7 @@ export function SiteSection({ site, scopes, collectors, reload, onToken }: { sit
       }
     >
       <div className="space-y-6">
-        {error && <ErrorNote error={error} />}
+        {error && <ErrorNote error={localizeScopeError(error, t)} />}
         {notice && <p role="status" className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-[13px]">{notice}</p>}
 
         <div className="text-[13px]">
@@ -113,7 +122,14 @@ export function SiteSection({ site, scopes, collectors, reload, onToken }: { sit
             <ul className="divide-y divide-line rounded-md border border-line">
               {scopes.map((s) => (
                 <li key={s.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5">
-                  <span className="mono text-[13px] font-medium">{s.cidr}</span>
+                  <span className="mono text-[13px] font-medium" dir="ltr">
+                    {s.cidr}
+                  </span>
+                  {s.family === 6 && (
+                    <span className="rounded border border-line px-1.5 py-0.5 text-[11px] text-muted" title={s.discovery_method === 'neighbor' ? t('discovery.method.neighborHelp') : undefined}>
+                      {t(s.discovery_method === 'neighbor' ? 'discovery.method.neighbor' : 'discovery.method.sweep')}
+                    </span>
+                  )}
                   {s.label && <span className="text-[13px] text-muted" dir="auto">{s.label}</span>}
                   <span className="text-xs text-faint" title={absoluteTime(s.authorized_at, locale)}>
                     {t('discovery.attestedBy')} {s.authorized_by_name ?? '—'}

@@ -232,9 +232,11 @@ devicesRouter.post('/devices/:id/wake', requireRole('technician'), async (req, r
     if (!device) throw notFound('Device');
     if (!device.mac) throw new AppError(409, 'no_mac', 'Wake-on-LAN needs the device’s MAC address, which has not been observed');
     if (!device.ip) throw new AppError(409, 'no_address', 'The device’s network is unknown');
+    // Wake-on-LAN is an IPv4 broadcast; IPv6 has no broadcast and no wake-up standard (docs/features/ipv6.md).
+    if (device.ip.includes(':')) throw new AppError(409, 'wol_ipv4_only', 'Wake-on-LAN needs an IPv4 address: it is sent as an IPv4 broadcast, and this device was only seen over IPv6');
     const scope = (
       await db.query<{ broadcast: string }>(
-        `SELECT host(broadcast(cidr)) AS broadcast FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr ORDER BY masklen(cidr) DESC LIMIT 1`,
+        `SELECT host(broadcast(cidr)) AS broadcast FROM network_scopes WHERE site_id = $1 AND enabled AND family(cidr) = 4 AND $2::inet <<= cidr ORDER BY masklen(cidr) DESC LIMIT 1`,
         [device.site_id, device.ip],
       )
     ).rows[0];

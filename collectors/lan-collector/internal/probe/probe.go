@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/netip"
 	"runtime"
 	"sync"
 	"time"
@@ -118,7 +119,12 @@ func TCP(ctx context.Context, host string, port int) Result {
 	defer cancel()
 	var d net.Dialer
 	start := time.Now()
-	conn, err := d.DialContext(ctx, "tcp4", net.JoinHostPort(host, fmt.Sprint(port)))
+	// An IPv6 literal is dialled over IPv6; a name still resolves to IPv4 only (docs/features/ipv6.md).
+	network := "tcp4"
+	if a, err := netip.ParseAddr(host); err == nil && a.Is6() && !a.Is4In6() {
+		network = "tcp6"
+	}
+	conn, err := d.DialContext(ctx, network, net.JoinHostPort(host, fmt.Sprint(port)))
 	if err != nil {
 		return Result{Error: truncate(dialError(err))}
 	}

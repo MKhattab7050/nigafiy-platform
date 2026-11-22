@@ -7,13 +7,14 @@
 //   - an address inside one of the site's authorized scopes (delivered by the cloud and re-validated
 //     by the collector's own scope policy: never larger than the hard limit, inside the local
 //     allowed_cidrs when set) is allowed;
-//   - a public, globally routable IPv4 address is allowed only when the check explicitly opts in
-//     (allow_public), the same way webhook and e-mail destinations must be public;
-//   - everything else is refused: private addresses outside the scopes, loopback, link-local
-//     (169.254.0.0/16, which includes cloud metadata endpoints), CGNAT, multicast, reserved and
-//     documentation ranges, and IPv6 (scopes are IPv4 only).
+//   - a public, globally routable address (IPv4, or IPv6 global unicast outside every scope) is
+//     allowed only when the check explicitly opts in (allow_public), the same way webhook and e-mail
+//     destinations must be public;
+//   - everything else is refused: private / unique-local addresses outside the scopes, loopback,
+//     link-local (169.254.0.0/16, which includes cloud metadata endpoints, and fe80::/10), CGNAT,
+//     multicast, reserved, documentation and other special-purpose ranges.
 //
-// A host name is resolved by the collector and every address it resolves to must pass; the
+// A host name is resolved (IPv4 only) by the collector and every address it resolves to must pass; the
 // connection then goes to exactly the address that was checked, so a DNS answer cannot change
 // between the check and the connection. HTTP proxies from the environment are never used.
 package watch
@@ -26,6 +27,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/lan-detective/lan-collector/internal/scope"
 )
 
 // Guard decides which addresses a check may connect to.
@@ -81,18 +84,28 @@ func IsPublicIPv4(addr netip.Addr) bool {
 	return true
 }
 
+// IsPublic reports whether addr is a public internet address: public IPv4, or IPv6 global unicast
+// (scope.ClassGlobal). A global IPv6 address may also be a LAN address: Allow checks the scopes first.
+func IsPublic(addr netip.Addr) bool {
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return IsPublicIPv4(addr)
+	}
+	return scope.ClassOf(addr) == scope.ClassGlobal
+}
+
 // Allow returns nil when the check may connect to addr, or a RefusedError that explains why not.
 func (g Guard) Allow(addr netip.Addr) error {
 	addr = addr.Unmap()
-	if !addr.Is4() {
-		return &RefusedError{fmt.Sprintf("%s is not an IPv4 address (authorized scopes are IPv4 only)", addr)}
+	if addr.Zone() != "" {
+		return &RefusedError{fmt.Sprintf("%s carries an interface zone", addr)}
 	}
 	for _, p := range g.Scopes {
 		if p.Contains(addr) {
 			return nil
 		}
 	}
-	if IsPublicIPv4(addr) {
+	if IsPublic(addr) {
 		if g.AllowPublic {
 			return nil
 		}
@@ -158,7 +171,7 @@ func (x *dialer) DialContext(ctx context.Context, _ string, address string) (net
 	x.mu.Lock()
 	x.address = addr.String()
 	x.mu.Unlock()
-	return x.d.DialContext(ctx, "tcp4", net.JoinHostPort(addr.String(), port))
+	return x.d.DialContext(ctx, "tcp", net.JoinHostPort(addr.String(), port))
 }
 
 func (x *dialer) last() string {

@@ -32,6 +32,9 @@ func TestPolicyCheck(t *testing.T) {
 		{"ipv6 6to4", base, "2002:c0a8:101::/48", ""},
 		{"ipv6 teredo", base, "2001:0:1::/48", ""},
 		{"ipv6 nat64", base, "64:ff9b::/96", ""},
+		{"ipv6 documentation", base, "2001:db8:1::/48", ""},
+		{"ipv6 documentation 3fff", base, "3fff:1::/48", ""},
+		{"ipv6 orchid", base, "2001:20::/48", ""},
 		{"ipv4-mapped", base, "::ffff:192.168.1.0/120", ""},
 		{"ipv6 zone refused", base, "fe80::%eth0/64", ""},
 		{"ipv6 loopback refused by default", base, "::1/128", ""},
@@ -116,6 +119,19 @@ func TestIsLinkLocal(t *testing.T) {
 	for s, want := range map[string]bool{"fe80::1": true, "fe80::1%eth0": true, "febf::1": true, "fec0::1": false, "fd00::1": false, "192.168.1.1": false} {
 		if got := IsLinkLocal(netip.MustParseAddr(s)); got != want {
 			t.Errorf("IsLinkLocal(%s) = %v", s, got)
+		}
+	}
+}
+
+func TestClassOf(t *testing.T) {
+	for s, want := range map[string]Class{
+		"::1": ClassLoopback, "fe80::1%eth0": ClassLinkLocal, "fd12::1": ClassUniqueLocal, "fc00::1": ClassUniqueLocal,
+		"2a01:4f8::1": ClassGlobal, "2001:db8::1": ClassOther, "2001::1": ClassOther, "2002::1": ClassOther,
+		"ff02::1": ClassOther, "::": ClassOther, "::ffff:192.168.1.1": ClassOther, "192.168.1.1": ClassOther,
+		"2620:4f:8000::1": ClassOther, "2620:4f:8001::1": ClassGlobal, "3fff::1": ClassOther,
+	} {
+		if got := ClassOf(netip.MustParseAddr(s)); got != want {
+			t.Errorf("ClassOf(%s) = %v, want %v", s, got, want)
 		}
 	}
 }
