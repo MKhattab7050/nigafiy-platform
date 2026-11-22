@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { addressScope, classifyTarget, compareIp, discoveryMethod, validateScope } from '../src/common/net.ts';
-import { CSRF, addScope, heartbeat, newAccount, newCollector } from './helpers.ts';
+import { systemPool } from '../src/infrastructure/db.ts';
+import { CSRF, addScope, heartbeat, newAccount, newCollector, sweep, telemetry } from './helpers.ts';
 
 describe('IPv6 network scopes', () => {
   it('accepts LAN prefixes of bounded size and refuses everything else, with a reason code', () => {
@@ -94,5 +96,107 @@ describe('IPv6 network scopes', () => {
     expect((await check('fe80::10', true)).status).toBe(400);
     const ping = await a.agent.post('/api/v1/checks').set(CSRF).send({ site_id: a.siteId, name: 'v6 ping', kind: 'icmp', target: 'fd00:50::1' });
     expect(ping.status).toBe(201);
+  });
+});
+
+/** An IPv6 discovery run as the collector reports it (discovery.Discover6). */
+function run6(scopeId: string, hosts: { ip: string; mac?: string; sources: string[]; hostname?: string }[], minutesAgo = 0) {
+  const finished = new Date(Date.now() - minutesAgo * 60_000);
+  return {
+    type: 'discovery_run',
+    run_id: randomUUID(),
+    scope_id: scopeId,
+    trigger: 'scheduled',
+    started_at: new Date(finished.getTime() - 4000).toISOString(),
+    finished_at: finished.toISOString(),
+    hosts_probed: 6,
+    hosts,
+  };
+}
+
+describe('IPv6 discovery ingest', () => {
+  it('adds IPv6 addresses to dual-stack devices, creates IPv6-only devices and keeps evidence per address', async () => {
+    const a = await newAccount('v6-ingest');
+    const v4 = await addScope(a, '192.168.60.0/24');
+    const v6 = await addScope(a, 'fd00:60::/64');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    expect((await telemetry(c, [sweep(v4, [{ ip: '192.168.60.10', mac: '00:0c:29:60:00:0a', hostname: 'nas' }], 30)])).body.accepted).toBe(1);
+
+    const first = await telemetry(c, [
+      run6(
+        v6,
+        [
+          { ip: 'FD00:60:0:0::10', mac: '00:0c:29:60:00:0a', sources: ['icmpv6_multicast', 'ndp_cache'] }, // dual-stack NAS, upper case on purpose
+          { ip: 'fe80::20c:29ff:fe60:a', mac: '00:0c:29:60:00:0a', sources: ['ndp_cache'] }, // its link-local address
+          { ip: 'fd00:60::20', mac: '00:0c:29:60:00:14', sources: ['icmpv6', 'ndp_cache'], hostname: 'v6only.lan' }, // IPv6-only device
+          { ip: 'fe80::99', mac: '00:0c:29:60:00:99', sources: ['ndp_cache'] }, // only link-local, unknown MAC: no device
+          { ip: 'fd00:61::1', sources: ['icmpv6'] }, // outside the scope: dropped and counted
+        ],
+        20,
+      ),
+    ]);
+    expect(first.body.accepted).toBe(1);
+    const run = await systemPool.query<{ hosts_responded: number; hosts_rejected: number }>(`SELECT hosts_responded, hosts_rejected FROM discovery_runs WHERE scope_id = $1`, [v6]);
+    expect(run.rows[0]).toEqual({ hosts_responded: 2, hosts_rejected: 1 });
+
+    const list = (await a.agent.get('/api/v1/devices').query({ site_id: a.siteId })).body.items as { id: string; current_ip: string; ipv6_addresses: string[]; status: string; hostname: string | null }[];
+    expect(list.map((d) => d.current_ip).sort()).toEqual(['192.168.60.10', 'fd00:60::20']);
+    const nas = list.find((d) => d.current_ip === '192.168.60.10')!;
+    const only6 = list.find((d) => d.current_ip === 'fd00:60::20')!;
+    expect(nas.ipv6_addresses).toEqual(['fd00:60::10']);
+    expect(only6).toMatchObject({ status: 'online', hostname: 'v6only.lan', ipv6_addresses: ['fd00:60::20'] });
+
+    const detail = (await a.agent.get(`/api/v1/devices/${nas.id}`)).body;
+    expect(detail.addresses.map((x: { ip: string; address_scope: string; current: boolean }) => [x.ip, x.address_scope, x.current])).toEqual([
+      ['192.168.60.10', 'ipv4', true],
+      ['fd00:60::10', 'unique_local', false],
+      ['fe80::20c:29ff:fe60:a', 'link_local', false],
+    ]);
+    expect(detail.addresses[1]).toMatchObject({ family: 6, sources: ['icmpv6_multicast', 'ndp_cache'], scope_cidr: 'fd00:60::/64' });
+    expect(detail.discovery_sources).toEqual(expect.arrayContaining(['icmpv6_multicast', 'ndp_cache']));
+    // No address-change event for the dual-stack device: IPv6 addresses are additional, not a move.
+    const events = await systemPool.query<{ type: string }>(`SELECT type FROM network_events WHERE device_id = $1`, [nas.id]);
+    expect(events.rows.map((e) => e.type)).not.toContain('device_ip_changed');
+
+    // Search matches IPv6 addresses (inventory and global search).
+    const found = (await a.agent.get('/api/v1/devices').query({ q: 'fd00:60::10' })).body.items;
+    expect(found.map((d: { id: string }) => d.id)).toEqual([nas.id]);
+    const global = (await a.agent.get('/api/v1/search').query({ q: 'fd00:60::20' })).body.items;
+    expect(global.find((h: { kind: string }) => h.kind === 'device')?.id).toBe(only6.id);
+
+    // Wake-on-LAN is IPv4 only.
+    const wake = await a.agent.post(`/api/v1/devices/${only6.id}/wake`).set(CSRF);
+    expect(wake.status).toBe(409);
+    expect(wake.body.error.code).toBe('wol_ipv4_only');
+
+    // Two IPv6 runs without the IPv6-only device: it goes offline; the dual-stack NAS keeps its IPv4 availability.
+    for (const m of [10, 5]) await telemetry(c, [run6(v6, [{ ip: 'fd00:60::10', mac: '00:0c:29:60:00:0a', sources: ['icmpv6_multicast'] }], m)]);
+    const after = (await a.agent.get('/api/v1/devices').query({ site_id: a.siteId })).body.items as { id: string; status: string }[];
+    expect(after.find((d) => d.id === only6.id)!.status).toBe('offline');
+    expect(after.find((d) => d.id === nas.id)!.status).toBe('online');
+    const offline = await systemPool.query<{ details: { method: string } }>(`SELECT details FROM network_events WHERE device_id = $1 AND type = 'device_offline'`, [only6.id]);
+    expect(offline.rows[0]!.details.method).toContain('ICMPv6');
+
+    // The IPv6-only device shows up over IPv4: IPv4 becomes its current address, without an address-change event.
+    await telemetry(c, [sweep(v4, [{ ip: '192.168.60.20', mac: '00:0c:29:60:00:14' }], 1)]);
+    const moved = (await a.agent.get(`/api/v1/devices/${only6.id}`)).body;
+    expect(moved.current_ip).toBe('192.168.60.20');
+    expect(moved.addresses.map((x: { ip: string }) => x.ip)).toEqual(['192.168.60.20', 'fd00:60::20']);
+    const changed = await systemPool.query(`SELECT 1 FROM network_events WHERE device_id = $1 AND type = 'device_ip_changed'`, [only6.id]);
+    expect(changed.rowCount).toBe(0);
+  });
+
+  it('refuses malformed IPv6 hosts at the protocol boundary', async () => {
+    const a = await newAccount('v6-proto');
+    const v6 = await addScope(a, 'fd00:62::/64');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    for (const ip of ['fe80::1%eth0', 'fd00:62::zz', 'fd00:62::1/64']) {
+      const r = await telemetry(c, [run6(v6, [{ ip, sources: ['icmpv6'] }])]);
+      expect(r.status === 400 || r.body.rejected?.length === 1, ip).toBe(true);
+    }
+    const bad = await telemetry(c, [run6(v6, [{ ip: 'fd00:62::1', sources: ['nmap'] }])]);
+    expect(bad.status === 400 || bad.body.rejected?.length === 1).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isIPv4 } from './net.ts';
+import { canonicalIp, isIP, isIPv4 } from './net.ts';
 import { configBackupProbeResultSchema, configBackupResultSchema, configRestoreResultSchema } from './config-backup-protocol.ts';
 import { smartCheckSchema } from './smart-check-protocol.ts';
 import { switchPortResultSchema, switchVlansSchema } from './switch-port-protocol.ts';
@@ -10,6 +10,8 @@ import { switchPortResultSchema, switchVlansSchema } from './switch-port-protoco
 // `.strict()` everywhere: unknown fields are rejected rather than silently stored.
 
 const ipv4 = z.string().max(15).refine(isIPv4, 'must be an IPv4 address');
+// IPv4 or IPv6 (no zone), in the canonical text form PostgreSQL's host() returns.
+const ipAny = z.string().max(45).refine(isIP, 'must be an IPv4 or IPv6 address').transform(canonicalIp);
 const mac = z.string().regex(/^[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}$/, 'must be a MAC address');
 const timestamp = z.iso.datetime({ offset: true });
 // eslint-disable-next-line no-control-regex
@@ -73,7 +75,7 @@ export const heartbeatSchema = z
 
 const hostSchema = z
   .object({
-    ip: ipv4,
+    ip: ipAny,
     mac: mac.optional(),
     hostname: z.string().min(1).max(253).optional(),
     rtt_ms: z.number().min(0).max(60_000).optional(),
@@ -81,7 +83,10 @@ const hostSchema = z
     // neighbour table after probing, 'rdns' = a PTR record exists.
     // 'local_interface' = the collector host's own address and MAC, read from its own network interface.
     // 'mdns' / 'ssdp' / 'netbios' = it answered that discovery protocol; 'dhcp' = its own DHCP request was overheard.
-    sources: z.array(z.enum(['icmp', 'arp_cache', 'rdns', 'local_interface', 'mdns', 'ssdp', 'netbios', 'dhcp'])).min(1).max(8),
+    // IPv6 (never swept, docs/features/ipv6.md): 'icmpv6_multicast' = it answered an echo request to the
+    // all-nodes group ff02::1; 'icmpv6' = it answered a unicast echo; 'ndp_cache' = the collector host's
+    // IPv6 neighbour table holds it (reachable, or with the MAC of a device that answered).
+    sources: z.array(z.enum(['icmp', 'arp_cache', 'rdns', 'local_interface', 'mdns', 'ssdp', 'netbios', 'dhcp', 'icmpv6', 'icmpv6_multicast', 'ndp_cache'])).min(1).max(11),
     // What the device announced about itself. Device-supplied text: bounded here, escaped by the UI.
     names: z.array(z.object({ source: z.enum(['mdns', 'ssdp', 'netbios', 'dhcp']), name: text }).strict()).max(8).optional(),
     services: z.array(z.string().min(1).max(100)).max(40).optional(),

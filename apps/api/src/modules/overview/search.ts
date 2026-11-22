@@ -63,6 +63,8 @@ searchRouter.get('/search', async (req, res) => {
             ${DEVICE_SEARCH_EXPR} ILIKE $2
             OR ($3::text IS NOT NULL AND ${DEVICE_SEARCH_EXPR} ILIKE $3)
             OR d.id IN (SELECT dt.device_id FROM device_tags dt WHERE dt.tag ILIKE $2)
+            -- every observed address, IPv6 included (trigram index device_addresses_ip_trgm, migration 038)
+            OR d.id IN (SELECT da.device_id FROM device_addresses da WHERE host(da.ip) ILIKE $2)
           )
         ORDER BY (d.status = 'online') DESC, d.last_seen_at DESC NULLS LAST
         LIMIT 8`,

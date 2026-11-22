@@ -23,8 +23,8 @@ import (
 	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
 	"github.com/lan-detective/lan-collector/internal/dnsfilter"
-	"github.com/lan-detective/lan-collector/internal/mndp"
 	"github.com/lan-detective/lan-collector/internal/identify"
+	"github.com/lan-detective/lan-collector/internal/mndp"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
 	"github.com/lan-detective/lan-collector/internal/router"
@@ -56,6 +56,12 @@ type Deps struct {
 	ReverseName func(ctx context.Context, ip string) string
 	LocalMACs   func() map[string]string
 	LocalDown   func() []string
+	// IPv6 discovery (discovery.Discover6): the IPv6 neighbour table, the interfaces attached to a
+	// prefix, the all-nodes multicast echo and this host's own IPv6 addresses. nil disables each part.
+	Neighbors6     func(ctx context.Context) ([]netinfo.Neighbor6, error)
+	LinkInterfaces func(prefix netip.Prefix) []netinfo.LinkInterface
+	MulticastEcho  func(ctx context.Context, src netip.Addr, ifIndex int, wait time.Duration) ([]netip.Addr, error)
+	LocalAddrs6    func() map[string]string
 	// DHCPListen is the address for passive DHCP name learning (":67"); empty disables it.
 	DHCPListen string
 	// MNDPListen is the address of the receive-only MikroTik neighbour listener (":5678"); empty
@@ -105,13 +111,24 @@ func SystemDeps() Deps {
 	var gw string
 	var gwAt time.Time
 	return Deps{
-		Prober:      icmp,
-		ICMPCheck:   icmp.Check,
-		TCPCheck:    probe.TCP,
-		DNSCheck:    probe.DNS,
-		Neighbors:   netinfo.Neighbors,
-		LocalMACs:   netinfo.LocalMACs,
-		LocalDown:   netinfo.LocalDownAddrs,
+		Prober:         icmp,
+		ICMPCheck:      icmp.Check,
+		TCPCheck:       probe.TCP,
+		DNSCheck:       probe.DNS,
+		Neighbors:      netinfo.Neighbors,
+		LocalMACs:      netinfo.LocalMACs,
+		LocalDown:      netinfo.LocalDownAddrs,
+		Neighbors6:     netinfo.Neighbors6,
+		LinkInterfaces: netinfo.LinkInterfaces,
+		MulticastEcho: func(ctx context.Context, src netip.Addr, ifIndex int, wait time.Duration) ([]netip.Addr, error) {
+			replies, err := probe.EchoAllNodes(ctx, src, ifIndex, wait)
+			out := make([]netip.Addr, 0, len(replies))
+			for _, r := range replies {
+				out = append(out, r.From)
+			}
+			return out, err
+		},
+		LocalAddrs6: netinfo.LocalAddrs6,
 		DHCPListen:  ":67",
 		MNDPListen:  ":5678",
 		DNSListen:   ":53",
@@ -658,7 +675,7 @@ func (a *Agent) runDiscovery(ctx context.Context, trigger string) {
 			}
 			continue
 		}
-		res := discovery.Sweep(ctx, prefix, a.deps.Prober, discovery.Options{
+		opts := discovery.Options{
 			Concurrency: a.cfg.Limits.MaxConcurrency,
 			PPS:         a.cfg.Limits.MaxPPS,
 			Timeout:     time.Duration(a.cfg.Limits.PingTimeoutMs) * time.Millisecond,
@@ -671,7 +688,20 @@ func (a *Agent) runDiscovery(ctx context.Context, trigger string) {
 				return l.Hostname, l.VendorClass, ok
 			},
 			Identify: a.deps.Identify,
-		})
+		}
+		var res discovery.Result
+		if prefix.Addr().Is6() {
+			// IPv6: never an address-by-address sweep of a large prefix (scope.Sweepable): neighbour
+			// table + all-nodes multicast echo + echo of the known addresses.
+			res = discovery.Discover6(ctx, prefix, a.deps.Prober, opts, discovery.Options6{
+				Neighbors6:     a.deps.Neighbors6,
+				LinkInterfaces: a.deps.LinkInterfaces,
+				MulticastEcho:  a.deps.MulticastEcho,
+				LocalAddrs:     a.deps.LocalAddrs6,
+			})
+		} else {
+			res = discovery.Sweep(ctx, prefix, a.deps.Prober, opts)
+		}
 		if !res.Complete {
 			return // interrupted: reporting a partial sweep would make present devices look offline
 		}

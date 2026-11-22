@@ -48,7 +48,9 @@ export async function markMissingDevices(
         last_seen_at: d.last_seen_at,
         consecutive_missed_sweeps: missedById.get(d.id),
         scope: scope.cidr,
-        method: 'No ICMP echo reply and no neighbour (ARP) table entry on the collector host',
+        method: scope.cidr.includes(':')
+          ? 'No ICMPv6 echo reply (to ff02::1 or unicast) and no reachable IPv6 neighbour-table entry on the collector host'
+          : 'No ICMP echo reply and no neighbour (ARP) table entry on the collector host',
         limitation: 'A device that is powered on but silent to both ICMP and ARP from the collector would also look like this.',
       },
       source: 'collector',

@@ -18,7 +18,9 @@ const DEVICE_SELECT = `
          d.primary_mac::text AS primary_mac, d.mac_randomized, d.identity_basis, d.vendor, d.device_type, d.type_source,
          d.type_evidence, d.type_confidence, d.name_source, d.fingerprint, d.status, d.is_critical, d.trust, d.trust_changed_at, d.alerts_muted,
          (SELECT c.id FROM monitoring_checks c WHERE c.device_id = d.id ORDER BY c.created_at LIMIT 1) AS monitor_check_id, d.owner, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
-         coalesce((SELECT array_agg(t.tag ORDER BY t.tag) FROM device_tags t WHERE t.device_id = d.id), '{}') AS tags
+         coalesce((SELECT array_agg(t.tag ORDER BY t.tag) FROM device_tags t WHERE t.device_id = d.id), '{}') AS tags,
+         coalesce((SELECT array_agg(host(a.ip) ORDER BY a.address_scope = 'unique_local', a.ip) FROM device_addresses a
+                    WHERE a.device_id = d.id AND family(a.ip) = 6 AND a.address_scope <> 'link_local' AND a.last_seen_at > now() - interval '7 days'), '{}') AS ipv6_addresses
     FROM devices d JOIN sites s ON s.id = d.site_id`;
 
 const SORTS: Record<string, string> = {
@@ -57,7 +59,8 @@ devicesRouter.get('/devices', async (req, res) => {
           AND ($5::text IS NULL
                OR d.hostname ILIKE $5 OR d.display_name ILIKE $5 OR host(d.current_ip) ILIKE $5
                OR d.primary_mac::text ILIKE $5 OR d.vendor ILIKE $5 OR d.owner ILIKE $5
-               OR EXISTS (SELECT 1 FROM device_tags t WHERE t.device_id = d.id AND t.tag ILIKE $5))
+               OR EXISTS (SELECT 1 FROM device_tags t WHERE t.device_id = d.id AND t.tag ILIKE $5)
+               OR EXISTS (SELECT 1 FROM device_addresses a WHERE a.device_id = d.id AND host(a.ip) ILIKE $5))
         ORDER BY ${SORTS[q.sort]}
         LIMIT $6 OFFSET $7`.replace('SELECT d.id', 'SELECT count(*) OVER() AS total, d.id'),
       [q.site_id ?? null, q.status ?? null, q.device_type ?? null, q.new_within_hours ?? null, like, q.page_size, (q.page - 1) * q.page_size, q.trust ?? null],
@@ -83,13 +86,22 @@ devicesRouter.get('/devices/:id', async (req, res) => {
       `SELECT host(ip) AS ip, first_seen_at, last_seen_at FROM device_ip_history WHERE device_id = $1 ORDER BY last_seen_at DESC LIMIT 50`,
       [id],
     );
+    const addresses = await db.query<DeviceDetail['addresses'][number]>(
+      `SELECT host(a.ip) AS ip, family(a.ip) AS family, a.address_scope, a.sources, (a.ip = d.current_ip) AS current,
+              s.cidr::text AS scope_cidr, a.first_seen_at, a.last_seen_at
+         FROM device_addresses a JOIN devices d ON d.id = a.device_id LEFT JOIN network_scopes s ON s.id = a.scope_id
+        WHERE a.device_id = $1 AND a.last_seen_at > now() - interval '30 days'
+        ORDER BY (a.ip = d.current_ip) DESC, family(a.ip), array_position(ARRAY['global','unique_local','link_local'], a.address_scope), a.ip
+        LIMIT 64`,
+      [id],
+    );
     const availability = await db.query<DeviceDetail['availability'][number]>(
       `SELECT status, started_at, ended_at FROM availability_history
         WHERE device_id = $1 AND coalesce(ended_at, now()) > now() - interval '7 days' ORDER BY started_at`,
       [id],
     );
     const events = await db.query<NetworkEvent>(`${EVENT_SELECT} WHERE e.device_id = $1 ORDER BY e.occurred_at DESC LIMIT 50`, [id]);
-    return { ...device, ip_history: ipHistory.rows, availability: availability.rows, recent_events: events.rows } satisfies DeviceDetail;
+    return { ...device, ip_history: ipHistory.rows, addresses: addresses.rows, availability: availability.rows, recent_events: events.rows } satisfies DeviceDetail;
   });
   res.json(detail);
 });

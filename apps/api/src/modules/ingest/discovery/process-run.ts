@@ -1,10 +1,10 @@
 import { type CollectorContext, type DiscoveryRunItem, ItemRejected, MAX_FUTURE_SKEW_MS } from '../../../common/collector-protocol.ts';
-import { isLocallyAdministeredMac, vendorForMac } from '../../../common/net.ts';
+import { cidrContains, isLocallyAdministeredMac, vendorForMac } from '../../../common/net.ts';
 import type { Db } from '../../../infrastructure/db.ts';
 import { type Fingerprint, applyIdentification } from '../../devices/index.ts';
 import { emitEvent } from '../../events/index.ts';
 import { setAvailability } from './availability.ts';
-import { type DeviceRow, deviceLabel, groupObservations, ipToInt } from './identities.ts';
+import { type DeviceRow, type Identity, deviceLabel, groupObservations } from './identities.ts';
 import { markMissingDevices } from './offline.ts';
 
 /**
@@ -69,12 +69,29 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
   const cameOnline: string[] = [];
   const identified = new Map<string, Fingerprint>(); // device id → what it announced this sweep
   const collectorHosts = new Set<string>(); // device ids that are the collector's own host
+  const addresses: AddressRow[] = []; // every address observed, with its evidence (device_addresses)
+  const v6 = scope.cidr.includes(':');
   let created = 0;
 
   for (const identity of identities.values()) {
-    identity.ips.sort((a, b) => ipToInt(a) - ipToInt(b));
     let device = identity.mac ? deviceByMac.get(identity.mac) : undefined;
     let previousHolder: DeviceRow | undefined;
+
+    // IPv6 link-local addresses only (outside the scope): evidence for a known device, never a new one.
+    if (!identity.ips.length) {
+      if (device) addresses.push(...addressRows(device.id, identity));
+      continue;
+    }
+    // IPv6 scope, device known by MAC with its current address elsewhere (its IPv4 address, or another
+    // IPv6 prefix): these are additional addresses of that device. Its identity, current address and
+    // availability stay with the scope that holds its current address.
+    if (v6 && device?.ip && !cidrContains(scope.cidr, device.ip)) {
+      claimed.add(device.id);
+      addresses.push(...addressRows(device.id, identity));
+      const merged = [...new Set([...device.discovery_sources, ...identity.sources])].sort();
+      if (merged.length !== device.discovery_sources.length) await db.query(`UPDATE devices SET discovery_sources = $2 WHERE id = $1`, [device.id, merged]);
+      continue;
+    }
 
     if (!device) {
       for (const ip of identity.ips) {
@@ -123,6 +140,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       );
       const id = inserted.rows[0]!.id;
       created++;
+      addresses.push(...addressRows(id, identity));
       identified.set(id, identity.fingerprint);
       if (identity.sources.has('local_interface')) collectorHosts.add(id);
       claimed.add(id);
@@ -183,6 +201,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
     claimed.add(device.id);
     seenExisting.push(device.id);
+    addresses.push(...addressRows(device.id, identity));
     identified.set(device.id, identity.fingerprint);
     if (identity.sources.has('local_interface')) collectorHosts.add(device.id);
     for (const ip of identity.ips) {
@@ -190,7 +209,11 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       historyIps.push(ip);
     }
 
-    if (device.ip !== chosenIp) {
+    if (device.ip && device.ip !== chosenIp && device.ip.includes(':') !== chosenIp.includes(':')) {
+      // An IPv6-only device now also answers over IPv4: IPv4 becomes its current address. Not an
+      // address change (its IPv6 addresses stay listed in device_addresses), so no event.
+      await db.query(`UPDATE devices SET current_ip = $2 WHERE id = $1`, [device.id, chosenIp]);
+    } else if (device.ip !== chosenIp) {
       await db.query(`UPDATE devices SET current_ip = $2 WHERE id = $1`, [device.id, chosenIp]);
       // Checks created from this device follow it to its new address.
       await db.query(`UPDATE monitoring_checks SET target = $2 WHERE device_id = $1 AND kind IN ('icmp', 'tcp')`, [device.id, chosenIp]);
@@ -262,6 +285,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
     );
   }
 
+  await recordAddresses(db, c, scope.id, addresses, finishedAt);
+
   // Devices of this scope that did not answer this sweep.
   await markMissingDevices(db, c, scope, loaded.rows, claimed, finishedAt);
 
@@ -282,4 +307,36 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       occurredAt: finishedAt,
     });
   }
+}
+
+interface AddressRow {
+  deviceId: string;
+  ip: string;
+  sources: string[];
+}
+
+function addressRows(deviceId: string, identity: Identity): AddressRow[] {
+  return [...identity.ips, ...identity.linkLocal].map((ip) => ({ deviceId, ip, sources: [...(identity.addressSources.get(ip) ?? [])].sort() }));
+}
+
+/** How long an address that is no longer observed stays listed (IPv6 temporary addresses rotate daily). */
+const ADDRESS_RETENTION_DAYS = 30;
+
+/**
+ * Every address of this run, with the evidence it was observed by (device_addresses). An address
+ * seen again keeps its first-seen time and accumulates its sources. Addresses of this scope not seen
+ * for ADDRESS_RETENTION_DAYS are removed.
+ */
+async function recordAddresses(db: Db, c: CollectorContext, scopeId: string, rows: AddressRow[], at: Date): Promise<void> {
+  if (rows.length) {
+    await db.query(
+      `INSERT INTO device_addresses (device_id, organization_id, site_id, ip, scope_id, sources, first_seen_at, last_seen_at)
+       SELECT t.d, $1, $2, t.i::inet, $3, string_to_array(t.s, ','), $4, $4 FROM unnest($5::uuid[], $6::text[], $7::text[]) AS t(d, i, s)
+       ON CONFLICT (device_id, ip) DO UPDATE
+         SET last_seen_at = greatest(device_addresses.last_seen_at, EXCLUDED.last_seen_at), scope_id = EXCLUDED.scope_id,
+             sources = ARRAY(SELECT DISTINCT x FROM unnest(device_addresses.sources || EXCLUDED.sources) AS x ORDER BY x)`,
+      [c.organizationId, c.siteId, scopeId, at, rows.map((r) => r.deviceId), rows.map((r) => r.ip), rows.map((r) => r.sources.join(','))],
+    );
+  }
+  await db.query(`DELETE FROM device_addresses WHERE scope_id = $1 AND last_seen_at < $2::timestamptz - make_interval(days => $3)`, [scopeId, at, ADDRESS_RETENTION_DAYS]);
 }

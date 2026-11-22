@@ -300,7 +300,8 @@ func LocalDownAddrs() []string {
 	return out
 }
 
-// Interface describes one active, non-loopback interface of the collector host.
+// Interface describes one active, non-loopback interface of the collector host: its IPv4 addresses,
+// then its IPv6 unique-local and global ones (link-local addresses are left out), in CIDR form.
 type Interface struct {
 	Name      string   `json:"name"`
 	Addresses []string `json:"addresses"`
@@ -317,12 +318,20 @@ func Interfaces() []Interface {
 			continue
 		}
 		addrs, _ := i.Addrs()
-		var list []string
+		var list, list6 []string
 		for _, a := range addrs {
-			if ipn, ok := a.(*net.IPNet); ok && ipn.IP.To4() != nil {
+			ipn, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if ipn.IP.To4() != nil {
 				list = append(list, ipn.String())
+			} else if ipn.IP.To16() != nil && !ipn.IP.IsLinkLocalUnicast() {
+				// IPv6 unique-local / global addresses (with their on-link prefix), after the IPv4 ones.
+				list6 = append(list6, ipn.String())
 			}
 		}
+		list = append(list, list6...)
 		if len(list) > 0 && len(out) < 32 {
 			if len(list) > 16 {
 				list = list[:16]

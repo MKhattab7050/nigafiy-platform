@@ -182,6 +182,8 @@ export interface Device {
   display_name: string | null;
   hostname: string | null;
   current_ip: string | null;
+  /** IPv6 unique-local / global addresses seen in the last 7 days (the current one may be among them). */
+  ipv6_addresses: string[];
   primary_mac: string | null;
   mac_randomized: boolean;
   identity_basis: 'mac' | 'ip';
@@ -259,8 +261,25 @@ export interface DeviceFingerprint {
   ssdp?: { server?: string; friendly_name?: string; manufacturer?: string; model?: string; device_types?: string[] };
 }
 
+/** One address a device was observed at (IPv4 or IPv6), with the evidence. */
+export interface DeviceAddress {
+  ip: string;
+  family: 4 | 6;
+  /** ipv4, or the IPv6 class: link_local (fe80::/10, one link only), unique_local (fc00::/7) or global. */
+  address_scope: 'ipv4' | 'link_local' | 'unique_local' | 'global';
+  /** How it was observed: icmp, arp_cache, icmpv6, icmpv6_multicast, ndp_cache, local_interface, rdns, dhcp… */
+  sources: string[];
+  /** The address the device is identified by (devices.current_ip). */
+  current: boolean;
+  scope_cidr: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
 export interface DeviceDetail extends Device {
   ip_history: { ip: string; first_seen_at: string; last_seen_at: string }[];
+  /** Every address observed in the last 30 days, IPv4 and IPv6, current one first. */
+  addresses: DeviceAddress[];
   availability: { status: DeviceStatus; started_at: string; ended_at: string | null }[];
   recent_events: NetworkEvent[];
 }
