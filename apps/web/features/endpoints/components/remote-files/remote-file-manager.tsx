@@ -21,14 +21,16 @@ import {
 import { Badge, Button, Card, ErrorNote, Input } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { formatBytes } from './file-utils';
+import { OverwriteDialog } from './overwrite-dialog';
 import { RemoteFileManagerProps, useRemoteFiles } from './use-remote-files';
 
 export function RemoteFileManager(props: RemoteFileManagerProps) {
   const { ep, online, canWrite, canUpload, canDelete } = props;
-  const { locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile } = useRemoteFiles(props);
+  const { overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile } = useRemoteFiles(props);
 
   return (
     <div className="space-y-4">
+      {overwritePrompt && <OverwriteDialog prompt={overwritePrompt} isAr={isAr} onAnswer={answerOverwrite} />}
       {error && <ErrorNote error={error} />}
       {notice && (
         <p role="status" className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-fg">

@@ -15,18 +15,18 @@ import (
 )
 
 var (
-	user32                = syscall.NewLazyDLL("user32.dll")
-	gdi32                 = syscall.NewLazyDLL("gdi32.dll")
+	user32                 = syscall.NewLazyDLL("user32.dll")
+	gdi32                  = syscall.NewLazyDLL("gdi32.dll")
 	procSetProcessDPIAware = user32.NewProc("SetProcessDPIAware")
-	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
-	dpiOnce               sync.Once
-	procGetDC            = user32.NewProc("GetDC")
-	procReleaseDC        = user32.NewProc("ReleaseDC")
-	procSetCursorPos     = user32.NewProc("SetCursorPos")
-	procMouseEvent       = user32.NewProc("mouse_event")
-	procKeybdEvent       = user32.NewProc("keybd_event")
-	procSendInput        = user32.NewProc("SendInput")
-	procVkKeyScanW       = user32.NewProc("VkKeyScanW")
+	procGetSystemMetrics   = user32.NewProc("GetSystemMetrics")
+	dpiOnce                sync.Once
+	procGetDC              = user32.NewProc("GetDC")
+	procReleaseDC          = user32.NewProc("ReleaseDC")
+	procSetCursorPos       = user32.NewProc("SetCursorPos")
+	procMouseEvent         = user32.NewProc("mouse_event")
+	procKeybdEvent         = user32.NewProc("keybd_event")
+	procSendInput          = user32.NewProc("SendInput")
+	procVkKeyScanW         = user32.NewProc("VkKeyScanW")
 
 	procCreateCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
@@ -46,8 +46,8 @@ const (
 	smCyVirtualScreen = 79
 	smCMonitors       = 80
 
-	srcCopy        = 0x00CC0020
-	captureBlt     = 0x40000000
+	srcCopy          = 0x00CC0020
+	captureBlt       = 0x40000000
 	biRGB            = 0
 	dibRGBColors     = 0
 	inputKeyboard    = 1
@@ -109,40 +109,69 @@ func getMetric(index int) int {
 	return int(int32(r))
 }
 
+// EnumerateDisplays lists every monitor (EnumDisplayMonitors + GetMonitorInfoW, physical pixels:
+// the process is DPI aware), the primary first, then the others left to right. With more than one
+// monitor a last entry, All displays, covers the whole virtual screen (the bounding box of all).
 func EnumerateDisplays() ([]DisplayInfo, error) {
-	primaryW := getMetric(smCxScreen)
-	primaryH := getMetric(smCyScreen)
-	if primaryW <= 0 || primaryH <= 0 {
-		return nil, errors.New("unable to query Windows display dimensions")
+	ensureDPIAware()
+	mons, err := enumMonitors()
+	if err != nil || len(mons) == 0 {
+		// No monitor list (a service desktop, an old API): the primary screen from the metrics.
+		w, h := getMetric(smCxScreen), getMetric(smCyScreen)
+		if w <= 0 || h <= 0 {
+			return nil, errors.New("unable to query Windows display dimensions")
+		}
+		return []DisplayInfo{{Index: 0, Name: "Display 1", Width: w, Height: h, Primary: true}}, nil
 	}
-	monitors := getMetric(smCMonitors)
-	displays := []DisplayInfo{
-		{
-			Index:   0,
-			Name:    "Primary Display (1)",
-			X:       0,
-			Y:       0,
-			Width:   primaryW,
-			Height:  primaryH,
-			Primary: true,
-		},
+	return OrderDisplays(mons), nil
+}
+
+type winRect struct{ Left, Top, Right, Bottom int32 }
+
+// monitorInfoEx is MONITORINFOEXW.
+type monitorInfoEx struct {
+	CbSize    uint32
+	RcMonitor winRect
+	RcWork    winRect
+	DwFlags   uint32
+	SzDevice  [32]uint16
+}
+
+const monitorInfoPrimary = 1
+
+var (
+	procEnumDisplayMonitors = user32.NewProc("EnumDisplayMonitors")
+	procGetMonitorInfoW     = user32.NewProc("GetMonitorInfoW")
+	monMu                   sync.Mutex
+	monFound                []DisplayInfo
+	// One callback for the life of the process (Windows callbacks cannot be released).
+	monCallback = syscall.NewCallback(func(hmon, _, _, _ uintptr) uintptr {
+		mi := monitorInfoEx{CbSize: uint32(unsafe.Sizeof(monitorInfoEx{}))}
+		if r, _, _ := procGetMonitorInfoW.Call(hmon, uintptr(unsafe.Pointer(&mi))); r != 0 {
+			monFound = append(monFound, DisplayInfo{
+				Name:    strings.TrimPrefix(syscall.UTF16ToString(mi.SzDevice[:]), `\\.\`),
+				X:       int(mi.RcMonitor.Left),
+				Y:       int(mi.RcMonitor.Top),
+				Width:   int(mi.RcMonitor.Right - mi.RcMonitor.Left),
+				Height:  int(mi.RcMonitor.Bottom - mi.RcMonitor.Top),
+				Primary: mi.DwFlags&monitorInfoPrimary != 0,
+			})
+		}
+		return 1 // continue
+	})
+)
+
+func enumMonitors() ([]DisplayInfo, error) {
+	monMu.Lock()
+	defer monMu.Unlock()
+	monFound = nil
+	r, _, e := procEnumDisplayMonitors.Call(0, 0, monCallback, 0)
+	if r == 0 {
+		return nil, fmt.Errorf("EnumDisplayMonitors: %v", e)
 	}
-	virtW := getMetric(smCxVirtualScreen)
-	virtH := getMetric(smCyVirtualScreen)
-	virtX := getMetric(smXVirtualScreen)
-	virtY := getMetric(smYVirtualScreen)
-	if monitors > 1 && (virtW > primaryW || virtH > primaryH) {
-		displays = append(displays, DisplayInfo{
-			Index:   1,
-			Name:    fmt.Sprintf("All Displays Combined (%d monitors)", monitors),
-			X:       virtX,
-			Y:       virtY,
-			Width:   virtW,
-			Height:  virtH,
-			Primary: false,
-		})
-	}
-	return displays, nil
+	found := monFound
+	monFound = nil
+	return found, nil
 }
 
 func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
@@ -476,3 +505,9 @@ func mapKeyToVK(k string) byte {
 	}
 	return 0
 }
+
+// Backend names the capture/input mechanism.
+func Backend() string { return "gdi" }
+
+// Permissions: Windows has no per-app screen privacy permission.
+func Permissions() map[string]string { return nil }

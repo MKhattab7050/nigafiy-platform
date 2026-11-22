@@ -245,4 +245,3 @@ func TestEndpointAgentTLSPinning(t *testing.T) {
 		t.Fatalf("expected ram_total_mb to be omitted from heartbeat payload when 0, got %+v", hbPayload)
 	}
 }
-

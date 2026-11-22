@@ -5,6 +5,7 @@ import { Badge, Button, Field, Input, Select, Textarea } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { ltr } from '@/lib/localize/bidi';
 import { actionLabel, conditionLabel } from '../text';
 import type { ActionKey, Catalog, StepDef, Trigger } from '../types';
 import { CheckList, DevicePicker, usePbText } from './common';
@@ -30,6 +31,16 @@ export function defaultParams(action: ActionKey): Params {
       return { router_id: null, device_id: null };
     case 'router_rate_limit':
       return { router_id: null, device_id: null, down_kbps: 1000, up_kbps: 1000 };
+    case 'router_wifi':
+      return { router_id: '', wifi_id: '', enabled: false, confirm_main_network: false };
+    case 'router_reboot':
+      return { router_id: '' };
+    case 'switch_port_quarantine':
+      return { reason: '', device_id: null };
+    case 'switch_port_disable':
+      return { device_id: null };
+    case 'config_backup':
+      return { target_id: null, device_id: null };
     case 'endpoint_command':
       return { command: { kind: 'refresh_inventory' }, endpoint_id: null, device_id: null };
     case 'incident_comment':
@@ -80,19 +91,53 @@ function ChannelPicker({ value, onChange }: { value: string[]; onChange: (v: str
   return <CheckList label={tx.channels} options={q.data.items.map((c) => ({ value: c.id, label: `${c.name} (${c.kind})${c.enabled ? '' : ' ✕'}` }))} value={value} onChange={onChange} />;
 }
 
-function RouterPicker({ value, onChange, siteId, error }: { value: string | null; onChange: (v: string | null) => void; siteId: string | null; error?: string }) {
+function RouterPicker({
+  value,
+  onChange,
+  siteId,
+  error,
+  required = false,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+  siteId: string | null;
+  error?: string;
+  /** One router must be chosen (Wi-Fi networks and reboots are router-specific). */
+  required?: boolean;
+}) {
   const tx = usePbText();
   const { siteId: globalSite } = useApp();
   const q = useQuery<{ items: { id: string; name: string; address: string }[] }>(`/routers${qs({ site_id: siteId ?? globalSite })}`, [], 0);
   return (
-    <Field label={tx.router} error={error} hint={q.data && !q.data.items.length ? tx.routersNone : undefined}>
+    <Field label={required ? tx.routerRequired : tx.router} error={error} hint={q.data && !q.data.items.length ? tx.routersNone : undefined}>
       {(id) => (
         <Select id={id} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-          <option value="">{tx.allRouters}</option>
+          <option value="">{required ? tx.chooseRouter : tx.allRouters}</option>
           {value && !q.data?.items.some((r) => r.id === value) && <option value={value}>{value}</option>}
           {(q.data?.items ?? []).map((r) => (
             <option key={r.id} value={r.id}>
               {r.name} ({r.address})
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+function BackupTargetPicker({ value, onChange, siteId, error }: { value: string | null; onChange: (v: string | null) => void; siteId: string | null; error?: string }) {
+  const tx = usePbText();
+  const { siteId: globalSite } = useApp();
+  const q = useQuery<{ items: { id: string; name: string; address: string }[] }>(`/config-backup/targets${qs({ site_id: siteId ?? globalSite })}`, [], 0);
+  return (
+    <Field label={tx.backupTarget} error={error}>
+      {(id) => (
+        <Select id={id} value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+          <option value="">{tx.backupTargetTrigger}</option>
+          {value && !q.data?.items.some((t) => t.id === value) && <option value={value}>{value}</option>}
+          {(q.data?.items ?? []).map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name} ({ltr(t.address)})
             </option>
           ))}
         </Select>
@@ -388,6 +433,62 @@ function ParamsEditor({ step, onChange, catalog, trigger, siteId, errors }: { st
             </div>
           )}
           {devicePicker}
+        </div>
+      );
+    case 'router_wifi':
+      return (
+        <div className="space-y-3">
+          <RouterPicker required value={(p.router_id as string | null) || null} onChange={(v) => set('router_id', v ?? '')} siteId={siteId} error={err(errors, 'params.router_id')} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={tx.wifiId} error={err(errors, 'params.wifi_id')}>
+              {(id) => <Input id={id} dir="ltr" className="mono" maxLength={40} value={str(p.wifi_id)} onChange={(e) => set('wifi_id', e.target.value)} />}
+            </Field>
+            <Field label={tx.wifiTurn}>
+              {(id) => (
+                <Select id={id} value={p.enabled === true ? 'on' : 'off'} onChange={(e) => set('enabled', e.target.value === 'on')}>
+                  <option value="on">{tx.wifiOn}</option>
+                  <option value="off">{tx.wifiOff}</option>
+                </Select>
+              )}
+            </Field>
+          </div>
+          <label className="inline-flex items-center gap-1.5 text-[13px]">
+            <input type="checkbox" className="size-3.5 accent-[var(--color-accent)]" checked={p.confirm_main_network === true} onChange={(e) => set('confirm_main_network', e.target.checked)} />
+            {tx.confirmMainNetwork}
+          </label>
+        </div>
+      );
+    case 'router_reboot':
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-muted">{tx.rebootHint}</p>
+          <RouterPicker required value={(p.router_id as string | null) || null} onChange={(v) => set('router_id', v ?? '')} siteId={siteId} error={err(errors, 'params.router_id')} />
+        </div>
+      );
+    case 'switch_port_quarantine':
+    case 'switch_port_disable':
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-muted">{tx.portControlHint}</p>
+          {step.action === 'switch_port_quarantine' && (
+            <Field label={tx.quarantineReason} error={err(errors, 'params.reason')}>
+              {(id) => <Input id={id} dir="auto" maxLength={500} value={str(p.reason)} onChange={(e) => set('reason', e.target.value)} />}
+            </Field>
+          )}
+          {devicePicker}
+        </div>
+      );
+    case 'config_backup':
+      return (
+        <div className="space-y-3">
+          <p className="text-xs text-muted">{tx.backupHint}</p>
+          <BackupTargetPicker value={(p.target_id as string | null) ?? null} onChange={(v) => set('target_id', v)} siteId={siteId} error={err(errors, 'params.target_id')} />
+          {!p.target_id && (
+            <div>
+              <DevicePicker value={(p.device_id as string | null) ?? null} onChange={(v) => set('device_id', v)} label={tx.device} allowTrigger={!scheduled} siteId={siteId} />
+              {err(errors, 'params.device_id') && <p className="mt-1 text-xs text-crit">{err(errors, 'params.device_id')}</p>}
+            </div>
+          )}
         </div>
       );
     case 'endpoint_command':

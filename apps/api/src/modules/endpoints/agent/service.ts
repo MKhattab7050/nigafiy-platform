@@ -8,6 +8,7 @@ import { evaluateCompliance, inferPlatformFromOs } from '../capabilities.ts';
 import { HEARTBEAT_INTERVAL_SECONDS, applyCommandResults, deliverPendingCommands, signalCommandDone, resolveDeviceLink } from '../repo.ts';
 import type { AgentEnroll, AgentHeartbeat, AgentInventory, CommandResult, EndpointContext } from '../schema.ts';
 import { normalizeConnections } from './connections.ts';
+import { POLL_RECHECK_MS, armWake } from './wake.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -253,6 +254,29 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
 export function pollCommands(ep: EndpointContext) {
   const now = new Date();
   return withTenant(ep.organizationId, (db) => deliverPendingCommands(db, ep.id, now));
+}
+
+/**
+ * Long poll: hands out pending commands at once, or waits up to `waitMs` for one to be queued. The
+ * wake-up subscription is armed before the queue is read, so a command inserted in between is not
+ * missed; a re-check every POLL_RECHECK_MS covers a lost notification. Stops when `signal` aborts
+ * (the agent closed the connection).
+ */
+export async function longPollCommands(ep: EndpointContext, waitMs: number, signal: AbortSignal) {
+  if (waitMs <= 0) return pollCommands(ep);
+  const deadline = Date.now() + waitMs;
+  const wake = armWake(ep.id, signal);
+  try {
+    for (;;) {
+      const commands = await pollCommands(ep);
+      const remaining = deadline - Date.now();
+      if (commands.length > 0 || remaining <= 0 || signal.aborted) return commands;
+      await wake.next(Math.min(POLL_RECHECK_MS, remaining));
+      if (signal.aborted) return [];
+    }
+  } finally {
+    wake.close();
+  }
 }
 
 /** Immediate delivery of command results (without waiting for the next heartbeat). */

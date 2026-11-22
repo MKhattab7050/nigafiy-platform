@@ -3,14 +3,19 @@
 import { ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Badge, Button, ErrorNote, Field, Modal, type Tone, Textarea } from '@/components/ui';
+import { Badge, Button, ErrorNote, Field, Modal, Select, type Tone, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
+import { ltr } from '@/lib/localize/bidi';
 import { controlText } from '../control-text';
 import type { DeviceQuarantine as DeviceQuarantineState, Quarantine } from '../control-types';
 import { RiskList } from './port-actions';
+
+/** Auto-release choices offered in the dialog (minutes after the verified move); the API accepts 5 min – 30 days. */
+const AUTO_RELEASE_CHOICES = [60, 240, 480, 1440, 4320, 10080] as const;
+const minutesLabel = (m: number) => ltr(m % 1440 === 0 ? `${m / 1440} d` : m % 60 === 0 ? `${m / 60} h` : `${m} min`);
 
 const TONE: Record<Quarantine['status'], Tone> = { requested: 'info', active: 'warn', failed: 'crit', releasing: 'info', released: 'idle' };
 
@@ -48,6 +53,13 @@ export function DeviceQuarantine({ deviceId }: { deviceId: string }) {
           {cur.reason && (
             <p className="text-xs text-muted" dir="auto">
               {cur.reason}
+            </p>
+          )}
+          {cur.auto_release_minutes !== null && (cur.status === 'requested' || cur.status === 'active') && (
+            <p className="text-xs text-muted">
+              {cur.auto_release_at
+                ? fill(cx.autoReleaseAt, { when: relativeTime(cur.auto_release_at, locale) })
+                : fill(cx.autoReleaseAfterVerify, { after: minutesLabel(cur.auto_release_minutes) })}
             </p>
           )}
           {cur.last_error && <p className="text-xs text-crit" dir="auto">{cur.last_error}</p>}
@@ -88,6 +100,7 @@ export function DeviceQuarantine({ deviceId }: { deviceId: string }) {
                   {cx.quarantineStatus[h.status]}
                 </Badge>{' '}
                 {relativeTime(h.created_at, locale)} · {h.port_name} · VLAN {h.original_vlan} → {h.quarantine_vlan}
+                {h.status === 'released' && h.auto_released && <> · {cx.autoReleased}</>}
                 {h.last_error && <span className="block text-crit" dir="auto">{h.last_error}</span>}
               </li>
             ))}
@@ -114,6 +127,7 @@ function QuarantineDialog({ mode, deviceId, data, onClose, onDone }: { mode: 'qu
   const { locale } = useI18n();
   const cx = controlText(locale);
   const [reason, setReason] = useState('');
+  const [releaseAfter, setReleaseAfter] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -127,7 +141,12 @@ function QuarantineDialog({ mode, deviceId, data, onClose, onDone }: { mode: 'qu
     setError(null);
     try {
       if (mode === 'quarantine') {
-        await api(`/devices/${deviceId}/quarantine`, { method: 'POST', body: { ...(reason.trim() ? { reason: reason.trim() } : {}), confirm: true } });
+        await api(`/devices/${deviceId}/quarantine`, { method: 'POST', body: {
+            ...(reason.trim() ? { reason: reason.trim() } : {}),
+            ...(releaseAfter ? { release_after_minutes: Number(releaseAfter) } : {}),
+            confirm: true,
+          },
+        });
       } else {
         await api(`/quarantines/${cur!.id}/release`, { method: 'POST', body: { confirm: true } });
       }
@@ -164,6 +183,18 @@ function QuarantineDialog({ mode, deviceId, data, onClose, onDone }: { mode: 'qu
             {data.risks.length > 0 && <RiskList risks={data.risks} />}
             <Field label={cx.quarantineReason}>
               {(id) => <Textarea id={id} dir="auto" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} />}
+            </Field>
+            <Field label={cx.autoRelease} hint={cx.autoReleaseHint}>
+              {(id) => (
+                <Select id={id} value={releaseAfter} onChange={(e) => setReleaseAfter(e.target.value)}>
+                  <option value="">{cx.autoReleaseNever}</option>
+                  {AUTO_RELEASE_CHOICES.map((m) => (
+                    <option key={m} value={m}>
+                      {cx.autoReleaseOptions[m]}
+                    </option>
+                  ))}
+                </Select>
+              )}
             </Field>
           </>
         ) : (

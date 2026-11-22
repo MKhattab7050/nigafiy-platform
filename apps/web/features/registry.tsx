@@ -244,6 +244,7 @@ export const FEATURES: Feature[] = [
     icon: Cpu,
     widget: { component: lazy(() => import('./endpoints/widget')), order: 50, attention: true },
   },
+  { id: 'fleet-sessions', program: 'fleet', route: '/fleet/sessions', label: 'endpoints.nav.sessions', icon: MonitorSmartphone, minRole: 'technician' },
 
   // ── Nigafiy Mind ──
   {

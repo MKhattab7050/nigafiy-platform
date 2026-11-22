@@ -119,8 +119,8 @@ controlRouter.get('/devices/:id/quarantine', async (req, res) => {
 controlRouter.post('/devices/:id/quarantine', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  const { reason } = parse(quarantineSchema, req.body);
-  res.status(202).json(await quarantineDevice(req, ctx, id, reason));
+  const { reason, release_after_minutes } = parse(quarantineSchema, req.body);
+  res.status(202).json(await quarantineDevice(req, ctx, id, reason, release_after_minutes ?? null));
 });
 
 controlRouter.post('/quarantines/:id/release', requireRole('admin'), async (req, res) => {

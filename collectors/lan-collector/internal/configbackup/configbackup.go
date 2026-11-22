@@ -5,8 +5,9 @@
 //   - the device address is re-checked against this collector's authorized scopes before dialling;
 //   - the SSH host key is pinned on first use; a different key aborts the connection during key
 //     exchange, before any credential is sent;
-//   - only the closed per-vendor command lists in drivers.go are sent; there is no code path that
-//     sends configuration, a restore, or an arbitrary command;
+//   - a backup sends only the closed per-vendor command lists in drivers.go; never an arbitrary
+//     command. The one code path that changes a device is the administrator-confirmed restore in
+//     restore.go (Junos only, commit confirmed, verified over a second session);
 //   - output is bounded in size and time; credentials are never logged or returned.
 package configbackup
 

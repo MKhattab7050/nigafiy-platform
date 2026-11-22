@@ -116,6 +116,8 @@ export type ExternalRef =
   | { kind: 'toolbox_run'; id: string }
   | { kind: 'collector_commands'; ids: string[] }
   | { kind: 'router_requests'; ids: string[] }
+  | { kind: 'switch_port_requests'; ids: string[] }
+  | { kind: 'config_backup_run'; id: string }
   | { kind: 'endpoint_command'; id: string }
   | { kind: 'wait'; until: string };
 

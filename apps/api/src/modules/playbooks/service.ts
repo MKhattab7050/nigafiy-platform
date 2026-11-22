@@ -66,6 +66,15 @@ async function validate(db: Db, siteId: string | null, trigger: Trigger, rawStep
       issues.push({ path: at('action'), message: 'Incident steps need an incident or event trigger' });
     }
     if (typeof params.router_id === 'string' && !(await exists('site_routers', params.router_id))) issues.push({ path: at('params.router_id'), message: 'Router not found' });
+    if (s.action === 'config_backup') {
+      if (typeof params.target_id === 'string') {
+        if (!(await exists('config_backup_targets', params.target_id))) issues.push({ path: at('params.target_id'), message: 'Backup device not found' });
+      } else if (typeof params.device_id === 'string') {
+        if (!(await exists('devices', params.device_id))) issues.push({ path: at('params.device_id'), message: 'Device not found' });
+      } else if (trigger.kind === 'schedule') {
+        issues.push({ path: at('params.target_id'), message: 'A scheduled playbook has no trigger device: choose the device to back up' });
+      }
+    }
     if (s.action === 'notify') {
       for (const id of (params.channel_ids as string[]) ?? []) if (!(await exists('notification_channels', id))) issues.push({ path: at('params.channel_ids'), message: 'Notification channel not found' });
     }

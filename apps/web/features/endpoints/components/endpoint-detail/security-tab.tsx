@@ -4,8 +4,10 @@ import { useState } from 'react';
 import type { EndpointDetail } from '@lan-detective/shared-types';
 import { Badge, Button, Card, ErrorNote, Fact, Field, Input, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
+import { absoluteTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { localizeComplianceReason } from '@/lib/localize';
+import { ComplianceEvidence } from './compliance-evidence';
 import { capStateTone } from './helpers';
 import { endpointsText } from '../../text';
 
@@ -74,36 +76,21 @@ export function SecurityAndCapabilitiesTab({
             </Fact>
             {ep.compliance_reasons.length > 0 && (
               <Fact label={isAr ? 'ملاحظات الامتثال' : 'Findings'}>
-                <span className="text-warn">{ep.compliance_reasons.map((r) => localizeComplianceReason(r, locale)).join(' · ')}</span>
+                <ul className="space-y-0.5 text-warn">
+                  {ep.compliance_reasons.map((r) => (
+                    <li key={r}>{localizeComplianceReason(r, locale)}</li>
+                  ))}
+                </ul>
               </Fact>
             )}
-            <Fact label={isAr ? 'جدار الحماية (Firewall)' : 'Host Firewall'}>
-              {ep.security?.firewall_enabled === true ? (
-                <Badge tone="ok">{isAr ? 'مفعّل' : 'Enabled'}</Badge>
-              ) : ep.security?.firewall_enabled === false ? (
-                <Badge tone="warn">{isAr ? 'متوقف' : 'Disabled'}</Badge>
-              ) : (
-                '—'
-              )}
+            <Fact label={isAr ? 'آخر قياس' : 'Last measured'}>
+              {ep.security?.measured_at ? absoluteTime(ep.security.measured_at, locale) : <span className="text-muted">{isAr ? 'لم يرسل الوكيل أدلة بعد' : 'The agent has not sent evidence yet'}</span>}
             </Fact>
-            <Fact label={isAr ? 'مكافح الفيروسات (Antivirus / XProtect)' : 'Antivirus / Endpoint Protection'}>
-              {ep.security?.antivirus_enabled === true ? (
-                <Badge tone="ok">{isAr ? 'مفعّل' : 'Active'}</Badge>
-              ) : ep.security?.antivirus_enabled === false ? (
-                <Badge tone="crit">{isAr ? 'معطّل' : 'Disabled'}</Badge>
-              ) : (
-                '—'
-              )}
-            </Fact>
-            <Fact label={isAr ? 'تشفير القرص (BitLocker / FileVault)' : 'Disk encryption'}>
-              {ep.security?.disk_encrypted === true ? (
-                <Badge tone="ok">{isAr ? 'مشفّر' : 'Encrypted'}</Badge>
-              ) : ep.security?.disk_encrypted === false ? (
-                <Badge tone="warn">{isAr ? 'غير مشفّر' : 'Not encrypted'}</Badge>
-              ) : (
-                <span className="text-muted">{isAr ? 'لا يقيسه الوكيل' : 'Not measured by the agent'}</span>
-              )}
-            </Fact>
+            {typeof ep.security?.pending_updates === 'number' && (
+              <Fact label={isAr ? 'التحديثات المعلّقة' : 'Pending updates'}>
+                <span className="mono">{ep.security.pending_updates}</span>
+              </Fact>
+            )}
             <Fact label={isAr ? 'آخر تحديث أمني' : 'Last OS / Security Patch'}>
               <span className="mono">{ep.security?.last_update_date ?? '—'}</span>
             </Fact>
@@ -156,6 +143,8 @@ export function SecurityAndCapabilitiesTab({
           </form>
         </Card>
       </div>
+
+      <ComplianceEvidence items={ep.compliance_items ?? []} locale={locale} />
 
       {/* Dynamic Capability Matrix */}
       <Card

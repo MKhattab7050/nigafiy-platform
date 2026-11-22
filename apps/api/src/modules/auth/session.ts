@@ -65,6 +65,15 @@ export async function requireSession(req: Request, _res: Response, next: NextFun
   assertNotCrossSite(req);
   const token = readCookie(req, SESSION_COOKIE);
   if (!token) throw new AppError(401, 'unauthenticated', 'Sign in required');
+  req.auth = await resolveSessionToken(token);
+  next();
+}
+
+/**
+ * The signed-in user behind a session cookie value (same checks as requireSession). Also used by
+ * WebSocket upgrades, which check the Origin themselves (a browser cannot add the CSRF header there).
+ */
+export async function resolveSessionToken(token: string): Promise<NonNullable<Request['auth']>> {
   const { rows } = await systemPool.query<SessionRow>(
     `SELECT s.id AS session_id, u.id AS user_id, u.email, s.active_organization_id AS organization_id, m.role, m.status
        FROM sessions s
@@ -82,10 +91,9 @@ export async function requireSession(req: Request, _res: Response, next: NextFun
     }
     throw new AppError(403, 'forbidden', 'You are no longer a member of this organization');
   }
-  req.auth = { userId: row.user_id, userEmail: row.email, sessionId: row.session_id, organizationId: row.organization_id, role: row.role };
   // Best effort, throttled to once a minute per session.
   void systemPool
     .query(`UPDATE sessions SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '1 minute'`, [row.session_id])
     .catch(() => undefined);
-  next();
+  return { userId: row.user_id, userEmail: row.email, sessionId: row.session_id, organizationId: row.organization_id, role: row.role };
 }

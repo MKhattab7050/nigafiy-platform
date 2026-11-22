@@ -18,7 +18,14 @@ var _ router.SettingsReader = (*Driver)(nil)
 func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 	ov := &router.Overview{LANIP: d.target.Address.String()}
 
-	if st, raw, err := d.get(ctx, "settings", "/restconf/data/Cisco-IOS-XE-device-hardware-oper:device-hardware-data/device-hardware/device-system-data"); err == nil && st == http.StatusOK {
+	// A rejected login, a certificate that does not match the pin or an unreachable router is an
+	// error, not an empty overview; a model without one of these YANG paths (HTTP 404) only leaves
+	// that part out.
+	st, raw, err := d.get(ctx, "settings", "/restconf/data/Cisco-IOS-XE-device-hardware-oper:device-hardware-data/device-hardware/device-system-data")
+	if err != nil {
+		return router.Settings{}, err
+	}
+	if st == http.StatusOK {
 		var rep struct {
 			Data struct {
 				BootTime string `json:"boot-time"`
@@ -33,7 +40,11 @@ func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 		}
 	}
 
-	if st, raw, err := d.get(ctx, "settings", "/restconf/data/Cisco-IOS-XE-interfaces-oper:interfaces/interface"); err == nil && st == http.StatusOK {
+	st, raw, err = d.get(ctx, "settings", "/restconf/data/Cisco-IOS-XE-interfaces-oper:interfaces/interface")
+	if err != nil {
+		return router.Settings{}, err
+	}
+	if st == http.StatusOK {
 		var rep struct {
 			Ifaces []struct {
 				Name       string `json:"name"`

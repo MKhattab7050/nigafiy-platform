@@ -1,15 +1,16 @@
 'use client';
 
 import clsx from 'clsx';
-import { Download, FileText } from 'lucide-react';
+import { Download, FileText, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
-import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Button, Card, DataTable, EmptyState, ErrorNote, Modal, SkeletonBlock } from '@/components/ui';
+import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Button, Card, DataTable, EmptyState, ErrorNote, Modal, Notice, SkeletonBlock } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import type { Diff, Version } from '../types';
 import { DiffView } from './diff-view';
+import { RestoreDialog } from './restore';
 
 const size = (b: number) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MiB` : b >= 1024 ? `${(b / 1024).toFixed(1)} KiB` : `${b} B`);
 
@@ -31,7 +32,7 @@ function ContentModal({ version, onClose }: { version: Version; onClose: () => v
 }
 
 /** The version timeline; administrators can read, download and compare any two versions. */
-export function VersionList({ targetId }: { targetId: string }) {
+export function VersionList({ targetId, onRestore }: { targetId: string; onRestore?: () => void }) {
   const { t, locale } = useI18n();
   const { can } = useApp();
   const admin = can('admin');
@@ -39,6 +40,8 @@ export function VersionList({ targetId }: { targetId: string }) {
   const [from, setFrom] = useState<string | null>(null);
   const [to, setTo] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Version | null>(null);
+  const [restoring, setRestoring] = useState<Version | null>(null);
+  const [restored, setRestored] = useState(false);
   const [diff, setDiff] = useState<Diff | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -71,6 +74,7 @@ export function VersionList({ targetId }: { targetId: string }) {
           return (
             <div>
               {!admin && <p className="border-b border-line px-4 py-2.5 text-xs text-muted">{t('cb.v.adminOnly')}</p>}
+              {restored && <Notice className="m-3">{t('cb.r.queued')}</Notice>}
               <DataTable stack>
                 <thead>
                   <tr>
@@ -136,6 +140,12 @@ export function VersionList({ targetId }: { targetId: string }) {
                               <Download className="size-3.5" aria-hidden />
                               {t('cb.v.download')}
                             </a>
+                            {i > 0 && (
+                              <Button size="sm" variant="ghost" onClick={() => setRestoring(v)}>
+                                <RotateCcw className="size-3.5" aria-hidden />
+                                {t('cb.r.restore')}
+                              </Button>
+                            )}
                           </span>
                         </td>
                       )}
@@ -160,6 +170,18 @@ export function VersionList({ targetId }: { targetId: string }) {
         }}
       </Async>
       {viewing && <ContentModal version={viewing} onClose={() => setViewing(null)} />}
+      {restoring && (
+        <RestoreDialog
+          targetId={targetId}
+          version={restoring}
+          onClose={() => setRestoring(null)}
+          onDone={() => {
+            setRestoring(null);
+            setRestored(true);
+            onRestore?.();
+          }}
+        />
+      )}
     </Card>
   );
 }

@@ -8,6 +8,8 @@ export const rdStartSchema = z
     scale: z.number().min(0.25).max(1.0).default(0.75),
     // Nothing records sessions; asking for it is refused rather than silently ignored.
     recording_enabled: z.literal(false, { error: 'Session recording is not implemented' }).default(false),
+    // Why the operator connects; shown to the user in the consent dialog and on the banner.
+    reason: z.string().trim().max(200).optional(),
   })
   .strict();
 export type RdStart = z.infer<typeof rdStartSchema>;
@@ -41,3 +43,13 @@ export const rdInputCommandSchema = z
     shift: z.boolean().optional(),
   })
   .strict();
+
+/** GET /fleet/sessions: remote support session history. */
+export const sessionListQuery = z
+  .object({
+    endpoint_id: z.string().uuid().optional(),
+    state: z.enum(['waiting_consent', 'active', 'ended']).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .strict();
+export type SessionListQuery = z.infer<typeof sessionListQuery>;

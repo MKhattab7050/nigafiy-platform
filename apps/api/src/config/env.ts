@@ -22,6 +22,12 @@ const schema = z.object({
   APP_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes, hex encoded'),
   WEB_ORIGIN: z.string().default('http://localhost:3100'),
   /**
+   * Fleet live sessions with several API instances: the address other instances use to reach THIS
+   * instance for the remote-desktop frame relay (e.g. http://10.0.0.5:4100). Unset:
+   * http://127.0.0.1:<PORT> (instances on one host). See docs/features/fleet-pro.md.
+   */
+  RD_PEER_URL: optionalNonEmpty,
+  /**
    * Address collectors and endpoint agents should use to reach this server (e.g. https://lan.example.com),
    * returned as `server_url` with enrollment tokens. Unset: the origin each request arrived at is used.
    */

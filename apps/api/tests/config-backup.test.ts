@@ -1,6 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { encryptSecret } from '../src/common/crypto.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { diffLines, unifiedText } from '../src/modules/configbackup/diff.ts';
 import { runConfigBackupJob } from '../src/modules/configbackup/jobs.ts';
@@ -281,7 +282,17 @@ describe('configuration backup', () => {
     await setRole(s.a.email, s.a.organizationId, 'admin');
     const content = await s.a.agent.get(`/api/v1/config-backup/versions/${versions[0].id}`);
     expect(content.status).toBe(200);
-    expect(content.body.content).toContain('snmp-server community s3cr3t RO');
+    // Secrets are redacted with a keyed fingerprint; the plain value is nowhere in API output.
+    expect(content.body.content).toMatch(/snmp-server community <nigafiy-redacted:hmac=[0-9a-f]{12}> RO/);
+    expect(content.body.content).not.toContain('s3cr3t');
+    expect(dl.text).not.toContain('s3cr3t');
+    expect(JSON.stringify(diff.body)).not.toContain('s3cr3t');
+    // The unsanitized text exists only as the sealed raw copy, one per version.
+    const rawRows = await systemPool.query(`SELECT raw_enc FROM config_backup_raw WHERE target_id = $1`, [targetId]);
+    expect(rawRows.rowCount).toBe(2);
+    for (const r of rawRows.rows) expect(r.raw_enc).not.toContain('s3cr3t');
+    const san = await systemPool.query(`SELECT sanitized, redactions FROM config_backup_contents WHERE target_id = $1`, [targetId]);
+    for (const r of san.rows) expect(r).toMatchObject({ sanitized: true, redactions: { snmp_community: 1 } });
     target = (await s.a.agent.get(`/api/v1/config-backup/targets/${targetId}`)).body;
     expect(target.pending_run_id).toBeTruthy();
   });
@@ -385,5 +396,61 @@ describe('configuration backup', () => {
     // Validation: a bad result shape is refused, garbage gzip too.
     const bad = await telemetry(s.c, [result({ run_id: randomUUID(), target_id: targetId, ok: true })]);
     expect(bad.body.rejected).toHaveLength(1);
+  });
+  it('detects a changed secret without revealing it, and converts versions stored before sanitization', async () => {
+    const s = await setup('cb-sanitize');
+    const { targetId, runId } = await addSwitch(s);
+    await commands(s.c, 'config_backup');
+    const ok = (run: string, text: string) =>
+      telemetry(s.c, [result({ run_id: run, target_id: targetId, ok: true, host_key: { sha256: KEY_A, type: 'ssh-ed25519' }, host_key_status: 'matched', config_gzip_b64: gz(text) })]);
+    expect((await ok(runId, CONFIG_V1)).body).toMatchObject({ accepted: 1 });
+
+    // Only the community changes: a new version, one changed line with different fingerprints.
+    let run = await s.a.agent.post(`/api/v1/config-backup/targets/${targetId}/run`).set(CSRF).send({});
+    await commands(s.c, 'config_backup');
+    expect((await ok(run.body.run_id, CONFIG_V1.replace('s3cr3t', 'n3w-s3cr3t'))).body).toMatchObject({ accepted: 1 });
+    const versions = (await s.a.agent.get(`/api/v1/config-backup/targets/${targetId}/versions`)).body.items;
+    expect(versions.map((v: { number: number }) => v.number)).toEqual([2, 1]);
+    expect(versions[0]).toMatchObject({ added_lines: 1, removed_lines: 1 });
+    const diff = await s.a.agent.get(`/api/v1/config-backup/targets/${targetId}/diff?from=${versions[1].id}&to=${versions[0].id}`);
+    const lines = diff.body.hunks.flatMap((h: { lines: { op: string; text: string }[] }) => h.lines.filter((l) => l.op !== ' ').map((l) => l.text));
+    expect(lines).toHaveLength(2);
+    for (const l of lines) expect(l).toMatch(/^snmp-server community <nigafiy-redacted:hmac=[0-9a-f]{12}> RO$/);
+    expect(lines[0]).not.toBe(lines[1]);
+    expect(JSON.stringify(diff.body)).not.toMatch(/s3cr3t/);
+    const ev = (await s.a.agent.get('/api/v1/events?page_size=100')).body.items.find((e: { type: string }) => e.type === 'config_changed');
+    expect(ev.details).toMatchObject({ secret_lines_changed: 1 });
+
+    // A version stored before migration 041 (unsanitized text, no raw copy) is converted by the job:
+    // the text becomes the raw copy, the version follows the sanitized hash, content shows no secret.
+    const legacyText = ['hostname legacy-sw', 'snmp-server community legacyC0mm RO', ''].join('\n');
+    const legacySha = createHash('sha256').update(legacyText).digest('hex');
+    await systemPool.query(
+      `INSERT INTO config_backup_contents (target_id, sha256, organization_id, content_enc, size_bytes, line_count) VALUES ($1,$2,$3,$4,$5,2)`,
+      [targetId, legacySha, s.a.organizationId, encryptSecret(legacyText), legacyText.length],
+    );
+    const legacyVersion = (
+      await systemPool.query<{ id: string }>(
+        `INSERT INTO config_backup_versions (organization_id, target_id, number, sha256, captured_at, last_seen_at) VALUES ($1,$2,0 + 99,$3,now() - interval '400 days',now() - interval '400 days') RETURNING id`,
+        [s.a.organizationId, targetId, legacySha],
+      )
+    ).rows[0]!.id;
+    // Before conversion, reading it already hides the secret (sanitized in memory).
+    const before = await s.a.agent.get(`/api/v1/config-backup/versions/${legacyVersion}`);
+    expect(before.status).toBe(200);
+    expect(before.body.content).not.toContain('legacyC0mm');
+    await runConfigBackupJob();
+    const after = await systemPool.query(
+      `SELECT v.sha256, c.sanitized, (SELECT count(*)::int FROM config_backup_raw r WHERE r.target_id = v.target_id AND r.sha256 = v.sha256) AS raw
+         FROM config_backup_versions v JOIN config_backup_contents c ON c.target_id = v.target_id AND c.sha256 = v.sha256 WHERE v.id = $1`,
+      [legacyVersion],
+    );
+    expect(after.rows[0]).toMatchObject({ sanitized: true, raw: 1 });
+    expect(after.rows[0].sha256).not.toBe(legacySha);
+    const shown = await s.a.agent.get(`/api/v1/config-backup/versions/${legacyVersion}`);
+    expect(shown.body.content).toBe(before.body.content);
+    expect((await systemPool.query(`SELECT count(*)::int AS n FROM config_backup_contents WHERE NOT sanitized AND target_id = $1`, [targetId])).rows[0].n).toBe(0);
+    run = await s.a.agent.post(`/api/v1/config-backup/targets/${targetId}/run`).set(CSRF).send({});
+    expect(run.status).toBe(202);
   });
 });

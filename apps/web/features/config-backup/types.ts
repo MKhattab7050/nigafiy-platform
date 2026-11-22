@@ -65,7 +65,7 @@ export interface Target {
 
 export interface BackupRun {
   id: string;
-  trigger: 'manual' | 'scheduled';
+  trigger: 'manual' | 'scheduled' | 'playbook' | 'restore';
   status: 'pending' | 'ok' | 'failed' | 'expired';
   outcome: 'first' | 'changed' | 'unchanged' | null;
   version_id: string | null;
@@ -132,7 +132,7 @@ export interface Suggestion {
 export interface ProbeRun {
   id: string;
   site_id?: string;
-  trigger: 'manual' | 'scheduled';
+  trigger: 'manual' | 'scheduled' | 'playbook' | 'restore';
   status: 'pending' | 'done' | 'expired';
   address_count: number;
   open_count: number | null;
@@ -162,3 +162,45 @@ export const ERROR_KINDS = [
   'expired',
   'internal',
 ] as const;
+
+export type RestoreStatus = 'pre_backup' | 'pending' | 'verified' | 'failed' | 'rolled_back' | 'expired';
+
+/** An administrator-confirmed restore (API modules/configbackup/restore.ts). */
+export interface Restore {
+  id: string;
+  target_id: string;
+  version_id: string;
+  version_number: number;
+  method: string;
+  status: RestoreStatus;
+  reason: string;
+  confirm_minutes: number;
+  committed: boolean | null;
+  confirmed: boolean | null;
+  rolled_back: boolean | null;
+  steps: string[];
+  error_kind: string | null;
+  error: string | null;
+  requested_by_email: string | null;
+  collector_name: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface RestorePreview {
+  target: { id: string; name: string; address: string };
+  version: Diff['to'];
+  current: Diff['from'] | null;
+  method: string | null;
+  supported: boolean;
+  possible: boolean;
+  blocker: { code: string; message: string } | null;
+  confirm_text: string;
+  confirm_minutes_default: number;
+  identical: boolean;
+  added: number;
+  removed: number;
+  approximate: boolean;
+  truncated: boolean;
+  hunks: Diff['hunks'];
+}

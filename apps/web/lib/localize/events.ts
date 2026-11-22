@@ -212,6 +212,15 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
       return target ? `فشل النسخ الاحتياطي لإعدادات ${target}` : 'فشل النسخ الاحتياطي للإعدادات';
     }
 
+    case 'config_restored':
+    case 'config_restore_failed': {
+      const target = str(d.target_name);
+      const ver = typeof d.version === 'number' ? d.version : null;
+      const ok = ev.type === 'config_restored';
+      const what = `${target ? `الجهاز ${target}` : 'الجهاز'}${ver !== null ? ` إلى الإصدار ${ltr(String(ver))}` : ''}`;
+      return ok ? `استُعيدت إعدادات ${what}` : `لم تكتمل استعادة إعدادات ${what}`;
+    }
+
     case 'config_host_key_changed': {
       const target = str(d.target_name) ?? str(d.name);
       return target ? `تغيّر مفتاح SSH للجهاز ${target}` : 'تم رصد تغيّر مفتاح SSH';

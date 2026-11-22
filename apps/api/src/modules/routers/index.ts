@@ -28,3 +28,4 @@ export const routersModule = defineModule({
 export { buildRouterConfig } from './collector-config.ts';
 export { processRouterResult } from './ingest.ts';
 export { type DeviceResult, changeBlocks, setRateLimit } from './control.ts';
+export { rebootRouter, setWifi } from './settings.ts';

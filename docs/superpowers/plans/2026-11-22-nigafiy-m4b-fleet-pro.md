@@ -72,6 +72,29 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 
 (Filled in at the end of the milestone.)
 
+## Progress (resumed 2026-11-22: remote desktop and agent transport)
+
+The owner resumed Fleet Pro with a newer spec: WebSocket binary frames with adaptive JPEG and an HTTP
+fallback instead of WebRTC/H.264. Built on branch `worktree-agent-a26eb689621043c25`, migrations
+`033` (long-poll wake) and `034` (`fleet_sessions`). What was built, the security model, the
+multi-instance routing (`RD_PEER_URL`) and exactly what ran for real are in
+`docs/features/fleet-pro.md` → "Built: remote desktop and agent transport".
+
+- [x] Agent long poll woken through pg_notify
+- [x] WebSocket stream (agent RFC 6455 client, `ws` hub, peer relay between instances) + HTTP fallback
+- [x] Adaptive JPEG quality/scale, unchanged-tile skipping (JPEG only: no pure-Go WebP encoder)
+- [x] Consent dialog under `prompt` (replaces `consent_unavailable`), always-on session banner with End
+- [x] Windows service + session helper (CreateProcessAsUser); Linux runuser / macOS launchctl asuser
+- [x] Multi-monitor (EnumDisplayMonitors, "All displays"), clipboard text both ways
+- [x] Linux Wayland via xdg-desktop-portal (godbus), macOS input via CoreGraphics/JXA — compiled and
+  unit-tested only
+- [x] `fleet_sessions` history (API, endpoint tab, Fleet → Remote sessions), `fleet.session_*` audit
+- [ ] Not verified here: a real LocalSystem service install (needs an elevated prompt; the owner runs
+  `endpoint-agent install`), Linux and macOS on real machines, a second physical monitor, input and
+  clipboard on a real desktop.
+- Still open from the plan: everything after the remote-desktop core (Quick Support, recording, chat,
+  permission profiles and groups, MFA to connect, PowerShell, scripts, patches, the tray app).
+
 ## Progress (paused 2026-11-22)
 
 The owner paused Fleet Pro while the Wave 1 builder was still reading the code. **No code was written.**
