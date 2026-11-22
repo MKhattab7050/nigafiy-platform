@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -662,7 +663,14 @@ type trackedUpload struct {
 
 var uploads = &uploadTracker{m: map[string]trackedUpload{}}
 
-func uploadKey(p string) string { return strings.ToLower(filepath.Clean(p)) }
+// uploadKey folds case only on Windows, whose paths are case-insensitive; on Linux and macOS
+// "Report" and "report" can be different files and must never continue each other's upload.
+func uploadKey(p string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(filepath.Clean(p))
+	}
+	return filepath.Clean(p)
+}
 
 func (u *uploadTracker) continues(p string, offset int64) bool {
 	u.mu.Lock()

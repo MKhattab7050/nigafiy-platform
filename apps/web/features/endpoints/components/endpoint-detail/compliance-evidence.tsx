@@ -4,6 +4,7 @@ import type { EndpointComplianceItem, EndpointComplianceStatus, EndpointEvidence
 import { Badge, Card, type Tone } from '@/components/ui';
 import { absoluteTime } from '@/lib/format';
 import type { Locale } from '@/lib/i18n';
+import { localizeComplianceReason, localizeEvidenceReason } from '@/lib/localize';
 
 const VERDICT_TONE: Record<EndpointComplianceStatus, Tone> = { compliant: 'ok', attention: 'warn', non_compliant: 'crit', unknown: 'idle' };
 const STATE_TONE: Record<EndpointEvidenceState, Tone> = { pass: 'ok', warn: 'warn', fail: 'crit', unknown: 'idle', info: 'info' };
@@ -22,6 +23,12 @@ const VERDICT_LABEL: Record<EndpointComplianceStatus, { en: string; ar: string }
   non_compliant: { en: 'Non-compliant', ar: 'غير ممتثل' },
   unknown: { en: 'Not measured', ar: 'لم يُقَس' },
 };
+
+/** The Arabic reason: the web's fuller translation (it also translates the agent's explanation), else the API's. */
+function arabicReason(item: EndpointComplianceItem): string {
+  const localized = localizeComplianceReason(item.reason_en, 'ar');
+  return localized !== item.reason_en ? localized : item.reason_ar;
+}
 
 /**
  * Every compliance item with the API's verdict and the evidence behind it: the subject, what the
@@ -44,7 +51,7 @@ export function ComplianceEvidence({ items, locale }: { items: EndpointComplianc
               <Badge tone={VERDICT_TONE[item.verdict]}>{VERDICT_LABEL[item.verdict][isAr ? 'ar' : 'en']}</Badge>
             </div>
             <p className="mt-1 text-xs text-muted" dir="auto">
-              {isAr ? item.reason_ar : item.reason_en}
+              {isAr ? arabicReason(item) : item.reason_en}
             </p>
             {item.evidence.length > 0 && (
               <div className="mt-2 overflow-x-auto">
@@ -72,8 +79,8 @@ export function ComplianceEvidence({ items, locale }: { items: EndpointComplianc
                             {e.value || '—'}
                           </span>
                           {e.reason && (
-                            <span className="mt-0.5 block text-muted" dir="ltr">
-                              {e.reason}
+                            <span className="mt-0.5 block text-muted" dir={isAr ? 'rtl' : 'ltr'}>
+                              {localizeEvidenceReason(e.reason, locale)}
                             </span>
                           )}
                         </td>

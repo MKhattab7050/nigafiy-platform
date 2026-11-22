@@ -209,13 +209,16 @@ func noticeText(title, message string) (string, string) {
 	if title == "" {
 		title = "Message from IT"
 	}
-	if len(title) > 120 {
-		title = title[:120]
+	return truncateRunes(title, 120), truncateRunes(message, 600)
+}
+
+// truncateRunes keeps at most max characters without cutting a UTF-8 sequence (Arabic notices).
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
 	}
-	if len(message) > 600 {
-		message = message[:600]
-	}
-	return title, message
+	return string(r[:max])
 }
 
 // notifyUser shows the administrator's notice on the endpoint's screen.
@@ -223,10 +226,7 @@ func (r Runner) notifyUser(ctx context.Context, rawTitle, rawMessage string) (De
 	title, message := noticeText(rawTitle, rawMessage)
 	switch r.goos() {
 	case "windows":
-		full := strings.TrimSpace(title + ": " + message)
-		if len(full) > 500 {
-			full = full[:500]
-		}
+		full := truncateRunes(strings.TrimSpace(title+": "+message), 500)
 		out, err := r.Exec(ctx, "msg", "*", "/TIME:60", full)
 		if err != nil {
 			return Delivery{}, errors.New(firstNonEmpty(out, err.Error()))

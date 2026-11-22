@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,8 +77,75 @@ func defaultComplianceEnv() complianceEnv {
 
 func (e complianceEnv) stamp() string { return e.now().UTC().Format(time.RFC3339) }
 
+// The API validates every evidence field strictly and refuses the whole heartbeat when one is out
+// of bounds, so the limits are enforced here: subject ≤ 120, source ≤ 200, value / reason ≤ 300,
+// no control characters, subject and source never empty.
 func (e complianceEnv) ev(check, subject, state, value, source, reason string) Evidence {
-	return Evidence{Check: check, Subject: subject, State: state, Value: clip(value, 300), Source: source, MeasuredAt: e.stamp(), Reason: clip(reason, 300)}
+	return Evidence{
+		Check:      check,
+		Subject:    firstNonEmptyStr(clip(subject, 120), "Unnamed item"),
+		State:      state,
+		Value:      clip(value, 300),
+		Source:     firstNonEmptyStr(clip(source, 200), "agent"),
+		MeasuredAt: e.stamp(),
+		Reason:     clip(reason, 300),
+	}
+}
+
+// MaxEvidenceItems is the API's limit on evidence items in one heartbeat.
+const MaxEvidenceItems = 64
+
+// capEvidence keeps the evidence within MaxEvidenceItems. Failures, warnings and unknowns are kept
+// before passes and context, so the cap can never hide a problem; and what does not fit is not
+// dropped silently: the last slot says how many items of which checks were left out, as "unknown".
+func capEvidence(ev []Evidence) []Evidence {
+	if len(ev) <= MaxEvidenceItems {
+		return ev
+	}
+	rank := map[string]int{"fail": 0, "warn": 1, "unknown": 2, "pass": 3, "info": 4}
+	idx := make([]int, len(ev))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.SliceStable(idx, func(a, b int) bool { return rank[ev[idx[a]].State] < rank[ev[idx[b]].State] })
+	keep := map[int]bool{}
+	for _, i := range idx[:MaxEvidenceItems-1] {
+		keep[i] = true
+	}
+	var kept, dropped []Evidence
+	for i, e := range ev {
+		if keep[i] {
+			kept = append(kept, e)
+		} else {
+			dropped = append(dropped, e)
+		}
+	}
+	checks := map[string]int{}
+	var order []string
+	latest := ""
+	for _, d := range dropped {
+		if checks[d.Check] == 0 {
+			order = append(order, d.Check)
+		}
+		checks[d.Check]++
+		if d.MeasuredAt > latest {
+			latest = d.MeasuredAt
+		}
+	}
+	parts := make([]string, 0, len(order))
+	for _, c := range order {
+		parts = append(parts, fmt.Sprintf("%s: %d", c, checks[c]))
+	}
+	kept = append(kept, Evidence{
+		Check:      dropped[0].Check,
+		Subject:    "Items not sent",
+		State:      "unknown",
+		Value:      clip(fmt.Sprintf("%d more item(s) (%s)", len(dropped), strings.Join(parts, ", ")), 300),
+		Source:     "agent evidence limit",
+		MeasuredAt: latest,
+		Reason:     fmt.Sprintf("more than %d evidence items were measured; the rest are not reported", MaxEvidenceItems),
+	})
+	return kept
 }
 
 func clip(s string, max int) string {
@@ -183,7 +251,8 @@ func ApplyEvidence(p *SecurityPosture, ev []Evidence) {
 	if len(ev) == 0 {
 		return
 	}
-	p.Checks = ev
+	// Summaries are computed from everything measured; only the list sent is capped.
+	p.Checks = capEvidence(ev)
 	latest := ""
 	for _, e := range ev {
 		if e.MeasuredAt > latest {

@@ -65,12 +65,90 @@ export function localizeComplianceReason(reason: string, locale: Locale): string
   if (label) {
     const ar = COMPLIANCE_LABEL_AR[label]!;
     const rest = reason.slice(label.length + 1);
-    if (rest.startsWith('not measured: ')) return `لم يتم قياس ${ar}: ${ltr(rest.slice('not measured: '.length))}`;
+    if (rest.startsWith('not measured: ')) return `لم يتم قياس ${ar}: ${localizeEvidenceReason(rest.slice('not measured: '.length), locale)}`;
     if (rest.startsWith('needs attention: ')) return `${ar} يحتاج إلى متابعة: ${ltr(rest.slice('needs attention: '.length))}`;
     if (rest.startsWith('failed: ')) return `${ar}: فشل التحقق (${ltr(rest.slice('failed: '.length))})`;
+    if (rest.startsWith('verified: ')) return `${ar}: تم التحقق (${ltr(rest.slice('verified: '.length))})`;
   }
 
   return reason;
+}
+
+/**
+ * Fixed explanations the endpoint agent attaches to compliance evidence
+ * (`agents/endpoint-agent/internal/sysinfo/compliance.go`) and the API adds (`capabilities.ts`).
+ */
+const EVIDENCE_REASON_AR: Record<string, string> = {
+  'not reported by the agent': 'لم يرسله الوكيل',
+  'no judging measurement': 'لا يوجد قياس يمكن الحكم به',
+  'at or above the 92% threshold': 'عند حد 92% أو أعلى منه',
+  'profile not reported': 'لم يُبلَّغ عن ملف الشبكة هذا',
+  'unrecognised value': 'قيمة غير معروفة',
+  'the firewall is off for this network profile': 'جدار الحماية متوقف لملف الشبكة هذا',
+  'the volume is not protected by BitLocker': 'القرص غير محمي بـ BitLocker',
+  'BitLocker protection is suspended: the key is stored in the clear': 'حماية BitLocker معلّقة: المفتاح محفوظ دون حماية',
+  'encryption is still in progress': 'التشفير ما زال جارياً',
+  'BitLocker reported an unknown protection state (volume locked?)': 'أبلغ BitLocker عن حالة حماية غير معروفة (القرص مقفل؟)',
+  'not reported by BitLocker': 'لم يُبلغ عنه BitLocker',
+  'reading BitLocker status needs administrator rights and the agent is not running elevated':
+    'قراءة حالة BitLocker تتطلب صلاحيات المسؤول، والوكيل لا يعمل بها',
+  'no fixed volumes were reported': 'لم يُبلَّغ عن أي قرص ثابت',
+  'signatures are out of date': 'تعريفات الفيروسات قديمة',
+  'off, but another antivirus product is active': 'متوقف، لكن برنامج مكافحة فيروسات آخر يعمل',
+  'real-time scanning is off': 'الفحص الفوري متوقف',
+  'signatures are more than 7 days old': 'عمر تعريفات الفيروسات أكثر من 7 أيام',
+  'Defender is not the active antivirus (passive or off) while another product is active':
+    'Defender ليس المكافح النشط (سلبي أو متوقف) بينما يعمل برنامج آخر',
+  'Defender real-time protection is off and no other antivirus is active': 'الحماية الفورية في Defender متوقفة ولا يعمل أي مكافح فيروسات آخر',
+  'no antivirus status could be read': 'تعذّرت قراءة حالة مكافحة الفيروسات',
+  'no antivirus product is registered with Windows Security Center': 'لا يوجد برنامج مكافحة فيروسات مسجّل في Windows Security Center',
+  'updates are available but not installed': 'توجد تحديثات متاحة لم تُثبَّت',
+  'none of ufw, firewalld or nftables is installed or on PATH': 'لا يوجد ufw ولا firewalld ولا nftables على الجهاز',
+  'another firewall front-end is active': 'أداة جدار حماية أخرى مفعّلة',
+  'inactive; another front-end could not be read': 'غير مفعّل؛ وتعذّرت قراءة أداة أخرى',
+  'no inbound filtering is active': 'لا توجد أي تصفية للاتصالات الواردة',
+  'no mounted block-device filesystems were found (container or unusual storage?)': 'لم يُعثر على أنظمة ملفات مركّبة على أقراص (حاوية أو تخزين غير معتاد؟)',
+  'the filesystem is not on an encrypted (LUKS/dm-crypt) device': 'نظام الملفات ليس على جهاز مشفّر (LUKS/dm-crypt)',
+  'security updates are available but not installed': 'توجد تحديثات أمان متاحة لم تُثبَّت',
+  'no supported package manager (apt-get, dnf, zypper, yum) was found': 'لم يُعثر على مدير حزم مدعوم (apt-get أو dnf أو zypper أو yum)',
+  'the Application Firewall is off': 'جدار حماية التطبيقات متوقف',
+  'context only; the Application Firewall decides': 'للمعلومية فقط؛ الحكم لجدار حماية التطبيقات',
+  'FileVault is off': 'FileVault متوقف',
+  'FileVault encryption is not complete yet': 'تشفير FileVault لم يكتمل بعد',
+  'System Integrity Protection is disabled': 'حماية سلامة النظام (SIP) معطّلة',
+  'System Integrity Protection has a custom (partly disabled) configuration': 'حماية سلامة النظام (SIP) بإعداد مخصّص (معطّلة جزئياً)',
+  'Gatekeeper assessments are disabled': 'فحوصات Gatekeeper معطّلة',
+  'macOS updates are available but not installed': 'توجد تحديثات macOS متاحة لم تُثبَّت',
+  'more than 64 evidence items were measured; the rest are not reported': 'قيس أكثر من 64 بنداً؛ ولم تُرسَل البقية',
+};
+
+/** Agent messages that start with a fixed phrase and end with the command's own output. */
+const EVIDENCE_PREFIX_AR: [string, string][] = [
+  ['profile not reported; Get-NetFirewallProfile: ', 'لم يُبلَّغ عن ملف الشبكة؛ Get-NetFirewallProfile:'],
+  ['BitLocker status unavailable: ', 'حالة BitLocker غير متاحة:'],
+  ['compliance script failed: ', 'فشل سكربت فحص الامتثال:'],
+  ['Windows Update search failed: ', 'فشل البحث في Windows Update:'],
+  ['lsblk failed: ', 'فشل lsblk:'],
+  ['simulation failed: ', 'فشلت محاكاة الترقية:'],
+  ['dnf failed: ', 'فشل dnf:'],
+  ['yum failed: ', 'فشل yum:'],
+  ['zypper failed: ', 'فشل zypper:'],
+  ['softwareupdate failed: ', 'فشل softwareupdate:'],
+  ['not readable (needs root): ', 'غير قابل للقراءة (يتطلب root):'],
+];
+
+/**
+ * Localizes an evidence explanation. Known phrases become Arabic; the command output that follows
+ * some of them, and anything unknown (raw tool output), stays as reported inside a bidi isolate.
+ */
+export function localizeEvidenceReason(reason: string, locale: Locale): string {
+  if (locale !== 'ar') return reason;
+  const exact = EVIDENCE_REASON_AR[reason];
+  if (exact) return exact;
+  for (const [en, ar] of EVIDENCE_PREFIX_AR) {
+    if (reason.startsWith(en)) return `${ar} ${ltr(reason.slice(en.length))}`;
+  }
+  return ltr(reason);
 }
 
 /** Localizes auto-generated incident titles into native Arabic while leaving custom text intact. */

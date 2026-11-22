@@ -94,6 +94,10 @@ func DefaultRunner() Runner {
 				// The caller keeps the newest lines itself (TailLogLines); hand it the end of the output.
 				if len(text) > 256*1024 {
 					text = text[len(text)-256*1024:]
+					// Drop the first, partly cut line.
+					if i := strings.IndexByte(text, '\n'); i >= 0 {
+						text = text[i+1:]
+					}
 				}
 				return text, err
 			}
@@ -326,7 +330,7 @@ func (r Runner) Execute(ctx context.Context, cmd Command) Result {
 		} else if r.goos() == "darwin" {
 			// `log show` has no line limit: read the newest output and keep the requested count.
 			out, err = r.Exec(withTailOutput(ctx), "log", "show", "--last", "15m", "--style", "compact")
-			out = TailLogLines(out, p.Lines, 150)
+			out = TailLogLines(out, p.Lines, 140) // 200 lines x 140 chars stays under the API's 32,000-character output limit
 		} else {
 			out, err = r.Exec(ctx, "journalctl", "-n", strconv.Itoa(p.Lines), "--no-pager", "-o", "short-iso")
 		}

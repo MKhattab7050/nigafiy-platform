@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // scripted is a fake Exec: it answers by command-line prefix and records every call.
@@ -259,5 +260,28 @@ func TestMacLogShowHonoursLineCount(t *testing.T) {
 	}
 	if !keepTail(withTailOutput(context.Background())) || keepTail(context.Background()) {
 		t.Fatal("tail flag")
+	}
+
+	// The largest request (200 lines of long entries) still fits the API's 32,000-character output.
+	b.Reset()
+	for i := 0; i < 400; i++ {
+		b.WriteString(strings.Repeat("y", 900))
+		b.WriteString("\n")
+	}
+	s = &scripted{answers: map[string]string{"log show": b.String()}}
+	r = Runner{Exec: s.exec, GOOS: "darwin"}
+	res = r.Execute(context.Background(), Command{ID: "l2", Kind: "fetch_logs", Payload: json.RawMessage(`{"source":"system","lines":200}`)})
+	if n := len(strings.Split(res.Output, "\n")); !res.OK || n != 200 || len([]rune(res.Output)) > 32000 {
+		t.Fatalf("200 long lines: ok=%t lines=%d chars=%d", res.OK, n, len([]rune(res.Output)))
+	}
+}
+
+func TestNoticeTextNeverCutsACharacter(t *testing.T) {
+	title, msg := noticeText(strings.Repeat("ت", 130), strings.Repeat("م", 700))
+	if !utf8.ValidString(title) || !utf8.ValidString(msg) || len([]rune(title)) != 120 || len([]rune(msg)) != 600 {
+		t.Fatalf("Arabic notice cut badly: %d %d", len([]rune(title)), len([]rune(msg)))
+	}
+	if title, _ := noticeText("  ", "x"); title != "Message from IT" {
+		t.Fatalf("default title: %q", title)
 	}
 }

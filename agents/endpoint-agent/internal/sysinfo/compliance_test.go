@@ -3,6 +3,7 @@ package sysinfo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -595,6 +596,46 @@ func TestApplyEvidenceSummaries(t *testing.T) {
 	}
 	if p.AntivirusEnabled != nil {
 		t.Fatal("antivirus was not measured: it must stay absent, never false")
+	}
+}
+
+// The API refuses a whole heartbeat when one evidence field is out of bounds, so the agent keeps
+// every field inside the schema (subject ≤ 120, source ≤ 200, value/reason ≤ 300, ≤ 64 items).
+func TestEvidenceStaysWithinTheAPISchema(t *testing.T) {
+	env := fixedEnv("linux")
+	long := "/srv/" + strings.Repeat("very-long-mount-name-", 20) + "\x01end"
+	e := env.ev(checkDiskCrypt, long, "fail", strings.Repeat("v", 400), strings.Repeat("s", 250), strings.Repeat("r", 400))
+	if len(e.Subject) > 120 || len(e.Source) > 200 || len(e.Value) > 300 || len(e.Reason) > 300 || strings.ContainsRune(e.Subject, 1) {
+		t.Fatalf("fields not clipped: %d %d %d %d", len(e.Subject), len(e.Source), len(e.Value), len(e.Reason))
+	}
+	if blank := env.ev(checkFirewall, "  ", "unknown", "", "", ""); blank.Subject == "" || blank.Source == "" {
+		t.Fatalf("subject and source are required by the API: %+v", blank)
+	}
+
+	var ev []Evidence
+	for i := 0; i < 80; i++ {
+		ev = append(ev, env.ev(checkDiskCrypt, fmt.Sprintf("/data%02d", i), "pass", "", "lsblk", ""))
+	}
+	ev[75].State = "fail" // a problem near the end must survive the cap
+	capped := capEvidence(ev)
+	if len(capped) != MaxEvidenceItems {
+		t.Fatalf("capped to %d items", len(capped))
+	}
+	foundFail := false
+	for _, c := range capped {
+		foundFail = foundFail || (c.Subject == "/data75" && c.State == "fail")
+	}
+	last := capped[len(capped)-1]
+	if !foundFail || last.State != "unknown" || !strings.Contains(last.Value, "17 more item(s)") || last.MeasuredAt == "" {
+		t.Fatalf("cap hid a failure or the overflow note is wrong: fail=%t last=%+v", foundFail, last)
+	}
+	if got := capEvidence(ev[:10]); len(got) != 10 {
+		t.Fatal("small lists are unchanged")
+	}
+	var p SecurityPosture
+	ApplyEvidence(&p, ev)
+	if len(p.Checks) != MaxEvidenceItems || p.DiskEncrypted == nil || *p.DiskEncrypted {
+		t.Fatalf("summary uses all evidence, the list is capped: %d %+v", len(p.Checks), p.DiskEncrypted)
 	}
 }
 
