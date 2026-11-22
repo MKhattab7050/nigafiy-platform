@@ -539,7 +539,14 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     expect((await hb({ security: {} })).status).toBe(200);
     detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
     expect(detail.body.security).toEqual({});
-    expect(detail.body.compliance_reasons).toEqual([]);
+    // Nothing measured: unknown, and every unmeasured item says so (never "compliant").
+    expect(detail.body.compliance_status).toBe('unknown');
+    expect(detail.body.compliance_reasons).toEqual([
+      'Host firewall not measured: not reported by the agent',
+      'Disk encryption not measured: not reported by the agent',
+      'OS / security updates not measured: not reported by the agent',
+      'Free disk space not measured: not reported by the agent',
+    ]);
 
     // Values that would reach the agent as program arguments can never look like options.
     const send = (body: Record<string, unknown>) => a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send(body);
@@ -548,8 +555,8 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: '-type=any' })).status).toBe(400);
     expect((await send({ kind: 'mobile_action', action: 'lock_device' })).status).toBe(400);
 
-    // What this platform's agent cannot do is refused up front.
-    expect((await send({ kind: 'power_action', action: 'logoff' })).status).toBe(409);
+    // What this platform's agent cannot do is refused up front (sign-out now works on Linux: loginctl).
+    expect((await send({ kind: 'power_action', action: 'logoff' })).status).toBe(202);
     expect((await send({ kind: 'diagnostic_command', tool: 'gpresult' })).status).toBe(409);
     expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: 'example.com' })).status).toBe(202);
 

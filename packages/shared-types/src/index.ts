@@ -894,6 +894,36 @@ export interface EndpointSecurityPosture {
   pending_updates?: number;
   last_update_date?: string;
   os_build?: string;
+  /** The measured evidence behind the fields above (agents that report it). */
+  checks?: EndpointSecurityEvidence[];
+  measured_at?: string;
+}
+
+export type EndpointComplianceCheck = 'firewall' | 'antivirus' | 'disk_encryption' | 'os_updates' | 'sip' | 'gatekeeper' | 'disk_space';
+/** pass / fail / warn judge one subject; unknown = could not be measured (reason given); info = context only. */
+export type EndpointEvidenceState = 'pass' | 'fail' | 'warn' | 'unknown' | 'info';
+
+/** One measured fact: which command produced which value, and when. */
+export interface EndpointSecurityEvidence {
+  check: EndpointComplianceCheck;
+  subject: string;
+  state: EndpointEvidenceState;
+  value: string;
+  source: string;
+  measured_at: string;
+  reason?: string;
+  count?: number;
+}
+
+/** The API's verdict for one compliance item, with the evidence it was decided on. */
+export interface EndpointComplianceItem {
+  key: EndpointComplianceCheck;
+  label_en: string;
+  label_ar: string;
+  verdict: EndpointComplianceStatus;
+  reason_en: string;
+  reason_ar: string;
+  evidence: EndpointSecurityEvidence[];
 }
 
 export interface EndpointPolicy {
@@ -932,6 +962,8 @@ export interface RemoteFileResponse {
   data_base64?: string;
   sha256?: string;
   message?: string;
+  /** An upload replaced an existing file (only with an operator-confirmed `overwrite`). */
+  overwritten?: boolean;
 }
 
 export interface RemoteDesktopDisplay {
@@ -1086,6 +1118,7 @@ export interface EndpointCommand {
 
 export interface EndpointDetail extends EndpointSummary {
   security: EndpointSecurityPosture;
+  compliance_items: EndpointComplianceItem[];
   policy: EndpointPolicy;
   rd_session: RemoteDesktopSession | null;
   last_rd_frame: RemoteDesktopFrame | null;

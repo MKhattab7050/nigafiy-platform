@@ -20,9 +20,7 @@ export function validateCommandForPlatform(platform: EndpointPlatform, body: Com
   if (body.kind === 'fs_op') assertFileOperationAllowed(body, isAdmin);
 
   // Refuse up front what the agent cannot do on this platform, instead of queueing a command that fails.
-  if (body.kind === 'power_action' && body.action === 'logoff' && platform !== 'windows') {
-    throw new AppError(409, 'unsupported_by_platform', 'Signing the user out is only supported on Windows');
-  }
+  // (Sign-out works on all three: shutdown /l, loginctl terminate-session, System Events log out.)
   if (body.kind === 'diagnostic_command' && body.tool === 'gpresult' && platform !== 'windows') {
     throw new AppError(409, 'unsupported_by_platform', 'gpresult is only available on Windows');
   }

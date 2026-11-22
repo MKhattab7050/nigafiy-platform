@@ -11,8 +11,16 @@ export function assertFileOperationAllowed(body: FsOpCommand, isAdmin: boolean):
       throw new AppError(403, 'forbidden', 'Deleting remote files requires admin privileges');
     }
   }
-  // Uploading overwrites files on the endpoint: the same bar as deleting them.
+  // Uploading can replace files on the endpoint: the same bar as deleting them.
   if (body.op === 'upload' && !isAdmin) {
     throw new AppError(403, 'forbidden', 'Uploading files to an endpoint requires admin privileges');
+  }
+  // `overwrite` only means something for an upload's first chunk; the agent refuses an existing
+  // target without it, and the audit log records every confirmed overwrite.
+  if (body.overwrite !== undefined && body.op !== 'upload') {
+    throw new AppError(400, 'invalid_option', 'overwrite applies only to uploads');
+  }
+  if (body.overwrite === true && (body.offset ?? 0) !== 0) {
+    throw new AppError(400, 'invalid_option', 'overwrite is confirmed on the first chunk of an upload (offset 0) only');
   }
 }

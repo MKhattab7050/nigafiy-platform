@@ -13,6 +13,26 @@ export interface RemoteFileManagerProps {
   canDelete: boolean;
 }
 
+/** The agent's refusal when an upload target exists and no overwrite was confirmed (filemgr.ErrUploadTargetExists). */
+export const UPLOAD_TARGET_EXISTS = 'upload target already exists';
+
+/** An upload waiting for the operator to confirm that an existing remote file may be replaced. */
+export interface OverwritePrompt {
+  name: string;
+  path: string;
+  newSize: number;
+  existingSize?: number;
+  existingModTime?: string;
+  resolve: (confirmed: boolean) => void;
+}
+
+/** SHA-256 of the file for the agent's end-of-upload check; null where Web Crypto is unavailable (plain-HTTP origins). */
+async function sha256Hex(buf: ArrayBuffer): Promise<string | null> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) return null;
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** State and file operations of the remote file manager; the component only renders. */
 export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: RemoteFileManagerProps) {
   const { locale } = useI18n();
@@ -33,6 +53,7 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
   const [progress, setProgress] = useState<{ label: string; pct: number } | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState('');
+  const [overwritePrompt, setOverwritePrompt] = useState<OverwritePrompt | null>(null);
   const cancelRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -330,22 +351,55 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
     }
   }
 
+  /** Asks the operator, in a dialog, whether an existing remote file may be replaced. */
+  const askOverwrite = useCallback(
+    (prompt: Omit<OverwritePrompt, 'resolve'>) =>
+      new Promise<boolean>((resolve) => {
+        setOverwritePrompt({ ...prompt, resolve });
+      }),
+    [],
+  );
+  function answerOverwrite(confirmed: boolean) {
+    overwritePrompt?.resolve(confirmed);
+    setOverwritePrompt(null);
+  }
+
   async function handleUploadFile(file: File) {
     if (!currentPath) return;
     cancelRef.current = false;
     const sep = currentPath.includes('\\') ? '\\' : '/';
     const remotePath = currentPath.endsWith(sep) ? `${currentPath}${file.name}` : `${currentPath}${sep}${file.name}`;
+    // Windows paths are case-insensitive: "Report.xlsx" replaces "report.xlsx".
+    const sameName = (n: string) => (sep === '\\' ? n.toLowerCase() === file.name.toLowerCase() : n === file.name);
+    const existing = entries.find((e) => sameName(e.name));
+    if (existing?.is_dir) {
+      setError({
+        status: 409,
+        code: 'target_is_folder',
+        message: isAr ? `يوجد مجلد باسم ${file.name} هنا؛ لا يمكن استبداله بملف.` : `A folder named ${file.name} exists here; an upload cannot replace it.`,
+      } as ApiError);
+      return;
+    }
+    // Never silently overwrite: an existing file is replaced only after the operator confirms.
+    let overwrite = false;
+    if (existing) {
+      overwrite = await askOverwrite({ name: file.name, path: remotePath, newSize: file.size, existingSize: existing.size, existingModTime: existing.mod_time });
+      if (!overwrite) {
+        setNotice(isAr ? `لم يُرفع ${file.name}: الملف الموجود بقي كما هو.` : `${file.name} was not uploaded: the existing file was kept.`);
+        return;
+      }
+    }
     setBusy('upload');
     setError(null);
     try {
       const buf = await file.arrayBuffer();
       const total = buf.byteLength;
-      const chunkLen = 256 * 1024;
-      let offset = 0;
-      if (total === 0) {
-        await runFsOp({ op: 'upload', path: remotePath, offset: 0, append: false, data_base64: '' });
-      } else {
-        while (offset < total) {
+      const sha = await sha256Hex(buf);
+      const send = async (confirmed: boolean) => {
+        const chunkLen = 256 * 1024;
+        let offset = 0;
+        let res: RemoteFileResponse | null = null;
+        do {
           if (cancelRef.current) {
             throw {
               status: 499,
@@ -354,23 +408,50 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
             } as ApiError;
           }
           const end = Math.min(total, offset + chunkLen);
-          const slice = buf.slice(offset, end);
-          const b64 = arrayBufferToBase64(slice);
           setProgress({
             label: isAr ? `جارٍ رفع ${file.name}…` : `Uploading ${file.name}…`,
-            pct: Math.min(99, Math.round((end * 100) / total)),
+            pct: total === 0 ? 50 : Math.min(99, Math.round((end * 100) / total)),
           });
-          await runFsOp({
+          res = await runFsOp({
             op: 'upload',
             path: remotePath,
             offset,
             append: offset > 0,
-            data_base64: b64,
+            data_base64: arrayBufferToBase64(buf.slice(offset, end)),
+            // The confirmed overwrite travels with the first chunk only (the agent refuses it later).
+            ...(offset === 0 && confirmed ? { overwrite: true } : {}),
+            // The agent verifies the whole file against this on the last chunk.
+            ...(end >= total && sha ? { expected_sha256: sha } : {}),
           });
           offset = end;
+        } while (offset < total);
+        return res;
+      };
+      let res: RemoteFileResponse | null;
+      try {
+        res = await send(overwrite);
+      } catch (err) {
+        // Someone created the file after the listing was read: ask now, then start again.
+        const e = err as ApiError;
+        if (overwrite || e.code !== 'fs_op_failed' || !e.message?.includes(UPLOAD_TARGET_EXISTS)) throw err;
+        setProgress(null);
+        const confirmed = await askOverwrite({ name: file.name, path: remotePath, newSize: file.size });
+        if (!confirmed) {
+          setNotice(isAr ? `لم يُرفع ${file.name}: الملف الموجود بقي كما هو.` : `${file.name} was not uploaded: the existing file was kept.`);
+          return;
         }
+        res = await send(true);
       }
-      setNotice(isAr ? `تم رفع ${file.name} (${formatBytes(total)})` : `Uploaded ${file.name} (${formatBytes(total)})`);
+      const replaced = Boolean(res?.overwritten);
+      setNotice(
+        replaced
+          ? isAr
+            ? `تم استبدال ${file.name} (${formatBytes(total)}) بعد تأكيدك، وسُجّل ذلك في سجل التدقيق`
+            : `Replaced ${file.name} (${formatBytes(total)}) after your confirmation; recorded in the audit log`
+          : isAr
+            ? `تم رفع ${file.name} (${formatBytes(total)})`
+            : `Uploaded ${file.name} (${formatBytes(total)})`,
+      );
       await loadDirectory(currentPath);
     } catch (err) {
       setError(err as ApiError);
@@ -379,5 +460,5 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
       setBusy('');
     }
   }
-  return { locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile };
+  return { overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile };
 }
