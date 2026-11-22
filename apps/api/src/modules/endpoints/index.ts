@@ -9,6 +9,7 @@ import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
 import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
 import { RD_FRAME_CHANNEL, onFrameNotification } from './remote-desktop/frames.ts';
+import { AGENT_WAKE_CHANNEL, onAgentWakeNotification } from './agent/wake.ts';
 
 /**
  * Endpoint management (Windows, Linux, macOS agents).
@@ -26,6 +27,7 @@ endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, remoteDesktopRoute
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;
+let unsubscribeWake: (() => void) | null = null;
 
 export const endpointsModule = defineModule({
   name: 'endpoints',
@@ -37,6 +39,8 @@ export const endpointsModule = defineModule({
       unsubscribeCommandDone ??= onNotification(COMMAND_DONE_CHANNEL, (id) => id && signalCommandDone(id));
       // Remote desktop frames uploaded to another instance (transient: remote-desktop/frames.ts).
       unsubscribeFrames ??= onNotification(RD_FRAME_CHANNEL, onFrameNotification);
+      // A command queued on any instance wakes the agent's long poll held here (agent/wake.ts).
+      unsubscribeWake ??= onNotification(AGENT_WAKE_CHANNEL, onAgentWakeNotification);
       await startListening();
     },
     stop: async () => {
@@ -44,6 +48,8 @@ export const endpointsModule = defineModule({
       unsubscribeCommandDone = null;
       unsubscribeFrames?.();
       unsubscribeFrames = null;
+      unsubscribeWake?.();
+      unsubscribeWake = null;
       await stopListening();
     },
   },

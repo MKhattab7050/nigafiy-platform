@@ -52,6 +52,11 @@ type Tuning struct {
 	InventoryInterval   time.Duration
 	CommandPollInterval time.Duration
 	MaxBackoff          time.Duration
+	// LongPollWait is how long the server may hold a command poll open (?wait_ms=). 0 disables the
+	// long poll (short polls every CommandPollInterval, the pre-Fleet-Pro behaviour).
+	LongPollWait time.Duration
+	// MaxPollBackoff caps the wait between failed polls.
+	MaxPollBackoff time.Duration
 }
 
 func DefaultTuning() Tuning {
@@ -60,6 +65,8 @@ func DefaultTuning() Tuning {
 		InventoryInterval:   2 * time.Minute,
 		CommandPollInterval: 500 * time.Millisecond,
 		MaxBackoff:          2 * time.Minute,
+		LongPollWait:        20 * time.Second,
+		MaxPollBackoff:      30 * time.Second,
 	}
 }
 
@@ -72,6 +79,9 @@ type Agent struct {
 	tuning     Tuning
 	baseURL    string
 	httpClient *http.Client
+	// pollClient is httpClient's transport with a timeout long enough for a held long poll.
+	pollClient *http.Client
+	tlsConfig  *tls.Config
 
 	mu         sync.Mutex
 	credential string
@@ -117,21 +127,19 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			return nil
 		}
 	}
+	transport := &http.Transport{TLSClientConfig: tlsCfg, MaxIdleConns: 4, IdleConnTimeout: 90 * time.Second, Proxy: http.ProxyFromEnvironment}
+	noRedirect := func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &Agent{
-		cfg:     cfg,
-		deps:    deps,
-		log:     log,
-		version: version,
-		started: time.Now(),
-		tuning:  tuning,
-		baseURL: strings.TrimRight(cfg.ServerURL, "/"),
-		httpClient: &http.Client{
-			Timeout:   20 * time.Second,
-			Transport: &http.Transport{TLSClientConfig: tlsCfg, MaxIdleConns: 4, IdleConnTimeout: 90 * time.Second, Proxy: http.ProxyFromEnvironment},
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		cfg:           cfg,
+		deps:          deps,
+		log:           log,
+		version:       version,
+		started:       time.Now(),
+		tuning:        tuning,
+		baseURL:       strings.TrimRight(cfg.ServerURL, "/"),
+		tlsConfig:     tlsCfg,
+		httpClient:    &http.Client{Timeout: 20 * time.Second, Transport: transport, CheckRedirect: noRedirect},
+		pollClient:    &http.Client{Timeout: tuning.LongPollWait + 20*time.Second, Transport: transport, CheckRedirect: noRedirect},
 		seenCmds:      map[string]bool{},
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
@@ -355,43 +363,97 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	return a.tuning.HeartbeatInterval
 }
 
+// commandPollLoop asks the server for commands. With LongPollWait set it long-polls: the server
+// holds the request until a command is queued (or the wait ends), so a command starts within
+// milliseconds without a request every 500 ms. Failures back off exponentially (with jitter) up to
+// MaxPollBackoff. A server that answers an empty poll at once (one without long-poll support) is
+// short-polled every CommandPollInterval instead of in a tight loop.
 func (a *Agent) commandPollLoop(ctx context.Context) {
 	interval := a.tuning.CommandPollInterval
 	if interval <= 0 {
 		interval = 600 * time.Millisecond
 	}
+	failures := 0
+	var wait time.Duration
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(interval):
-		}
-		var resp struct {
-			Commands []control.Command `json:"commands"`
-		}
-		if err := a.post(ctx, "/poll", map[string]any{}, true, &resp); err != nil {
+		if wait > 0 {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(2 * time.Second):
+			case <-time.After(wait):
 			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		commands, took, err := a.pollOnce(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			failures++
+			wait = pollBackoff(failures, a.tuning.MaxPollBackoff)
+			a.log.Debug("command poll failed", "error", err.Error(), "retry_in", wait.String())
 			continue
 		}
-		for _, cmd := range resp.Commands {
-			a.mu.Lock()
-			seen := a.seenCmds[cmd.ID]
-			if !seen {
-				if len(a.seenCmds) >= 2048 {
-					clear(a.seenCmds)
-				}
-				a.seenCmds[cmd.ID] = true
+		failures = 0
+		wait = nextPollDelay(a.tuning.LongPollWait, interval, took, len(commands))
+		a.dispatch(ctx, commands)
+	}
+}
+
+// pollOnce makes one (long) poll and reports how long the server took to answer.
+func (a *Agent) pollOnce(ctx context.Context) ([]control.Command, time.Duration, error) {
+	var resp struct {
+		Commands []control.Command `json:"commands"`
+	}
+	path := "/poll"
+	client := a.httpClient
+	if a.tuning.LongPollWait > 0 {
+		path = fmt.Sprintf("/poll?wait_ms=%d", a.tuning.LongPollWait.Milliseconds())
+		client = a.pollClient
+	}
+	started := time.Now()
+	err := a.postWith(ctx, client, path, map[string]any{}, true, &resp)
+	return resp.Commands, time.Since(started), err
+}
+
+// nextPollDelay: after commands, or after a long poll the server really held, poll again at once.
+// An empty answer that came back quickly means the server does not hold polls: wait the interval.
+func nextPollDelay(longPoll, interval, took time.Duration, n int) time.Duration {
+	if n > 0 {
+		return 0
+	}
+	if longPoll > 0 && took >= longPoll/2 {
+		return 0
+	}
+	return interval
+}
+
+// pollBackoff: 1 s, 2 s, 4 s ... capped, with ±50 % jitter so many agents do not retry together.
+func pollBackoff(failures int, maxBackoff time.Duration) time.Duration {
+	if maxBackoff <= 0 {
+		maxBackoff = 30 * time.Second
+	}
+	d := min(maxBackoff, time.Second<<min(failures-1, 10))
+	return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
+}
+
+func (a *Agent) dispatch(ctx context.Context, commands []control.Command) {
+	for _, cmd := range commands {
+		a.mu.Lock()
+		seen := a.seenCmds[cmd.ID]
+		if !seen {
+			if len(a.seenCmds) >= 2048 {
+				clear(a.seenCmds)
 			}
-			a.mu.Unlock()
-			if seen {
-				continue
-			}
-			go a.runCommand(ctx, cmd)
+			a.seenCmds[cmd.ID] = true
 		}
+		a.mu.Unlock()
+		if seen {
+			continue
+		}
+		go a.runCommand(ctx, cmd)
 	}
 }
 
@@ -448,6 +510,10 @@ func (a *Agent) inventoryLoop(ctx context.Context) {
 }
 
 func (a *Agent) post(ctx context.Context, path string, payload any, authed bool, out any) error {
+	return a.postWith(ctx, a.httpClient, path, payload, authed, out)
+}
+
+func (a *Agent) postWith(ctx context.Context, client *http.Client, path string, payload any, authed bool, out any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -464,7 +530,7 @@ func (a *Agent) post(ctx context.Context, path string, payload any, authed bool,
 		a.mu.Unlock()
 		req.Header.Set("Authorization", "Bearer "+cred)
 	}
-	resp, err := a.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -484,4 +550,3 @@ func (a *Agent) post(ctx context.Context, path string, payload any, authed bool,
 		return fmt.Errorf("server returned HTTP %d", resp.StatusCode)
 	}
 }
-
