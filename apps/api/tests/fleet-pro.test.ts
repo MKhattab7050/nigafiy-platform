@@ -227,6 +227,22 @@ describe('fleet sessions: consent, banner and history', () => {
     expect((await pollFor(cred)).map((c) => c.kind)).toContain('rd_session_close');
   });
 
+  it('macOS sessions take mouse and keyboard input (CoreGraphics on the agent), not view-only', async () => {
+    const a = await newAccount('mac-input');
+    const { epId, cred } = await onlineEndpoint(a, 'MAC-01', 'macos');
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    expect(start.status).toBe(200);
+    const open = (await pollFor(cred)).find((c) => c.kind === 'rd_session_open')!;
+    await answer(cred, open.id, true, { consent: 'not_required', banner: 'shown', stream: 'connecting' });
+    const typed = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'key_press', key: 'c', ctrl: true });
+    expect(typed.status).toBe(202);
+    const caps = (await a.agent.get(`/api/v1/endpoints/${epId}`)).body.capabilities as Array<{ key: string; label_en: string; reason_en: string }> | undefined;
+    const rd = caps?.find((c) => c.key === 'remote_desktop');
+    // An agent reporting os 'darwin' is macOS ('darwin' contains 'win': it was taken for Windows).
+    expect(rd?.reason_en).toContain('Accessibility');
+    await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({});
+  });
+
   it('history is for technicians and above, and stays inside the organization', async () => {
     const a = await newAccount('hist');
     const b = await newAccount('hist-other');

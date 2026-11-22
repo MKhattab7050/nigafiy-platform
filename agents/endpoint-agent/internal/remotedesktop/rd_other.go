@@ -50,6 +50,10 @@ func screenGeometry() (int, int, error) {
 }
 
 func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
+	// Wayland: the screenshot portal (wayland_linux.go).
+	if img, mode, handled, err := platformCapture(); handled {
+		return img, mode, err
+	}
 	f, err := os.CreateTemp("", "ld_screen_*.png")
 	if err != nil {
 		return nil, "", fmt.Errorf("create temp file: %w", err)
@@ -97,6 +101,10 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 }
 
 func InjectInput(ev InputEvent) error {
+	// macOS: CoreGraphics events (input_darwin.go); Wayland: the RemoteDesktop portal (wayland_linux.go).
+	if handled, err := platformInput(ev); handled {
+		return err
+	}
 	if runtime.GOOS == "linux" {
 		if _, err := exec.LookPath("xdotool"); err != nil {
 			return errors.New("xdotool is required for remote input injection on Linux X11")

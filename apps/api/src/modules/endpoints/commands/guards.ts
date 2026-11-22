@@ -24,7 +24,4 @@ export function validateCommandForPlatform(platform: EndpointPlatform, body: Com
   if (body.kind === 'diagnostic_command' && body.tool === 'gpresult' && platform !== 'windows') {
     throw new AppError(409, 'unsupported_by_platform', 'gpresult is only available on Windows');
   }
-  if (body.kind === 'rd_input' && platform === 'macos') {
-    throw new AppError(409, 'unsupported_by_platform', 'Remote mouse and keyboard control is not implemented on macOS; the session is view-only');
-  }
 }

@@ -10,8 +10,9 @@ import type {
 
 export function inferPlatformFromOs(osRaw?: string | null, current?: EndpointPlatform): EndpointPlatform {
   const s = (osRaw ?? '').toLowerCase();
-  if (s.includes('win')) return 'windows';
+  // darwin before win: 'darwin' contains 'win'.
   if (s.includes('darwin') || s.includes('mac')) return 'macos';
+  if (s.includes('win')) return 'windows';
   if (s.includes('linux') || s.includes('ubuntu') || s.includes('debian') || s.includes('rhel') || s.includes('centos')) return 'linux';
   return current ?? 'windows';
 }
@@ -364,12 +365,12 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
       {
         key: 'remote_desktop',
         category: 'remote_control',
-        label_en: 'Remote Desktop Capture & X11 Input',
+        label_en: 'Remote Desktop (X11 and Wayland)',
         label_ar: 'سطح المكتب البعيد لـ Linux',
         state: 'requires_permissions',
         enabled: true,
-        reason_en: 'Requires an X11 desktop session with scrot, gnome-screenshot or ImageMagick for capture and xdotool for input (Wayland input is not supported).',
-        reason_ar: 'يتطلب جلسة سطح مكتب رسومية مع وجود scrot أو gnome-screenshot و xdotool.',
+        reason_en: 'X11: scrot, gnome-screenshot or ImageMagick for capture and xdotool for input. Wayland: the desktop portal (xdg-desktop-portal), which asks the signed-in user to allow screenshots and remote interaction.',
+        reason_ar: 'في X11 يتطلب scrot أو gnome-screenshot و xdotool. في Wayland يمر الالتقاط والتحكم عبر بوابة سطح المكتب (xdg-desktop-portal) التي تطلب موافقة المستخدم.',
       },
       {
         key: 'software_management',
@@ -463,12 +464,12 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
       {
         key: 'remote_desktop',
         category: 'remote_control',
-        label_en: 'Remote Screen Viewing (view only)',
-        label_ar: 'عرض الشاشة عن بُعد لـ macOS (عرض فقط)',
-        state: 'partially_supported',
+        label_en: 'Remote Desktop (screen and input)',
+        label_ar: 'سطح المكتب البعيد لـ macOS (الشاشة والتحكم)',
+        state: 'requires_permissions',
         enabled: true,
-        reason_en: 'Screen viewing needs the Screen Recording permission granted to the agent. Mouse and keyboard control is not implemented on macOS.',
-        reason_ar: 'عرض الشاشة يتطلب منح الوكيل صلاحية تسجيل الشاشة. التحكم بالماوس ولوحة المفاتيح غير مُنفّذ على macOS.',
+        reason_en: 'Screen viewing needs the Screen Recording permission granted to the agent; mouse and keyboard control needs the Accessibility permission (the console shows both).',
+        reason_ar: 'عرض الشاشة يتطلب صلاحية تسجيل الشاشة، والتحكم بالماوس ولوحة المفاتيح يتطلب صلاحية تسهيلات الاستخدام (تظهر الحالتان في وحدة التحكم).',
       },
       {
         key: 'software_management',
