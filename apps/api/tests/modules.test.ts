@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.ts';
 import { defineModule, validateModules } from '../src/infrastructure/module.ts';
-import { type JobHealth, jobHealth, runJobOnce, safeErrorMessage, type ScheduledJob, startJobs, stopJobs } from '../src/infrastructure/scheduler.ts';
+import { type JobHealth, jobHealth, OVERDUE_GRACE_FACTOR, OVERDUE_SLACK_MS, overdueAt, runJobOnce, safeErrorMessage, type ScheduledJob, startJobs, stopJobs } from '../src/infrastructure/scheduler.ts';
 import { modules } from '../src/modules/registry.ts';
 import { scheduledJobsOf } from '../src/modules/system/index.ts';
 import { app, CSRF, newAccount, setRole } from './helpers.ts';
@@ -85,6 +85,10 @@ describe('GET /api/v1/system/modules', () => {
       'router-schedules',
     ]);
     for (const j of jobs) expect(j.state).toBe('not_scheduled'); // the test process does not run the scheduler
+    for (const j of jobs as unknown as Array<{ overdue: boolean; overdue_at: string | null }>) {
+      expect(j.overdue).toBe(false);
+      expect(j.overdue_at).toBeNull();
+    }
     expect(JSON.stringify(res.body)).not.toMatch(/postgres(ql)?:\/\//);
   });
 });
@@ -158,6 +162,38 @@ describe('fault isolation', () => {
       expect(b.state).toBe('not_scheduled');
       expect(b.last_error?.message).toMatch(/invalid interval/);
       expect(g.state).toBe('idle');
+    });
+
+    it('flags a scheduled job as overdue only after interval x grace without a start', () => {
+      const job: ScheduledJob = { name: 'test-overdue', module: 'test', everyMs: 3_600_000, lockKey: 990_005, run: async () => {} };
+      startJobs([job]);
+      const grace = job.everyMs * OVERDUE_GRACE_FACTOR + OVERDUE_SLACK_MS;
+      const [fresh] = jobHealth([job]) as [JobHealth];
+      expect(fresh.state).toBe('idle');
+      expect(fresh.overdue).toBe(false);
+      expect(fresh.overdue_at).not.toBeNull();
+      const due = new Date(fresh.overdue_at!).getTime();
+      expect(Math.abs(due - (Date.now() + grace))).toBeLessThan(5_000);
+      // Seen from the future: past the grace window with no start, it is overdue.
+      const [late] = jobHealth([job], new Date(due + 1000)) as [JobHealth];
+      expect(late.overdue).toBe(true);
+      // A job this process does not schedule is never overdue.
+      const other: ScheduledJob = { name: 'test-unscheduled', module: 'test', everyMs: 60_000, lockKey: 990_006, run: async () => {} };
+      const [u] = jobHealth([other], new Date(Date.now() + 10 * grace)) as [JobHealth];
+      expect(u.overdue).toBe(false);
+      expect(u.overdue_at).toBeNull();
+    });
+
+    it('overdueAt: idle uses the latest start/skip/schedule mark, running uses the current start', () => {
+      const t0 = new Date('2026-01-01T00:00:00Z');
+      const t1 = new Date('2026-01-01T00:10:00Z');
+      const grace = 60_000 * OVERDUE_GRACE_FACTOR + OVERDUE_SLACK_MS;
+      const idle = { scheduled: true, running: false, scheduledAt: t0, lastStartedAt: t0, lastSkippedAt: t1 };
+      expect(overdueAt(60_000, idle)?.getTime()).toBe(t1.getTime() + grace);
+      const running = { ...idle, running: true };
+      expect(overdueAt(60_000, running)?.getTime()).toBe(t0.getTime() + grace);
+      expect(overdueAt(60_000, { ...idle, scheduled: false })).toBeNull();
+      expect(overdueAt(60_000, undefined)).toBeNull();
     });
 
     it('safeErrorMessage is single-line, bounded and redacts credentials', () => {

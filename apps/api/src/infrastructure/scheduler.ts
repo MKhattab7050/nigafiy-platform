@@ -34,10 +34,24 @@ export interface JobHealth {
   /** Last time the run was skipped because another API instance held the job's lock. */
   last_skipped_at: string | null;
   last_error: { at: string; message: string } | null;
+  /**
+   * The job has not started (or is still running) longer than its interval × OVERDUE_GRACE_FACTOR
+   * plus OVERDUE_SLACK_MS after its last start, its last lock skip, or the moment it was scheduled.
+   * Always false for a job this process does not schedule.
+   */
+  overdue: boolean;
+  /** When the job becomes overdue if it does not start (or finish, when running) before then. Null when not scheduled. */
+  overdue_at: string | null;
 }
+
+/** A job is overdue once it misses this many intervals (plus OVERDUE_SLACK_MS). */
+export const OVERDUE_GRACE_FACTOR = 2;
+/** Extra slack so start-up delays and slow single runs of short jobs are not flagged. */
+export const OVERDUE_SLACK_MS = 60_000;
 
 interface MutableHealth {
   scheduled: boolean;
+  scheduledAt: Date | null;
   running: boolean;
   runs: number;
   failures: number;
@@ -58,6 +72,7 @@ function healthOf(name: string): MutableHealth {
   if (!h) {
     h = {
       scheduled: false,
+      scheduledAt: null,
       running: false,
       runs: 0,
       failures: 0,
@@ -142,7 +157,9 @@ function schedule(job: ScheduledJob, initialDelayMs = 1000): void {
   const first = setTimeout(tick, initialDelayMs);
   first.unref();
   timers.push(first);
-  healthOf(job.name).scheduled = true;
+  const h = healthOf(job.name);
+  h.scheduled = true;
+  h.scheduledAt = new Date();
 }
 
 export function startJobs(jobs: readonly ScheduledJob[]): void {
@@ -161,16 +178,33 @@ export function startJobs(jobs: readonly ScheduledJob[]): void {
 export async function stopJobs(): Promise<void> {
   for (const t of timers) clearInterval(t);
   timers.length = 0;
-  for (const h of health.values()) h.scheduled = false;
+  for (const h of health.values()) {
+    h.scheduled = false;
+    h.scheduledAt = null;
+  }
   await Promise.allSettled([...running]);
 }
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
+/**
+ * When a job counts as overdue: a running job once its current run has lasted longer than the grace
+ * window; an idle job once the grace window has passed since the last sign of life (its last start,
+ * its last lock skip — another instance ran it — or the moment it was scheduled).
+ */
+export function overdueAt(everyMs: number, h: Pick<MutableHealth, 'scheduled' | 'running' | 'scheduledAt' | 'lastStartedAt' | 'lastSkippedAt'> | undefined): Date | null {
+  if (!h || (!h.scheduled && !h.running)) return null;
+  const grace = everyMs * OVERDUE_GRACE_FACTOR + OVERDUE_SLACK_MS;
+  const marks = h.running ? [h.lastStartedAt] : [h.lastStartedAt, h.lastSkippedAt, h.scheduledAt];
+  const last = Math.max(...marks.map((d) => d?.getTime() ?? 0));
+  return last > 0 ? new Date(last + grace) : null;
+}
+
 /** Health of the given jobs as seen by this API instance. */
-export function jobHealth(jobs: readonly ScheduledJob[]): JobHealth[] {
+export function jobHealth(jobs: readonly ScheduledJob[], now: Date = new Date()): JobHealth[] {
   return jobs.map((job) => {
     const h = health.get(job.name);
+    const due = overdueAt(job.everyMs, h);
     return {
       name: job.name,
       module: job.module,
@@ -184,6 +218,8 @@ export function jobHealth(jobs: readonly ScheduledJob[]): JobHealth[] {
       last_success_at: iso(h?.lastSuccessAt ?? null),
       last_skipped_at: iso(h?.lastSkippedAt ?? null),
       last_error: h?.lastError ? { at: h.lastError.at.toISOString(), message: h.lastError.message } : null,
+      overdue: due !== null && now.getTime() > due.getTime(),
+      overdue_at: iso(due),
     };
   });
 }

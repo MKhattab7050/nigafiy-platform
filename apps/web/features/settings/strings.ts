@@ -215,7 +215,7 @@ export const en = {
   'settings.system.state.waiting': 'Waiting for its first run',
   'settings.system.state.not_scheduled': 'Not scheduled here',
   'settings.system.notScheduledHint': 'This server process does not run background jobs (for example a second API instance or a test process). Check the process that runs the scheduler.',
-  'settings.system.overdueHint': 'It last started more than twice its interval ago. Check the server log; restarting the API restarts the scheduler.',
+  'settings.system.overdueHint': 'It has not started for more than twice its interval (plus a minute), or its current run has lasted that long. Check the server log; restarting the API restarts the scheduler.',
   'settings.system.failingHint': '{n} failed run(s) in a row. The error below comes from the server.',
   'settings.system.skipped': 'Skipped {when}: another server instance held its lock.',
   'settings.system.modules': 'Parts',
@@ -224,6 +224,11 @@ export const en = {
   'settings.system.public': 'Public',
   'settings.system.gateway': 'Machine gateway',
   'settings.system.noJobs': 'No background job is registered.',
+  'settings.system.open': 'Open the self-check page',
+  'settings.system.pageDesc': 'Every registered part of the Nigafiy server and every background job on this server process: last run, last error, and whether it is overdue.',
+  'settings.system.jobs': 'Background jobs',
+  'settings.system.paths': 'Routes',
+  'settings.system.overdueAt': 'Overdue if it has not run {when}.',
 } as const;
 
 export const ar: Record<keyof typeof en, string> = {
@@ -442,7 +447,7 @@ export const ar: Record<keyof typeof en, string> = {
   'settings.system.state.waiting': 'بانتظار أول تشغيل',
   'settings.system.state.not_scheduled': 'غير مجدولة هنا',
   'settings.system.notScheduledHint': 'عملية الخادم هذه لا تشغّل المهام الخلفية (مثل نسخة API ثانية أو عملية اختبار). تحقق من العملية التي تشغّل المجدول.',
-  'settings.system.overdueHint': 'آخر بدء لها كان قبل أكثر من ضعف الفاصل الزمني. راجع سجل الخادم؛ إعادة تشغيل الـAPI تعيد تشغيل المجدول.',
+  'settings.system.overdueHint': 'لم تبدأ منذ أكثر من ضعف فاصلها الزمني (مع دقيقة إضافية)، أو أن تشغيلها الحالي استمر هذه المدة. راجع سجل الخادم؛ إعادة تشغيل الـAPI تعيد تشغيل المجدول.',
   'settings.system.failingHint': '{n} تشغيل فاشل متتالٍ. الخطأ أدناه من الخادم.',
   'settings.system.skipped': 'تُخطّيت {when}: نسخة خادم أخرى كانت تحمل قفلها.',
   'settings.system.modules': 'الأجزاء',
@@ -451,4 +456,9 @@ export const ar: Record<keyof typeof en, string> = {
   'settings.system.public': 'عام',
   'settings.system.gateway': 'بوابة الأجهزة',
   'settings.system.noJobs': 'لا توجد مهمة خلفية مسجّلة.',
+  'settings.system.open': 'افتح صفحة الفحص الذاتي',
+  'settings.system.pageDesc': 'كل أجزاء خادم Nigafiy المسجّلة وكل مهمة خلفية في عملية الخادم هذه: آخر تشغيل، وآخر خطأ، وهل تأخرت عن موعدها.',
+  'settings.system.jobs': 'المهام الخلفية',
+  'settings.system.paths': 'المسارات',
+  'settings.system.overdueAt': 'تُعدّ متأخرة إن لم تعمل {when}.',
 };

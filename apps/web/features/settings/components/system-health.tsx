@@ -1,6 +1,8 @@
 'use client';
 
-import { Async, Badge, Card, DataTable, type Tone } from '@/components/ui';
+import { Activity, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { Async, Badge, Card, DataTable, PageHeader, type Tone } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
@@ -18,6 +20,9 @@ interface JobHealth {
   last_success_at: string | null;
   last_skipped_at: string | null;
   last_error: { at: string; message: string } | null;
+  /** Computed by the server: no start within interval × grace (infrastructure/scheduler.ts). */
+  overdue: boolean;
+  overdue_at: string | null;
 }
 
 interface ModuleStatus {
@@ -32,15 +37,20 @@ type Verdict = 'running' | 'ok' | 'failing' | 'overdue' | 'waiting' | 'not_sched
 
 const TONE: Record<Verdict, Tone> = { running: 'info', ok: 'ok', failing: 'crit', overdue: 'warn', waiting: 'idle', not_scheduled: 'warn' };
 
-/** How a job is doing, from the facts the server reports. Overdue: last start older than twice its interval (plus a minute of slack). */
-function verdictOf(job: JobHealth, now: number): Verdict {
+/** How a job is doing, from the facts the server reports (overdue is the server's own flag). */
+function verdictOf(job: JobHealth): Verdict {
   if (job.state === 'not_scheduled') return 'not_scheduled';
+  if (job.overdue) return 'overdue';
   if (job.state === 'running') return 'running';
   if (job.consecutive_failures > 0) return 'failing';
   if (!job.last_started_at) return 'waiting';
-  if (now - new Date(job.last_started_at).getTime() > job.interval_seconds * 2000 + 60_000) return 'overdue';
   return 'ok';
 }
+
+type Report = { modules: ModuleStatus[]; jobs: JobHealth[] };
+
+const problemCount = (jobs: JobHealth[]) =>
+  jobs.map(verdictOf).filter((v) => v === 'failing' || v === 'overdue' || v === 'not_scheduled').length;
 
 function every(seconds: number): string {
   if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
@@ -49,27 +59,66 @@ function every(seconds: number): string {
   return `${seconds}s`;
 }
 
-/** Settings: GET /system/modules — registered parts and background-job health of this API process. */
+function Summary({ jobs }: { jobs: JobHealth[] }) {
+  const { t } = useI18n();
+  const problems = problemCount(jobs);
+  return (
+    <p className={`border-b border-line px-4 py-3 text-[13px] ${problems ? 'text-warn' : 'text-ok'}`}>
+      {jobs.length === 0 ? t('settings.system.noJobs') : problems ? fill(t('settings.system.problems'), { n: problems }) : t('settings.system.allOk')}
+    </p>
+  );
+}
+
+/** Settings: a one-line verdict from GET /system/modules and the way to the full self-check page. */
 export function SystemHealth() {
   const { t } = useI18n();
-  const query = useQuery<{ modules: ModuleStatus[]; jobs: JobHealth[] }>('/system/modules', [], 30_000);
+  const query = useQuery<Report>('/system/modules', [], 30_000);
   return (
-    <Card title={t('settings.system.title')} description={t('settings.system.desc')} padded={false}>
-      <Async query={query}>{(data) => <Report modules={data.modules} jobs={data.jobs} />}</Async>
+    <Card
+      title={t('settings.system.title')}
+      description={t('settings.system.desc')}
+      padded={false}
+      action={
+        <Link href="/system/modules" className="inline-flex items-center gap-1 text-[13px] font-medium text-accent-hover hover:underline">
+          {t('settings.system.open')}
+          <ArrowRight className="size-3.5 rtl:-scale-x-100" aria-hidden />
+        </Link>
+      }
+    >
+      <Async query={query}>{(data) => <Summary jobs={data.jobs} />}</Async>
     </Card>
   );
 }
 
-function Report({ modules, jobs }: { modules: ModuleStatus[]; jobs: JobHealth[] }) {
+/** Hub page /system/modules: every registered module and every background job with last run, last error and overdue. */
+export function SystemModulesScreen() {
+  const { t } = useI18n();
+  const query = useQuery<Report>('/system/modules', [], 15_000);
+  return (
+    <>
+      <PageHeader icon={<Activity className="size-[18px]" aria-hidden />} title={t('settings.system.title')} description={t('settings.system.pageDesc')} />
+      <Async query={query}>
+        {(data) => (
+          <div className="space-y-4">
+            <Card title={t('settings.system.jobs')} padded={false}>
+              <Jobs jobs={data.jobs} />
+            </Card>
+            <Card title={t('settings.system.modules')} description={fill(t('settings.system.modulesCount'), { n: data.modules.length })} padded={false}>
+              <Modules modules={data.modules} />
+            </Card>
+          </div>
+        )}
+      </Async>
+    </>
+  );
+}
+
+function Jobs({ jobs }: { jobs: JobHealth[] }) {
   const { t, locale } = useI18n();
-  const now = Date.now();
-  const rows = jobs.map((j) => ({ job: j, verdict: verdictOf(j, now) }));
-  const problems = rows.filter((r) => r.verdict === 'failing' || r.verdict === 'overdue' || r.verdict === 'not_scheduled').length;
+  const rows = jobs.map((j) => ({ job: j, verdict: verdictOf(j) }));
   return (
     <div>
-      <p className={`border-b border-line px-4 py-3 text-[13px] ${problems ? 'text-warn' : 'text-ok'}`}>
-        {jobs.length === 0 ? t('settings.system.noJobs') : problems ? fill(t('settings.system.problems'), { n: problems }) : t('settings.system.allOk')}
-      </p>
+      <Summary jobs={jobs} />
       {jobs.length > 0 && (
         <DataTable stack minWidth={820}>
           <thead>
@@ -101,6 +150,11 @@ function Report({ modules, jobs }: { modules: ModuleStatus[]; jobs: JobHealth[] 
                     <Badge tone={TONE[verdict]}>{t(`settings.system.state.${verdict}` as Key)}</Badge>
                     {verdict === 'not_scheduled' && <p className="max-w-xs text-xs text-muted">{t('settings.system.notScheduledHint')}</p>}
                     {verdict === 'overdue' && <p className="max-w-xs text-xs text-muted">{t('settings.system.overdueHint')}</p>}
+                    {job.overdue_at && !job.overdue && (
+                      <p className="text-xs text-faint" title={absoluteTime(job.overdue_at, locale)}>
+                        {fill(t('settings.system.overdueAt'), { when: relativeTime(job.overdue_at, locale) })}
+                      </p>
+                    )}
                     {verdict === 'failing' && <p className="max-w-xs text-xs text-muted">{fill(t('settings.system.failingHint'), { n: job.consecutive_failures })}</p>}
                     {job.last_error && (
                       <p className="max-w-sm text-xs text-crit">
@@ -127,23 +181,62 @@ function Report({ modules, jobs }: { modules: ModuleStatus[]; jobs: JobHealth[] 
           </tbody>
         </DataTable>
       )}
-      <details className="border-t border-line px-4 py-3">
-        <summary className="cursor-pointer text-[13px] font-medium">
-          {t('settings.system.modules')} <span className="text-xs font-normal text-muted">({fill(t('settings.system.modulesCount'), { n: modules.length })})</span>
-        </summary>
-        <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-          {modules.map((m) => (
-            <li key={m.name} className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="mono" dir="ltr">
+    </div>
+  );
+}
+
+function Modules({ modules }: { modules: ModuleStatus[] }) {
+  const { t } = useI18n();
+  return (
+    <DataTable stack minWidth={640}>
+      <thead>
+        <tr>
+          <th>{t('settings.system.module')}</th>
+          <th>{t('settings.system.paths')}</th>
+          <th>{t('settings.system.jobs')}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {modules.map((m) => (
+          <tr key={m.name}>
+            <td data-label={t('settings.system.module')}>
+              <span className="mono text-[13px]" dir="ltr">
                 {m.name}
               </span>
-              {m.api && <Badge tone="idle" dot={false}>{t('settings.system.api')}</Badge>}
-              {m.public_path && <Badge tone="idle" dot={false}>{t('settings.system.public')}</Badge>}
-              {m.gateway_path && <Badge tone="idle" dot={false}>{t('settings.system.gateway')}</Badge>}
-            </li>
-          ))}
-        </ul>
-      </details>
-    </div>
+            </td>
+            <td data-label={t('settings.system.paths')}>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                {m.api && <Badge tone="idle" dot={false}>{t('settings.system.api')}</Badge>}
+                {m.public_path && (
+                  <Badge tone="idle" dot={false}>
+                    {t('settings.system.public')}{' '}
+                    <bdi className="mono" dir="ltr">
+                      {m.public_path}
+                    </bdi>
+                  </Badge>
+                )}
+                {m.gateway_path && (
+                  <Badge tone="idle" dot={false}>
+                    {t('settings.system.gateway')}{' '}
+                    <bdi className="mono" dir="ltr">
+                      {m.gateway_path}
+                    </bdi>
+                  </Badge>
+                )}
+              </div>
+            </td>
+            <td data-label={t('settings.system.jobs')} className="text-xs">
+              {m.jobs.length ? (
+                <span className="mono" dir="ltr">
+                  {m.jobs.join(', ')}
+                </span>
+              ) : (
+                <span className="text-muted">—</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </DataTable>
   );
 }
