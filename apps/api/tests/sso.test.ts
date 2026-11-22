@@ -349,6 +349,37 @@ describe('SAML sign-in', () => {
         },
         'saml_invalid',
       ],
+      [
+        // Content changed after signing (the victim's address swapped in): the digest no longer matches.
+        'tampered after signing',
+        ({ requestId }) => {
+          const signed = signAssertion(base(requestId, { nameId: 'attacker', attributes: { email: `attacker@${domain}` } }), keys);
+          return wrap(requestId, signed.replace(`attacker@${domain}`, email));
+        },
+        'saml_invalid',
+      ],
+      [
+        // Wrapping variant: the signed assertion is hidden inside an Extensions element and an unsigned
+        // assertion for the victim is the Response's real child.
+        'signed assertion hidden in Extensions',
+        ({ requestId }) => {
+          const signed = signAssertion(base(requestId, { nameId: 'attacker', attributes: { email: `attacker@${domain}` } }), keys);
+          const evil = base(requestId, { nameId: 'victim' });
+          return wrap(requestId, `<samlp:Extensions>${signed}</samlp:Extensions>${evil}`);
+        },
+        'saml_invalid',
+      ],
+      [
+        // Wrapping variant: the unsigned victim assertion is nested inside the signed one, so the
+        // signature still verifies over its own element while a naive reader finds the inner one.
+        'unsigned assertion nested in a signed one',
+        ({ requestId }) => {
+          const evil = base(requestId, { nameId: 'victim' });
+          const signed = signAssertion(base(requestId, { nameId: 'attacker', attributes: { email: `attacker@${domain}` } }), keys);
+          return wrap(requestId, signed.replace('</saml:Assertion>', `${evil}</saml:Assertion>`));
+        },
+        'saml_invalid',
+      ],
     ];
     for (const [label, make, code] of cases) {
       const browser = request.agent(app);
