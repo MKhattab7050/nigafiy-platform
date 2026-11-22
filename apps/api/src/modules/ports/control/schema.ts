@@ -39,5 +39,13 @@ export const requestListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-export const quarantineSchema = z.object({ reason: z.string().trim().max(500).optional(), confirm }).strict();
+/** Optional automatic release, counted from the verified move: 5 minutes to 30 days. */
+export const QUARANTINE_AUTO_RELEASE_MAX_MINUTES = 43_200;
+export const quarantineSchema = z
+  .object({
+    reason: z.string().trim().max(500).optional(),
+    release_after_minutes: z.number().int().min(5).max(QUARANTINE_AUTO_RELEASE_MAX_MINUTES).nullable().optional(),
+    confirm,
+  })
+  .strict();
 export const releaseSchema = z.object({ confirm }).strict();

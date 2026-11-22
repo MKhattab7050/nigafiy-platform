@@ -84,6 +84,9 @@ func (a *Agent) handleSet(req *gosnmp.SnmpPacket, resp *gosnmp.SnmpPacket) {
 				if b, ok := val.([]byte); ok {
 					val = append([]byte(nil), b...) // the decoder may alias the receive buffer
 				}
+				if a.MangleSet != nil {
+					val = a.MangleSet(name, val)
+				}
 				if a.entries[j].typ == gosnmp.Gauge32 {
 					if u, ok := val.(uint32); ok {
 						val = uint(u)

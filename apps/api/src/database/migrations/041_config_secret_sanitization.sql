@@ -58,3 +58,12 @@ ALTER TABLE config_backup_versions ADD CONSTRAINT config_backup_versions_target_
 -- an administrator-confirmed restore are recorded as such.
 ALTER TABLE config_backup_runs DROP CONSTRAINT config_backup_runs_trigger_check;
 ALTER TABLE config_backup_runs ADD CONSTRAINT config_backup_runs_trigger_check CHECK (trigger IN ('manual', 'scheduled', 'playbook', 'restore'));
+
+-- Switch port control (same release, unrelated to configuration backup): a quarantine can carry an
+-- optional automatic release, counted from the verified move to the quarantine VLAN. The
+-- quarantine-auto-release job queues the normal verified release when it is due; a failed attempt is
+-- retried after 15 minutes (auto_release_attempted_at) and the device stays isolated meanwhile.
+ALTER TABLE device_quarantines
+  ADD COLUMN auto_release_minutes integer CHECK (auto_release_minutes IS NULL OR auto_release_minutes BETWEEN 5 AND 43200),
+  ADD COLUMN auto_release_attempted_at timestamptz;
+CREATE INDEX device_quarantines_auto_release_idx ON device_quarantines (activated_at) WHERE status = 'active' AND auto_release_minutes IS NOT NULL;

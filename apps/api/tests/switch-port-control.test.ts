@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { playbookTick } from '../src/modules/playbooks/index.ts';
+import { runQuarantineAutoRelease } from '../src/modules/ports/index.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry, type TestCollector } from './helpers.ts';
 
 // Phase 5: switch port control (admin status, description, access VLAN), write credentials,
@@ -294,6 +295,69 @@ describe('switch port control', () => {
     expect(view.current).toBeNull();
     expect(view.history[0]).toMatchObject({ status: 'failed', last_error: 'the PVID is not the new VLAN' });
     expect(view.plan).toMatchObject({ possible: true, quarantine_vlan_source: 'switch' }); // can be tried again
+  });
+
+  it('releases a quarantine automatically when its optional auto-release time has passed (fail closed, retried, audited)', async () => {
+    const { a, c, sw, byIp } = await office();
+    await a.agent.put(`/api/v1/switches/${sw}/write-credentials`).set(CSRF).send({ credentials: { version: '2c', community: WRITE } });
+    await a.agent.put(`/api/v1/switches/${sw}/quarantine-vlan`).set(CSRF).send({ vlan: 99 });
+    const nas = byIp('192.168.7.10').id as string;
+    // Validation: 5 minutes to 30 days, whole minutes.
+    for (const bad of [2, 43_201, 1.5, '60']) {
+      expect((await a.agent.post(`/api/v1/devices/${nas}/quarantine`).set(CSRF).send({ release_after_minutes: bad, confirm: true })).status, String(bad)).toBe(400);
+    }
+    const qd = await a.agent.post(`/api/v1/devices/${nas}/quarantine`).set(CSRF).send({ reason: 'Contain until checked', release_after_minutes: 60, confirm: true });
+    expect(qd.status).toBe(202);
+    let view = (await a.agent.get(`/api/v1/devices/${nas}/quarantine`)).body;
+    // Not verified yet: no release time.
+    expect(view.current).toMatchObject({ status: 'requested', auto_release_minutes: 60, auto_release_at: null });
+    const cmd = (await portCommands(c)).cmds.find((x) => x.payload.request_id === qd.body.request_id)!;
+    await telemetry(c, [result(cmd, { method: 'qbridge', before: { vlan: 10 }, after: { vlan: 99 } })]);
+    view = (await a.agent.get(`/api/v1/devices/${nas}/quarantine`)).body;
+    expect(view.current.status).toBe('active');
+    expect(new Date(view.current.auto_release_at).getTime() - new Date(view.current.activated_at).getTime()).toBe(60 * 60_000);
+    const qid = view.current.id as string;
+
+    await runQuarantineAutoRelease();
+    expect((await systemPool.query(`SELECT status FROM device_quarantines WHERE id = $1`, [qid])).rows[0].status).toBe('active'); // not due
+
+    // Due, but the switch is disabled: the device stays quarantined, the reason is shown and audited.
+    await systemPool.query(`UPDATE device_quarantines SET activated_at = now() - interval '61 minutes' WHERE id = $1`, [qid]);
+    await systemPool.query(`UPDATE snmp_targets SET enabled = false WHERE id = $1`, [sw]);
+    await runQuarantineAutoRelease();
+    view = (await a.agent.get(`/api/v1/devices/${nas}/quarantine`)).body;
+    expect(view.current).toMatchObject({ id: qid, status: 'active' });
+    expect(view.current.last_error).toMatch(/^Automatic release not possible: This switch is disabled/);
+    await systemPool.query(`UPDATE snmp_targets SET enabled = true WHERE id = $1`, [sw]);
+    // Retried only after the retry interval.
+    await runQuarantineAutoRelease();
+    expect((await systemPool.query(`SELECT status FROM device_quarantines WHERE id = $1`, [qid])).rows[0].status).toBe('active');
+    await systemPool.query(`UPDATE device_quarantines SET auto_release_attempted_at = now() - interval '16 minutes' WHERE id = $1`, [qid]);
+    await runQuarantineAutoRelease();
+    view = (await a.agent.get(`/api/v1/devices/${nas}/quarantine`)).body;
+    expect(view.current).toMatchObject({ id: qid, status: 'releasing', last_error: null });
+    const relReq = await systemPool.query(`SELECT requested_via, created_by, created_by_email, purpose FROM switch_port_requests WHERE id = $1`, [view.current.release_request_id]);
+    expect(relReq.rows[0]).toEqual({ requested_via: 'auto_release', created_by: null, created_by_email: null, purpose: 'release' });
+    const relCmd = (await portCommands(c)).cmds.find((x) => x.payload.request_id === view.current.release_request_id)!;
+    expect(relCmd.payload).toMatchObject({ op: 'access_vlan', vlan: 10, if_index: 1 });
+    await telemetry(c, [result(relCmd, { method: 'qbridge', before: { vlan: 99 }, after: { vlan: 10 } })]);
+    view = (await a.agent.get(`/api/v1/devices/${nas}/quarantine`)).body;
+    expect(view.current).toBeNull();
+    expect(view.history[0]).toMatchObject({ id: qid, status: 'released', auto_released: true, released_by_email: null });
+
+    const audits = await systemPool.query(
+      `SELECT action, actor, user_id, metadata FROM audit_logs WHERE organization_id = $1 AND action LIKE 'device.quarantine%' ORDER BY created_at`,
+      [a.organizationId],
+    );
+    expect(audits.rows.map((x) => [x.action, x.actor])).toEqual([
+      ['device.quarantine', 'user'],
+      ['device.quarantine.auto_release_failed', 'system'],
+      ['device.quarantine.release', 'system'],
+    ]);
+    expect(audits.rows[0].metadata).toMatchObject({ auto_release_minutes: 60 });
+    expect(audits.rows[1].metadata).toMatchObject({ quarantine_id: qid, error: 'switch_disabled', automation: 'quarantine_auto_release' });
+    expect(audits.rows[2].metadata).toMatchObject({ quarantine_id: qid, auto_release: true, from_vlan: 99, to_vlan: 10 });
+    expect(audits.rows[2].user_id).toBeNull();
   });
 
   it('playbook steps disable / quarantine a device port only at an administrator approval, with the same protections', async () => {
