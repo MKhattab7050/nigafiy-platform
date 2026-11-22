@@ -962,24 +962,36 @@ export interface IpamSubnetSummary {
   last_scan_at: string | null;
   vlan_id: number | null;
   gateway: { ip: string; source: 'documented' | 'observed' } | null;
+  family: 4 | 6;
+  /** Approximate for large IPv6 subnets (a /64 holds 2^64 addresses); usable_exact / free_exact are exact. */
   usable: number;
   online: number;
   offline: number;
   documented_only: number;
   free: number;
+  usable_exact: string;
+  free_exact: string;
   conflicts: number;
 }
 
 export interface IpamSubnetDetail extends IpamSubnetSummary {
   network: string;
-  broadcast: string;
+  /** IPv4 only: IPv6 has no broadcast address. */
+  broadcast: string | null;
+  prefix: number;
   netmask: string;
   first_host: string;
   last_host: string;
   dns_servers: string[];
   dhcp: { start: string; end: string } | null;
   notes: string | null;
+  /**
+   * The observed, documented and infrastructure addresses (free addresses are never listed), in
+   * address order. Paged: addresses_offset / addresses_total say which part this is.
+   */
   addresses: IpamAddress[];
+  addresses_offset: number;
+  addresses_total: number;
   conflict_list: IpamConflict[];
   /** Unused, undocumented addresses outside the DHCP pool — candidates for a new static address. */
   next_free: string[];

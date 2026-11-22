@@ -4,6 +4,7 @@ import type { IpamSubnetDetail } from '@lan-detective/shared-types';
 import { AlertTriangle, Download, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { Async, Button, Card, Fact } from '@/components/ui';
+import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -18,7 +19,11 @@ export function SubnetView({ id, onChanged }: { id: string; onChanged?: () => vo
   const { locale } = useI18n();
   const tx = ipamText(locale);
   const { can } = useApp();
-  const q = useQuery<IpamSubnetDetail>(`/ipam/subnets/${id}`, ['devices'], 30_000);
+  // IPv6 subnets list their addresses a page at a time (an IPv4 subnet's map always loads them all).
+  const [page, setPage] = useState({ id, offset: 0 });
+  const offset = page.id === id ? page.offset : 0;
+  const setOffset = (o: number) => setPage({ id, offset: o });
+  const q = useQuery<IpamSubnetDetail>(`/ipam/subnets/${id}${qs({ offset: offset || null })}`, ['devices'], 30_000);
   const [editing, setEditing] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
 
@@ -50,19 +55,17 @@ export function SubnetView({ id, onChanged }: { id: string; onChanged?: () => vo
             >
               <dl>
                 <Fact label={tx.network}>
-                  <span className="mono">{s.cidr}</span>
+                  <span className="mono break-all">{s.cidr}</span>
                 </Fact>
                 <Fact label={tx.netmask}>
-                  <span className="mono">{s.netmask}</span>
+                  <span className="mono break-all">{s.netmask}</span>
                 </Fact>
                 <Fact label={tx.hostRange}>
-                  <span className="mono">
+                  <span className="mono break-all">
                     {s.first_host} – {s.last_host}
                   </span>
                 </Fact>
-                <Fact label={tx.broadcast}>
-                  <span className="mono">{s.broadcast}</span>
-                </Fact>
+                <Fact label={tx.broadcast}>{s.broadcast === null ? <span className="text-muted">{tx.noBroadcast}</span> : <span className="mono">{s.broadcast}</span>}</Fact>
                 <Fact label={tx.gateway} source={s.gateway ? tx.gatewaySource[s.gateway.source] : undefined}>
                   {s.gateway ? <span className="mono">{s.gateway.ip}</span> : <span className="text-muted">{tx.notSet}</span>}
                 </Fact>
@@ -121,13 +124,13 @@ export function SubnetView({ id, onChanged }: { id: string; onChanged?: () => vo
                 </Card>
               )}
               <Card title={tx.map}>
-                <AddressMap subnet={s} onPick={setPicked} />
+                <AddressMap subnet={s} onPick={setPicked} onPage={setOffset} />
                 <div className="mt-4 border-t border-line pt-3 text-xs text-muted">
                   {s.next_free.length ? (
                     <p className="flex flex-wrap items-center gap-2">
                       {tx.nextFree}:
                       {s.next_free.map((ip) => (
-                        <button key={ip} type="button" onClick={() => setPicked(ip)} className="mono rounded border border-line-strong bg-raised px-1.5 py-0.5 text-fg hover:border-accent">
+                        <button key={ip} type="button" onClick={() => setPicked(ip)} className="mono break-all rounded border border-line-strong bg-raised px-1.5 py-0.5 text-fg hover:border-accent">
                           {ip}
                         </button>
                       ))}

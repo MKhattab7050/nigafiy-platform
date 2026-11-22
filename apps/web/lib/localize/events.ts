@@ -119,7 +119,7 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
       return `تصعيد حادثة مفتوحة: ${t}`;
     }
 
-    case 'ip_conflict': {
+    case 'ip_conflict_detected': {
       const ip = str(d.ip);
       const kind = str(d.kind);
       if (ip && kind === 'duplicate_ip') return `جهازان يستخدمان نفس العنوان ${ltr(ip)}`;

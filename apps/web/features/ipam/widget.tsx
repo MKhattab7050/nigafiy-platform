@@ -11,6 +11,7 @@ import { useApp, useQuery } from '@/lib/app';
 import { type AttentionItem, useReportAttention } from '@/lib/attention';
 import { pct } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
+import { countText } from './components/usage-bar';
 import { ipamText } from './text';
 
 const used = (s: IpamSubnetSummary) => s.online + s.offline + s.documented_only;
@@ -33,7 +34,7 @@ export default function IpamWidget() {
         if (s.conflicts > 0)
           out.push({ id: `ipam-conflict-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.conflicts'), { count: s.conflicts, cidr: s.cidr }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
         if (s.usable > 0 && share(s) >= NEARLY_FULL)
-          out.push({ id: `ipam-full-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.full'), { cidr: s.cidr, free: s.free }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
+          out.push({ id: `ipam-full-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.full'), { cidr: s.cidr, free: countText(s.free_exact) }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
       }
       return out;
     }),
@@ -66,7 +67,7 @@ export default function IpamWidget() {
                         display={pct(p, 0)}
                         detail={
                           <span className="tnum">
-                            {s.free} {tx.free}
+                            {countText(s.free_exact)} {tx.free}
                             {s.conflicts > 0 && (
                               <span className="text-warn">
                                 {' '}

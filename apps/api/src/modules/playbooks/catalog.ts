@@ -27,7 +27,7 @@ export const TRIGGER_EVENT_TYPES = [
   'endpoint_enrolled',
   'endpoint_command',
   // IPAM
-  'ip_conflict',
+  'ip_conflict_detected',
   'ip_conflict_resolved',
   // switches (modules/ports)
   'switch_unreadable',
@@ -113,7 +113,7 @@ export const ACTIONS: Record<ActionKey, ActionInfo> = {
   run_tool: info({}),
   run_checks: info({ produces: ['check_down', 'check_degraded', 'check_recovered'], siteWide: true }),
   run_discovery: info({
-    produces: ['device_discovered', 'device_online', 'device_offline', 'device_ip_changed', 'ip_mac_changed', 'unwanted_device_online', 'discovery_baseline', 'ip_conflict', 'ip_conflict_resolved'],
+    produces: ['device_discovered', 'device_online', 'device_offline', 'device_ip_changed', 'ip_mac_changed', 'unwanted_device_online', 'discovery_baseline', 'ip_conflict_detected', 'ip_conflict_resolved'],
     siteWide: true,
   }),
   wake_device: info({ needsDevice: true, produces: ['device_online'] }),

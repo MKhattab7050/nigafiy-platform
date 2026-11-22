@@ -39,7 +39,7 @@ export async function syncIpamConflicts(db: Db, organizationId: string, siteId: 
       siteId,
       deviceId,
       collectorId,
-      type: 'ip_conflict',
+      type: 'ip_conflict_detected',
       // A documentation inconsistency is worth knowing; two machines fighting over an address is a fault.
       severity: conflict.kind === 'static_in_dhcp_pool' ? 'info' : 'warning',
       title: CONFLICT_TITLE[conflict.kind](conflict.ip),

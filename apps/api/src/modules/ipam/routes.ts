@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { auth, idParams, parse, requireRole } from '../../common/http.ts';
-import { createRecord, historyQuery, patchRecord, subnetBody, subnetListQuery } from './schema.ts';
+import { createRecord, historyQuery, patchRecord, subnetBody, subnetDetailQuery, subnetListQuery } from './schema.ts';
 import {
   addressHistory,
   documentAddress,
@@ -25,7 +25,8 @@ ipamRouter.get('/ipam/subnets', async (req, res) => {
 ipamRouter.get('/ipam/subnets/:id', async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  res.json(await getSubnet(ctx.organizationId, id));
+  const page = parse(subnetDetailQuery, req.query);
+  res.json(await getSubnet(ctx.organizationId, id, page));
 });
 
 ipamRouter.put('/ipam/subnets/:id', requireRole('admin'), async (req, res) => {
@@ -39,10 +40,11 @@ ipamRouter.put('/ipam/subnets/:id', requireRole('admin'), async (req, res) => {
 ipamRouter.get('/ipam/subnets/:id/export.csv', async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  const subnet = await getSubnet(ctx.organizationId, id);
+  const subnet = await getSubnet(ctx.organizationId, id, 'all');
   const csv = subnetCsv(subnet);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="ipam-${subnet.cidr.replace('/', '_')}.csv"`);
+  // IPv6 colons are not allowed in Windows file names.
+  res.setHeader('Content-Disposition', `attachment; filename="ipam-${subnet.cidr.replace('/', '_').replaceAll(':', '-')}.csv"`);
   res.send(csv);
 });
 

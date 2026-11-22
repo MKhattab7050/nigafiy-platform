@@ -45,7 +45,7 @@ describe('IPAM arithmetic and rules', () => {
     expect(plan.addresses.find((a) => a.ip === '10.1.1.12')!.flags).toContain('dhcp_pool');
     expect(plan.addresses.some((a) => a.ip === '10.9.9.9')).toBe(false);
     // 14 usable; taken: .2 .4 .5 (online), .6 (offline), .7 .12 (documented only).
-    expect(plan.counts).toEqual({ usable: 14, online: 3, offline: 1, documented_only: 2, free: 8 });
+    expect(plan.counts).toEqual({ usable: 14, online: 3, offline: 1, documented_only: 2, free: 8, usable_exact: '14', free_exact: '8' });
     // Suggestions skip the gateway, the collector, everything taken and the DHCP pool.
     expect(plan.next_free).toEqual(['10.1.1.8', '10.1.1.9']);
   });
@@ -164,11 +164,11 @@ describe('IPAM API', () => {
     const { a, c, scopeId, post } = await office();
     const events = async (type: string) => (await a.agent.get(`/api/v1/events?type=${type}&limit=20`)).body.items;
     await post({ ip: '192.168.7.60', kind: 'reserved', label: 'Keep free' });
-    expect(await events('ip_conflict')).toHaveLength(0);
+    expect(await events('ip_conflict_detected')).toHaveLength(0);
 
     const withIntruder = [...HOSTS, { ip: '192.168.7.60', mac: '00:0c:29:77:00:60', hostname: 'intruder' }];
     await telemetry(c, [sweep(scopeId, withIntruder, 0)]);
-    let raised = await events('ip_conflict');
+    let raised = await events('ip_conflict_detected');
     expect(raised).toHaveLength(1);
     expect(raised[0]).toMatchObject({ severity: 'warning', details: { ip: '192.168.7.60', kind: 'reserved_in_use' } });
     expect(raised[0].device_id).toBeTruthy();
@@ -176,12 +176,12 @@ describe('IPAM API', () => {
 
     // The same situation on the next sweep is not a new event.
     await telemetry(c, [sweep(scopeId, withIntruder, 0)]);
-    expect(await events('ip_conflict')).toHaveLength(1);
+    expect(await events('ip_conflict_detected')).toHaveLength(1);
 
     // A documentation-only inconsistency is informational.
     await a.agent.put(`/api/v1/ipam/subnets/${scopeId}`).set(CSRF).send({ vlan_id: null, gateway: null, dns_servers: [], dhcp_start: '192.168.7.100', dhcp_end: '192.168.7.199', notes: null });
     await post({ ip: '192.168.7.150', kind: 'static', label: 'Camera' });
-    raised = await events('ip_conflict');
+    raised = await events('ip_conflict_detected');
     expect(raised).toHaveLength(2);
     expect(raised.find((e: any) => e.details.kind === 'static_in_dhcp_pool')).toMatchObject({ severity: 'info' });
 
@@ -191,7 +191,7 @@ describe('IPAM API', () => {
     const resolved = await events('ip_conflict_resolved');
     expect(resolved).toHaveLength(1);
     expect(resolved[0].details).toMatchObject({ ip: '192.168.7.60', kind: 'reserved_in_use' });
-    expect(await events('ip_conflict')).toHaveLength(2);
+    expect(await events('ip_conflict_detected')).toHaveLength(2);
   });
 
   it('enforces roles and keeps organizations apart', async () => {

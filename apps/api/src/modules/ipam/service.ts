@@ -6,8 +6,8 @@ import { cidrContains } from '../../common/net.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { syncIpamConflicts } from './conflicts.ts';
-import { RECORD, type ScopeRow, SCOPES, loadFacts, loadSubnet, summarize } from './facts.ts';
-import { csvCell, ipToInt, subnetMath } from './plan.ts';
+import { type AddressPage, RECORD, type ScopeRow, SCOPES, loadFacts, loadSubnet, summarize } from './facts.ts';
+import { csvCell, ipToBig, rangeOf } from './plan.ts';
 import type { CreateRecord, PatchRecord, SubnetBody } from './schema.ts';
 
 // IPAM use cases. Every documentation change re-compares the site with what was observed
@@ -27,8 +27,8 @@ export function listSubnets(organizationId: string, siteId: string | undefined) 
   });
 }
 
-export function getSubnet(organizationId: string, id: string): Promise<IpamSubnetDetail> {
-  return withTenant(organizationId, (db) => loadSubnet(db, id));
+export function getSubnet(organizationId: string, id: string, page: AddressPage = {}): Promise<IpamSubnetDetail> {
+  return withTenant(organizationId, (db) => loadSubnet(db, id, page));
 }
 
 export function documentSubnet(req: Request, ctx: AuthContext, id: string, body: SubnetBody): Promise<IpamSubnetDetail> {
@@ -40,7 +40,7 @@ export function documentSubnet(req: Request, ctx: AuthContext, id: string, body:
     if (Boolean(body.dhcp_start) !== Boolean(body.dhcp_end)) throw invalid('Give both the first and the last address of the DHCP pool, or neither');
     if (body.dhcp_start && body.dhcp_end) {
       if (!cidrContains(scope.cidr, body.dhcp_start) || !cidrContains(scope.cidr, body.dhcp_end)) throw invalid(`The DHCP pool must be inside ${scope.cidr}`);
-      if (ipToInt(body.dhcp_start) > ipToInt(body.dhcp_end)) throw invalid('The DHCP pool ends before it starts');
+      if (ipToBig(body.dhcp_start) > ipToBig(body.dhcp_end)) throw invalid('The DHCP pool ends before it starts');
     }
     await db.query(
       `INSERT INTO ipam_subnets (scope_id, organization_id, vlan_id, gateway, dns_servers, dhcp_start, dhcp_end, notes, updated_by)
@@ -81,9 +81,15 @@ export function documentAddress(req: Request, ctx: AuthContext, body: CreateReco
     if (!(await db.query(`SELECT 1 FROM sites WHERE id = $1`, [body.site_id])).rowCount) throw notFound('Site');
     const scope = (await db.query<{ cidr: string }>(`SELECT cidr::text AS cidr FROM network_scopes WHERE site_id = $1 AND $2::inet <<= cidr`, [body.site_id, body.ip])).rows[0];
     if (!scope) throw new AppError(422, 'not_in_subnet', 'This address is not inside a subnet of the site');
-    const m = subnetMath(scope.cidr);
-    const n = ipToInt(body.ip);
-    if (n < m.first || n > m.last) throw new AppError(422, 'not_a_host_address', `${body.ip} is the network or broadcast address of ${scope.cidr}`);
+    const m = rangeOf(scope.cidr);
+    const n = ipToBig(body.ip);
+    if (n < m.first || n > m.last) {
+      throw new AppError(
+        422,
+        'not_a_host_address',
+        m.family === 4 ? `${body.ip} is the network or broadcast address of ${scope.cidr}` : `${body.ip} is the subnet-router anycast address of ${scope.cidr} (RFC 4291)`,
+      );
+    }
     if ((await db.query(`SELECT 1 FROM ipam_addresses WHERE site_id = $1 AND ip = $2::inet`, [body.site_id, body.ip])).rowCount) {
       throw new AppError(409, 'already_documented', 'This address is already documented');
     }
@@ -145,11 +151,18 @@ export function addressHistory(organizationId: string, siteId: string, ip: strin
     async (db) =>
       (
         await db.query<IpamHistoryEntry>(
-          `SELECT d.id AS device_id, coalesce(d.display_name, d.hostname, d.primary_mac::text, host(d.current_ip)) AS label, d.primary_mac::text AS mac, d.status,
-                  (d.current_ip = h.ip) AS current, h.first_seen_at, h.last_seen_at
-             FROM device_ip_history h JOIN devices d ON d.id = h.device_id
-            WHERE d.site_id = $1 AND h.ip = $2::inet
-            ORDER BY h.last_seen_at DESC LIMIT 50`,
+          // device_ip_history: the current address of each device over time. device_addresses: the
+          // other IPv6 addresses a device was observed at (it holds several at once).
+          `SELECT * FROM (
+             SELECT DISTINCT ON (d.id) d.id AS device_id, coalesce(d.display_name, d.hostname, d.primary_mac::text, host(d.current_ip)) AS label,
+                    d.primary_mac::text AS mac, d.status, (d.current_ip = h.ip) AS current, h.first_seen_at, h.last_seen_at
+               FROM (SELECT device_id, ip, first_seen_at, last_seen_at FROM device_ip_history WHERE ip = $2::inet
+                     UNION ALL
+                     SELECT device_id, ip, first_seen_at, last_seen_at FROM device_addresses WHERE ip = $2::inet AND family(ip) = 6) h
+               JOIN devices d ON d.id = h.device_id
+              WHERE d.site_id = $1
+              ORDER BY d.id, h.last_seen_at DESC) x
+            ORDER BY last_seen_at DESC LIMIT 50`,
           [siteId, ip],
         )
       ).rows,

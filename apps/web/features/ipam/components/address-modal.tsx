@@ -2,22 +2,40 @@
 
 import type { IpamHistoryEntry, IpamRecordKind, IpamSubnetDetail } from '@lan-detective/shared-types';
 import { useState } from 'react';
-import { Badge, Button, ErrorNote, Fact, Field, Input, Modal, Select, StatusBadge } from '@/components/ui';
+import { Badge, Button, ErrorNote, Fact, Field, Input, Modal, Select, Spinner, StatusBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { ipamText } from '../text';
-import { ipToInt } from '../subnet-calc';
+import { parseIp } from '../subnet-calc';
 import { DeviceLink } from '@/components/device-link';
 
 // ── one address: what is observed, what is documented, who used it ──────────
 
-export function AddressModal({ subnet, ip, onClose, onChanged }: { subnet: IpamSubnetDetail; ip: string; onClose: () => void; onChanged: () => void }) {
+type Props = { subnet: IpamSubnetDetail; ip: string; onClose: () => void; onChanged: () => void };
+
+export function AddressModal(props: Props) {
+  return props.subnet.family === 6 ? <AddressModal6 {...props} /> : <AddressDialog {...props} entry={props.subnet.addresses.find((a) => a.ip === props.ip) ?? null} />;
+}
+
+/** An IPv6 subnet's address list is paged: the address may be on another page, so it is loaded on its own first. */
+function AddressModal6(props: Props) {
+  const single = useQuery<IpamSubnetDetail>(`/ipam/subnets/${props.subnet.id}${qs({ ip: props.ip })}`, [], 0);
+  if (!single.data) {
+    return (
+      <Modal title={props.ip} onClose={props.onClose} wide>
+        {single.error ? <ErrorNote error={single.error} /> : <Spinner />}
+      </Modal>
+    );
+  }
+  return <AddressDialog {...props} entry={single.data.addresses.find((a) => a.ip === props.ip) ?? null} />;
+}
+
+function AddressDialog({ subnet, ip, entry, onClose, onChanged }: Props & { entry: IpamSubnetDetail['addresses'][number] | null }) {
   const { locale } = useI18n();
   const tx = ipamText(locale);
   const { can } = useApp();
-  const entry = subnet.addresses.find((a) => a.ip === ip) ?? null;
   const record = entry?.record ?? null;
   const editable = can('technician');
   const history = useQuery<{ items: IpamHistoryEntry[] }>(`/ipam/history${qs({ site_id: subnet.site_id, ip })}`, ['devices'], 60_000);
@@ -29,8 +47,9 @@ export function AddressModal({ subnet, ip, onClose, onChanged }: { subnet: IpamS
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const observedMac = entry?.devices.find((d) => d.mac)?.mac ?? null;
-  const n = ipToInt(ip)!;
-  const inPool = subnet.dhcp ? n >= ipToInt(subnet.dhcp.start)! && n <= ipToInt(subnet.dhcp.end)! : false;
+  const n = parseIp(ip)?.value;
+  const pool = subnet.dhcp ? { start: parseIp(subnet.dhcp.start)?.value, end: parseIp(subnet.dhcp.end)?.value } : null;
+  const inPool = n !== undefined && pool?.start !== undefined && pool.end !== undefined && n >= pool.start && n <= pool.end;
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);

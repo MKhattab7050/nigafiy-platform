@@ -10,7 +10,7 @@ import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { SubnetView } from '../components/subnet-view';
-import { UsageBar } from '../components/usage-bar';
+import { UsageBar, countText } from '../components/usage-bar';
 import { SubnetCalculator } from '../components/subnet-calculator';
 import { ipamText } from '../text';
 
@@ -71,7 +71,7 @@ export function IpamView() {
                 <Card title={tx.subnets} padded={false}>
                   <ul className="divide-y divide-line">
                     {data.items.map((s) => {
-                      const used = s.usable - s.free;
+                      const used = BigInt(s.usable_exact) - BigInt(s.free_exact);
                       return (
                         <li key={s.id}>
                           <button
@@ -107,7 +107,7 @@ export function IpamView() {
                             <span className="min-w-0">
                               <UsageBar usable={s.usable} online={s.online} offline={s.offline} documented={s.documented_only} />
                               <span className="mt-1 block text-xs text-muted tnum">
-                                {used} {tx.of} {s.usable} {tx.inUse} · {s.free} {tx.free}
+                                {countText(used)} {tx.of} {countText(s.usable_exact)} {tx.inUse} · {countText(s.free_exact)} {tx.free}
                               </span>
                             </span>
                           </button>

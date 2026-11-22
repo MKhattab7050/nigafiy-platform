@@ -48,16 +48,16 @@ export function PlanModal({ subnet, onClose, onSaved }: { subnet: IpamSubnetDeta
     <Modal title={`${tx.edit} · ${subnet.cidr}`} onClose={onClose} wide>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={tx.formGateway} hint={tx.formGatewayHint}>
-          {(id) => <Input id={id} dir="ltr" value={gateway} onChange={(e) => setGateway(e.target.value)} placeholder={subnet.first_host} maxLength={15} />}
+          {(id) => <Input id={id} dir="ltr" value={gateway} onChange={(e) => setGateway(e.target.value)} placeholder={subnet.first_host} maxLength={45} className="mono" />}
         </Field>
         <Field label={tx.formVlan}>{(id) => <Input id={id} dir="ltr" inputMode="numeric" value={vlan} onChange={(e) => setVlan(e.target.value.replace(/\D/g, ''))} maxLength={4} />}</Field>
-        <Field label={tx.formDhcpStart}>{(id) => <Input id={id} dir="ltr" value={start} onChange={(e) => setStart(e.target.value)} maxLength={15} />}</Field>
+        <Field label={tx.formDhcpStart}>{(id) => <Input id={id} dir="ltr" value={start} onChange={(e) => setStart(e.target.value)} maxLength={45} className="mono" />}</Field>
         <Field label={tx.formDhcpEnd} hint={tx.dhcpNote}>
-          {(id) => <Input id={id} dir="ltr" value={end} onChange={(e) => setEnd(e.target.value)} maxLength={15} />}
+          {(id) => <Input id={id} dir="ltr" value={end} onChange={(e) => setEnd(e.target.value)} maxLength={45} className="mono" />}
         </Field>
         <div className="sm:col-span-2">
           <Field label={tx.formDns} hint={tx.formDnsHint}>
-            {(id) => <Input id={id} dir="ltr" value={dns} onChange={(e) => setDns(e.target.value)} maxLength={80} />}
+            {(id) => <Input id={id} dir="ltr" value={dns} onChange={(e) => setDns(e.target.value)} maxLength={190} className="mono" />}
           </Field>
         </div>
         <div className="sm:col-span-2">

@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n';
 import { Filter } from '../screens/ipam-screen';
 import { STATE_TONE } from './usage-bar';
 import { ipamText } from '../text';
-import { ipToInt } from '../subnet-calc';
+import { parseIp } from '../subnet-calc';
 import { DeviceLink } from '@/components/device-link';
 
 export function AddressTable({ subnet, onPick }: { subnet: IpamSubnetDetail; onPick: (ip: string) => void }) {
@@ -15,16 +15,16 @@ export function AddressTable({ subnet, onPick }: { subnet: IpamSubnetDetail; onP
   const tx = ipamText(locale);
   const [filter, setFilter] = useState<Filter>('all');
   const [text, setText] = useState('');
-  const first = ipToInt(subnet.first_host)!;
-  const last = ipToInt(subnet.last_host)!;
+  const first = parseIp(subnet.first_host)!.value;
+  const last = parseIp(subnet.last_host)!.value;
 
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     const match = (a: IpamAddress) =>
       !needle || [a.ip, a.record?.label, a.record?.mac, a.record?.notes, ...a.devices.flatMap((d) => [d.label, d.mac])].some((v) => v?.toLowerCase().includes(needle));
     return subnet.addresses.filter((a) => {
-      const n = ipToInt(a.ip)!;
-      if (n < first || n > last) return false;
+      const n = parseIp(a.ip)?.value;
+      if (n === undefined || n < first || n > last) return false;
       if (filter === 'online' && a.state !== 'online') return false;
       if (filter === 'documented' && !a.record) return false;
       if (filter === 'conflicts' && !a.conflict) return false;
@@ -66,8 +66,8 @@ export function AddressTable({ subnet, onPick }: { subnet: IpamSubnetDetail; onP
                 const d = a.devices[0];
                 return (
                   <tr key={a.ip} className="align-top hover:bg-raised/40">
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      <button type="button" onClick={() => onPick(a.ip)} className="mono font-medium hover:text-accent-hover">
+                    <td className="px-4 py-2.5">
+                      <button type="button" onClick={() => onPick(a.ip)} dir="ltr" className="mono break-all text-start font-medium hover:text-accent-hover">
                         {a.ip}
                       </button>
                       <span className="mt-0.5 flex flex-wrap gap-1">

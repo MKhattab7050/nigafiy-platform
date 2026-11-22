@@ -50,3 +50,37 @@ BEGIN
     CREATE INDEX IF NOT EXISTS device_addresses_ip_trgm ON device_addresses USING gin ((host(ip)) gin_trgm_ops);
   END IF;
 END $$;
+
+-- 2. IPAM for IPv6 subnets: documented addresses, gateway and DHCP (DHCPv6) pool may be IPv6.
+--    Every address is a single host address of its family; a pool starts and ends in one family.
+DO $$
+DECLARE c text;
+BEGIN
+  -- 007_ipam.sql: CHECK (family(ip) = 4 AND masklen(ip) = 32), auto-named.
+  FOR c IN SELECT conname FROM pg_constraint
+            WHERE conrelid = 'ipam_addresses'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%family(ip)%'
+  LOOP
+    EXECUTE format('ALTER TABLE ipam_addresses DROP CONSTRAINT %I', c);
+  END LOOP;
+END $$;
+ALTER TABLE ipam_addresses ADD CONSTRAINT ipam_addresses_ip_host CHECK (masklen(ip) = CASE family(ip) WHEN 4 THEN 32 ELSE 128 END);
+ALTER TABLE ipam_subnets
+  ADD CONSTRAINT ipam_subnets_gateway_host CHECK (gateway IS NULL OR masklen(gateway) = CASE family(gateway) WHEN 4 THEN 32 ELSE 128 END),
+  ADD CONSTRAINT ipam_subnets_dhcp_host CHECK (
+    dhcp_start IS NULL OR (family(dhcp_start) = family(dhcp_end)
+                           AND masklen(dhcp_start) = CASE family(dhcp_start) WHEN 4 THEN 32 ELSE 128 END
+                           AND masklen(dhcp_end) = masklen(dhcp_start)));
+
+-- 3. The event raised when an address conflict appears is `ip_conflict_detected` (its pair,
+--    `ip_conflict_resolved`, is unchanged). Existing events, playbook triggers, notification channel
+--    filters and knowledge entries that name the old type follow.
+UPDATE network_events SET type = 'ip_conflict_detected' WHERE type = 'ip_conflict';
+UPDATE notification_channels SET event_types = array_replace(event_types, 'ip_conflict', 'ip_conflict_detected')
+ WHERE 'ip_conflict' = ANY (event_types);
+UPDATE knowledge_entries SET event_types = array_replace(event_types, 'ip_conflict', 'ip_conflict_detected')
+ WHERE 'ip_conflict' = ANY (event_types);
+UPDATE playbooks
+   SET trigger = jsonb_set(trigger, '{event_types}',
+                           (SELECT jsonb_agg(CASE WHEN t = 'ip_conflict' THEN 'ip_conflict_detected' ELSE t END)
+                              FROM jsonb_array_elements_text(trigger -> 'event_types') AS t))
+ WHERE trigger ->> 'kind' = 'event' AND trigger -> 'event_types' ? 'ip_conflict';
