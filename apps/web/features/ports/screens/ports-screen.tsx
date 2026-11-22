@@ -12,6 +12,7 @@ import { useI18n } from '@/lib/i18n';
 import { STATUS_TONE } from '../components/port-tones';
 import { Finder } from '../components/finder';
 import { AddSwitch } from '../components/add-switch';
+import { NeighborsCard } from '../components/neighbors-card';
 import { PortControlPointer } from '../components/port-control-pointer';
 import { SwitchView } from '../components/switch-view';
 import { portsText } from '../text';
@@ -95,6 +96,7 @@ export function PortsView() {
             )
           }
         </Async>
+        {site && <NeighborsCard siteId={site} admin={admin} />}
       </div>
     </>
   );

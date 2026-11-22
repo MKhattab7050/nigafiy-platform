@@ -23,6 +23,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
 	"github.com/lan-detective/lan-collector/internal/dnsfilter"
+	"github.com/lan-detective/lan-collector/internal/mndp"
 	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
@@ -57,6 +58,10 @@ type Deps struct {
 	LocalDown   func() []string
 	// DHCPListen is the address for passive DHCP name learning (":67"); empty disables it.
 	DHCPListen string
+	// MNDPListen is the address of the receive-only MikroTik neighbour listener (":5678"); empty
+	// disables it. MNDPOpen opens that socket (nil: a plain UDP socket).
+	MNDPListen string
+	MNDPOpen   mndp.ListenFunc
 	// DNSListen is where the access-control DNS filter answers when the owner turns it on (":53");
 	// empty disables the feature on this collector.
 	DNSListen   string
@@ -108,6 +113,7 @@ func SystemDeps() Deps {
 		LocalMACs:   netinfo.LocalMACs,
 		LocalDown:   netinfo.LocalDownAddrs,
 		DHCPListen:  ":67",
+		MNDPListen:  ":5678",
 		DNSListen:   ":53",
 		Identify:    identify.Run,
 		SNMPPoll:    snmp.Poll,
@@ -204,6 +210,8 @@ type Agent struct {
 	fingerprints  *smart.FingerprintTable
 	dhcpListening bool
 	dhcpListenErr string
+
+	mndp mndpState
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -235,6 +243,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	ag.routers = newRouterState()
 	ag.smartRuns = newSmartState()
 	ag.fingerprints = smart.NewFingerprintTable()
+	ag.mndp.table = mndp.NewTable(ag.mndpAllowed)
 	return ag, nil
 }
 
@@ -266,7 +275,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop, a.smartLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop, a.smartLoop, a.mndpLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -404,6 +413,7 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 		SpoolDepth:        a.spool.Depth(),
 		CompletedCommands: acks,
 		AccessStatus:      a.accessStatusOrNil(),
+		MNDPStatus:        a.mndpStatus(),
 	})
 	if err != nil {
 		if ctx.Err() != nil {

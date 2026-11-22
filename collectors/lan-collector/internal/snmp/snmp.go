@@ -107,6 +107,11 @@ type Neighbor struct {
 	PortID    string `json:"port_id,omitempty"`
 	PortDescr string `json:"port_descr,omitempty"`
 	ChassisID string `json:"chassis_id,omitempty"`
+	// Protocol is where the entry came from: lldp, cdp or mikrotik (MIKROTIK-MIB neighbour table).
+	Protocol string `json:"protocol,omitempty"`
+	Address  string `json:"address,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	Version  string `json:"version,omitempty"`
 }
 
 type Result struct {
@@ -555,7 +560,7 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 			if len(nb) >= MaxLLDP {
 				return [2]int{}, nil
 			}
-			n = &Neighbor{IfIndex: lldpIf(idx[1])}
+			n = &Neighbor{IfIndex: lldpIf(idx[1]), Protocol: ProtoLLDP}
 			nb[k] = n
 		}
 		return k, n
@@ -584,6 +589,9 @@ func Poll(ctx context.Context, t Target, timeout time.Duration) (*Result, error)
 		}
 		return res.LLDP[i].SysName < res.LLDP[j].SysName
 	})
+	// CDP and MikroTik neighbours join the same list, each tagged with its protocol.
+	res.LLDP = append(res.LLDP, readCDP(w)...)
+	res.LLDP = append(res.LLDP, readMikroTik(w)...)
 	readVLANs(w, base, res)
 	if ctx.Err() != nil {
 		return nil, cleanErr(ctx.Err())

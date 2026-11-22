@@ -64,6 +64,12 @@ type RemoteConfig struct {
 	// SmartChecks holds the smart-check schedules and "run now" requests (agent/smartchecks.go).
 	// Not secret: it is cached on disk (without the "run now" requests).
 	SmartChecks json.RawMessage `json:"smart_checks,omitempty"`
+	// MNDP says whether the site allows the passive MikroTik neighbour listener. Absent: allowed.
+	MNDP *MNDPConfig `json:"mndp,omitempty"`
+}
+
+type MNDPConfig struct {
+	Enabled bool `json:"enabled"`
 }
 
 type Command struct {
@@ -83,6 +89,7 @@ type HeartbeatRequest struct {
 	SpoolDepth        int      `json:"spool_depth"`
 	CompletedCommands []string `json:"completed_commands"`
 	AccessStatus      any      `json:"access_status,omitempty"`
+	MNDPStatus        any      `json:"mndp_status,omitempty"`
 }
 
 type HeartbeatResponse struct {

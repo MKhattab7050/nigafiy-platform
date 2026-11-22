@@ -535,13 +535,24 @@ export interface TopologyNode {
   is_switch?: boolean;
   /** "Gi0/4 on Core switch" when a read switch saw this device on an access port. */
   attached_to?: string | null;
+  /** What this MikroTik device announced about itself over MNDP (observed by a collector). */
+  mndp?: {
+    identity: string | null;
+    platform: string | null;
+    version: string | null;
+    board: string | null;
+    interface_name: string | null;
+    heard_by: string;
+    last_seen_at: string;
+    evidence: string;
+  };
 }
 
 export interface TopologyEdge {
   id: string;
   source: string;
   target: string;
-  /** connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP). */
+  /** connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP, CDP or the MikroTik neighbour table). */
   relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link';
   /** Port name on the switch, for connected_to and switch_link. */
   port?: string;
@@ -705,11 +716,73 @@ export interface SwitchSummary {
   address_count: number;
 }
 
+export type NeighborProtocol = 'lldp' | 'cdp' | 'mikrotik';
+
 export interface PortNeighbor {
   sys_name?: string;
   port_id?: string;
   port_descr?: string;
   chassis_id?: string;
+  /** Where the entry came from (absent on reads made before CDP / MikroTik support: LLDP). */
+  protocol?: NeighborProtocol;
+  /** Management address the neighbour advertises (CDP, MikroTik). */
+  address?: string;
+  platform?: string;
+  version?: string;
+}
+
+/** A MikroTik device heard announcing itself over MNDP by a collector (receive-only listener). */
+export interface MndpNeighbor {
+  collector_id: string;
+  collector_name: string;
+  mac: string;
+  device_id: string | null;
+  device_label: string | null;
+  identity: string | null;
+  platform: string | null;
+  version: string | null;
+  board: string | null;
+  interface_name: string | null;
+  ipv4: string | null;
+  ipv6: string | null;
+  uptime_seconds: number | null;
+  source_ip: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+export interface MndpListenerStatus {
+  collector_id: string;
+  collector_name: string;
+  connection_state: string;
+  /** null until the collector reports (older collector versions never do). */
+  status: {
+    state: 'listening' | 'disabled' | 'bind_failed' | 'stopped';
+    listen?: string;
+    error?: string;
+    since: string;
+    received: number;
+    malformed: number;
+    out_of_scope: number;
+    neighbors: number;
+  } | null;
+}
+
+/** A neighbour a read switch reports on one of its ports (LLDP, CDP or the MikroTik table). */
+export interface SwitchNeighborRow extends PortNeighbor {
+  target_id: string;
+  switch_name: string;
+  if_index: number;
+  port_name: string;
+  updated_at: string;
+}
+
+export interface NeighborsReport {
+  site_id: string;
+  mndp_listen: boolean;
+  listeners: MndpListenerStatus[];
+  mndp: MndpNeighbor[];
+  switch_neighbors: SwitchNeighborRow[];
 }
 
 export interface PortDevice {

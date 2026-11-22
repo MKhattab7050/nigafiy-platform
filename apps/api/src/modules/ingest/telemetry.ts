@@ -2,7 +2,7 @@ import { type CollectorContext, ItemRejected, type TelemetryBatch } from '../../
 import { withTenant } from '../../infrastructure/db.ts';
 import { refineCollectorIncident } from '../correlation/index.ts';
 import { syncIpamConflicts } from '../ipam/index.ts';
-import { processPortControlItem, processSnmpPoll } from '../ports/index.ts';
+import { processMndpNeighbors, processPortControlItem, processSnmpPoll } from '../ports/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { processRouterResult } from '../routers/index.ts';
 import { processConfigBackupItem } from '../configbackup/index.ts';
@@ -63,6 +63,8 @@ export function applyTelemetryBatch(c: CollectorContext, batch: TelemetryBatch):
           await processRouterResult(db, c, item);
         } else if (item.type === 'config_backup_result' || item.type === 'config_backup_probe_result' || item.type === 'config_restore_result') {
           await processConfigBackupItem(db, c, item);
+        } else if (item.type === 'mndp_neighbors') {
+          await processMndpNeighbors(db, c, item);
         } else if (item.type === 'smart_check') {
           await processSmartCheck(db, c, item, now);
         } else {

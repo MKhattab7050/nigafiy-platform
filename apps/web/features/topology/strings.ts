@@ -35,6 +35,13 @@ export const en = {
   "topo.port": "Switch port",
   "topo.attached": "devices on its access ports",
   "topo.legend.ports": "Select a device or a switch to draw its port links",
+  "topo.mndp.title": "Announced over MNDP (MikroTik)",
+  "topo.mndp.identity": "Identity",
+  "topo.mndp.board": "Board",
+  "topo.mndp.version": "Version",
+  "topo.mndp.interface": "Announced from",
+  "topo.mndp.heardBy": "Heard by collector",
+  "topo.mndp.note": "Heard directly by the collector, so this device shares a layer-2 segment with it.",
 } as const;
 
 export const ar: Record<keyof typeof en, string> = {
@@ -73,4 +80,11 @@ export const ar: Record<keyof typeof en, string> = {
   "topo.port": "منفذ السويتش",
   "topo.attached": "جهاز على منافذه",
   "topo.legend.ports": "اختر جهازًا أو سويتشًا لرسم وصلات منافذه",
+  "topo.mndp.title": "أُعلن عبر MNDP ‏(MikroTik)",
+  "topo.mndp.identity": "الاسم المُعلَن",
+  "topo.mndp.board": "اللوحة",
+  "topo.mndp.version": "الإصدار",
+  "topo.mndp.interface": "أُعلن من الواجهة",
+  "topo.mndp.heardBy": "سمعه المجمِّع",
+  "topo.mndp.note": "سمعه المجمِّع مباشرة، لذا يشترك هذا الجهاز معه في نفس الجزء من الشبكة (الطبقة الثانية).",
 };

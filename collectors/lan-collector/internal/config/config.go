@@ -44,6 +44,9 @@ type Config struct {
 	// DNSListen is where the access-control DNS filter answers once the owner turns it on in
 	// LAN Detective. Default ":53"; "off" disables the feature on this collector.
 	DNSListen string `yaml:"dns_listen"`
+	// MNDPListen is where the passive MikroTik neighbour listener (receive-only, UDP 5678) binds
+	// when the site allows it. Default ":5678"; "off" disables it on this collector.
+	MNDPListen string `yaml:"mndp_listen"`
 	// Development/test switches. Both default to false.
 	AllowInsecureHTTP   bool `yaml:"allow_insecure_http"`
 	AllowLoopbackScopes bool `yaml:"allow_loopback_scopes"`
@@ -58,6 +61,7 @@ func defaults() Config {
 		SpoolMaxBatches: 5000,
 		LogLevel:        "info",
 		DNSListen:       ":53",
+		MNDPListen:      ":5678",
 	}
 }
 
@@ -84,6 +88,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("LAN_COLLECTOR_DNS_LISTEN"); v != "" {
 		cfg.DNSListen = v
+	}
+	if v := os.Getenv("LAN_COLLECTOR_MNDP_LISTEN"); v != "" {
+		cfg.MNDPListen = v
 	}
 	if v := os.Getenv("LAN_COLLECTOR_STATE_DIR"); v != "" {
 		cfg.StateDir = v
