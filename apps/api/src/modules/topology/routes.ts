@@ -14,7 +14,8 @@ import { type Sighting, locate } from '../ports/index.ts';
  *   - internet check results → the uplink works.
  *   - forwarding tables and LLDP / CDP / MikroTik neighbour tables of the switches read over SNMP →
  *     which switch port a device is on, and which switches are linked;
- *   - MikroTik MNDP announcements heard by a collector → what a MikroTik device says about itself.
+ *   - MikroTik MNDP announcements heard by a collector → what a MikroTik device says about itself;
+ *   - the Wi-Fi client tables of configured routers → which device is associated to which router.
  * Every edge states whether it is observed or inferred, why, how confident, and when last verified.
  * Switch-level links are never guessed: a device seen only "somewhere behind" a trunk gets no link.
  */
@@ -28,6 +29,8 @@ interface NeighborEntry {
   address?: string;
   platform?: string;
 }
+
+const WIFI_BAND: Record<string, string> = { 'wifi_2.4ghz': '2.4 GHz', wifi_5ghz: '5 GHz', wifi_6ghz: '6 GHz' };
 
 const PROTOCOL_LABEL: Record<'lldp' | 'cdp' | 'mikrotik', { short: string; source: string }> = {
   lldp: { short: 'LLDP', source: 'LLDP neighbour table (SNMP)' },
@@ -282,6 +285,45 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
       }
     }
 
+    // Router → Wi-Fi client: a configured router listed the device as associated over Wi-Fi in the last
+    // day. A device a switch already places on a port keeps that wired link and gets no Wi-Fi edge.
+    // Same edge id as the impact twin (e:wifi:<client>), so both views describe one link.
+    const wired = new Set(edges.filter((e) => e.relation === 'connected_to').map((e) => e.source));
+    const wifiClients = (
+      await db.query<{ router_name: string; router_device_id: string; client_device_id: string; connection: string; interface: string | null; signal_dbm: number | null; active: boolean | null; last_seen_at: Date }>(
+        `SELECT DISTINCT ON (c.device_id) r.name AS router_name, r.device_id AS router_device_id, c.device_id AS client_device_id,
+                c.connection, c.interface, c.signal_dbm, c.active, c.last_seen_at
+           FROM router_clients c JOIN site_routers r ON r.id = c.router_id
+          WHERE c.site_id = $1 AND r.enabled AND r.device_id IS NOT NULL AND c.device_id IS NOT NULL
+            AND c.connection ILIKE 'wifi%' AND c.last_seen_at > now() - interval '1 day'
+          ORDER BY c.device_id, c.last_seen_at DESC`,
+        [siteId],
+      )
+    ).rows;
+    const now = Date.now();
+    let wireless = 0;
+    for (const w of wifiClients) {
+      const client = `dev:${w.client_device_id}`;
+      const router = `dev:${w.router_device_id}`;
+      if (!nodeById.has(client) || !nodeById.has(router) || client === router || wired.has(client)) continue;
+      const fresh = now - w.last_seen_at.getTime() < 3_600_000 && w.active !== false;
+      const band = WIFI_BAND[w.connection.toLowerCase()] ?? null;
+      const facts = [band, w.interface ? `on ${w.interface}` : null, w.signal_dbm !== null ? `signal ${w.signal_dbm} dBm` : null].filter(Boolean).join(', ');
+      edges.push({
+        id: `e:wifi:${client}`,
+        source: client,
+        target: router,
+        relation: 'wireless_client',
+        ...(w.interface ? { port: w.interface } : {}),
+        basis: 'observed',
+        confidence: fresh ? 'high' : 'medium',
+        evidence: `Router "${w.router_name}" listed it as a Wi-Fi client${facts ? ` (${facts})` : ''}${fresh ? '' : '; that list is more than an hour old'}.`,
+        evidence_source: 'Router client table',
+        last_verified_at: w.last_seen_at.toISOString(),
+      });
+      wireless++;
+    }
+
     // What MikroTik devices announce about themselves over MNDP (heard by a collector in the last 24 h).
     const announced = (
       await db.query<{ device_id: string; identity: string | null; platform: string | null; version: string | null; board: string | null; interface_name: string | null; collector_name: string; last_seen_at: Date }>(
@@ -315,6 +357,7 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
       'The gateway relationship is known only for the segment a collector sits in.',
       'VLANs are shown per port in Port Detective; this map does not group by VLAN.',
     ];
+    if (wireless) limitations.push(`${wireless} Wi-Fi link(s) come from router client tables; access points that are not a configured router are not visible, so the router may only be the path to the access point.`);
     if (unread.length) limitations.push(`${unread.join(', ')}: read over SNMP but not in the device inventory, so its ports are not drawn here.`);
     if (!collectors.rows.length) limitations.unshift('No collector is enrolled at this site, so no gateway or layer-2 evidence exists.');
     if (devices.rows.length === 2000) limitations.push('Only the first 2000 devices are shown.');

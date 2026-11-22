@@ -84,6 +84,9 @@ export function Inspector({
   const attached = topology.edges.filter(
     (e) => e.relation === "connected_to" && e.target === n.id,
   ).length;
+  const wifiClients = topology.edges.filter(
+    (e) => e.relation === "wireless_client" && e.target === n.id,
+  ).length;
   return (
     <Card
       title={<span dir="auto">{n.label}</span>}
@@ -132,6 +135,11 @@ export function Inspector({
       )}
       {n.runs_collector && (
         <p className="mt-2 text-xs text-cyan">{t("topo.runsCollector")}</p>
+      )}
+      {wifiClients > 0 && (
+        <p className="mt-2 text-xs text-cyan">
+          {wifiClients} {t("topo.wifiClients")}
+        </p>
       )}
       {n.mndp && (
         <div className="mt-4 border-t border-line pt-3">

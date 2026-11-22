@@ -104,3 +104,26 @@ protocol it came from:
   not running as a service. Nigafiy never answers that prompt or adds a rule.
 - MNDP over IPv6 (RouterOS also announces on ff02::1) is not listened to; only IPv4 broadcasts are
   received.
+
+## Router Wi-Fi clients as topology edges
+
+Wi-Fi clients listed by a configured router (`router_clients` with connection `wifi*`, seen in the
+last day, router and client both in the inventory) become an observed `wireless_client` edge from
+the device to the router.
+
+- **Evidence**: band, interface or SSID, and signal in dBm. The last-verified time is when the
+  router last listed the client.
+- **Confidence**: high when the list is under an hour old and the client is active, otherwise
+  medium.
+- **Edge id**: `e:wifi:<device>`, the same id the impact twin uses, so the two views describe one
+  link.
+- **No duplicates**: a device that a switch already places on an access port keeps only the
+  forwarding-table link.
+- **Map**: the link is drawn when the device or the router is selected, and a router shows how many
+  Wi-Fi clients it lists.
+- **Verified**: an API test in `apps/api/tests/router-control.test.ts` covers the edge and its
+  evidence, the wired client, the impact twin, a switch taking precedence, and lists older than a
+  day.
+- **Not verified**: against a real router's client table. Access points that are not a configured
+  router stay invisible, so the router may only be the path to the access point; the map states this
+  as a limitation.

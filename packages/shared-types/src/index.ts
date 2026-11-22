@@ -552,9 +552,12 @@ export interface TopologyEdge {
   id: string;
   source: string;
   target: string;
-  /** connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP, CDP or the MikroTik neighbour table). */
-  relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link';
-  /** Port name on the switch, for connected_to and switch_link. */
+  /**
+   * connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP, CDP or the
+   * MikroTik neighbour table). wireless_client: device → router that lists it as a Wi-Fi client.
+   */
+  relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link' | 'wireless_client';
+  /** Port name on the switch, for connected_to and switch_link; the router interface or SSID for wireless_client. */
   port?: string;
   basis: 'observed' | 'inferred';
   confidence: Confidence;
