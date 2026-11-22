@@ -35,6 +35,8 @@ type device struct {
 	auth         string // "password" | "keyboard" | "publickey"
 	password     string
 	pubKey       ssh.PublicKey
+	// cliFn replaces the generic CLI (restore tests emulate Junos configuration mode).
+	cliFn func(ch ssh.Channel)
 
 	authCalls atomic.Int32
 	execSeen  []string
@@ -165,7 +167,11 @@ func (s *server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 				continue
 			}
 			_ = req.Reply(true, nil)
-			s.cli(ch)
+			if s.dev.cliFn != nil {
+				s.dev.cliFn(ch)
+			} else {
+				s.cli(ch)
+			}
 			_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{0}))
 			return
 		default:

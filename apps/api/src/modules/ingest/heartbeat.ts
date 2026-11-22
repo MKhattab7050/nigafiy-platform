@@ -21,9 +21,22 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
     await db.query(
       `UPDATE collectors
           SET last_heartbeat_at = $2, connection_state = 'online', hostname = $3, version = $4, os = $5, arch = $6,
-              gateway_ip = $7, interfaces = $8, spool_depth = $9, last_ip = $10, access_status = $11
+              gateway_ip = $7, interfaces = $8, spool_depth = $9, last_ip = $10, access_status = $11, mndp_status = $12
         WHERE id = $1`,
-      [c.id, now, body.hostname, body.version, body.os, body.arch, body.gateway_ip ?? null, JSON.stringify(body.interfaces), body.spool_depth, remoteAddress, body.access_status ? JSON.stringify(body.access_status) : null],
+      [
+        c.id,
+        now,
+        body.hostname,
+        body.version,
+        body.os,
+        body.arch,
+        body.gateway_ip ?? null,
+        JSON.stringify(body.interfaces),
+        body.spool_depth,
+        remoteAddress,
+        body.access_status ? JSON.stringify(body.access_status) : null,
+        body.mndp_status ? JSON.stringify(body.mndp_status) : null,
+      ],
     );
     if (c.connectionState !== 'online') {
       if (c.connectionState === 'offline') {
@@ -44,13 +57,13 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
       await db.query(`UPDATE collector_commands SET status = 'completed', completed_at = $3 WHERE collector_id = $1 AND id = ANY($2)`, [c.id, body.completed_commands, now]);
     }
 
-    const site = await db.query<{ discovery_interval_seconds: number }>(`SELECT discovery_interval_seconds FROM sites WHERE id = $1`, [c.siteId]);
+    const site = await db.query<{ discovery_interval_seconds: number; mndp_listen: boolean }>(`SELECT discovery_interval_seconds, mndp_listen FROM sites WHERE id = $1`, [c.siteId]);
     const scopes = await db.query<{ id: string; cidr: string }>(
       `SELECT id, cidr::text AS cidr FROM network_scopes WHERE site_id = $1 AND enabled ORDER BY cidr`,
       [c.siteId],
     );
     const checks = await db.query(
-      `SELECT id, kind, target, port, interval_seconds FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
+      `SELECT id, kind, target, port, interval_seconds, config, snmp_target_id FROM monitoring_checks WHERE site_id = $1 AND enabled ORDER BY array_position(ARRAY['gateway','internet','dns','service'], role), name, id`,
       [c.siteId],
     );
     // A wake, router or toolbox request that could not be delivered within 10 / 10 / 5 minutes expires: waking a computer
@@ -88,6 +101,8 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
         routers: await buildRouterConfig(db, c.siteId, now),
         // Smart network checks (modules/security): schedules and "run now" requests.
         smart_checks: await buildSmartCheckConfig(db, c.organizationId, c.siteId),
+        // Whether the receive-only MikroTik neighbour listener (UDP 5678) may run at this site.
+        mndp: { enabled: site.rows[0]?.mndp_listen ?? true },
       },
       // Configuration backups get their device's SSH credentials here, for the pending run only.
       commands: await withConfigBackupSecrets(db, c, commands.rows),

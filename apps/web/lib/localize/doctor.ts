@@ -3,8 +3,9 @@ import type { Locale } from '@/lib/i18n';
 import { ltr } from './bidi';
 
 function localizeSource(source: string): string {
-  const mCheck = source.match(/^(ICMP|TCP|DNS) check from the site collector$/i);
+  const mCheck = source.match(/^(ICMP|TCP|DNS|HTTP|HTTPS|SNMP) check from the site collector$/i);
   if (mCheck) return `فحص ${ltr(mCheck[1]!.toUpperCase())} من مجمِّع الموقع`;
+  if (source === 'TLS certificate check from the site collector') return 'فحص شهادة TLS من مجمِّع الموقع';
   const mWifi = source.match(/^Wi-Fi adapter of collector "(.+)"$/);
   if (mWifi) return `محوّل Wi-Fi على المجمِّع «${mWifi[1]}»`;
   const exact: Record<string, string> = {
@@ -37,6 +38,10 @@ function localizeLabel(label: string): string {
   if (label === 'DHCP probes') return 'فحوصات DHCP';
   if (label === 'Collector listening') return 'استماع المجمِّع';
   if (label === 'Link rate') return 'سرعة الربط اللاسلكي';
+  if (label === 'Certificate') return 'الشهادة';
+  if (label === 'HTTP response') return 'استجابة HTTP';
+  const mOid = label.match(/^OID (.+)$/);
+  if (mOid) return `المعرّف ${ltr(`OID ${mOid[1]}`)}`;
 
   const mHost = label.match(/^Host (.+)$/);
   if (mHost) return `الجهاز ${ltr(mHost[1]!)}`;
@@ -136,6 +141,20 @@ function localizeValue(value: string): string {
     const lvl = mInterf[2] === 'high' ? 'مرتفع' : mInterf[2] === 'medium' ? 'متوسط' : 'منخفض';
     return `درجة التداخل ${ltr(mInterf[1]!)} (${lvl}) من ${ltr(mInterf[3]!)} شبكة مجاورة`;
   }
+
+  // Watch-check evidence (doctor/watch-rules.ts)
+  const mCert = value.match(/^Expires (\d{4}-\d{2}-\d{2}) \((?:in ([0-9.]+) days|([0-9.]+) days ago)\)(?: · issuer (.+?))?( · chain does not verify for this name)?$/);
+  if (mCert) {
+    const when = mCert[2] !== undefined ? `بعد ${ltr(mCert[2])} يوم` : `منذ ${ltr(mCert[3]!)} يوم`;
+    const parts = [`تنتهي في ${ltr(mCert[1]!)} (${when})`];
+    if (mCert[4]) parts.push(`الجهة المُصدِرة ${ltr(mCert[4])}`);
+    if (mCert[5]) parts.push('سلسلة الشهادة لا تتحقق لهذا الاسم');
+    return parts.join(' · ');
+  }
+  const mStatus = value.match(/^Status (\d{3})(?: from (.+))?$/);
+  if (mStatus) return `الحالة ${ltr(mStatus[1]!)}${mStatus[2] ? ` من ${ltr(mStatus[2])}` : ''}`;
+  const mRaw = value.match(/^(.+) \(raw (.+)\)$/);
+  if (mRaw) return `${ltr(mRaw[1]!)} (القيمة الخام ${ltr(mRaw[2]!)})`;
 
   const mContrib = value.match(/^Channel (\d+), signal (\d+)% → weight (\d+)$/);
   if (mContrib) return `القناة ${ltr(mContrib[1]!)}، الإشارة ${ltr(`${mContrib[2]}%`)} ← الوزن ${ltr(mContrib[3]!)}`;
@@ -653,6 +672,152 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         summary: `قوة الإشارة وازدحام القناة وسرعة الربط لشبكة «${mNet?.[1] ?? '—'}» ضمن الحدود الطبيعية.`,
         probable_cause: 'لا يوجد عطل.',
         confidence_reason: 'مقاسة عند موقع المجمِّع فقط.',
+      };
+    }
+
+    case 'watch-target-refused': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const reason = d.summary.match(/^The collector refused to connect \((.+)\)\. Nothing/)?.[1];
+      return {
+        ...out,
+        title: `${name}: الهدف غير مسموح به`,
+        summary: `رفض المجمِّع الاتصال${reason ? ` (${ltr(reason)})` : ''}. لم يُرسَل أي شيء إلى الهدف.`,
+        probable_cause: 'الهدف، أو عنوان يُترجَم إليه اسمه، أو إعادة توجيه، يشير إلى خارج النطاقات المصرَّح بها للموقع، أو إلى مضيف عام بينما لا يسمح الفحص بالمضيفات العامة.',
+        confidence_reason: 'الرفض هو قاعدة الأمان الخاصة بالمجمِّع، ويُسجَّل قبل أي محاولة اتصال.',
+        investigation_steps: [
+          'تحقق من العنوان الذي يُترجَم إليه الاسم من جهاز المجمِّع',
+          'أضف شبكة الهدف كنطاق مصرَّح به إذا كانت تتبع هذا الموقع',
+          'لخدمة على الإنترنت، فعّل خيار «السماح بمضيف عام» لهذا الفحص',
+        ],
+      };
+    }
+
+    case 'watch-certificate-expired':
+    case 'watch-certificate-expiring': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const expired = d.rule === 'watch-certificate-expired';
+      const mWhere = d.summary.match(/presented at (\S+?) (?:expired|expires)/);
+      const mDays = expired ? d.summary.match(/expired ([0-9.]+) days ago/) : d.summary.match(/expires in ([0-9.]+) days \(warning at (\d+), critical at (\d+) days\)/);
+      const mTitleDays = d.title.match(/expires in (\d+) days/);
+      return {
+        ...out,
+        title: expired ? `${name}: انتهت صلاحية الشهادة` : `${name}: تنتهي صلاحية الشهادة بعد ${ltr(mTitleDays?.[1] ?? '—')} يوم`,
+        summary: expired
+          ? `الشهادة المقدَّمة على ${ltr(mWhere?.[1] ?? '—')} انتهت صلاحيتها منذ ${ltr(mDays?.[1] ?? '—')} يوم. المتصفحات والعملاء الذين يتحققون من الشهادات يرفضون الاتصال.`
+          : `الشهادة المقدَّمة على ${ltr(mWhere?.[1] ?? '—')} تنتهي صلاحيتها بعد ${ltr(mDays?.[1] ?? '—')} يوم (تحذير عند ${ltr(mDays?.[2] ?? '30')}، وحرج عند ${ltr(mDays?.[3] ?? '7')} يوم).`,
+        probable_cause: expired ? 'لم تُجدَّد الشهادة في الوقت المناسب، أو فشل التجديد.' : 'الشهادة تقترب من تاريخ انتهائها ولم تُجدَّد بعد.',
+        confidence_reason: 'تاريخ الانتهاء مقروء مباشرة من الشهادة التي قدّمها الخادم.',
+        investigation_steps: ['جدّد الشهادة (أو تحقق من سبب عدم تشغيل التجديد التلقائي)', 'ثبّت الشهادة المجدَّدة على كل خادم أو جهاز يخدم هذا الاسم'],
+      };
+    }
+
+    case 'watch-certificate-pin-mismatch': {
+      const name = d.title.split(':')[0] ?? d.title;
+      return {
+        ...out,
+        title: `${name}: شهادة غير متوقعة`,
+        summary: 'قدّم الخادم شهادة مختلفة عن الشهادة المثبَّتة (Pin) لهذا الفحص.',
+        probable_cause: 'جُدِّدت الشهادة أو استُبدلت (حدّث البصمة المثبَّتة)، أو أن شيئًا بين المجمِّع والخادم يرد بشهادته الخاصة.',
+        confidence_reason: 'تغيّر البصمة أمر مؤكد؛ أما كون التغيير مخططًا له فغير معروف.',
+        alternatives: ['وسيط (Proxy) يعترض اتصالات TLS، أو خادم آخر يرد على هذا العنوان'],
+        investigation_steps: ['قارن البصمة في الأدلة بالشهادة المثبَّتة على الخادم', 'حدّث البصمة المثبَّتة بعد التجديد المخطط له'],
+      };
+    }
+
+    case 'watch-certificate-untrusted': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const reason = d.summary.replace(/^The TLS handshake failed verification: /, '').replace(/\.$/, '');
+      return {
+        ...out,
+        title: `${name}: الشهادة غير موثوقة`,
+        summary: `فشل التحقق أثناء مصافحة TLS: ${ltr(reason)}.`,
+        probable_cause: 'شهادة موقَّعة ذاتيًا أو من جهة إصدار خاصة، أو شهادة صادرة لاسم مختلف، أو سلسلة غير مكتملة، أو شهادة منتهية الصلاحية.',
+        confidence_reason: 'خطأ التحقق صادر من المصافحة نفسها؛ والخادم متاح.',
+        investigation_steps: ['تحقق من الأسماء والسلسلة في الشهادة المثبَّتة على الخادم', 'لخدمة داخلية بجهة إصدار خاصة، ثبّت بصمة الشهادة بدل إيقاف التحقق'],
+      };
+    }
+
+    case 'watch-http-status': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const mCode = d.title.match(/HTTP (\d{3})$/);
+      const mExp = d.summary.match(/expected (\d+-\d+)/);
+      const code = Number(mCode?.[1] ?? 0);
+      return {
+        ...out,
+        title: `${name}: ${ltr(`HTTP ${mCode?.[1] ?? '—'}`)}`,
+        summary: `خادم الويب متاح وأجاب، لكن بالحالة ${ltr(mCode?.[1] ?? '—')} بدلًا من المتوقَّع ${ltr(mExp?.[1] ?? '200-299')}.`,
+        probable_cause:
+          code >= 500
+            ? 'فشل التطبيق خلف خادم الويب (5xx): خادم خلفي متوقف أو خادم محمَّل فوق طاقته أو اعتمادية فاشلة.'
+            : code >= 400
+              ? 'رُفض الطلب أو لم يُعثر على الصفحة (4xx): تغيّر المسار أو أصبح تسجيل الدخول مطلوبًا أو الوصول مرفوض.'
+              : 'الخادم يعيد التوجيه (3xx) والفحص لا يتبع إعادة التوجيه، أو أن حالة خارج النطاق المتوقَّع أصبحت طبيعية الآن.',
+        confidence_reason: 'حالة HTTP لا يمكن أن تصدر إلا عن خادم قبِل الاتصال وأجاب.',
+        investigation_steps: code >= 500 ? ['اقرأ سجلات خادم الويب والتطبيق حول وقت أول فشل'] : ['افتح العنوان الموجود في الأدلة وقارنه بما يتوقعه الفحص'],
+      };
+    }
+
+    case 'watch-http-content': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const forbidden = d.summary.includes('contains the forbidden');
+      return {
+        ...out,
+        title: `${name}: محتوى صفحة غير متوقع`,
+        summary: forbidden
+          ? 'أجاب الخادم بحالة مقبولة، لكن نص الاستجابة (أول 256 كيلوبايت) يحتوي على النص أو النمط الممنوع.'
+          : 'أجاب الخادم بحالة مقبولة، لكن نص الاستجابة (أول 256 كيلوبايت) لا يحتوي على النص أو النمط المتوقَّع.',
+        probable_cause: 'تغيّرت الصفحة: صفحة خطأ تُقدَّم بحالة نجاح، أو صفحة صيانة، أو صفحة تسجيل دخول.',
+        confidence_reason: 'قُبلت الحالة؛ وفشل فقط شرط المحتوى (قُرئ أول 256 كيلوبايت من الاستجابة).',
+        investigation_steps: ['افتح العنوان وابحث عن النص المتوقَّع', 'عدّل الشرط إذا أُعيد تصميم الصفحة عمدًا'],
+      };
+    }
+
+    case 'watch-snmp-threshold': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const critical = d.title.endsWith('critical threshold crossed');
+      const mVal = d.summary.match(/^The device reports (.+) for (.+), beyond/);
+      const preset = d.investigation_steps[0]?.startsWith('Check the cable') ? 'link_status' : d.probable_cause.includes('runs hot') ? 'temperature' : 'other';
+      return {
+        ...out,
+        title: `${name}: تجاوز حد ${critical ? 'الخطورة' : 'التحذير'}`,
+        summary: `يُبلغ الجهاز عن القيمة ${ltr(mVal?.[1] ?? '—')} للمعرّف ${ltr(mVal?.[2] ?? '—')}، متجاوزةً حد ${critical ? 'الخطورة' : 'التحذير'} المضبوط لهذا الفحص.`,
+        probable_cause:
+          preset === 'link_status'
+            ? 'الواجهة لا تعمل: كابل مفصول أو الطرف الآخر مطفأ أو المنفذ معطَّل.'
+            : preset === 'temperature'
+              ? 'الجهاز يسخن: تهوية مسدودة أو مروحة معطلة أو غرفة حارة.'
+              : 'المورد المقاس تحت ضغط على الجهاز.',
+        confidence_reason: 'القيمة مقروءة من الجهاز نفسه عبر SNMP.',
+        investigation_steps:
+          preset === 'link_status'
+            ? ['تحقق من الكابل والجهاز على الطرف الآخر لهذه الواجهة (محقق المنافذ يعرض المنفذ)']
+            : ['راجع صفحة حالة الجهاز نفسه للمقياس ذاته', 'قارن بالرسم البياني لهذا الفحص لمعرفة متى بدأ ذلك'],
+      };
+    }
+
+    case 'watch-snmp-oid-missing': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const mOid = d.summary.match(/no value at (.+)\.$/);
+      return {
+        ...out,
+        title: `${name}: الجهاز لا يحتوي على هذا المعرّف`,
+        summary: `الجهاز يجيب على SNMP لكن لا توجد قيمة عند ${ltr(mOid?.[1] ?? 'OID')}.`,
+        probable_cause: 'الشركة المصنّعة لا تدعم كائن MIB هذا، أو أن الفهرس (رقم المعالج أو التخزين أو المستشعر أو الواجهة) مختلف على هذا الجهاز.',
+        confidence_reason: 'أجاب الجهاز على الطلب وأفاد بأن الكائن غير موجود.',
+        investigation_steps: ['استعرض جدول هذا الـ MIB على الجهاز لإيجاد الفهرس الصحيح', 'راجع ملاحظات الشركات المصنّعة للإعداد المسبق في نموذج الفحص'],
+      };
+    }
+
+    case 'watch-snmp-unreadable': {
+      const name = d.title.split(':')[0] ?? d.title;
+      const m = d.summary.match(/^Reading (\S+) over SNMP failed: (.+)\.$/);
+      return {
+        ...out,
+        title: `${name}: الجهاز لا يجيب على SNMP`,
+        summary: `فشلت قراءة ${ltr(m?.[1] ?? '—')} عبر SNMP: ${ltr(m?.[2] ?? '—')}.`,
+        probable_cause: 'بيانات اعتماد SNMP خاطئة أو تغيّرت، أو SNMP معطَّل على الجهاز، أو قائمة وصول لا تتضمن المجمِّع، أو الجهاز متوقف.',
+        confidence_reason: 'لا يقدّم SNMP سببًا للصمت؛ وقد يكون الجهاز نفسه يعمل.',
+        investigation_steps: ['تحقق من أن محقق المنافذ يستطيع قراءة الجهاز نفسه', 'تحقق من إعدادات SNMP وقائمة الوصول على الجهاز'],
       };
     }
 

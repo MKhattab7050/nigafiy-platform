@@ -64,7 +64,7 @@ capability must end up inside one of the programs (see the map in section 5).
 - **There are about 325 uncommitted changes**: 142 modified, 153 new and 30 deleted files. Most of it is a
   refactor that moved files into feature folders (for example `modules/endpoints/*`, `modules/ports/*`,
   `components/shell/`, `lib/i18n/`), plus feature work from earlier parallel sessions (migrations
-  021–027: port control, config backup, smart security checks, playbooks, knowledge, AI assistant,
+  021–027: port control, config backup, smart security checks, playbooks, knowledge, an AI assistant (removed since: migration 027),
   impact, portfolio). It is not known whether all of that work is finished and passing.
 - `docs/roadmap/status.md` is the source of truth for what is built and what is verified.
 - Dev environment and pitfalls: see section 10.

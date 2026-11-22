@@ -1,12 +1,15 @@
 import { readFileSync } from 'node:fs';
 import https from 'node:https';
+import path from 'node:path';
 import { createApp } from './app.ts';
 import { env, tlsPinSha256 } from './config/env.ts';
 import { migrate } from './database/migrate.ts';
 import { closePools } from './infrastructure/db.ts';
+import { ensureLanTls, setTlsStatus, statusFromMaterial, tlsStatus } from './infrastructure/lan-tls.ts';
 import { logger } from './infrastructure/logger.ts';
 import { startJobs, stopJobs } from './infrastructure/scheduler.ts';
 import { modules } from './modules/registry.ts';
+import { streamHub } from './modules/endpoints/remote-desktop/stream-hub.ts';
 import { scheduledJobsOf } from './modules/system/index.ts';
 
 // The database may still be starting (container order, crash recovery): wait for it instead of dying.
@@ -28,14 +31,56 @@ const onListening = () => logger.info({ port: env.PORT, host: env.HOST ?? 'all i
 const server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening);
 
 let httpsServer: https.Server | undefined;
+let tlsRenewTimer: NodeJS.Timeout | undefined;
+const httpsHost = env.HTTPS_HOST ?? env.HOST;
+const listenHttps = (srv: https.Server, onHttps: () => void) => {
+  if (httpsHost) srv.listen(env.HTTPS_PORT, httpsHost, onHttps);
+  else srv.listen(env.HTTPS_PORT, onHttps);
+};
 if (env.HTTPS_PORT && env.TLS_CERT_FILE && env.TLS_KEY_FILE) {
   const tlsPin = tlsPinSha256();
   httpsServer = https.createServer({ cert: readFileSync(env.TLS_CERT_FILE), key: readFileSync(env.TLS_KEY_FILE) }, app);
-  const onHttps = () =>
-    logger.info({ https_port: env.HTTPS_PORT, host: env.HOST ?? 'all interfaces', tls_pin_sha256: tlsPin }, 'LAN Detective HTTPS listening');
-  if (env.HOST) httpsServer.listen(env.HTTPS_PORT, env.HOST, onHttps);
-  else httpsServer.listen(env.HTTPS_PORT, onHttps);
+  setTlsStatus({ ...tlsStatus(), mode: 'files', https_port: env.HTTPS_PORT, https_host: httpsHost ?? null, pin_sha256: tlsPin, pin_kind: tlsPin ? 'leaf' : null });
+  listenHttps(httpsServer, () => logger.info({ https_port: env.HTTPS_PORT, host: httpsHost ?? 'all interfaces', tls_pin_sha256: tlsPin }, 'LAN Detective HTTPS listening'));
+} else if (env.HTTPS_PORT && (env.TLS_CERT_FILE || env.TLS_KEY_FILE)) {
+  // One file without the other is a mistake; do not silently replace it with the built-in certificate.
+  logger.error({ https_port: env.HTTPS_PORT }, 'TLS_CERT_FILE and TLS_KEY_FILE must both be set; HTTPS is off');
+} else if (env.HTTPS_PORT && env.LAN_TLS === 'auto') {
+  // Built-in LAN TLS: local CA + server certificate in the data folder, renewed before expiry or when
+  // this computer's names / addresses change. Collectors and agents pin the CA (docs/features/lan-tls.md).
+  const dir = path.resolve(env.TLS_AUTO_DIR ?? path.join(process.cwd(), '.data', 'tls'));
+  try {
+    const port = env.HTTPS_PORT;
+    let material = ensureLanTls(dir);
+    let renewedAt: Date | null = material.action === 'loaded' ? null : new Date();
+    if (material.action !== 'loaded') logger.info({ dir, action: material.action, ca_sha256: material.caFingerprint256 }, 'LAN TLS certificate created');
+    setTlsStatus(statusFromMaterial(material, port, httpsHost ?? null, renewedAt));
+    const srv = https.createServer({ cert: readFileSync(material.certFile), key: readFileSync(material.keyFile) }, app);
+    httpsServer = srv;
+    listenHttps(srv, () => logger.info({ https_port: port, host: httpsHost ?? 'all interfaces', tls_pin_sha256: material.caFingerprint256, pin: 'local CA' }, 'Nigafiy HTTPS listening (built-in LAN TLS)'));
+    tlsRenewTimer = setInterval(() => {
+      try {
+        const next = ensureLanTls(dir);
+        if (next.action === 'loaded') return;
+        if (next.action === 'created_ca') logger.warn({ ca_sha256: next.caFingerprint256 }, 'LAN TLS: a new local CA was created; collectors and agents pinned to the old one must be given the new pin');
+        srv.setSecureContext({ cert: readFileSync(next.certFile), key: readFileSync(next.keyFile) });
+        material = next;
+        renewedAt = new Date();
+        setTlsStatus(statusFromMaterial(material, port, httpsHost ?? null, renewedAt));
+        logger.info({ action: next.action, leaf_not_after: next.leafNotAfter.toISOString() }, 'LAN TLS certificate renewed');
+      } catch (err) {
+        logger.error({ err }, 'LAN TLS renewal failed; the current certificate stays in use');
+      }
+    }, 6 * 3600_000);
+    tlsRenewTimer.unref();
+  } catch (err) {
+    logger.error({ err, dir }, 'built-in LAN TLS could not start; HTTPS is off');
+  }
 }
+
+// Live Remote Desktop streams (WebSocket upgrades on both listeners; the endpoints module starts the hub).
+streamHub().attach(server);
+if (httpsServer) streamHub().attach(httpsServer);
 
 // A module whose start-up fails is logged; the API keeps serving every other module.
 for (const m of modules) {
@@ -64,6 +109,7 @@ async function shutdown(signal: string): Promise<void> {
     if (!m.lifecycle?.stop) continue;
     await m.lifecycle.stop().catch((err: unknown) => logger.error({ err, module: m.name }, 'module failed to stop'));
   }
+  if (tlsRenewTimer) clearInterval(tlsRenewTimer);
   if (httpsServer) await new Promise<void>((resolve) => httpsServer!.close(() => resolve()));
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await stopJobs();

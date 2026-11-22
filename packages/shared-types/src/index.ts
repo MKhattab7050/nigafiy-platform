@@ -26,7 +26,76 @@ export type DeviceType = (typeof DEVICE_TYPES)[number];
 /** `unknown` = we currently have no working collector to observe it; NOT the same as offline. */
 export type DeviceStatus = 'online' | 'offline' | 'unknown';
 export type Severity = 'info' | 'warning' | 'critical';
-export type CheckKind = 'icmp' | 'tcp' | 'dns';
+export type CheckKind = 'icmp' | 'tcp' | 'dns' | 'http' | 'https' | 'tls_expiry' | 'snmp_oid';
+
+/** http / https check settings (config of a MonitoringCheck). */
+export interface HttpCheckConfig {
+  path: string;
+  method: 'GET' | 'HEAD';
+  expect_status: { min: number; max: number };
+  body_match: { mode: 'substring' | 'regex'; pattern: string; negate: boolean } | null;
+  follow_redirects: boolean;
+  max_redirects: number;
+  /** https only. */
+  tls_verify?: boolean;
+  /** https only: lower-case hex SHA-256 of the leaf certificate (DER). */
+  pin_sha256?: string | null;
+  allow_public: boolean;
+}
+
+export interface TlsExpiryCheckConfig {
+  sni: string | null;
+  warn_days: number;
+  critical_days: number;
+  allow_public: boolean;
+}
+
+export type SnmpCheckPreset = 'cpu' | 'memory' | 'temperature' | 'link_status' | 'custom';
+export type SnmpComparison = 'gt' | 'lt' | 'eq' | 'ne';
+
+export interface SnmpOidCheckConfig {
+  preset: SnmpCheckPreset;
+  oid: string;
+  ratio_oid: string | null;
+  scale: number;
+  comparison: SnmpComparison;
+  warn: number | null;
+  critical: number | null;
+  unit: string;
+}
+
+export interface SnmpPresetEntry {
+  preset: Exclude<SnmpCheckPreset, 'custom'>;
+  oid: string;
+  ratio_oid?: string;
+  comparison: SnmpComparison;
+  warn: number | null;
+  critical: number | null;
+  unit: string;
+  note: string;
+}
+
+/** Evidence of the last sample of a watch check (what the collector observed). */
+export interface CheckSampleDetails {
+  status_code?: number;
+  final_url?: string;
+  redirects?: number;
+  body_bytes?: number;
+  body_matched?: boolean;
+  tls_version?: string;
+  cert_subject?: string;
+  cert_issuer?: string;
+  cert_not_before?: string;
+  cert_not_after?: string;
+  cert_sha256?: string;
+  cert_dns_names?: string[];
+  verified?: boolean;
+  verify_error?: string;
+  oid?: string;
+  raw_value?: string;
+  ratio_raw?: string;
+  value_type?: string;
+}
 export type CheckRole = 'gateway' | 'internet' | 'dns' | 'service';
 export type CheckState = 'unknown' | 'ok' | 'degraded' | 'down';
 export type CollectorStatus = 'pending' | 'active' | 'revoked';
@@ -231,6 +300,13 @@ export interface MonitoringCheck {
   last_loss_pct: number | null;
   last_error: string | null;
   last_resolved_target: string | null;
+  /** Settings of the watch kinds; {} for icmp / tcp / dns. */
+  config: Partial<HttpCheckConfig & TlsExpiryCheckConfig & SnmpOidCheckConfig> & Record<string, unknown>;
+  /** snmp_oid: the Port Detective device read. */
+  snmp_target_id: string | null;
+  /** Measured value of the last sample: TLS days remaining, the OID value, the HTTP status code. */
+  last_value: number | null;
+  last_details: CheckSampleDetails | null;
 }
 
 export interface CheckSeriesPoint {
@@ -241,6 +317,10 @@ export interface CheckSeriesPoint {
   latency_max_ms: number | null;
   loss_pct: number | null;
   jitter_ms: number | null;
+  /** Average / min / max measured value (snmp_oid, tls_expiry, http status) in the bucket. */
+  value?: number | null;
+  value_min?: number | null;
+  value_max?: number | null;
 }
 
 export interface Overview {
@@ -455,15 +535,29 @@ export interface TopologyNode {
   is_switch?: boolean;
   /** "Gi0/4 on Core switch" when a read switch saw this device on an access port. */
   attached_to?: string | null;
+  /** What this MikroTik device announced about itself over MNDP (observed by a collector). */
+  mndp?: {
+    identity: string | null;
+    platform: string | null;
+    version: string | null;
+    board: string | null;
+    interface_name: string | null;
+    heard_by: string;
+    last_seen_at: string;
+    evidence: string;
+  };
 }
 
 export interface TopologyEdge {
   id: string;
   source: string;
   target: string;
-  /** connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP). */
-  relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link';
-  /** Port name on the switch, for connected_to and switch_link. */
+  /**
+   * connected_to: device → switch port (forwarding table). switch_link: switch ↔ switch (LLDP, CDP or the
+   * MikroTik neighbour table). wireless_client: device → router that lists it as a Wi-Fi client.
+   */
+  relation: 'member_of' | 'gateway_of' | 'uplink' | 'connected_to' | 'switch_link' | 'wireless_client';
+  /** Port name on the switch, for connected_to and switch_link; the router interface or SSID for wireless_client. */
   port?: string;
   basis: 'observed' | 'inferred';
   confidence: Confidence;
@@ -625,11 +719,73 @@ export interface SwitchSummary {
   address_count: number;
 }
 
+export type NeighborProtocol = 'lldp' | 'cdp' | 'mikrotik';
+
 export interface PortNeighbor {
   sys_name?: string;
   port_id?: string;
   port_descr?: string;
   chassis_id?: string;
+  /** Where the entry came from (absent on reads made before CDP / MikroTik support: LLDP). */
+  protocol?: NeighborProtocol;
+  /** Management address the neighbour advertises (CDP, MikroTik). */
+  address?: string;
+  platform?: string;
+  version?: string;
+}
+
+/** A MikroTik device heard announcing itself over MNDP by a collector (receive-only listener). */
+export interface MndpNeighbor {
+  collector_id: string;
+  collector_name: string;
+  mac: string;
+  device_id: string | null;
+  device_label: string | null;
+  identity: string | null;
+  platform: string | null;
+  version: string | null;
+  board: string | null;
+  interface_name: string | null;
+  ipv4: string | null;
+  ipv6: string | null;
+  uptime_seconds: number | null;
+  source_ip: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+export interface MndpListenerStatus {
+  collector_id: string;
+  collector_name: string;
+  connection_state: string;
+  /** null until the collector reports (older collector versions never do). */
+  status: {
+    state: 'listening' | 'disabled' | 'bind_failed' | 'stopped';
+    listen?: string;
+    error?: string;
+    since: string;
+    received: number;
+    malformed: number;
+    out_of_scope: number;
+    neighbors: number;
+  } | null;
+}
+
+/** A neighbour a read switch reports on one of its ports (LLDP, CDP or the MikroTik table). */
+export interface SwitchNeighborRow extends PortNeighbor {
+  target_id: string;
+  switch_name: string;
+  if_index: number;
+  port_name: string;
+  updated_at: string;
+}
+
+export interface NeighborsReport {
+  site_id: string;
+  mndp_listen: boolean;
+  listeners: MndpListenerStatus[];
+  mndp: MndpNeighbor[];
+  switch_neighbors: SwitchNeighborRow[];
 }
 
 export interface PortDevice {
@@ -894,6 +1050,36 @@ export interface EndpointSecurityPosture {
   pending_updates?: number;
   last_update_date?: string;
   os_build?: string;
+  /** The measured evidence behind the fields above (agents that report it). */
+  checks?: EndpointSecurityEvidence[];
+  measured_at?: string;
+}
+
+export type EndpointComplianceCheck = 'firewall' | 'antivirus' | 'disk_encryption' | 'os_updates' | 'sip' | 'gatekeeper' | 'disk_space';
+/** pass / fail / warn judge one subject; unknown = could not be measured (reason given); info = context only. */
+export type EndpointEvidenceState = 'pass' | 'fail' | 'warn' | 'unknown' | 'info';
+
+/** One measured fact: which command produced which value, and when. */
+export interface EndpointSecurityEvidence {
+  check: EndpointComplianceCheck;
+  subject: string;
+  state: EndpointEvidenceState;
+  value: string;
+  source: string;
+  measured_at: string;
+  reason?: string;
+  count?: number;
+}
+
+/** The API's verdict for one compliance item, with the evidence it was decided on. */
+export interface EndpointComplianceItem {
+  key: EndpointComplianceCheck;
+  label_en: string;
+  label_ar: string;
+  verdict: EndpointComplianceStatus;
+  reason_en: string;
+  reason_ar: string;
+  evidence: EndpointSecurityEvidence[];
 }
 
 export interface EndpointPolicy {
@@ -932,6 +1118,8 @@ export interface RemoteFileResponse {
   data_base64?: string;
   sha256?: string;
   message?: string;
+  /** An upload replaced an existing file (only with an operator-confirmed `overwrite`). */
+  overwritten?: boolean;
 }
 
 export interface RemoteDesktopDisplay {
@@ -942,6 +1130,8 @@ export interface RemoteDesktopDisplay {
   width: number;
   height: number;
   primary: boolean;
+  /** The whole virtual screen (every monitor); listed last when there is more than one. */
+  all?: boolean;
 }
 
 export interface RemoteDesktopFrame {
@@ -973,6 +1163,56 @@ export interface RemoteDesktopSession {
   scale: number;
   consent_mode: 'unattended' | 'prompt';
   recording_enabled: boolean;
+  /** Fleet Pro: the session's history row (fleet_sessions.id). */
+  fleet_session_id?: string;
+  /** waiting_consent: the person at the computer has not answered yet; frames and input wait. */
+  state?: 'waiting_consent' | 'active';
+  reason?: string | null;
+}
+
+export type FleetSessionState = 'waiting_consent' | 'active' | 'ended';
+export type FleetConsentResult = 'pending' | 'not_required' | 'accepted' | 'denied' | 'timeout' | 'unavailable';
+export type FleetSessionEndReason = 'operator' | 'user' | 'consent_denied' | 'consent_timeout' | 'consent_unavailable' | 'replaced' | 'revoked' | 'expired';
+
+/** One remote support session (fleet_sessions). Frames are never stored: only relay counts. */
+export interface FleetSession {
+  id: string;
+  endpoint_id: string;
+  endpoint_name?: string;
+  public_id: string;
+  operator_email: string | null;
+  reason: string | null;
+  state: FleetSessionState;
+  consent_mode: 'unattended' | 'prompt';
+  consent_result: FleetConsentResult;
+  consent_error: string | null;
+  consent_decided_at: string | null;
+  banner_state: 'pending' | 'shown' | 'unavailable' | 'not_supported';
+  banner_error: string | null;
+  transport: 'http' | 'ws';
+  stream_connected_at: string | null;
+  desktop_mode: string | null;
+  display_index: number;
+  quality: number | null;
+  scale: number | null;
+  frames_relayed: number;
+  bytes_relayed: number;
+  clipboard_to_remote: number;
+  clipboard_from_remote: number;
+  started_at: string;
+  accepted_at: string | null;
+  ended_at: string | null;
+  end_reason: FleetSessionEndReason | null;
+  ended_by_email: string | null;
+  source: 'live' | 'audit_backfill';
+}
+
+/** GET /endpoints/:id/remote-desktop/session */
+export interface FleetSessionStatus {
+  session: RemoteDesktopSession | null;
+  fleet_session: FleetSession | null;
+  /** The agent's live socket is connected (on any API instance). */
+  stream_connected: boolean;
 }
 
 export interface EndpointDisk {
@@ -1086,6 +1326,7 @@ export interface EndpointCommand {
 
 export interface EndpointDetail extends EndpointSummary {
   security: EndpointSecurityPosture;
+  compliance_items: EndpointComplianceItem[];
   policy: EndpointPolicy;
   rd_session: RemoteDesktopSession | null;
   last_rd_frame: RemoteDesktopFrame | null;
@@ -1256,6 +1497,57 @@ export type AccountMailOutcome = 'sent' | 'not_configured' | 'failed';
 export interface AuthOptions {
   allow_registration: boolean;
   account_mail_configured: boolean;
+  /** At least one organization on this server has an enabled SSO identity provider. */
+  sso_available: boolean;
+}
+
+// ── Enterprise single sign-on (docs/features/sso.md) ──
+export type IdentityProviderKind = 'oidc' | 'saml';
+export type SsoAssignableRole = Exclude<Role, 'owner'>;
+
+export interface IdentityProviderRoleMapping {
+  /** A value of the role claim / attribute (exact, case-sensitive). */
+  value: string;
+  role: SsoAssignableRole;
+}
+
+/** An organization's identity provider as administrators see it. The OIDC client secret is write-only. */
+export interface IdentityProvider {
+  id: string;
+  kind: IdentityProviderKind;
+  name: string;
+  enabled: boolean;
+  oidc_issuer: string | null;
+  oidc_client_id: string | null;
+  oidc_client_secret_set: boolean;
+  oidc_scopes: string;
+  saml_entry_point: string | null;
+  saml_idp_entity_id: string | null;
+  saml_idp_cert: string | null;
+  saml_request_binding: 'redirect' | 'post';
+  email_attribute: string;
+  name_attribute: string | null;
+  role_attribute: string | null;
+  role_mapping: IdentityProviderRoleMapping[];
+  allowed_email_domains: string[];
+  jit_provisioning: boolean;
+  default_role: SsoAssignableRole;
+  trust_idp_mfa: boolean;
+  linked_users: number;
+  created_at: string;
+  updated_at: string;
+  /** What to configure at the identity provider for this Nigafiy server. */
+  service_provider: {
+    oidc_redirect_uri: string;
+    saml_acs_url: string;
+    saml_entity_id: string;
+    saml_metadata_url: string;
+  };
+}
+
+/** Providers that accept a typed email address (sign-in page). */
+export interface SsoDiscoverResponse {
+  providers: Array<{ id: string; name: string; kind: IdentityProviderKind }>;
 }
 
 export type LoginResponse =
@@ -1820,4 +2112,20 @@ export interface PortfolioOrganization extends PortfolioKpis {
 export interface PortfolioOrganizations {
   generated_at: string;
   items: PortfolioOrganization[];
+}
+
+/** GET /system/tls: what the HTTPS listener serves and the fingerprint collectors / agents pin. */
+export interface TlsStatus {
+  /** auto: built-in LAN TLS (local CA); files: TLS_CERT_FILE / TLS_KEY_FILE; off: no HTTPS listener. */
+  mode: 'auto' | 'files' | 'off';
+  https_port: number | null;
+  https_host: string | null;
+  /** Colon-separated SHA-256: the local CA (auto) or the configured certificate / TLS_PIN_SHA256 (files). */
+  pin_sha256: string | null;
+  pin_kind: 'ca' | 'leaf' | null;
+  leaf_not_after: string | null;
+  ca_not_after: string | null;
+  dns_names: string[];
+  ip_addresses: string[];
+  last_renewed_at: string | null;
 }

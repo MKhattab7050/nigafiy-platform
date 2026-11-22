@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import type { CheckKind, CheckRole, Device, Paginated } from '@lan-detective/shared-types';
+import type { CheckKind, CheckRole, Device, Paginated, SwitchSummary } from '@lan-detective/shared-types';
 import { Badge, Button, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
-import { type ApiError, api, qs } from '@/lib/api';
+import { ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { AUTO_GATEWAY, type Thresholds, inferRole, presetFor } from './check-presets';
+import { WATCH_KINDS, type WatchDraft, WatchFields, buildConfig, emptyDraft, isWatchKind, parseCheckUrl } from './watch-fields';
 
 type ThresholdField = keyof Thresholds;
 const deviceLabel = (d: Device) => d.display_name || d.hostname || d.current_ip || '—';
@@ -31,25 +32,41 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
   const [typed, setTyped] = useState<Partial<Record<ThresholdField, string>>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  const [draft, setDraft] = useState<WatchDraft>(emptyDraft);
+  const watch = isWatchKind(kind);
+  const parsedUrl = kind === 'http' || kind === 'https' ? parseCheckUrl(draft.url, kind) : null;
 
   const devices = useQuery<Paginated<Device>>(site ? `/devices${qs({ site_id: site, page_size: 200, sort: 'name' })}` : null, ['devices'], 120_000);
   const choices = (devices.data?.items ?? []).filter((d) => d.current_ip);
   const pickedDevice = choices.find((d) => d.id === picked) ?? null;
 
-  const effectiveRole = role ?? inferRole(kind, target);
+  const effectiveRole = role ?? inferRole(kind, kind === 'http' || kind === 'https' ? (parsedUrl?.host ?? '') : target);
   const preset = presetFor(effectiveRole, kind);
   const value = (f: ThresholdField) => typed[f] ?? (preset[f] === null ? '' : String(preset[f]));
   const subject = target === AUTO_GATEWAY ? '' : pickedDevice && pickedDevice.current_ip === target.trim() ? deviceLabel(pickedDevice) : target.trim();
+  const snmpDevice = useQuery<{ items: SwitchSummary[] }>(kind === 'snmp_oid' && site ? `/switches${qs({ site_id: site })}` : null, ['devices'], 120_000).data?.items.find((s) => s.id === draft.snmpTargetId);
   const generatedName =
-    target.trim() === AUTO_GATEWAY
-      ? t('monitoring.name.gateway')
-      : !subject
-        ? ''
-        : kind === 'icmp'
-          ? fill(t('monitoring.name.ping'), { target: subject })
-          : kind === 'tcp'
-            ? fill(t('monitoring.name.tcp'), { target: subject, port: port || '…' })
-            : fill(t('monitoring.name.dns'), { target: subject });
+    kind === 'http' || kind === 'https'
+      ? parsedUrl
+        ? fill(t('monitoring.name.http'), { target: `${parsedUrl.host}${parsedUrl.port ? `:${parsedUrl.port}` : ''}${parsedUrl.path === '/' ? '' : parsedUrl.path}` })
+        : ''
+      : kind === 'tls_expiry'
+        ? subject
+          ? fill(t('monitoring.name.tls'), { target: `${subject}${port && port !== '443' ? `:${port}` : ''}` })
+          : ''
+        : kind === 'snmp_oid'
+          ? snmpDevice
+            ? fill(t('monitoring.name.snmp'), { preset: draft.preset === 'custom' ? draft.oid || 'OID' : t(`monitoring.preset.${draft.preset}`), device: snmpDevice.name })
+            : ''
+          : target.trim() === AUTO_GATEWAY
+            ? t('monitoring.name.gateway')
+            : !subject
+              ? ''
+              : kind === 'icmp'
+                ? fill(t('monitoring.name.ping'), { target: subject })
+                : kind === 'tcp'
+                  ? fill(t('monitoring.name.tcp'), { target: subject, port: port || '…' })
+                  : fill(t('monitoring.name.dns'), { target: subject });
   const effectiveName = (name ?? generatedName).slice(0, 80);
 
   function pick(id: string) {
@@ -66,6 +83,22 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const num = (f: ThresholdField) => (value(f) === '' ? null : Number(value(f)));
+    let where: { kind: CheckKind; target: string; port: number | null; config?: Record<string, unknown>; snmp_target_id?: string } = {
+      kind,
+      target: target.trim(),
+      port: kind === 'tcp' ? Number(port) : null,
+    };
+    if (kind === 'http' || kind === 'https') {
+      if (!parsedUrl) {
+        setError(new ApiError(400, 'invalid_target', t('monitoring.urlInvalid')));
+        return;
+      }
+      where = { kind: parsedUrl.kind, target: parsedUrl.host, port: parsedUrl.port, config: buildConfig(parsedUrl.kind, draft, parsedUrl.path) };
+    } else if (kind === 'tls_expiry') {
+      where = { kind, target: target.trim(), port: Number(port || '443'), config: buildConfig(kind, draft, '/') };
+    } else if (kind === 'snmp_oid') {
+      where = { kind, target: '', port: null, snmp_target_id: draft.snmpTargetId, config: buildConfig(kind, draft, '/') };
+    }
     setBusy(true);
     setError(null);
     try {
@@ -74,10 +107,8 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
         body: {
           site_id: site,
           name: effectiveName.trim(),
-          kind,
           role: effectiveRole,
-          target: target.trim(),
-          port: kind === 'tcp' ? Number(port) : null,
+          ...where,
           interval_seconds: Number(value('interval_seconds')),
           failure_threshold: Number(value('failure_threshold')),
           latency_warn_ms: num('latency_warn_ms'),
@@ -110,7 +141,7 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
   );
 
   return (
-    <Modal title={t('monitoring.addCheck')} onClose={onClose}>
+    <Modal title={t('monitoring.addCheck')} onClose={onClose} wide={watch}>
       <form onSubmit={submit} className="space-y-3.5">
         {sites.length > 1 && (
           <Field label={t('common.site')}>
@@ -148,21 +179,31 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
                   setTarget('');
                   setPicked('');
                 }
-                if (next === 'dns' && picked) {
+                if ((next === 'dns' || isWatchKind(next)) && picked) {
                   setPicked('');
                   setTarget('');
                 }
+                if (next === 'tls_expiry' && !port) setPort('443');
               }}
             >
-              {(['icmp', 'tcp', 'dns'] as const).map((k) => (
-                <option key={k} value={k}>
-                  {t(`monitoring.kind.${k}`)}
-                </option>
-              ))}
+              <optgroup label={t('monitoring.kindGroup.basic')}>
+                {(['icmp', 'tcp', 'dns'] as const).map((k) => (
+                  <option key={k} value={k}>
+                    {t(`monitoring.kind.${k}`)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t('monitoring.kindGroup.watch')}>
+                {WATCH_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {t(`monitoring.kind.${k}`)}
+                  </option>
+                ))}
+              </optgroup>
             </Select>
           )}
         </Field>
-        {kind !== 'dns' && (
+        {(kind === 'icmp' || kind === 'tcp') && (
           <Field label={t('monitoring.pickDevice')} hint={t('monitoring.pickDeviceHint')}>
             {(id) => (
               <Select id={id} value={picked} onChange={(e) => pick(e.target.value)}>
@@ -181,7 +222,8 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
             )}
           </Field>
         )}
-        <div className={kind === 'tcp' ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-3' : ''}>
+        {(!watch || kind === 'tls_expiry') && (
+        <div className={kind === 'tcp' || kind === 'tls_expiry' ? 'grid grid-cols-[minmax(0,1fr)_6rem] gap-3' : ''}>
           <Field label={t('monitoring.target')} hint={kind === 'icmp' ? fill(t('monitoring.targetHintIcmp'), { auto: AUTO_GATEWAY }) : undefined}>
             {(id) => (
               <Input
@@ -198,10 +240,12 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
               />
             )}
           </Field>
-          {kind === 'tcp' && (
+          {(kind === 'tcp' || kind === 'tls_expiry') && (
             <Field label={t('monitoring.port')}>{(id) => <Input id={id} type="number" min={1} max={65535} value={port} onChange={(e) => setPort(e.target.value)} required dir="ltr" />}</Field>
           )}
         </div>
+        )}
+        {watch && <WatchFields kind={kind} draft={draft} onChange={setDraft} siteId={site} mode="create" />}
         <Field label={t('common.name')} hint={name === null && generatedName ? t('monitoring.nameGenerated') : undefined}>
           {(id) => <Input id={id} value={effectiveName} onChange={(e) => setName(e.target.value)} required maxLength={80} />}
         </Field>

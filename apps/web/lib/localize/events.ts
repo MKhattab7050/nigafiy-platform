@@ -13,6 +13,14 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
   const d = (ev.details ?? {}) as Record<string, unknown>;
   const t = ev.title;
 
+  // Watch-check transitions (ingest/checks.ts transitionTitle)
+  if (ev.type.startsWith('check_')) {
+    const w = t.match(/^(.+): (certificate expired|certificate expires in (\d+) days|critical threshold crossed|warning threshold crossed)$/);
+    if (w) {
+      const what = w[2] === 'certificate expired' ? 'انتهت صلاحية الشهادة' : w[3] !== undefined ? `تنتهي صلاحية الشهادة بعد ${ltr(w[3])} يوم` : w[2]!.startsWith('critical') ? 'تجاوز حد الخطورة' : 'تجاوز حد التحذير';
+      return `${w[1]}: ${what}`;
+    }
+  }
   switch (ev.type) {
     case 'device_discovered': {
       const ip = str(d.ip);
@@ -210,6 +218,15 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
     case 'config_backup_failed': {
       const target = str(d.target_name) ?? str(d.name);
       return target ? `فشل النسخ الاحتياطي لإعدادات ${target}` : 'فشل النسخ الاحتياطي للإعدادات';
+    }
+
+    case 'config_restored':
+    case 'config_restore_failed': {
+      const target = str(d.target_name);
+      const ver = typeof d.version === 'number' ? d.version : null;
+      const ok = ev.type === 'config_restored';
+      const what = `${target ? `الجهاز ${target}` : 'الجهاز'}${ver !== null ? ` إلى الإصدار ${ltr(String(ver))}` : ''}`;
+      return ok ? `استُعيدت إعدادات ${what}` : `لم تكتمل استعادة إعدادات ${what}`;
     }
 
     case 'config_host_key_changed': {

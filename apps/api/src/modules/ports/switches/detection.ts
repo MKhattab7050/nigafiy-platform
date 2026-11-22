@@ -109,8 +109,9 @@ export function listSwitchCandidates(organizationId: string, siteId: string): Pr
       )
     ).rows;
     const neighbors = (
-      await db.query<{ switch_name: string; port_name: string; sys_name: string | null; chassis_id: string | null }>(
-        `SELECT coalesce(t.name, t.sys_name, host(t.host)) AS switch_name, p.name AS port_name, n ->> 'sys_name' AS sys_name, n ->> 'chassis_id' AS chassis_id
+      await db.query<{ switch_name: string; port_name: string; sys_name: string | null; chassis_id: string | null; protocol: string; address: string | null }>(
+        `SELECT coalesce(t.name, t.sys_name, host(t.host)) AS switch_name, p.name AS port_name, n ->> 'sys_name' AS sys_name, n ->> 'chassis_id' AS chassis_id,
+                coalesce(n ->> 'protocol', 'lldp') AS protocol, n ->> 'address' AS address
            FROM snmp_targets t JOIN switch_ports p ON p.target_id = t.id, jsonb_array_elements(p.neighbors) n
           WHERE t.site_id = $1 AND t.last_ok_at IS NOT NULL`,
         [siteId],
@@ -128,10 +129,12 @@ export function listSwitchCandidates(organizationId: string, siteId: string): Pr
       for (const n of neighbors) {
         const byMac = d.mac && n.chassis_id && macKey(n.chassis_id).length === 12 && macKey(n.chassis_id) === macKey(d.mac);
         const byName = n.sys_name && names.includes(nameKey(n.sys_name));
-        if (byMac || byName) {
+        const byAddress = !byMac && !byName && n.address !== null && n.address === d.ip;
+        if (byMac || byName || byAddress) {
+          const proto = n.protocol === 'cdp' ? 'CDP' : n.protocol === 'mikrotik' ? 'MikroTik neighbour discovery' : 'LLDP';
           reasons.push({
             kind: 'lldp_neighbor',
-            evidence: `Announces itself over LLDP on port ${n.port_name} of switch ${n.switch_name}${n.sys_name ? ` as "${n.sys_name}"` : ''} (matched by ${byMac ? 'MAC address' : 'name'})`,
+            evidence: `Announces itself over ${proto} on port ${n.port_name} of switch ${n.switch_name}${n.sys_name ? ` as "${n.sys_name}"` : ''} (matched by ${byMac ? 'MAC address' : byName ? 'name' : 'management address'})`,
           });
         }
       }

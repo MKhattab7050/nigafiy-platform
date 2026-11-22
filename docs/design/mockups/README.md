@@ -17,7 +17,7 @@ Live canvas: https://claude.ai/artifact/UgAvbazdgsCatGmPwfqQnd (private to the o
 | Fleet Pro: user side (`FleetUser.dc.html`) | Consent prompt with per-permission ticks and timeout, the session bar with End, the tray's Request help and support activity, Quick Support code, the privacy screen text |
 | Fleet Pro: tools (`FleetTools.dc.html`) | Two-pane file transfer with queue, admin-only PowerShell with transcript, scripts and jobs on groups and schedules, patch windows |
 | Fleet Pro: policy (`FleetPolicy.dc.html`) | Attended or unattended, MFA, second-admin approval, hours, recording retention, IP allow-list, permission profiles matrix, and what no policy can turn off |
-| Mind (`Mind.dc.html`) | Playbook run with an approval gate on the disruptive step, the two-person rule, a related knowledge article, and the assistant shown as off by default |
+| Mind (`Mind.dc.html`) | Playbook run with an approval gate on the disruptive step, the two-person rule and a related knowledge article |
 | Toolbox (`Toolbox.dc.html`) | Tool tabs, Ping run from a chosen Sensor inside authorized scopes, and the subnet calculator |
 
 ## Decisions (owner, 2026-11-21)

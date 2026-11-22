@@ -12,6 +12,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { RANGES, Range, CheckChart } from '../components/check-chart';
 import { AddCheck } from '../components/add-check';
 import { EditCheck } from '../components/edit-check';
+import { WatchEvidence, useWatchValue } from '../components/watch-result';
 
 export function MonitoringScreen() {
   const { t, locale } = useI18n();
@@ -137,23 +138,9 @@ export function MonitoringScreen() {
                       {t('monitoring.every')} {c.interval_seconds}s
                     </span>
                   </div>
-                  <dl className="mb-4 grid grid-cols-3 gap-3 rounded-[8px] border border-line bg-sunken px-3 py-2.5">
-                    <div>
-                      <dt className="text-[11px] text-muted">{t('monitoring.latency')}</dt>
-                      <dd className="tnum mt-0.5 text-lg font-semibold leading-tight">{ms(c.last_latency_ms)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-muted">{t('monitoring.loss')}</dt>
-                      <dd className={`tnum mt-0.5 text-lg font-semibold leading-tight ${c.last_loss_pct ? 'text-warn' : ''}`}>{pct(c.last_loss_pct)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] text-muted">{t('monitoring.lastResult')}</dt>
-                      <dd className="mt-1 text-[13px]" title={absoluteTime(c.last_result_at, locale)}>
-                        {c.last_result_at ? relativeTime(c.last_result_at, locale) : t('common.never')}
-                      </dd>
-                    </div>
-                  </dl>
+                  <CheckFigures check={c} />
                   {c.last_error && c.state !== 'ok' && <p className="mono mb-3 rounded-[6px] border border-crit/30 bg-crit/[0.07] px-2.5 py-1.5 text-start text-xs text-fg">{c.last_error}</p>}
+                  <WatchEvidence check={c} />
                   <CheckChart check={c} range={range} />
                 </Card>
               ))}
@@ -165,5 +152,40 @@ export function MonitoringScreen() {
       {adding && <AddCheck onClose={() => setAdding(false)} onCreated={query.reload} />}
       {editing && <EditCheck check={editing} onClose={() => setEditing(null)} onSaved={query.reload} />}
     </>
+  );
+}
+
+const TONE = { ok: '', warn: 'text-warn', crit: 'text-crit' } as const;
+
+/** Latency, then loss (ping) or the measured value (watch checks), then the time of the last result. */
+function CheckFigures({ check: c }: { check: MonitoringCheck }) {
+  const { t, locale } = useI18n();
+  const watch = useWatchValue(c);
+  return (
+    <dl className="mb-4 grid grid-cols-3 gap-3 rounded-[8px] border border-line bg-sunken px-3 py-2.5">
+      <div>
+        <dt className="text-[11px] text-muted">{t('monitoring.latency')}</dt>
+        <dd className="tnum mt-0.5 text-lg font-semibold leading-tight">{ms(c.last_latency_ms)}</dd>
+      </div>
+      {watch ? (
+        <div>
+          <dt className="text-[11px] text-muted">{watch.label}</dt>
+          <dd className={`tnum mt-0.5 text-lg font-semibold leading-tight ${watch.tone ? TONE[watch.tone] : ''}`} dir="auto">
+            {watch.value}
+          </dd>
+        </div>
+      ) : (
+        <div>
+          <dt className="text-[11px] text-muted">{t('monitoring.loss')}</dt>
+          <dd className={`tnum mt-0.5 text-lg font-semibold leading-tight ${c.last_loss_pct ? 'text-warn' : ''}`}>{pct(c.last_loss_pct)}</dd>
+        </div>
+      )}
+      <div>
+        <dt className="text-[11px] text-muted">{t('monitoring.lastResult')}</dt>
+        <dd className="mt-1 text-[13px]" title={absoluteTime(c.last_result_at, locale)}>
+          {c.last_result_at ? relativeTime(c.last_result_at, locale) : t('common.never')}
+        </dd>
+      </div>
+    </dl>
   );
 }

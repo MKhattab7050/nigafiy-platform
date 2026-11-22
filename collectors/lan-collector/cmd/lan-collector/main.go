@@ -71,6 +71,10 @@ func main() {
 	if deps.DNSListen == "off" {
 		deps.DNSListen = ""
 	}
+	deps.MNDPListen = cfg.MNDPListen
+	if deps.MNDPListen == "off" {
+		deps.MNDPListen = ""
+	}
 	a, err := agent.New(cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start", "error", err.Error())

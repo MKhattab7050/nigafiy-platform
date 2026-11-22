@@ -37,7 +37,13 @@ export function CheckChart({ check, range }: { check: MonitoringCheck; range: Ra
           latency_ms: p.latency_ms,
           latency_max_ms: p.latency_max_ms,
           fail: p.ok_ratio < 1 ? (1 - p.ok_ratio) * 100 : null,
+          value: p.value ?? null,
+          value_max: p.value_max ?? null,
         }));
+        // SNMP values and certificate days are charted on their own scale.
+        const valueChart = (check.kind === 'snmp_oid' || check.kind === 'tls_expiry') && data.some((d) => d.value !== null);
+        const unit = check.kind === 'tls_expiry' ? ` ${t('monitoring.days')}` : check.config.unit ? ` ${check.config.unit}` : '';
+        const fmtValue = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(Math.abs(v) < 10 ? 2 : 1)}${unit}`;
         const cells = toCells(
           series.points.map((p) => ({ t: new Date(p.ts).getTime(), samples: p.samples, ok_ratio: p.ok_ratio })),
           from,
@@ -60,6 +66,20 @@ export function CheckChart({ check, range }: { check: MonitoringCheck; range: Ra
                 { key: 'fail', label: t('chart.failedShare'), color: 'var(--color-crit)', kind: 'band', format: (v) => pct(v) },
               ]}
             />
+            {valueChart && (
+              <TimeSeriesChart
+                data={data}
+                from={from}
+                to={to}
+                withDate={withDate}
+                label={`${t('monitoring.value')} · ${check.name}`}
+                yFormat={fmtValue}
+                series={[
+                  { key: 'value', label: t('monitoring.value'), color: 'var(--color-series-2)', kind: 'area' },
+                  ...(check.kind === 'snmp_oid' ? [{ key: 'value_max', label: t('monitoring.latencyMax'), color: 'var(--color-series-2)', kind: 'faint' as const }] : []),
+                ]}
+              />
+            )}
             <p className="tnum text-[11.5px] text-faint">
               {t('monitoring.success')}: <span className="font-medium text-muted">{pct((okSamples / total) * 100, 2)}</span> · {total} {t('overview.samples')}
             </p>

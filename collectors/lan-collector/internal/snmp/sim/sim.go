@@ -32,6 +32,9 @@ type Agent struct {
 	IgnoreSets bool
 	// RejectSet, when it returns non-zero for an OID, fails a SET on it with that error status.
 	RejectSet func(oid string) gosnmp.SNMPError
+	// MangleSet, when set, replaces the value a SET stores (a switch that answers success but applies
+	// something else, e.g. truncates a description or refuses to shut a port).
+	MangleSet func(oid string, value any) any
 
 	mu       sync.Mutex
 	entries  []entry
@@ -250,4 +253,30 @@ func Switch(community, name string, ports int, devices []Device, uplinkName stri
 		a.Str("1.0.8802.1.1.2.1.4.1.1.9."+idx, uplinkName)
 	}
 	return a
+}
+
+// CDPNeighbor adds a cdpCacheTable row (CISCO-CDP-MIB) heard on ifIndex.
+func (a *Agent) CDPNeighbor(ifIndex, devIndex int, deviceID, port, platform, version string, ip net.IP) {
+	idx := fmt.Sprintf("%d.%d", ifIndex, devIndex)
+	a.Int("1.3.6.1.4.1.9.9.23.1.2.1.1.3."+idx, 1)
+	a.Set("1.3.6.1.4.1.9.9.23.1.2.1.1.4."+idx, gosnmp.OctetString, []byte(ip.To4()))
+	a.Str("1.3.6.1.4.1.9.9.23.1.2.1.1.5."+idx, version)
+	a.Str("1.3.6.1.4.1.9.9.23.1.2.1.1.6."+idx, deviceID)
+	a.Str("1.3.6.1.4.1.9.9.23.1.2.1.1.7."+idx, port)
+	a.Str("1.3.6.1.4.1.9.9.23.1.2.1.1.8."+idx, platform)
+}
+
+// MikroTikNeighbor adds a mtxrNeighborTable row (MIKROTIK-MIB) heard on ifIndex.
+func (a *Agent) MikroTikNeighbor(index, ifIndex int, identity, platform, version, mac string, ip net.IP) {
+	base := "1.3.6.1.4.1.14988.1.1.11.1.1."
+	idx := strconv.Itoa(index)
+	hw, _ := net.ParseMAC(mac)
+	a.Int(base+"1."+idx, index)
+	a.Set(base+"2."+idx, gosnmp.IPAddress, ip.To4().String())
+	a.Set(base+"3."+idx, gosnmp.OctetString, []byte(hw))
+	a.Str(base+"4."+idx, version)
+	a.Str(base+"5."+idx, platform)
+	a.Str(base+"6."+idx, identity)
+	a.Str(base+"7."+idx, "ABCD-1234")
+	a.Int(base+"8."+idx, ifIndex)
 }

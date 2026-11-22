@@ -4,10 +4,12 @@ import { Settings } from 'lucide-react';
 import { Card, Fact, PageHeader, Select } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useApp } from '@/lib/app';
+import { LanTlsCard } from '@/features/discovery/components/lan-tls-card';
 import { type Key, useI18n } from '@/lib/i18n';
 import { AccountSecurity } from '../components/account-security';
 import { AuditLog } from '../components/audit-log';
 import { MovedCard } from '../components/moved-card';
+import { SsoProviders } from '../components/sso-providers';
 import { SystemHealth } from '../components/system-health';
 import { TeamManagement } from '../components/team-management';
 
@@ -46,10 +48,16 @@ export function SettingsScreen() {
         <div id="system" className="scroll-mt-20">
           <SystemHealth />
         </div>
+        <div id="tls" className="scroll-mt-20">
+          <LanTlsCard />
+        </div>
         <MovedCard />
         {can('admin') ? (
           <>
             <TeamManagement />
+            <div id="sso" className="scroll-mt-20">
+              <SsoProviders />
+            </div>
             <AuditLog />
           </>
         ) : (

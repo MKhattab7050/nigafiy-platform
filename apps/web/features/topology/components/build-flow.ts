@@ -33,10 +33,10 @@ export function buildFlow(
   let x = 0;
   const segmentCenter = new Map<string, number>();
   for (const seg of segments) {
-    // Switches first, then the devices on each switch together, then everything without a known port.
+    // Switches first, then the devices on each switch (or Wi-Fi router) together, then everything without a known link.
     const attachment = new Map(
       t.edges
-        .filter((e) => e.relation === "connected_to")
+        .filter((e) => e.relation === "connected_to" || e.relation === "wireless_client")
         .map((e) => [e.source, `${e.target}|${e.port ?? ""}`]),
     );
     const rank = (n: TopologyNode) =>
@@ -122,7 +122,7 @@ export function buildFlow(
     .filter(
       (e) =>
         e.relation !== "member_of" &&
-        (e.relation !== "connected_to" ||
+        ((e.relation !== "connected_to" && e.relation !== "wireless_client") ||
           e.source === focus ||
           e.target === focus),
     )
@@ -130,9 +130,9 @@ export function buildFlow(
       id: e.id,
       source: e.source,
       target: e.target,
-      type: e.relation === "connected_to" ? "default" : "smoothstep",
+      type: e.relation === "connected_to" || e.relation === "wireless_client" ? "default" : "smoothstep",
       label:
-        e.relation === "connected_to" || e.relation === "switch_link"
+        e.relation === "connected_to" || e.relation === "switch_link" || e.relation === "wireless_client"
           ? e.port
           : undefined,
       labelStyle: { fill: "var(--color-fg)", fontSize: 11 },

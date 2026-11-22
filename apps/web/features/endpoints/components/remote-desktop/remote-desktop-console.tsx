@@ -1,233 +1,250 @@
 'use client';
 
 import clsx from 'clsx';
-import { Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, Square } from 'lucide-react';
-import { Badge, Button, Card, ErrorNote, Input, Select } from '@/components/ui';
-import { RemoteDesktopConsoleProps, useRemoteDesktop } from './use-remote-desktop';
+import { ClipboardCopy, ClipboardPaste, Hourglass, Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, ShieldCheck, Square } from 'lucide-react';
+import { Badge, Button, Card, ErrorNote, Input, Notice, Select, Textarea, type Tone } from '@/components/ui';
+import { ltr } from '@/lib/localize/bidi';
+import { bytes, rdText } from './rd-text';
+import { SessionHistory } from './session-history';
+import { type RdPath, type RemoteDesktopConsoleProps, useRemoteDesktop } from './use-remote-desktop';
+
+const PATH_TONE: Record<RdPath, Tone> = { connecting: 'idle', direct: 'ok', relay: 'ok', waiting: 'warn', http: 'warn' };
 
 export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
-  const { ep, online, canControl, viewOnly = false, onReload } = props;
-  const { locale, isAr, streaming, setStreaming, interactive, setInteractive, displayIndex, setDisplayIndex, quality, setQuality, scale, setScale, adaptive, setAdaptive, frame, setFrame, rttMs, setRttMs, textToType, setTextToType, busy, setBusy, error, setError, viewportRef, inFlightRef, captureNextFrame, startSession, stopSession, sendInput, handleCanvasMouse, displays } = useRemoteDesktop(props);
+  const { ep, online, canControl, viewOnly = false } = props;
+  const rd = useRemoteDesktop(props);
+  const tx = rdText(rd.locale);
+  const fs = rd.fleetSession;
+  const policyPrompt = ep.policy?.remote_desktop_consent === 'prompt';
+  const deniedPermissions = Object.entries(rd.hello?.desktop?.permissions ?? {}).filter(([, v]) => v === 'denied');
+
+  const endedText = (() => {
+    const s = rd.lastEnded;
+    if (!s?.end_reason) return null;
+    const e = tx.ended;
+    switch (s.end_reason) {
+      case 'operator':
+        return e.operator(s.ended_by_email);
+      case 'consent_unavailable':
+        return e.consent_unavailable(s.consent_error);
+      default:
+        return e[s.end_reason];
+    }
+  })();
 
   return (
     <div className="space-y-4">
-      {error && <ErrorNote error={error} />}
+      {rd.error && <ErrorNote error={rd.error} />}
 
-      {/* Transparency & Consent Notice */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-raised/60 px-3.5 py-2.5 text-xs">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={streaming ? 'ok' : 'idle'}>
-            {streaming ? (isAr ? 'جلسة نشطة' : 'LIVE SESSION') : isAr ? 'متوقف' : 'IDLE'}
-          </Badge>
-          <span className="text-muted">
-            {isAr
-              ? 'عند بدء الجلسة وانتهائها يظهر إشعار على شاشة الجهاز باسمك، وتُسجَّل الجلسة في سجل التدقيق.'
-              : 'Starting or ending a session shows a notice with your name on the endpoint’s screen, and the session is recorded in the audit log.'}
+      {/* Transparency: the user sees who is connected, for the whole session. */}
+      <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-line bg-raised/60 px-3.5 py-2.5 text-xs">
+        <div className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-center gap-2">
+          <Badge tone={rd.live ? 'ok' : rd.state === 'waiting_consent' ? 'warn' : 'idle'}>{rd.live ? tx.live : rd.state === 'waiting_consent' ? tx.waitingConsent : tx.idle}</Badge>
+          <span className="flex items-start gap-1.5 text-muted">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span>
+              {tx.transparency} {policyPrompt ? tx.promptPolicy : tx.unattendedPolicy}
+            </span>
           </span>
         </div>
-        {frame && (
-          <div className="flex flex-wrap items-center gap-2 text-[11px] mono text-muted" dir="ltr">
-            <span>
-              {frame.width}×{frame.height} (<span dir="auto">{isAr ? 'المصدر' : 'src'}</span> {frame.source_width}×{frame.source_height})
-            </span>
-            {frame.unchanged ? (
-              <span dir="auto">· {isAr ? 'الشاشة لم تتغيّر (لم تُرسل صورة)' : 'screen unchanged (no image sent)'}</span>
-            ) : (
-              <span>· {(frame.byte_length / 1024).toFixed(1)} KB</span>
-            )}
-            <span dir="auto">· {isAr ? `التقاط ${frame.capture_ms}ms` : `capture ${frame.capture_ms}ms`}</span>
-            {rttMs !== null && <span>· RTT {rttMs}ms</span>}
-            <Badge tone={frame.capture_mode === 'native_gdi' || frame.capture_mode === 'native' ? 'ok' : 'info'}>
-              {frame.capture_mode}
-            </Badge>
+        {rd.session && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {rd.live && <Badge tone={PATH_TONE[rd.path]}>{tx.path[rd.path]}</Badge>}
+            {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' ? 'ok' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
+            {rd.hello?.desktop?.mode && <Badge tone="info">{tx.desktopMode[rd.hello.desktop.mode] ?? rd.hello.desktop.mode}</Badge>}
           </div>
         )}
       </div>
 
+      {rd.live && rd.path !== 'connecting' && rd.path !== 'direct' && <p className="text-xs text-muted">{tx.pathHelp[rd.path]}</p>}
+      {fs?.banner_state === 'unavailable' && fs.banner_error && <Notice className="border-warn/30 bg-warn/[0.08]">{`${tx.banner.unavailable}: ${fs.banner_error}`}</Notice>}
+      {deniedPermissions.map(([k]) => (
+        <Notice key={k} className="border-warn/30 bg-warn/[0.08]">
+          {tx.permissionDenied(tx.permissionNames[k] ?? k)}
+        </Notice>
+      ))}
+      {rd.streamNote && <Notice className="border-warn/30 bg-warn/[0.08]">{rd.streamNote}</Notice>}
+      {!rd.session && endedText && <Notice>{endedText}</Notice>}
+
       <Card
-        title={isAr ? 'وحدة التحكم بسطح المكتب البعيد (Remote Desktop)' : 'Remote Desktop Console'}
+        title={tx.title}
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={String(displayIndex)}
-              onChange={(e) => setDisplayIndex(Number(e.target.value))}
-              aria-label={isAr ? 'الشاشة' : 'Display'}
-            >
-              {displays.map((d) => (
-                <option key={d.index} value={d.index}>
-                  {d.width > 0 && d.height > 0 ? `${d.name} (${d.width}×${d.height})` : d.name}
-                </option>
+            {rd.displays.length > 0 && (
+              <Select value={String(rd.displayIndex)} onChange={(e) => rd.setDisplayIndex(Number(e.target.value))} aria-label={tx.display}>
+                {rd.displays.map((d) => (
+                  <option key={d.index} value={d.index}>
+                    {d.all ? tx.allDisplays : d.name}
+                    {d.width > 0 && d.height > 0 ? ` (${ltr(`${d.width}×${d.height}`)})` : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <Select value={String(rd.scale)} onChange={(e) => rd.setScale(Number(e.target.value))} aria-label={tx.scale}>
+              {[0.5, 0.75, 1].map((s) => (
+                <option key={s} value={s}>{`${tx.scale} ${ltr(`${s * 100}%`)}`}</option>
               ))}
             </Select>
-
-            <Select
-              value={String(scale)}
-              onChange={(e) => setScale(Number(e.target.value))}
-              aria-label={isAr ? 'الدقة' : 'Scale'}
-            >
-              <option value="0.5">{isAr ? 'الدقة 50% (سريع)' : 'Scale 50% (Fast)'}</option>
-              <option value="0.75">{isAr ? 'الدقة 75% (متوازن)' : 'Scale 75% (Balanced)'}</option>
-              <option value="1">{isAr ? 'الدقة 100% (كاملة)' : 'Scale 100% (Full HD)'}</option>
+            <Select value={String(rd.quality)} onChange={(e) => rd.setQuality(Number(e.target.value))} aria-label={tx.quality}>
+              {[45, 68, 85].map((q) => (
+                <option key={q} value={q}>{`${tx.quality} ${ltr(q)}`}</option>
+              ))}
             </Select>
-
-            <Select
-              value={String(quality)}
-              onChange={(e) => setQuality(Number(e.target.value))}
-              aria-label={isAr ? 'الجودة' : 'Quality'}
-            >
-              <option value="45">{isAr ? 'جودة منخفضة (45%)' : 'Low Quality (45%)'}</option>
-              <option value="68">{isAr ? 'جودة متوسطة (68%)' : 'Medium Quality (68%)'}</option>
-              <option value="85">{isAr ? 'جودة عالية (85%)' : 'High Quality (85%)'}</option>
-            </Select>
-
-            <label className="flex items-center gap-1.5 text-xs text-muted px-1">
-              <input type="checkbox" checked={adaptive} onChange={(e) => setAdaptive(e.target.checked)} />
-              {isAr ? 'جودة تلقائية' : 'Adaptive'}
+            <label className="flex items-center gap-1.5 px-1 text-xs text-muted" title={tx.adaptiveHint}>
+              <input type="checkbox" checked={rd.adaptive} onChange={(e) => rd.setAdaptive(e.target.checked)} />
+              {tx.adaptive}
             </label>
-
-
-            {canControl && !viewOnly && (
-              <Button
-                size="sm"
-                onClick={() => setInteractive((v) => !v)}
-                className={clsx(interactive && 'border-accent text-fg')}
-              >
+            {canControl && !viewOnly && rd.live && (
+              <Button size="sm" onClick={() => rd.setInteractive((v) => !v)} className={clsx(rd.interactive && 'border-accent text-fg')}>
                 <MousePointer className="size-3.5" aria-hidden />
-                {interactive ? (isAr ? 'التحكم مفعّل' : 'Control ON') : isAr ? 'مشاهدة فقط' : 'View Only'}
+                {rd.interactive ? tx.control : tx.viewOnly}
               </Button>
             )}
-
-            <Button
-              size="sm"
-              disabled={!online}
-              onClick={() => void captureNextFrame()}
-              title={isAr ? 'التقاط إطار الآن' : 'Capture snapshot now'}
-            >
+            <Button size="sm" disabled={!online || !rd.live} onClick={rd.requestFull} title={tx.snapshot} aria-label={tx.snapshot}>
               <RefreshCw className="size-3.5" aria-hidden />
             </Button>
-
-            <Button
-              size="sm"
-              onClick={() => {
-                if (viewportRef.current?.requestFullscreen) {
-                  void viewportRef.current.requestFullscreen();
-                }
-              }}
-              title={isAr ? 'ملء الشاشة' : 'Fullscreen'}
-            >
+            <Button size="sm" onClick={() => void rd.viewportRef.current?.requestFullscreen?.()} title={tx.fullscreen} aria-label={tx.fullscreen}>
               <Maximize2 className="size-3.5" aria-hidden />
             </Button>
-
-            {!streaming ? (
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={!online || !canControl}
-                busy={busy === 'start'}
-                onClick={() => void startSession()}
-              >
+            {!rd.session ? (
+              <Button size="sm" variant="primary" disabled={!online || !canControl} busy={rd.busy === 'start'} onClick={() => void rd.startSession()}>
                 <Play className="size-3.5" aria-hidden />
-                {isAr ? 'بدء البث الحي' : 'Start Live Session'}
+                {tx.start}
               </Button>
             ) : (
-              <Button size="sm" variant="danger" busy={busy === 'stop'} onClick={() => void stopSession()}>
+              <Button size="sm" variant="danger" busy={rd.busy === 'stop'} disabled={!canControl} onClick={() => void rd.stopSession()}>
                 <Square className="size-3.5" aria-hidden />
-                {isAr ? 'إنهاء الجلسة' : 'Stop Session'}
+                {tx.stop}
               </Button>
             )}
           </div>
         }
       >
         <div className="space-y-3">
-          {/* Keyboard & Special Keys Bar */}
-          {canControl && !viewOnly && (
+          {!rd.session && canControl && (
+            <div className="block text-xs text-muted">
+              <label htmlFor="rd-reason" className="mb-1 block">
+                {tx.reason}
+              </label>
+              <Input id="rd-reason" value={rd.reason} maxLength={200} onChange={(e) => rd.setReason(e.target.value)} placeholder={tx.reasonPlaceholder} />
+            </div>
+          )}
+
+          {canControl && !viewOnly && rd.live && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!textToType) return;
-                  void sendInput({ event_kind: 'text', text: textToType });
-                  setTextToType('');
+                  if (!rd.textToType) return;
+                  void rd.sendInput({ kind: 'text', text: rd.textToType });
+                  rd.setTextToType('');
                 }}
-                className="flex flex-1 items-center gap-1.5 min-w-60"
+                className="flex min-w-60 flex-1 items-center gap-1.5"
               >
-                <Keyboard className="size-4 text-muted shrink-0" aria-hidden />
-                <Input
-                  value={textToType}
-                  onChange={(e) => setTextToType(e.target.value)}
-                  placeholder={isAr ? 'اكتب نصاً لإرساله للجهاز البعيد…' : 'Type text to send to remote screen…'}
-                />
-                <Button type="submit" size="sm" disabled={!online || !textToType}>
-                  {isAr ? 'إرسال نص' : 'Send Text'}
+                <Keyboard className="size-4 shrink-0 text-muted" aria-hidden />
+                <Input value={rd.textToType} maxLength={240} onChange={(e) => rd.setTextToType(e.target.value)} placeholder={tx.typeText} />
+                <Button type="submit" size="sm" disabled={!online || !rd.textToType || !rd.mayControl}>
+                  {tx.sendText}
                 </Button>
               </form>
-
               <div className="flex flex-wrap items-center gap-1" dir="ltr">
-                {(['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const).map(
-                  (k) => (
-                    <Button
-                      key={k}
-                      size="sm"
-                      disabled={!online || !interactive}
-                      onClick={() => void sendInput({ event_kind: 'key_press', key: k })}
-                    >
-                      {k.replace('Arrow', '')}
-                    </Button>
-                  ),
-                )}
+                {(['Enter', 'Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'] as const).map((k) => (
+                  <Button key={k} size="sm" disabled={!rd.mayControl} onClick={() => void rd.sendInput({ kind: 'key_press', key: k })}>
+                    {k.replace('Arrow', '')}
+                  </Button>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Screen Viewport */}
+          {/* Screen */}
           <div
-            ref={viewportRef}
+            ref={rd.viewportRef}
+            role="application"
+            aria-label={tx.title}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: the remote screen takes keyboard focus to forward keys.
             tabIndex={0}
-            onKeyDown={(e) => {
-              if (!interactive || !streaming) return;
-              // Avoid hijacking typing when focus is inside an input
-              if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-              e.preventDefault();
-              void sendInput({
-                event_kind: 'key_press',
-                key: e.key,
-                ctrl: e.ctrlKey,
-                alt: e.altKey,
-                shift: e.shiftKey,
-              });
-            }}
+            onKeyDown={rd.onViewportKey}
             className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-line-strong bg-black focus:outline-2 focus:outline-accent"
           >
-            {frame?.jpeg_base64 ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={`data:image/jpeg;base64,${frame.jpeg_base64}`}
-                alt={isAr ? 'بث سطح المكتب البعيد' : 'Remote Desktop Stream'}
-                className={clsx('max-h-[72vh] w-auto select-none object-contain', interactive && 'cursor-crosshair')}
-                draggable={false}
-                onClick={(e) => handleCanvasMouse(e, 'mouse_click', false)}
-                onDoubleClick={(e) => handleCanvasMouse(e, 'mouse_click', true)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  handleCanvasMouse(e, 'mouse_click', false);
-                }}
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-3 p-8 text-center text-muted">
-                <Monitor className="size-10 text-faint" aria-hidden />
-                <p className="text-sm font-medium text-fg">
-                  {isAr ? 'سطح المكتب البعيد جاهز للاتصال' : 'Remote Desktop Ready'}
+            <canvas
+              ref={rd.canvasRef}
+              className={clsx('max-h-[72vh] max-w-full select-none object-contain', !rd.hasPicture && 'hidden', rd.mayControl && 'cursor-crosshair')}
+              aria-label={tx.title}
+              {...rd.canvasHandlers}
+            />
+            {!rd.hasPicture && (
+              <div className="flex flex-col items-center gap-3 p-8 text-center text-white/70">
+                {rd.state === 'waiting_consent' ? <Hourglass className="size-10 text-warn" aria-hidden /> : <Monitor className="size-10 text-white/40" aria-hidden />}
+                <p className="text-sm font-medium text-white" dir="auto">
+                  {rd.state === 'waiting_consent' ? tx.waitingTitle(ep.name) : rd.live ? tx.connecting : tx.readyTitle}
                 </p>
-                <p className="max-w-md text-xs">
-                  {isAr
-                    ? 'اضغط "بدء البث الحي" لالتقاط شاشة الجهاز البعيد والتحكم بالماوس ولوحة المفاتيح مباشرة.'
-                    : 'Click "Start Live Session" to stream the endpoint display and interact via mouse and keyboard.'}
-                </p>
+                <p className="max-w-md text-xs">{rd.state === 'waiting_consent' ? tx.waitingBody(rd.consentLeft ?? 60) : rd.live ? '' : tx.readyBody}</p>
               </div>
             )}
           </div>
+
+          {/* What the stream measures (from the agent), or the HTTP frame's own figures. */}
+          {rd.live && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted mono">
+              {rd.stats && rd.wsLive && (
+                <>
+                  <span>{tx.stats(rd.stats.fps, rd.stats.kbps, rd.stats.rtt_ms, rd.stats.quality, rd.stats.scale)}</span>
+                  {rd.stats.width > 0 && <span>{ltr(`${rd.stats.width}×${rd.stats.height}`)}</span>}
+                  <span>{tx.changed(rd.stats.changed_pct)}</span>
+                  <span>{tx.viewers(rd.stats.viewers)}</span>
+                </>
+              )}
+              {!rd.wsLive && rd.httpFrame && (
+                <>
+                  <span>{tx.size(rd.httpFrame.width, rd.httpFrame.height, rd.httpFrame.source_width, rd.httpFrame.source_height)}</span>
+                  {!rd.httpFrame.unchanged && <span>{bytes(rd.httpFrame.byte_length)}</span>}
+                  {rd.rttMs !== null && <span>RTT {ltr(`${rd.rttMs} ms`)}</span>}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </Card>
+
+      {/* Clipboard: text only, operator-initiated, audited. */}
+      {canControl && rd.live && (
+        <Card title={tx.clipboard}>
+          <p className="mb-2 text-xs text-muted">{tx.clipboardHint}</p>
+          {!rd.wsLive && <Notice className="border-warn/30 bg-warn/[0.08]">{tx.clipboardNeedsStream}</Notice>}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Textarea value={rd.clipOut} rows={3} onChange={(e) => rd.setClipOut(e.target.value)} placeholder={tx.clipboardSendPlaceholder} dir="auto" />
+              {rd.clipOut.length > 16_000 && <p className="text-xs text-crit">{tx.tooLong}</p>}
+              <Button size="sm" disabled={!rd.wsLive || !rd.clipOut || rd.clipOut.length > 16_000} onClick={rd.sendClipboard}>
+                <ClipboardPaste className="size-3.5" aria-hidden />
+                {tx.clipboardSend}
+              </Button>
+            </div>
+            <div className="space-y-2">
+              <Textarea value={rd.clipIn ?? ''} rows={3} readOnly dir="auto" aria-label={tx.clipboardGet} />
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" disabled={!rd.wsLive} onClick={rd.getClipboard}>
+                  <ClipboardCopy className="size-3.5" aria-hidden />
+                  {tx.clipboardGet}
+                </Button>
+                {rd.clipIn !== null && (
+                  <Button size="sm" onClick={() => void navigator.clipboard?.writeText(rd.clipIn ?? '')}>
+                    {tx.clipboardCopy}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+          {rd.clipNote && (
+            <p className={clsx('mt-2 text-xs', rd.clipNote.tone === 'ok' ? 'text-ok' : 'text-crit')}>
+              {rd.clipNote.text === 'sent' ? tx.clipboardSent : rd.clipNote.text === 'needs_stream' ? tx.clipboardNeedsStream : rd.clipNote.text}
+            </p>
+          )}
+        </Card>
+      )}
+
+      <SessionHistory endpointId={ep.id} />
     </div>
   );
 }

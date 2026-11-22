@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isIPv4 } from './net.ts';
-import { configBackupProbeResultSchema, configBackupResultSchema } from './config-backup-protocol.ts';
+import { configBackupProbeResultSchema, configBackupResultSchema, configRestoreResultSchema } from './config-backup-protocol.ts';
 import { smartCheckSchema } from './smart-check-protocol.ts';
 import { switchPortResultSchema, switchVlansSchema } from './switch-port-protocol.ts';
 
@@ -54,6 +54,20 @@ export const heartbeatSchema = z
       })
       .strict()
       .optional(),
+    // The receive-only MikroTik neighbour listener (UDP 5678): whether it runs and what it received.
+    mndp_status: z
+      .object({
+        state: z.enum(['listening', 'disabled', 'bind_failed', 'stopped']),
+        listen: z.string().max(64).optional(),
+        error: z.string().max(400).optional(),
+        since: timestamp,
+        received: z.number().int().min(0),
+        malformed: z.number().int().min(0),
+        out_of_scope: z.number().int().min(0),
+        neighbors: z.number().int().min(0).max(100_000),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -92,6 +106,30 @@ const discoveryRunSchema = z
   })
   .strict();
 
+const detailText = (max: number) => z.string().max(max);
+const checkDetailsSchema = z
+  .object({
+    status_code: z.number().int().min(100).max(599).optional(),
+    final_url: detailText(500).optional(),
+    redirects: z.number().int().min(0).max(20).optional(),
+    body_bytes: z.number().int().min(0).max(1_048_576).optional(),
+    body_matched: z.boolean().optional(),
+    tls_version: detailText(16).optional(),
+    cert_subject: detailText(300).optional(),
+    cert_issuer: detailText(300).optional(),
+    cert_not_before: timestamp.optional(),
+    cert_not_after: timestamp.optional(),
+    cert_sha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+    cert_dns_names: z.array(detailText(253)).max(20).optional(),
+    verified: z.boolean().optional(),
+    verify_error: detailText(300).optional(),
+    oid: detailText(128).optional(),
+    raw_value: detailText(120).optional(),
+    ratio_raw: detailText(120).optional(),
+    value_type: detailText(32).optional(),
+  })
+  .strict();
+
 const checkResultSchema = z
   .object({
     type: z.literal('check_result'),
@@ -103,6 +141,10 @@ const checkResultSchema = z
     jitter_ms: z.number().min(0).max(120_000).optional(),
     error: z.string().max(300).optional(),
     resolved_target: z.string().max(253).optional(),
+    /** Watch checks: the measured value (TLS days remaining, the OID value, the HTTP status code). */
+    value: z.number().min(-1e15).max(1e15).optional(),
+    /** Watch checks: evidence of this sample (never the response body itself). */
+    details: checkDetailsSchema.optional(),
   })
   .strict();
 
@@ -185,10 +227,15 @@ const snmpPollSchema = z
             port_id: z.string().max(80).optional(),
             port_descr: z.string().max(120).optional(),
             chassis_id: z.string().max(80).optional(),
+            // lldp (LLDP-MIB), cdp (CISCO-CDP-MIB cdpCacheTable) or mikrotik (MIKROTIK-MIB neighbour table).
+            protocol: z.enum(['lldp', 'cdp', 'mikrotik']).optional(),
+            address: ipv4.optional(),
+            platform: z.string().max(120).optional(),
+            version: z.string().max(120).optional(),
           })
           .strict(),
       )
-      .max(512)
+      .max(1536)
       .optional(),
     truncated: z.array(z.enum(['ports', 'fdb'])).max(2).optional(),
   })
@@ -385,11 +432,40 @@ const routerResultSchema = z
   })
   .strict();
 
+// What the collector's receive-only MNDP listener heard (MikroTik devices announcing themselves).
+const mndpNeighborsSchema = z
+  .object({
+    type: z.literal('mndp_neighbors'),
+    ts: timestamp,
+    neighbors: z
+      .array(
+        z
+          .object({
+            mac,
+            source_ip: ipv4,
+            identity: z.string().max(120).optional(),
+            platform: z.string().max(120).optional(),
+            version: z.string().max(120).optional(),
+            board: z.string().max(120).optional(),
+            interface_name: z.string().max(120).optional(),
+            ipv4: ipv4.optional(),
+            ipv6: z.ipv6().optional(),
+            uptime_seconds: z.number().int().min(0).max(4_294_967_295).optional(),
+            first_seen_at: timestamp,
+            last_seen_at: timestamp,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(1024),
+  })
+  .strict();
+
 export const telemetryBatchSchema = z
   .object({
     batch_id: z.uuid(),
     sent_at: timestamp,
-    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema, toolResultSchema, routerResultSchema, smartCheckSchema, switchVlansSchema, switchPortResultSchema, configBackupResultSchema, configBackupProbeResultSchema])).min(1).max(500),
+    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema, toolResultSchema, routerResultSchema, smartCheckSchema, switchVlansSchema, switchPortResultSchema, configBackupResultSchema, configBackupProbeResultSchema, configRestoreResultSchema, mndpNeighborsSchema])).min(1).max(500),
   })
   .strict();
 
@@ -400,7 +476,8 @@ export type SnmpPollItem = z.infer<typeof snmpPollSchema>;
 export type DnsStatsItem = z.infer<typeof dnsStatsSchema>;
 export type ToolResultItem = z.infer<typeof toolResultSchema>;
 export type RouterResultItem = z.infer<typeof routerResultSchema>;
-export type { ConfigBackupProbeResultItem, ConfigBackupResultItem } from './config-backup-protocol.ts';
+export type MndpNeighborsItem = z.infer<typeof mndpNeighborsSchema>;
+export type { ConfigBackupProbeResultItem, ConfigBackupResultItem, ConfigRestoreResultItem } from './config-backup-protocol.ts';
 export type { SmartCheckItem } from './smart-check-protocol.ts';
 export type { SwitchPortResultItem, SwitchVlansItem } from './switch-port-protocol.ts';
 export type TelemetryBatch = z.infer<typeof telemetryBatchSchema>;

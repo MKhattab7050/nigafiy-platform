@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../../common/http.ts';
+import { tlsStatus } from '../../infrastructure/lan-tls.ts';
 import { type ModuleManifest, defineModule } from '../../infrastructure/module.ts';
 import { applyRetention } from './retention.ts';
 import { modulesReport } from './service.ts';
@@ -16,6 +17,13 @@ export function createSystemModule(listModules: () => readonly ModuleManifest[])
   router.get('/system/modules', (req, res) => {
     auth(req); // session already verified by requireSession; any role may read this
     res.json(modulesReport(listModules()));
+  });
+
+  // HTTPS of this API process: mode, the fingerprint collectors / agents pin, certificate dates and
+  // the names and addresses it covers. Public facts (anyone on the network sees the certificate).
+  router.get('/system/tls', (req, res) => {
+    auth(req);
+    res.json(tlsStatus());
   });
 
   return defineModule({

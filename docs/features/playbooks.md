@@ -111,3 +111,35 @@ to "Needs your attention". The sidebar badge counts the pending approvals.
 | Cancel a run | admin, or the person who started it |
 | Create, change, enable, delete playbooks; templates; approval rules | admin |
 | Approve or reject a step | admin (two-person rule permitting) |
+
+## Device-control and backup actions (added with migration 041)
+
+| Action | What it does | Approval | Protections |
+| --- | --- | --- | --- |
+| `router_wifi` | Turns one Wi-Fi network of one router on or off (`routers/settings.ts setWifi`) | always (`alwaysApprove`) | same as the Routers page: refused when the collector host or the approving administrator's machine is on that network; turning off a main network needs `confirm_main_network`; a guest network cannot be on while its main network is off |
+| `router_reboot` | Restarts one router (`rebootRouter`) | always | one pending reboot per router |
+| `switch_port_quarantine` | Moves the device's own port to the quarantine VLAN (`ports/control quarantineDevice`) | always | only a port the device is alone on; refused on uplinks, trunks, ports with many devices, and the path to the collector, the gateway or the approver's machine — no override |
+| `switch_port_disable` | `ifAdminStatus` down on the device's own port (`disableDevicePort`) | always | same as quarantine, no override |
+| `config_backup` | Takes a read-only configuration backup of the device's backup target (or a named one) | never (low risk) | the target's readiness (credentials, host key, scope) as for "Back up now" |
+
+The four disruptive actions are executed only inside the approving administrator's request (like the
+router block / unblock / rate-limit steps), so the owning service audits them as that administrator's
+and checks "your own machine" against the approver's address. A step reached outside an approval (API
+restart in between) fails instead of acting. Router and switch steps then wait for the router request
+(`router_requests`) or the switch request (`switch_port_requests`, done only when the collector read the
+port back and it matched: status `verified`). The backup step waits for its `config_backup_runs` row
+(trigger `playbook`).
+
+Loop guard: the new actions declare the events they can cause (`produces` in `catalog.ts`): Wi-Fi and
+reboot cause site-wide device / router / collector events; port steps cause `switch_port_changed`,
+`switch_port_change_failed`, `device_offline` for the device; backups cause `config_changed`,
+`config_backup_failed`, `config_host_key_changed` (now triggerable events, as are the switch port events).
+
+Verified by tests (`tests/playbooks.test.ts`, `tests/switch-port-control.test.ts`): catalogue flags;
+always-ask even in "run automatically"; unknown router refused when saving; a disable approved for a
+device with no known port fails without a request; a disable of a direct port queues `admin_status
+down` at approval only, completes on the verified read-back, and is audited; the gateway's port is
+refused (`risky_port`) with nothing queued; quarantine through a playbook; backup step end to end; the
+loop guard skipping the same playbook re-triggered by its own backup's `config_changed`, and skipping a
+fourth playbook once three are already chained (`maxChainDepth`). These paths had no tests before. Not
+run against a real router or switch.

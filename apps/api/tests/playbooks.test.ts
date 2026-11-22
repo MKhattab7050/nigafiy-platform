@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
@@ -364,5 +365,106 @@ describe('playbooks: engine', () => {
     expect(activity.rows.map((r) => r.kind)).toEqual(['comment', 'acknowledged']);
     expect(activity.rows[0]!.body).toBe('Playbook "on incident": Playbook saw "HTTP check down"');
     expect((await systemPool.query(`SELECT status FROM incidents WHERE id = $1`, [incident.rows[0]!.id])).rows[0].status).toBe('acknowledged');
+  });
+});
+
+describe('playbooks: device control, configuration backup and the loop guard', () => {
+  const gz = (text: string) => gzipSync(Buffer.from(text, 'utf8')).toString('base64');
+  const KEY = `SHA256:${'Q'.repeat(43)}`;
+  const backupResult = (cmd: { payload: Record<string, unknown> }, text: string) => ({
+    type: 'config_backup_result', ts: new Date().toISOString(), run_id: cmd.payload.run_id, target_id: cmd.payload.target_id, ok: true,
+    host_key: { sha256: KEY, type: 'ssh-ed25519' }, host_key_status: 'matched', config_gzip_b64: gz(text),
+  });
+  const backupCommands = async (c: Parameters<typeof heartbeat>[0]) =>
+    ((await heartbeat(c)).body.commands as { id: string; kind: string; payload: Record<string, unknown> }[]).filter((x) => x.kind === 'config_backup');
+  const due = (runId: string) => systemPool.query(`UPDATE playbook_runs SET next_run_at = now() - interval '1 second' WHERE id = $1`, [runId]);
+
+  it('lists the new actions, always asks for the disruptive ones, previews them in a dry run, and fails honestly when the router is gone', async () => {
+    const { a, deviceId } = await withDevice('pb-devctl');
+    const cat = (await a.agent.get('/api/v1/playbooks/catalog')).body;
+    for (const key of ['router_wifi', 'router_reboot', 'switch_port_quarantine', 'switch_port_disable']) {
+      expect(cat.actions.find((x: { key: string }) => x.key === key), key).toMatchObject({ always_approve: true, default_risk: 'disruptive' });
+    }
+    expect(cat.actions.find((x: { key: string }) => x.key === 'config_backup')).toMatchObject({ always_approve: false, default_risk: 'low' });
+    // Router id and Wi-Fi id are required for router steps.
+    const bad = await a.agent.post('/api/v1/playbooks').set(CSRF).send({ name: 'bad', trigger: manual, steps: [{ action: 'router_reboot', params: {} }] });
+    expect(bad.status).toBe(400);
+
+    // A router step names a router of the organization; an unknown one is refused when saving.
+    const ghost = await a.agent
+      .post('/api/v1/playbooks')
+      .set(CSRF)
+      .send({ name: 'ghost', trigger: manual, steps: [{ action: 'router_wifi', params: { router_id: randomUUID(), wifi_id: 'wl0', enabled: false } }, { action: 'router_reboot', params: { router_id: randomUUID() } }] });
+    expect(ghost.status).toBe(400);
+    expect(ghost.body.error.details.map((d: { path: string }) => d.path)).toEqual(['steps.0.params.router_id', 'steps.1.params.router_id']);
+    // Scheduled backup step without a target: refused.
+    const sched = await a.agent.post('/api/v1/playbooks').set(CSRF).send({ name: 'nightly', trigger: { kind: 'schedule', daily_at: '03:00' }, steps: [{ action: 'config_backup', params: {} }] });
+    expect(sched.status).toBe(400);
+
+    // A device that no switch has seen: the approved disable step fails without touching anything.
+    const sp = await createPlaybook(a, { steps: [{ key: 'off', action: 'switch_port_disable', params: {} }] });
+    const preview = await a.agent.post(`/api/v1/playbooks/${sp.id}/run`).set(CSRF).send({ device_id: deviceId, dry_run: true });
+    expect(preview.body.steps[0]).toMatchObject({ status: 'previewed', input: { device_id: deviceId, admin_up: false } });
+    const spRun = await a.agent.post(`/api/v1/playbooks/${sp.id}/run`).set(CSRF).send({ device_id: deviceId });
+    const decided = await a.agent.post(`/api/v1/playbook-runs/${spRun.body.id}/steps/${awaitingStep(spRun.body).id}/decision`).set(CSRF).send({ decision: 'approve' });
+    expect(decided.body.status).toBe('failed');
+    expect(decided.body.steps[0].error).toContain('not_located');
+    expect((await systemPool.query(`SELECT 1 FROM switch_port_requests WHERE organization_id = $1`, [a.organizationId])).rowCount).toBe(0);
+  });
+
+  it('backs up a configuration from a playbook, and the loop guard stops self-triggering and over-long chains', async () => {
+    const { a, c, deviceId } = await withDevice('pb-backup');
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({ site_id: a.siteId, targets: [{ address: '192.168.60.20', name: 'edge-rtr' }], credentials: { username: 'backup', password: 'Pw-For-Backup-1' }, run_now: false });
+    expect(added.status).toBe(201);
+    const targetId = added.body.items[0].id as string;
+    expect(added.body.items[0].device_id).toBe(deviceId);
+
+    // A playbook step takes a backup: queued for the collector, finished by its result.
+    const manualPb = await createPlaybook(a, { steps: [{ key: 'bk', action: 'config_backup', params: {} }] });
+    let run = await a.agent.post(`/api/v1/playbooks/${manualPb.id}/run`).set(CSRF).send({ device_id: deviceId });
+    expect(run.body.steps[0]).toMatchObject({ status: 'running', input: { target_id: targetId, device_id: deviceId } });
+    let [cmd] = await backupCommands(c);
+    expect(cmd!.payload).toMatchObject({ target_id: targetId, username: 'backup' });
+    expect((await telemetry(c, [backupResult(cmd!, 'hostname edge-rtr\nsnmp-server community one RO\n')])).body).toMatchObject({ accepted: 1 });
+    await due(run.body.id);
+    await playbookTick();
+    run = await a.agent.get(`/api/v1/playbook-runs/${run.body.id}`);
+    expect(run.body.status).toBe('succeeded');
+    expect(run.body.steps[0].output).toMatchObject({ outcome: 'first' });
+    expect((await systemPool.query(`SELECT trigger FROM config_backup_runs WHERE target_id = $1`, [targetId])).rows[0].trigger).toBe('playbook');
+
+    // Z backs up again whenever the configuration changes; Y only notifies.
+    const z = await createPlaybook(a, { name: 'Z', trigger: { kind: 'event', event_types: ['config_changed'] }, enabled: true, steps: [{ key: 'bk', action: 'config_backup', params: {} }] });
+    const y = await createPlaybook(a, { name: 'Y', trigger: { kind: 'event', event_types: ['config_changed'] }, enabled: true, steps: [{ action: 'notify', params: { title: 'config changed' } }] });
+
+    // A change found by a manual backup (no playbook caused it): both start.
+    const manualRun = await a.agent.post(`/api/v1/config-backup/targets/${targetId}/run`).set(CSRF).send({});
+    expect(manualRun.status).toBe(202);
+    [cmd] = await backupCommands(c);
+    await telemetry(c, [backupResult(cmd!, 'hostname edge-rtr\nsnmp-server community two RO\n')]);
+    await playbookTick();
+    const zRuns = async () => (await a.agent.get(`/api/v1/playbook-runs?playbook_id=${z.id}`)).body.items as { id: string; status: string; status_reason: string | null; chain: string[] }[];
+    const yRuns = async () => (await a.agent.get(`/api/v1/playbook-runs?playbook_id=${y.id}`)).body.items as { id: string; status: string; status_reason: string | null; chain: string[] }[];
+    expect((await zRuns()).map((r) => r.status)).toEqual(['waiting']);
+    expect((await yRuns()).map((r) => r.status)).toEqual(['succeeded']);
+    const r1 = (await zRuns())[0]!;
+
+    // Pretend Z's run was itself the third link of a chain, then let its backup find another change.
+    const [u1, u2] = [randomUUID(), randomUUID()];
+    await systemPool.query(`UPDATE playbook_runs SET chain = ARRAY[$2::uuid, $3::uuid] WHERE id = $1`, [r1.id, u1, u2]);
+    [cmd] = await backupCommands(c);
+    await telemetry(c, [backupResult(cmd!, 'hostname edge-rtr\nsnmp-server community three RO\n')]);
+    await playbookTick();
+
+    const zAfter = await zRuns();
+    const zSkipped = zAfter.find((r) => r.status === 'skipped');
+    expect(zSkipped?.status_reason).toContain('same playbook');
+    const ySkipped = (await yRuns()).find((r) => r.status === 'skipped');
+    expect(ySkipped?.status_reason).toContain('3 playbooks already triggered each other');
+    // Nothing more was queued for the device by the guarded runs.
+    expect((await systemPool.query(`SELECT count(*)::int AS n FROM config_backup_runs WHERE target_id = $1 AND status = 'pending'`, [targetId])).rows[0].n).toBe(0);
   });
 });

@@ -122,6 +122,39 @@ export const stepSchema = z.discriminatedUnion('action', [
   z
     .object({
       ...stepBase,
+      action: z.literal('router_wifi'),
+      // A Wi-Fi network is router-specific: the step names the router and the network id it lists.
+      params: z
+        .object({
+          router_id: z.uuid(),
+          wifi_id: z.string().min(1).max(40),
+          enabled: z.boolean(),
+          /** Required to turn off a main network (every device on it disconnects); same rule as the Routers page. */
+          confirm_main_network: z.boolean().default(false),
+        })
+        .strict(),
+    })
+    .strict(),
+  z.object({ ...stepBase, action: z.literal('router_reboot'), params: z.object({ router_id: z.uuid() }).strict() }).strict(),
+  z
+    .object({
+      ...stepBase,
+      action: z.literal('switch_port_quarantine'),
+      params: z.object({ reason: z.string().trim().max(500).optional(), ...deviceParam }).strict().default({ device_id: null }),
+    })
+    .strict(),
+  z.object({ ...stepBase, action: z.literal('switch_port_disable'), params: z.object({ ...deviceParam }).strict().default({ device_id: null }) }).strict(),
+  z
+    .object({
+      ...stepBase,
+      action: z.literal('config_backup'),
+      // null: the backup target linked to the step's device (the trigger's device unless device_id is set).
+      params: z.object({ target_id: z.uuid().nullable().default(null), ...deviceParam }).strict().default({ target_id: null, device_id: null }),
+    })
+    .strict(),
+  z
+    .object({
+      ...stepBase,
       action: z.literal('endpoint_command'),
       // `command` is validated by the endpoints module's own schema (parseAutomatableCommand) in service.ts.
       params: z.object({ command: z.record(z.string(), z.unknown()), endpoint_id: z.uuid().nullable().default(null), ...deviceParam }).strict(),

@@ -13,6 +13,8 @@ export function localizeDeductionReason(item: { code: string; reason: string }, 
   if (code === 'port_errors') return 'منافذ سويتش تسجّل أخطاء';
   if (code === 'access_not_running') return 'التحكم في الوصول لا يعمل';
   if (code === 'access_no_devices') return 'قواعد الوصول لا تصل لأي جهاز';
+  if (code === 'certificate_expiring') return 'شهادات تنتهي صلاحيتها';
+  if (code === 'watch_refused') return 'فحوصات رُفضت بقاعدة النطاق';
 
   if (code === 'collector_silent') {
     const m = reason.match(/^Collector (.+) is not reporting$/);
@@ -98,6 +100,15 @@ export function localizeInsightEvidence(line: string, locale: Locale): string {
 
   m = line.match(/^(.+): (\d+) new error\(s\) in (\d+) min$/);
   if (m) return `${m[1]}: ${ltr(m[2]!)} خطأ جديد خلال ${ltr(m[3]!)} د`;
+
+  m = line.match(/^(.+): expires in (\d+) day\(s\)$/);
+  if (m) return `${m[1]}: تنتهي بعد ${ltr(m[2]!)} يوم`;
+
+  m = line.match(/^(.+): expired (\d+) day\(s\) ago$/);
+  if (m) return `${m[1]}: انتهت منذ ${ltr(m[2]!)} يوم`;
+
+  m = line.match(/^(.+): refused: (.+)$/);
+  if (m) return `${m[1]}: مرفوض: ${ltr(m[2]!)}`;
 
   m = line.match(/^(.+): (down|degraded)(?:, (\d+) ms)?(?:, (\d+)% loss)?$/);
   if (m) {

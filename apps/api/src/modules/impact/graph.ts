@@ -134,7 +134,9 @@ export function buildTwin(input: TwinInput): Twin {
   };
 
   // A device has an observed physical attachment when a switch saw it on an access port or a router listed it as a Wi-Fi client.
-  const attached = new Set(t.edges.filter((e) => e.relation === 'connected_to').map((e) => e.source));
+  // The topology already carries the router Wi-Fi edges (same id); the client tables are applied here as well
+  // so a twin built from an older topology still has them.
+  const attached = new Set(t.edges.filter((e) => e.relation === 'connected_to' || e.relation === 'wireless_client').map((e) => e.source));
   const wifi: ImpactGraphEdge[] = [];
   for (const w of input.wireless) {
     const client = `dev:${w.client_device_id}`;
@@ -166,7 +168,7 @@ export function buildTwin(input: TwinInput): Twin {
         ? segOf(e.relation === 'member_of' ? e.target : e.source) ?? 'none'
         : e.relation === 'connected_to'
           ? (nodes.get(e.target)?.segment ?? null)
-          : e.relation === 'switch_link'
+          : e.relation === 'switch_link' || e.relation === 'wireless_client'
             ? (nodes.get(e.source)?.segment ?? null)
             : null;
     add({

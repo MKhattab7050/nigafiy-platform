@@ -5,6 +5,7 @@ export { localizeDeductionReason, localizeInsightEvidence } from './insights';
 export {
   localizeAuditAction,
   localizeComplianceReason,
+  localizeEvidenceReason,
   localizeIncidentActivity,
   localizeIncidentTitle,
   localizeIpamEvidence,

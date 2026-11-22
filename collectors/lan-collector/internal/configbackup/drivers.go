@@ -4,8 +4,8 @@ import "regexp"
 
 // Driver describes how to read the configuration of one vendor family over SSH. Every command
 // below is read-only ("show", "display", "export", "get") or changes only the CLI session itself
-// (pager / screen width). The lists are closed: nothing else is ever sent to a device, and there is
-// no code path that sends configuration or a restore.
+// (pager / screen width). The lists are closed: a backup never sends anything else. Restoring a
+// configuration is a separate, administrator-confirmed operation (restore.go), Junos only.
 type Driver struct {
 	ID   string
 	Name string

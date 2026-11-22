@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { AuthOptions, LoginResponse } from "@lan-detective/shared-types";
+import type { AuthOptions, LoginResponse, SsoDiscoverResponse } from "@lan-detective/shared-types";
 import { type ApiError, api } from "@/lib/api";
-import { useI18n } from "@/lib/i18n";
-import { ChevronDown, Gauge, Layers, ShieldCheck } from "lucide-react";
+import { type Key, useI18n } from "@/lib/i18n";
+import { ChevronDown, Gauge, KeyRound, Layers, ShieldCheck } from "lucide-react";
 import { browserTimeZone } from "@/lib/format";
 import { TopologyArt } from "@/components/illustrations";
 import { Logo } from "@/components/logo";
@@ -27,7 +27,18 @@ function nameFromEmail(email: string): string {
 
 const MORE_FIELDS = ["display_name", "organization_name", "site_name"];
 
-type Step = { kind: "credentials" } | { kind: "forgot"; sent: boolean } | MfaStep;
+type Step =
+  | { kind: "credentials" }
+  | { kind: "forgot"; sent: boolean }
+  | { kind: "sso"; providers: SsoDiscoverResponse["providers"] | null }
+  | MfaStep;
+
+/** Error codes the SSO routes send back as ?sso_error=… (apps/api/src/modules/auth/sso). */
+const SSO_ERRORS = new Set([
+  "sso_unknown_provider", "sso_request_expired", "sso_request_used", "sso_browser_mismatch", "idp_denied", "idp_unreachable",
+  "idp_bad_response", "idp_rejected", "idp_misconfigured", "invalid_id_token", "saml_invalid", "saml_wrong_recipient", "sso_no_email",
+  "sso_email_unverified", "sso_domain_not_allowed", "sso_not_member", "sso_account_exists", "account_deactivated",
+]);
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const { t, locale, setLocale } = useI18n();
@@ -47,6 +58,45 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const siteValue = siteName ?? t("auth.defaultSite");
   const fieldError = (path: string) =>
     error?.details?.find((d) => d.path === path)?.message;
+  const [ssoError, setSsoError] = useState<string | null>(null);
+
+  // Coming back from single sign-on: an error code in the query, or the local MFA step the
+  // organization still requires in the fragment (never sent to a server). Both are removed from the
+  // address bar once read.
+  useEffect(() => {
+    if (register) return;
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("sso_error");
+    const hash = new URLSearchParams(url.hash.slice(1));
+    const verify = hash.get("sso_mfa");
+    const setup = hash.get("sso_mfa_setup");
+    if (code) setSsoError(SSO_ERRORS.has(code) ? code : "sso_failed");
+    if (code || verify || setup) window.history.replaceState(null, "", "/login");
+    const res: LoginResponse | null = verify
+      ? { ok: false, mfa_required: true, mfa_token: verify }
+      : setup
+        ? { ok: false, mfa_setup_required: true, mfa_token: setup }
+        : null;
+    if (res) {
+      resolveMfaStep(res)
+        .then((next) => next && setStep(next))
+        .catch((err) => setError(err as ApiError));
+    }
+  }, [register]);
+
+  async function findSso(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<SsoDiscoverResponse>(`/auth/sso/discover?email=${encodeURIComponent(email.trim())}`);
+      setStep({ kind: "sso", providers: res.providers });
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -152,6 +202,62 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                   setStep({ kind: "credentials" });
                 }}
               />
+            ) : step.kind === "sso" ? (
+              <>
+                <h1 className="text-xl font-semibold tracking-[-0.01em]">{t("auth.ssoTitle")}</h1>
+                <p className="mt-1 text-[13px] text-muted">{t("auth.ssoDesc")}</p>
+                <form onSubmit={findSso} className="mt-5 space-y-4" noValidate>
+                  <Field label={t("auth.email")} error={fieldError("email")}>
+                    {(id) => (
+                      <Input
+                        id={id}
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        required
+                        dir="ltr"
+                        value={email}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          setStep({ kind: "sso", providers: null });
+                        }}
+                      />
+                    )}
+                  </Field>
+                  {error && !error.details?.length && <ErrorNote error={error} />}
+                  {step.providers === null ? (
+                    <Button type="submit" variant="primary" busy={busy} disabled={!email.trim()} className="w-full">
+                      {t("auth.ssoContinue")}
+                    </Button>
+                  ) : step.providers.length === 0 ? (
+                    <Notice>{t("auth.ssoNone")}</Notice>
+                  ) : (
+                    <div className="space-y-2">
+                      {step.providers.map((p) => (
+                        <a
+                          key={p.id}
+                          href={`/api/v1/auth/sso/${p.id}/start?login_hint=${encodeURIComponent(email.trim())}`}
+                          className="flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-accent px-3.5 text-[13px] font-medium text-on-accent hover:bg-accent-strong"
+                        >
+                          <KeyRound className="size-3.5" aria-hidden />
+                          {t("auth.ssoWith")} <bdi dir="auto">{p.name}</bdi>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      setError(null);
+                      setStep({ kind: "credentials" });
+                    }}
+                  >
+                    {t("auth.backToSignIn")}
+                  </Button>
+                </form>
+              </>
             ) : step.kind === "forgot" ? (
               <>
                 <h1 className="text-xl font-semibold tracking-[-0.01em]">
@@ -358,6 +464,11 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                     </div>
                   )}
                   {error && !error.details?.length && <ErrorNote error={error} />}
+                  {ssoError && !register && (
+                    <p role="alert" className="rounded-md border border-crit/30 bg-crit/10 px-3 py-2 text-xs leading-relaxed text-fg">
+                      {t("auth.ssoFailed")} {t(`auth.ssoError.${ssoError}` as Key)}
+                    </p>
+                  )}
                   <Button
                     type="submit"
                     variant="primary"
@@ -366,6 +477,21 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                   >
                     {register ? t("auth.createAccount") : t("auth.signIn")}
                   </Button>
+                  {!register && options?.sso_available && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => {
+                        setError(null);
+                        setSsoError(null);
+                        setStep({ kind: "sso", providers: null });
+                      }}
+                    >
+                      <KeyRound className="size-3.5" aria-hidden />
+                      {t("auth.ssoButton")}
+                    </Button>
+                  )}
                 </form>
               </>
             )}

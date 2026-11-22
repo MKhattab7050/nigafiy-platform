@@ -480,3 +480,46 @@ describe('router control', () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe('router Wi-Fi clients in the topology', () => {
+  it('draws an observed router → device Wi-Fi edge, never next to a switch port link', async () => {
+    const s = await setup('rc-topology-wifi');
+    await refresh(s);
+    const routerNode = `dev:${s.devices['192.168.50.1']}`;
+    const laptop = `dev:${s.devices['192.168.50.20']}`;
+    const phone = `dev:${s.devices['192.168.50.21']}`;
+
+    let topo = (await s.a.agent.get(`/api/v1/topology?site_id=${s.a.siteId}`)).body;
+    const wifi = topo.edges.filter((e: { relation: string }) => e.relation === 'wireless_client');
+    expect(wifi).toHaveLength(1); // the wired phone gets none
+    expect(wifi[0]).toMatchObject({ id: `e:wifi:${laptop}`, source: laptop, target: routerNode, basis: 'observed', confidence: 'high', evidence_source: 'Router client table' });
+    expect(wifi[0].evidence).toContain('Router "Main gateway" listed it as a Wi-Fi client (5 GHz, signal -51 dBm)');
+    expect(wifi[0].last_verified_at).toBeTruthy();
+    expect(topo.edges.some((e: { source: string; relation: string }) => e.source === phone && e.relation === 'wireless_client')).toBe(false);
+    expect(topo.limitations.some((l: string) => l.includes('Wi-Fi link(s) come from router client tables'))).toBe(true);
+
+    // The impact twin carries the same single link.
+    let graph = (await s.a.agent.get(`/api/v1/impact/graph?site_id=${s.a.siteId}`)).body;
+    expect(graph.edges.filter((e: { source: string; relation: string }) => e.source === laptop && e.relation === 'wireless_client')).toHaveLength(1);
+
+    // A switch places the laptop on an access port: the wired, forwarding-table link wins; no duplicate.
+    const sw = await s.a.agent.post('/api/v1/switches').set(CSRF).send({ site_id: s.a.siteId, host: '192.168.50.22', credentials: { version: '2c', community: 'ro-community-x' } });
+    expect(sw.status).toBe(201);
+    const p = (i: number) => ({ if_index: i, name: `Gi0/${i}`, admin_up: true, oper_up: true, speed_mbps: 1000, in_errors: 0, out_errors: 0, in_discards: 0, out_discards: 0, in_octets: 1, out_octets: 1 });
+    const polled = await telemetry(s.c, [
+      { type: 'snmp_poll', ts: new Date().toISOString(), target_id: sw.body.id, ok: true, sys_name: 'sw', ports: [p(1), p(2)], fdb: [{ mac: 'aa:bb:cc:00:00:20', if_index: 1, vlan: 0 }], lldp: [] },
+    ]);
+    expect(polled.body.rejected).toEqual([]);
+    topo = (await s.a.agent.get(`/api/v1/topology?site_id=${s.a.siteId}`)).body;
+    expect(topo.edges.filter((e: { source: string; relation: string }) => e.source === laptop && e.relation === 'wireless_client')).toHaveLength(0);
+    expect(topo.edges.filter((e: { source: string; relation: string }) => e.source === laptop && e.relation === 'connected_to')).toHaveLength(1);
+    graph = (await s.a.agent.get(`/api/v1/impact/graph?site_id=${s.a.siteId}`)).body;
+    expect(graph.edges.filter((e: { source: string; relation: string }) => e.source === laptop && (e.relation === 'wireless_client' || e.relation === 'connected_to'))).toHaveLength(1);
+
+    // A Wi-Fi list older than a day is no longer drawn.
+    await systemPool.query(`UPDATE router_clients SET last_seen_at = now() - interval '2 days' WHERE site_id = $1`, [s.a.siteId]);
+    await systemPool.query(`DELETE FROM switch_fdb WHERE target_id = $1`, [sw.body.id]);
+    topo = (await s.a.agent.get(`/api/v1/topology?site_id=${s.a.siteId}`)).body;
+    expect(topo.edges.some((e: { relation: string }) => e.relation === 'wireless_client')).toBe(false);
+  });
+});

@@ -309,7 +309,8 @@ else if (await portOpen(apiPort)) {
   say(`${c.dim}Starting API…${c.off}`);
   const api = start('api', process.execPath, [envArg, 'src/main.ts'], {
     cwd: apiDir,
-    env: { HOST: LOOPBACK },
+    // Built-in LAN TLS keeps its CA and server certificate in the data folder (used only when HTTPS_PORT is set in .env).
+    env: { HOST: LOOPBACK, TLS_AUTO_DIR: path.join(dataDir, 'tls') },
     critical: true,
     onLine: (line) => {
       try {

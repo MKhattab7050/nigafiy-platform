@@ -1,7 +1,7 @@
 import type { Request } from 'express';
-import { audit } from '../../../common/audit.ts';
+import { audit, auditSystem } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
-import { type Db, withTenant } from '../../../infrastructure/db.ts';
+import { type Db, withSystem, withTenant } from '../../../infrastructure/db.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { type Credentials, seal } from '../credentials.ts';
 import { type PortLocation, type Sighting, locate, portRole } from '../locate.ts';
@@ -183,7 +183,10 @@ interface QueueInput {
 }
 
 /** Records the request and queues the `set_switch_port` command for an online collector of the site. */
-async function queueChange(db: Db, ctx: AuthContext, q: QueueInput): Promise<{ request_id: string; expires_at: Date; method: string | null }> {
+/** Who queues a change: a signed-in administrator, or LAN Detective itself (userId null, `via` set). */
+type PortActor = Pick<AuthContext, 'organizationId'> & { userId: string | null; userEmail: string | null; via?: string };
+
+async function queueChange(db: Db, ctx: PortActor, q: QueueInput): Promise<{ request_id: string; expires_at: Date; method: string | null }> {
   const { t, ifIndex, port, change } = q;
   if (!t.enabled) throw new AppError(409, 'switch_disabled', 'This switch is disabled; enable it before changing its ports');
   if (!t.in_scope) throw new AppError(409, 'not_in_scope', 'The switch address is not inside an authorized network range of the site');
@@ -219,12 +222,13 @@ async function queueChange(db: Db, ctx: AuthContext, q: QueueInput): Promise<{ r
   const row = (
     await db.query<{ id: string; expires_at: Date }>(
       `INSERT INTO switch_port_requests (organization_id, site_id, target_id, collector_id, if_index, port_name, op, params, method, before_known, risks,
-                                         override_reason, purpose, quarantine_id, created_by, created_by_email, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, now() + make_interval(mins => $17))
+                                         override_reason, purpose, quarantine_id, created_by, created_by_email, requested_via, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$18, now() + make_interval(mins => $17))
        RETURNING id, expires_at`,
       [
         ctx.organizationId, t.site_id, t.id, collector.id, ifIndex, port.name, change.op, JSON.stringify(params), method, JSON.stringify(before),
         JSON.stringify(q.risks), q.overrideReason, q.purpose, q.quarantineId ?? null, ctx.userId, ctx.userEmail, PORT_REQUEST_TTL_MINUTES,
+        ctx.via ?? 'user',
       ],
     )
   ).rows[0]!;
@@ -588,7 +592,11 @@ async function planQuarantine(db: Db, deviceId: string): Promise<QuarantinePlan 
 const OPEN_QUARANTINE = `
   SELECT q.id, q.site_id, q.device_id, q.target_id, coalesce(t.name, t.sys_name, host(t.host)) AS switch_name, q.if_index, q.port_name,
          q.original_vlan, q.quarantine_vlan, q.status, q.reason, q.location, q.request_id, q.release_request_id, q.last_error,
-         q.created_by_email, q.created_at, q.activated_at, q.released_at, q.released_by_email
+         q.created_by_email, q.created_at, q.activated_at, q.released_at, q.released_by_email,
+         q.auto_release_minutes,
+         coalesce((SELECT r.requested_via = 'auto_release' FROM switch_port_requests r WHERE r.id = q.release_request_id), false) AS auto_released,
+         CASE WHEN q.auto_release_minutes IS NOT NULL AND q.activated_at IS NOT NULL
+              THEN q.activated_at + make_interval(mins => q.auto_release_minutes) END AS auto_release_at
     FROM device_quarantines q JOIN snmp_targets t ON t.id = q.target_id`;
 
 /** GET /devices/:id/quarantine — the current quarantine, history, and whether a quarantine is possible and why not. */
@@ -605,7 +613,7 @@ export function deviceQuarantine(req: Request, organizationId: string, deviceId:
 }
 
 /** POST /devices/:id/quarantine — move the device's (own, direct) port to the quarantine VLAN. */
-export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: string, reason: string | undefined) {
+export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: string, reason: string | undefined, releaseAfterMinutes: number | null = null) {
   return withTenant(ctx.organizationId, async (db) => {
     await expireStalePortRequests(db);
     const open = await db.query(`SELECT 1 FROM device_quarantines WHERE device_id = $1 AND status IN ('requested','active','releasing')`, [deviceId]);
@@ -620,12 +628,12 @@ export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: strin
     const qv = plan.quarantine_vlan!;
     const row = (
       await db.query<{ id: string }>(
-        `INSERT INTO device_quarantines (organization_id, site_id, device_id, target_id, if_index, port_name, original_vlan, quarantine_vlan, status, reason, location, created_by, created_by_email)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'requested',$9,$10,$11,$12) RETURNING id`,
+        `INSERT INTO device_quarantines (organization_id, site_id, device_id, target_id, if_index, port_name, original_vlan, quarantine_vlan, status, reason, location, created_by, created_by_email, auto_release_minutes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'requested',$9,$10,$11,$12,$13) RETURNING id`,
         [
           ctx.organizationId, t.site_id, deviceId, t.id, ifIndex, port.name, port.access_vlan, qv, reason || null,
           JSON.stringify({ kind: location.kind, confidence: location.confidence, evidence: location.evidence, switch_name: location.switch_name, port_name: location.port_name }),
-          ctx.userId, ctx.userEmail,
+          ctx.userId, ctx.userEmail, releaseAfterMinutes,
         ],
       )
     ).rows[0]!;
@@ -639,6 +647,7 @@ export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: strin
       from_vlan: port.access_vlan,
       to_vlan: qv,
       reason: reason || null,
+      auto_release_minutes: releaseAfterMinutes,
     });
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return { quarantine_id: row.id, request_id: q.request_id, expires_at: q.expires_at, status: 'requested' };
@@ -649,38 +658,127 @@ export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: strin
 export function releaseQuarantine(req: Request, ctx: AuthContext, quarantineId: string) {
   return withTenant(ctx.organizationId, async (db) => {
     await expireStalePortRequests(db);
-    const qr = (
-      await db.query<{ id: string; device_id: string; target_id: string; if_index: number; status: string; original_vlan: number; quarantine_vlan: number }>(
-        `SELECT id, device_id, target_id, if_index, status, original_vlan, quarantine_vlan FROM device_quarantines WHERE id = $1 FOR UPDATE`,
-        [quarantineId],
-      )
-    ).rows[0];
-    if (!qr) throw notFound('Quarantine');
-    if (qr.status !== 'active') {
-      throw new AppError(409, 'not_active', qr.status === 'releasing' ? 'The release is already waiting for the collector' : 'Only an active quarantine can be released');
-    }
-    const t = await loadTarget(db, qr.target_id, true);
-    const port = await loadPort(db, t.id, qr.if_index);
-    const q = await queueChange(db, ctx, {
-      t,
-      ifIndex: qr.if_index,
-      port,
-      change: { op: 'access_vlan', vlan: qr.original_vlan },
-      risks: [],
-      overrideReason: null,
-      purpose: 'release',
-      quarantineId: qr.id,
-    });
-    await db.query(`UPDATE device_quarantines SET status = 'releasing', release_request_id = $2, last_error = NULL WHERE id = $1`, [qr.id, q.request_id]);
-    await audit(db, req, 'device.quarantine.release', { type: 'device', id: qr.device_id }, {
-      quarantine_id: qr.id,
-      request_id: q.request_id,
-      switch: t.name,
-      port: port.name,
-      from_vlan: qr.quarantine_vlan,
-      to_vlan: qr.original_vlan,
-    });
+    const r = await queueRelease(db, ctx, quarantineId);
+    await audit(db, req, 'device.quarantine.release', { type: 'device', id: r.device_id }, r.audit);
     await notifyRealtime(db, ctx.organizationId, 'devices');
-    return { quarantine_id: qr.id, request_id: q.request_id, expires_at: q.expires_at, status: 'releasing' };
+    return { quarantine_id: r.quarantine_id, request_id: r.request_id, expires_at: r.expires_at, status: 'releasing' };
   });
+}
+
+/** Queue the "back to the original VLAN" change of an active quarantine (by an administrator or the auto-release job). */
+async function queueRelease(db: Db, ctx: PortActor, quarantineId: string) {
+  const qr = (
+    await db.query<{ id: string; device_id: string; target_id: string; if_index: number; status: string; original_vlan: number; quarantine_vlan: number }>(
+      `SELECT id, device_id, target_id, if_index, status, original_vlan, quarantine_vlan FROM device_quarantines WHERE id = $1 FOR UPDATE`,
+      [quarantineId],
+    )
+  ).rows[0];
+  if (!qr) throw notFound('Quarantine');
+  if (qr.status !== 'active') {
+    throw new AppError(409, 'not_active', qr.status === 'releasing' ? 'The release is already waiting for the collector' : 'Only an active quarantine can be released');
+  }
+  const t = await loadTarget(db, qr.target_id, true);
+  const port = await loadPort(db, t.id, qr.if_index);
+  const q = await queueChange(db, ctx, {
+    t,
+    ifIndex: qr.if_index,
+    port,
+    change: { op: 'access_vlan', vlan: qr.original_vlan },
+    risks: [],
+    overrideReason: null,
+    purpose: 'release',
+    quarantineId: qr.id,
+  });
+  await db.query(`UPDATE device_quarantines SET status = 'releasing', release_request_id = $2, last_error = NULL WHERE id = $1`, [qr.id, q.request_id]);
+  return {
+    quarantine_id: qr.id,
+    device_id: qr.device_id,
+    request_id: q.request_id,
+    expires_at: q.expires_at,
+    audit: { quarantine_id: qr.id, request_id: q.request_id, switch: t.name, port: port.name, from_vlan: qr.quarantine_vlan, to_vlan: qr.original_vlan },
+  };
+}
+
+/** A failed automatic release is retried after this long (the quarantine stays active meanwhile). */
+export const AUTO_RELEASE_RETRY_MINUTES = 15;
+
+/**
+ * Scheduled job: release every active quarantine whose optional auto-release time (chosen by the
+ * administrator when quarantining, counted from the verified move) has passed. The release is the
+ * same verified VLAN change an administrator's "Release" queues, with the same checks (switch enabled
+ * and in scope, write credentials, collector online, no change pending on the port); it is recorded as
+ * requested by LAN Detective (requested_via 'auto_release') and audited as a system action. If it
+ * cannot be queued or the collector cannot verify it, the quarantine stays active (fail closed: the
+ * device stays isolated), the reason is shown, and the release is retried after
+ * AUTO_RELEASE_RETRY_MINUTES.
+ */
+export async function runQuarantineAutoRelease(): Promise<number> {
+  const due = await withSystem(async (db) =>
+    (
+      await db.query<{ id: string; organization_id: string; site_id: string; device_id: string }>(
+        `SELECT id, organization_id, site_id, device_id FROM device_quarantines
+          WHERE status = 'active' AND auto_release_minutes IS NOT NULL AND activated_at IS NOT NULL
+            AND activated_at + make_interval(mins => auto_release_minutes) <= now()
+            AND (auto_release_attempted_at IS NULL OR auto_release_attempted_at <= now() - make_interval(mins => $1))
+          ORDER BY activated_at LIMIT 100`,
+        [AUTO_RELEASE_RETRY_MINUTES],
+      )
+    ).rows,
+  );
+  let queued = 0;
+  for (const d of due) {
+    const actor: PortActor = { organizationId: d.organization_id, userId: null, userEmail: null, via: 'auto_release' };
+    try {
+      await withTenant(d.organization_id, async (db) => {
+        await expireStalePortRequests(db);
+        const r = await queueRelease(db, actor, d.id);
+        await db.query(`UPDATE device_quarantines SET auto_release_attempted_at = now() WHERE id = $1`, [d.id]);
+        await auditSystem(db, d.organization_id, {
+          automation: 'quarantine_auto_release',
+          action: 'device.quarantine.release',
+          target: { type: 'device', id: r.device_id },
+          siteId: d.site_id,
+          metadata: { ...r.audit, auto_release: true },
+        });
+        await notifyRealtime(db, d.organization_id, 'devices');
+      });
+      queued += 1;
+    } catch (err) {
+      const code = err instanceof AppError ? err.code : 'error';
+      const message = err instanceof Error ? err.message : String(err);
+      await withTenant(d.organization_id, async (db) => {
+        await db.query(`UPDATE device_quarantines SET auto_release_attempted_at = now(), last_error = $2 WHERE id = $1 AND status = 'active'`, [
+          d.id,
+          `Automatic release not possible: ${message}`,
+        ]);
+        await auditSystem(db, d.organization_id, {
+          automation: 'quarantine_auto_release',
+          action: 'device.quarantine.auto_release_failed',
+          target: { type: 'device', id: d.device_id },
+          siteId: d.site_id,
+          metadata: { quarantine_id: d.id, error: code, message, retry_after_minutes: AUTO_RELEASE_RETRY_MINUTES },
+        });
+      });
+    }
+  }
+  return queued;
+}
+
+/**
+ * Shut down the device's own switch port (ifAdminStatus down) — the playbook action
+ * `switch_port_disable`. Only a port the device is alone on (located "direct") is ever touched, and
+ * the same protections as a manual change apply without any override: an uplink, a trunk, a port with
+ * many devices, or the path to the collector / gateway / the approving administrator's own machine is
+ * refused (409 risky_port).
+ */
+export async function disableDevicePort(req: Request, ctx: AuthContext, deviceId: string) {
+  const loc = await withTenant(ctx.organizationId, async (db) => {
+    const { location } = await locateForQuarantine(db, deviceId);
+    if (!location) throw new AppError(409, 'not_located', 'No switch read so far has seen this device, so its port is not known');
+    if (location.kind !== 'direct') {
+      throw new AppError(409, 'not_direct', 'The device is not alone on a port (shared port or behind an uplink); disabling that port would cut off other devices');
+    }
+    return { targetId: location.target_id, ifIndex: location.if_index };
+  });
+  return requestPortChange(req, ctx, loc.targetId, loc.ifIndex, { op: 'admin_status', admin_up: false, confirm: true });
 }

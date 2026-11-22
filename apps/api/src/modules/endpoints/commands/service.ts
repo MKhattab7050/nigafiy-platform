@@ -27,9 +27,10 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
         last_heartbeat_at: Date | null;
         policy: EndpointPolicy;
         rd_active: boolean;
+        rd_state: string | null;
       }>(
         `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy,
-                rd_session IS NOT NULL AS rd_active
+                rd_session IS NOT NULL AS rd_active, rd_session->>'state' AS rd_state
            FROM endpoints WHERE id = $1`,
         [id],
       )
@@ -41,6 +42,10 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     // Screen capture and input only inside a started session: that is where the user is told.
     if ((body.kind === 'rd_capture' || body.kind === 'rd_input') && !ep.rd_active) {
       throw new AppError(409, 'no_remote_session', 'Start a remote desktop session first; the user is notified when it starts');
+    }
+    // Under the "prompt" policy nothing is seen or touched before the user accepts.
+    if ((body.kind === 'rd_capture' || body.kind === 'rd_input') && ep.rd_state && ep.rd_state !== 'active') {
+      throw new AppError(409, 'consent_pending', 'The user has not accepted the remote support session yet');
     }
 
     if (ep.status !== 'active' || !ep.last_heartbeat_at || ep.last_heartbeat_at.getTime() < Date.now() - ONLINE_WITHIN_MS) {

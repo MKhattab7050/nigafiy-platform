@@ -13,6 +13,7 @@ import { CredentialsCard } from '../components/credentials-form';
 import { HostKeyPanel } from '../components/host-key-panel';
 import { TargetStatusBadge, VendorLabel } from '../components/status';
 import { ADDED_CODES, type AddedCode, TargetSettingsCard, hourText } from '../components/target-form';
+import { RestoreHistory } from '../components/restore';
 import { VersionList } from '../components/version-list';
 import type { BackupRun, Target, TargetDetail } from '../types';
 import { DeviceLink } from '@/components/device-link';
@@ -45,7 +46,7 @@ function RunsCard({ runs }: { runs: BackupRun[] }) {
                 <td data-label={t('cb.v.captured')} title={absoluteTime(r.created_at, locale)}>
                   {relativeTime(r.created_at, locale)}
                   <span className="block text-xs text-faint" dir="auto">
-                    {r.trigger === 'scheduled' ? t('cb.run.scheduled') : r.created_by_email ? fill(t('cb.run.by'), { who: r.created_by_email }) : ''}
+                    {r.trigger === 'scheduled' ? t('cb.run.scheduled') : r.trigger === 'playbook' ? t('cb.run.playbook') : r.trigger === 'restore' ? t('cb.run.restore') : r.created_by_email ? fill(t('cb.run.by'), { who: r.created_by_email }) : ''}
                     {r.collector_name ? ` · ${r.collector_name}` : ''}
                     {r.duration_ms !== null ? ` · ${ms(r.duration_ms)}` : ''}
                   </span>
@@ -234,7 +235,8 @@ function TargetView({ id }: { id: string }) {
                   {can('admin') && <TargetSettingsCard key={x.updated_at} target={x} drivers={x.drivers} onSaved={query.reload} />}
                 </div>
               </div>
-              <VersionList key={x.latest_version_id ?? 'none'} targetId={x.id} />
+              <VersionList key={x.latest_version_id ?? 'none'} targetId={x.id} onRestore={query.reload} />
+              <RestoreHistory targetId={x.id} />
               <RunsCard runs={x.runs} />
             </div>
             {confirmDelete && (

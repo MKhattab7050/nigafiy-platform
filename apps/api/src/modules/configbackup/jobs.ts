@@ -1,5 +1,6 @@
 import { withSystem, withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
+import { resanitizeLegacy } from './resanitize.ts';
 import { nextDailyRun } from './schedule.ts';
 import { PROBE_EVERY_HOURS } from './schema.ts';
 import { expireStale, loadTarget, onlineCollector, queueProbe, queueRun, readiness } from './service.ts';
@@ -17,6 +18,8 @@ import { expireStale, loadTarget, onlineCollector, queueProbe, queueRun, readine
 export async function runConfigBackupJob(now = new Date()): Promise<void> {
   const orgs = await withSystem(async (db) => {
     await expireStale(db);
+    // Versions stored before secret sanitization (migration 041) are converted in bounded batches.
+    await resanitizeLegacy(db);
     const due = await db.query<{ organization_id: string }>(
       `SELECT DISTINCT organization_id FROM config_backup_targets WHERE enabled AND schedule = 'daily' AND next_run_at <= $1`,
       [now],

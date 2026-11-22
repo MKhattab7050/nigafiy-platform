@@ -46,7 +46,7 @@ export async function loadInsightFacts(db: Db, organizationId: string, siteFilte
       [siteFilter],
     );
     const checks = await db.query<InsightFacts['checks'][number]>(
-      `SELECT id, name, role, state, last_latency_ms, last_loss_pct
+      `SELECT id, name, role, state, last_latency_ms, last_loss_pct, kind, last_error, last_value, last_details ->> 'cert_not_after' AS cert_not_after
          FROM monitoring_checks
         WHERE enabled AND ($1::uuid IS NULL OR site_id = $1)
         ORDER BY name`,

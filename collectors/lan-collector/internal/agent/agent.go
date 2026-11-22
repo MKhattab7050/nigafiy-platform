@@ -23,6 +23,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/dhcp"
 	"github.com/lan-detective/lan-collector/internal/discovery"
 	"github.com/lan-detective/lan-collector/internal/dnsfilter"
+	"github.com/lan-detective/lan-collector/internal/mndp"
 	"github.com/lan-detective/lan-collector/internal/identify"
 	"github.com/lan-detective/lan-collector/internal/netinfo"
 	"github.com/lan-detective/lan-collector/internal/probe"
@@ -32,6 +33,7 @@ import (
 	"github.com/lan-detective/lan-collector/internal/snmp"
 	"github.com/lan-detective/lan-collector/internal/spool"
 	"github.com/lan-detective/lan-collector/internal/tools"
+	"github.com/lan-detective/lan-collector/internal/watch"
 	"github.com/lan-detective/lan-collector/internal/wol"
 )
 
@@ -56,6 +58,10 @@ type Deps struct {
 	LocalDown   func() []string
 	// DHCPListen is the address for passive DHCP name learning (":67"); empty disables it.
 	DHCPListen string
+	// MNDPListen is the address of the receive-only MikroTik neighbour listener (":5678"); empty
+	// disables it. MNDPOpen opens that socket (nil: a plain UDP socket).
+	MNDPListen string
+	MNDPOpen   mndp.ListenFunc
 	// DNSListen is where the access-control DNS filter answers when the owner turns it on (":53");
 	// empty disables the feature on this collector.
 	DNSListen   string
@@ -71,6 +77,8 @@ type Deps struct {
 	RouterCertificate func(ctx context.Context, addr netip.Addr, port int, opts router.Options) (router.CertificateInfo, error)
 	// ConfigBackup reads one device's running configuration over SSH (configbackup.Run); nil disables configuration backup.
 	ConfigBackup func(ctx context.Context, t configbackup.Target, opts configbackup.Options) (*configbackup.Result, error)
+	// ConfigRestore applies an administrator-confirmed restore (configbackup.Restore); nil disables restore.
+	ConfigRestore func(ctx context.Context, t configbackup.Target, spec configbackup.RestoreSpec, opts configbackup.Options) (*configbackup.RestoreResult, error)
 	// SSHProbe checks whether an address answers SSH, without logging in (configbackup.Probe); nil disables the check.
 	SSHProbe func(ctx context.Context, address string, port int, opts configbackup.Options) configbackup.ProbeResult
 	// Smart network checks (smartchecks.go); nil disables each one on this collector.
@@ -84,6 +92,10 @@ type Deps struct {
 	SmartWiFi func(ctx context.Context) (smart.WiFiReport, error)
 	// SmartBanners fetches GET / and the TLS certificate of each target's web ports.
 	SmartBanners func(ctx context.Context, targets []netip.Addr, ports []int, allowed []netip.Prefix) smart.BannerReport
+	// Watch checks (watch.go): one HTTP(S) request, one TLS certificate read, one SNMP GET. nil disables each kind.
+	WatchHTTP func(ctx context.Context, spec watch.HTTPSpec, g watch.Guard) watch.Result
+	WatchTLS  func(ctx context.Context, spec watch.TLSSpec, g watch.Guard) watch.Result
+	SNMPGet   watch.SNMPGetter
 }
 
 // SystemDeps returns the real implementations.
@@ -101,6 +113,7 @@ func SystemDeps() Deps {
 		LocalMACs:   netinfo.LocalMACs,
 		LocalDown:   netinfo.LocalDownAddrs,
 		DHCPListen:  ":67",
+		MNDPListen:  ":5678",
 		DNSListen:   ":53",
 		Identify:    identify.Run,
 		SNMPPoll:    snmp.Poll,
@@ -110,6 +123,7 @@ func SystemDeps() Deps {
 		RouterOpen:        router.Open,
 		RouterCertificate: router.FetchCertificate,
 		ConfigBackup:      configbackup.Run,
+		ConfigRestore:     configbackup.Restore,
 		SSHProbe:          configbackup.Probe,
 		SmartInterfaces:   smart.Interfaces,
 		SmartDHCP: func(ctx context.Context, ifaces []smart.DHCPInterface, listen time.Duration) []smart.DHCPInterfaceResult {
@@ -118,6 +132,9 @@ func SystemDeps() Deps {
 		SmartUPnP:    smart.AuditUPnP,
 		SmartWiFi:    smart.ReadWiFi,
 		SmartBanners: smart.ProbeBanners,
+		WatchHTTP:    watch.HTTP,
+		WatchTLS:     watch.TLSExpiry,
+		SNMPGet:      snmp.GetValues,
 		Gateway: func(ctx context.Context) string { // cached: routing tables rarely change
 			mu.Lock()
 			defer mu.Unlock()
@@ -193,6 +210,8 @@ type Agent struct {
 	fingerprints  *smart.FingerprintTable
 	dhcpListening bool
 	dhcpListenErr string
+
+	mndp mndpState
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -224,6 +243,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	ag.routers = newRouterState()
 	ag.smartRuns = newSmartState()
 	ag.fingerprints = smart.NewFingerprintTable()
+	ag.mndp.table = mndp.NewTable(ag.mndpAllowed)
 	return ag, nil
 }
 
@@ -255,7 +275,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop, a.smartLoop} {
+	for _, loop := range []func(context.Context){a.heartbeatLoop, a.discoveryLoop, a.checkLoop, a.uploadLoop, a.accessLoop, a.snmpLoop, a.routerLoop, a.smartLoop, a.mndpLoop} {
 		wg.Add(1)
 		go func(fn func(context.Context)) {
 			defer wg.Done()
@@ -393,6 +413,7 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 		SpoolDepth:        a.spool.Depth(),
 		CompletedCommands: acks,
 		AccessStatus:      a.accessStatusOrNil(),
+		MNDPStatus:        a.mndpStatus(),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -511,6 +532,12 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			go func(cmd cloud.Command) {
 				defer a.cmdWG.Done()
 				a.configBackup(ctx, cmd)
+			}(cmd)
+		case cmdConfigRestore: // administrator-confirmed configuration restore (configrestore.go)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.configRestore(ctx, cmd)
 			}(cmd)
 		case cmdConfigBackupProbe:
 			a.cmdWG.Add(1)
@@ -735,6 +762,9 @@ func (a *Agent) runCheck(ctx context.Context, chk cloud.Check) {
 		res = a.deps.TCPCheck(ctx, chk.Target, *chk.Port)
 	case "dns":
 		res = a.deps.DNSCheck(ctx, chk.Target)
+	case "http", "https", "tls_expiry", "snmp_oid":
+		a.runWatchCheck(ctx, chk, ts)
+		return
 	default:
 		return // unknown kinds are ignored, never guessed at
 	}

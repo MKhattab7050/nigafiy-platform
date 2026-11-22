@@ -72,11 +72,6 @@ a{color:#8E1F84}a:hover{color:#5E1457}
             <div style="font-size: 12px; color: var(--fg2)">{{t.kbWhy}}</div>
             <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.kbOpen}}</a>
           </div>
-          <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: 8px; background: var(--card); border: 1px dashed var(--stroke2)">
-            <div style="font-size: 15px; font-weight: 600">{{t.aiTitle}}</div>
-            <div style="font-size: 13px; color: var(--fg2)">{{t.aiText}}</div>
-            <a href="#" style="font-size: 13px; color: var(--accentText)">{{t.aiLink}}</a>
-          </div>
         </aside>
       </main>
     </div>
@@ -96,19 +91,18 @@ class Component extends DCLogic {
       mockup: 'نموذج تصميم، ليس بيانات حقيقية', kicker: 'تشغيل إجراء · #[رقم]', title: '[اسم الإجراء]: جهاز غير مرغوب ظهر على الشبكة', trigger: 'المُشغِّل: حدث «جهاز غير مرغوب متصل» على [اسم الجهاز] · [وقت]', steps: 'الخطوات',
       comment: 'تعليق (اختياري)', approve: 'موافقة وتنفيذ', reject: 'رفض', rule: 'قاعدة الشخصين مفعّلة: لا يوافق من أنشأ الإجراء · تنتهي الموافقة خلال [n] دقيقة',
       kbTitle: 'إصلاح مشابه من قبل', kbWhy: 'لماذا: نفس القاعدة ونفس الشركة المصنعة · استُخدم [n] مرة', kbOpen: 'فتح المقال',
-      aiTitle: 'المساعد متوقف', aiText: 'المساعد اختياري ويعمل بمفتاحك أنت فقط. يعيد صياغة ما وجدته القواعد ولا يخترع أسباباً.', aiLink: 'الإعدادات',
+     
     } : {
       mockup: 'Design mockup, not real data', kicker: 'Playbook run · #[number]', title: '[Playbook name]: unwanted device appeared', trigger: 'Trigger: “unwanted device online” for [device name] · [time]', steps: 'Steps',
       comment: 'Comment (optional)', approve: 'Approve and run', reject: 'Reject', rule: 'Two-person rule is on: the author cannot approve · approval expires in [n] min',
       kbTitle: 'A similar past fix', kbWhy: 'Why: same rule and same vendor · used [n] times', kbOpen: 'Open article',
-      aiTitle: 'Assistant is off', aiText: 'The assistant is optional and runs only with your own key. It rephrases what the rules found and never invents causes.', aiLink: 'Settings',
+     
     };
     const navItems = [
       [ar ? 'الإجراءات' : 'Playbooks', 'M6 3v12M18 9v12M6 15a3 3 0 0 0 3 3h6M18 9a3 3 0 0 0-3-3H9', ''],
       [ar ? 'بانتظار الموافقة' : 'Waiting for approval', 'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0-18 0M12 7v5l3 2', '[n]'],
       [ar ? 'المعرفة' : 'Knowledge', 'M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2zM8 7h6', ''],
       [ar ? 'الأتمتة' : 'Automation', 'M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M12 2v3M12 19v3M2 12h3M19 12h3', ''],
-      [ar ? 'المساعد' : 'Assistant', 'M12 3v4M12 17v4M3 12h4M17 12h4', ''],
     ];
     const nav = navItems.map((n, i) => ({ label: n[0], icon: n[1], badge: n[2], style: i === 1 ? 'background: var(--sel); color: var(--fg); font-weight: 600; border-inline-start: 3px solid #C239B3;' : 'color: var(--fg2); border-inline-start: 3px solid transparent;' }));
     const done = { dotBg: 'var(--ok)', dotFg: '#fff', border: 'var(--stroke)', stateColor: 'var(--ok)', gate: false };

@@ -27,6 +27,10 @@ type Request struct {
 	Tool   string `json:"tool"`
 	Target string `json:"target"`
 	Port   int    `json:"port,omitempty"`
+	// InScope reports whether an address lies inside an authorized network scope of the site. Set by
+	// the agent from its delivered scopes (never from the request payload); nil refuses every
+	// local-kind address.
+	InScope func(netip.Addr) bool `json:"-"`
 }
 
 const (
@@ -56,14 +60,6 @@ type Runner struct {
 	AllowLoopback bool
 }
 
-func (r Runner) isAllowedLANAddr(ip string) bool {
-	addr, err := netip.ParseAddr(ip)
-	if err != nil || !addr.Is4() {
-		return false
-	}
-	return addr.IsPrivate() || (r.AllowLoopback && addr.IsLoopback())
-}
-
 func resolveIPv4(ctx context.Context, host string) (string, error) {
 	if ip := net.ParseIP(host); ip != nil {
 		return ip.String(), nil
@@ -91,6 +87,9 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := r.CheckTarget(req.Tool, ip, req.InScope); err != nil {
+			return nil, err
+		}
 		res := r.ICMP(ctx, ip)
 		out := map[string]any{"resolved": ip, "replied": res.OK, "requests": 5}
 		if res.LatencyMs != nil {
@@ -115,8 +114,8 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !r.isAllowedLANAddr(ip) {
-			return nil, errors.New("TCP port checks are only allowed for private LAN addresses")
+		if err := r.CheckTarget(req.Tool, ip, req.InScope); err != nil {
+			return nil, err
 		}
 		res := r.TCP(ctx, ip, req.Port)
 		out := map[string]any{"port": req.Port, "open": res.OK}
@@ -158,6 +157,9 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if ip == nil {
 			return nil, errors.New("reverse DNS needs an IPv4 address")
 		}
+		if err := r.CheckTarget(req.Tool, ip.String(), req.InScope); err != nil {
+			return nil, err
+		}
 		c, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		names, err := net.DefaultResolver.LookupAddr(c, ip.String())
@@ -184,6 +186,9 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := r.CheckTarget(req.Tool, ip, req.InScope); err != nil {
+			return nil, err
+		}
 		hops, raw, err := traceroute(ctx, ip)
 		if err != nil {
 			return nil, err
@@ -196,8 +201,8 @@ func (r Runner) Run(ctx context.Context, req Request) (map[string]any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !r.isAllowedLANAddr(ip) {
-			return nil, errors.New("service port checks are only allowed for private LAN addresses")
+		if err := r.CheckTarget(req.Tool, ip, req.InScope); err != nil {
+			return nil, err
 		}
 		open := r.scanCommonPorts(ctx, ip)
 		return map[string]any{"resolved": ip, "checked": len(commonPorts), "open_ports": open}, nil

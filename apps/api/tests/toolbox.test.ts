@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
-import { CSRF, heartbeat, newAccount, newCollector, setRole, telemetry } from './helpers.ts';
+import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, telemetry } from './helpers.ts';
 
 describe('IT toolbox', () => {
   it('validates targets, tool-specific rules, roles, and requires an online collector', async () => {
     const a = await newAccount('toolbox-val');
+    await addScope(a, '192.168.1.0/24');
 
     // No collector online yet
     const noColl = await a.agent.post('/api/v1/toolbox').set(CSRF).send({
@@ -79,6 +80,7 @@ describe('IT toolbox', () => {
   it('delivers run_tool to the collector, records telemetry results, expires stale runs, and isolates tenants', async () => {
     const a = await newAccount('toolbox-a');
     const b = await newAccount('toolbox-b');
+    await addScope(a, '192.168.1.0/24');
     const cA = await newCollector(a, 'edge-a');
     const cB = await newCollector(b, 'edge-b');
     await heartbeat(cA);
@@ -154,6 +156,47 @@ describe('IT toolbox', () => {
     );
     const expired = await a.agent.get(`/api/v1/toolbox/${staleId}`);
     expect(expired.body.status).toBe('expired');
+  });
+
+  it('validates targets against the authorized network scopes of the site (API layer)', async () => {
+    const a = await newAccount('toolbox-scope');
+    await addScope(a, '192.168.70.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const run = (tool: string, target: string, port: number | null = null) => a.agent.post('/api/v1/toolbox').set(CSRF).send({ site_id: a.siteId, tool, target, port });
+
+    // Private address inside the scope: every tool.
+    for (const [tool, port] of [['ping', null], ['traceroute', null], ['rdns', null], ['tcp', 22], ['ports', null]] as const) {
+      expect((await run(tool, '192.168.70.5', port)).status, tool).toBe(202);
+      await systemPool.query(`UPDATE toolbox_runs SET status = 'completed' WHERE organization_id = $1`, [a.organizationId]);
+    }
+    // Private address outside every scope: refused for every tool, including ping.
+    for (const [tool, port] of [['ping', null], ['traceroute', null], ['rdns', null], ['tcp', 22], ['ports', null]] as const) {
+      const r = await run(tool, '10.20.30.40', port);
+      expect(r.status, tool).toBe(422);
+      expect(r.body.error.code).toBe('out_of_scope');
+    }
+    // A disabled scope does not authorize.
+    await systemPool.query(`UPDATE network_scopes SET enabled = false WHERE site_id = $1`, [a.siteId]);
+    expect((await run('ping', '192.168.70.5')).status).toBe(422);
+    await systemPool.query(`UPDATE network_scopes SET enabled = true WHERE site_id = $1`, [a.siteId]);
+    // Public addresses: reachability diagnostics yes, port checks no.
+    for (const tool of ['ping', 'traceroute', 'rdns']) {
+      expect((await run(tool, '1.1.1.1')).status, tool).toBe(202);
+      await systemPool.query(`UPDATE toolbox_runs SET status = 'completed' WHERE organization_id = $1`, [a.organizationId]);
+    }
+    expect((await run('tcp', '1.1.1.1', 443)).status).toBe(422);
+    expect((await run('ports', '8.8.8.8')).status).toBe(422);
+    // Host names: DNS / ping / traceroute go to the collector (it re-checks the resolved address); port checks need an address.
+    expect((await run('dns', 'example.com')).status).toBe(202);
+    await systemPool.query(`UPDATE toolbox_runs SET status = 'completed' WHERE organization_id = $1`, [a.organizationId]);
+    expect((await run('tcp', 'nas.local', 445)).status).toBe(422);
+    expect((await run('ports', 'nas.local')).status).toBe(422);
+    // Special addresses and loopback (not allowed in this environment).
+    for (const target of ['0.0.0.0', '255.255.255.255', '224.0.0.1', '240.0.0.1', '127.0.0.1']) expect((await run('ping', target)).status, target).toBe(422);
+    // Every refusal leaves nothing queued for the collector.
+    const queued = await systemPool.query(`SELECT target FROM toolbox_runs WHERE organization_id = $1`, [a.organizationId]);
+    expect(queued.rows.map((r) => r.target)).not.toContain('10.20.30.40');
   });
 });
 

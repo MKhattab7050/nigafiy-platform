@@ -59,6 +59,8 @@ interface MfaSubject {
   tokenId: string | null;
   viaToken: boolean;
   attempts: number;
+  /** The MFA step follows an SSO sign-in: the session it ends in is pinned to that provider. */
+  ssoProviderId: string | null;
 }
 
 async function resolveMfaSubject(req: Request, mfaToken?: string): Promise<MfaSubject> {
@@ -69,8 +71,9 @@ async function resolveMfaSubject(req: Request, mfaToken?: string): Promise<MfaSu
       email: string;
       organization_id: string | null;
       attempts: number;
+      sso_provider_id: string | null;
     }>(
-      `SELECT t.id AS token_id, u.id AS user_id, u.email, t.attempts,
+      `SELECT t.id AS token_id, u.id AS user_id, u.email, t.attempts, t.sso_provider_id,
               coalesce(t.organization_id, (SELECT m.organization_id FROM memberships m WHERE m.user_id = u.id AND m.status = 'active' ORDER BY m.created_at LIMIT 1)) AS organization_id
          FROM auth_tokens t
          JOIN users u ON u.id = t.user_id
@@ -88,6 +91,7 @@ async function resolveMfaSubject(req: Request, mfaToken?: string): Promise<MfaSu
       tokenId: row.token_id,
       viaToken: true,
       attempts: row.attempts,
+      ssoProviderId: row.sso_provider_id,
     };
   }
 
@@ -117,6 +121,7 @@ async function resolveMfaSubject(req: Request, mfaToken?: string): Promise<MfaSu
     tokenId: null,
     viaToken: false,
     attempts: 0,
+    ssoProviderId: null,
   };
 }
 
@@ -135,8 +140,9 @@ mfaRouter.post('/login/mfa', mfaLimiter, async (req, res) => {
     user_id: string;
     organization_id: string | null;
     attempts: number;
+    sso_provider_id: string | null;
   }>(
-    `SELECT id, user_id, organization_id, attempts
+    `SELECT id, user_id, organization_id, attempts, sso_provider_id
        FROM auth_tokens
       WHERE token_hash = $1 AND purpose = 'mfa_login' AND used_at IS NULL AND expires_at > now()`,
     [sha256(body.mfa_token)],
@@ -173,7 +179,7 @@ mfaRouter.post('/login/mfa', mfaLimiter, async (req, res) => {
     [user.id, tokenRow.organization_id],
   );
   const orgId = membershipRes.rows[0]?.organization_id;
-  if (!orgId) {
+  if (!orgId || (tokenRow.sso_provider_id && orgId !== tokenRow.organization_id)) {
     throw new AppError(403, 'account_deactivated', 'Your account has been deactivated in this organization');
   }
 
@@ -236,7 +242,7 @@ mfaRouter.post('/login/mfa', mfaLimiter, async (req, res) => {
     );
   });
 
-  await createSession(res, req, user.id, orgId);
+  await createSession(res, req, user.id, orgId, tokenRow.sso_provider_id);
   res.json({ ok: true });
 });
 
@@ -333,7 +339,7 @@ mfaRouter.post('/mfa/confirm', mfaLimiter, async (req, res) => {
   });
 
   if (subject.viaToken) {
-    await createSession(res, req, subject.userId, subject.organizationId);
+    await createSession(res, req, subject.userId, subject.organizationId, subject.ssoProviderId);
   }
 
   res.json({ ok: true, recovery_codes: recoveryCodes });

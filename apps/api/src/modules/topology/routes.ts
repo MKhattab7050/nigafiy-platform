@@ -12,12 +12,39 @@ import { type Sighting, locate } from '../ports/index.ts';
  *   - the collector host's neighbour (ARP) table → proof of sharing a layer-2 segment,
  *   - authorized scopes and ICMP replies → subnet membership,
  *   - internet check results → the uplink works.
- *   - forwarding tables and LLDP neighbours of the switches read over SNMP → which switch port a
- *     device is on, and which switches are linked.
+ *   - forwarding tables and LLDP / CDP / MikroTik neighbour tables of the switches read over SNMP →
+ *     which switch port a device is on, and which switches are linked;
+ *   - MikroTik MNDP announcements heard by a collector → what a MikroTik device says about itself;
+ *   - the Wi-Fi client tables of configured routers → which device is associated to which router.
  * Every edge states whether it is observed or inferred, why, how confident, and when last verified.
  * Switch-level links are never guessed: a device seen only "somewhere behind" a trunk gets no link.
  */
 export const topologyRouter: Router = Router();
+
+interface NeighborEntry {
+  sys_name?: string;
+  port_id?: string;
+  chassis_id?: string;
+  protocol?: 'lldp' | 'cdp' | 'mikrotik';
+  address?: string;
+  platform?: string;
+}
+
+const WIFI_BAND: Record<string, string> = { 'wifi_2.4ghz': '2.4 GHz', wifi_5ghz: '5 GHz', wifi_6ghz: '6 GHz' };
+
+const PROTOCOL_LABEL: Record<'lldp' | 'cdp' | 'mikrotik', { short: string; source: string }> = {
+  lldp: { short: 'LLDP', source: 'LLDP neighbour table (SNMP)' },
+  cdp: { short: 'CDP', source: 'CDP neighbour table (CISCO-CDP-MIB over SNMP)' },
+  mikrotik: { short: 'MikroTik', source: 'MikroTik neighbour table (MIKROTIK-MIB over SNMP)' },
+};
+
+/** Name forms a neighbour may use for a switch: as is, without a domain, without a "(serial)" suffix (CDP device IDs). */
+function nameKeys(name: string): string[] {
+  const n = name.trim().toLowerCase();
+  const noSerial = n.replace(/\s*\([^)]*\)\s*$/, '');
+  const short = /^[0-9.]+$/.test(noSerial) ? noSerial : noSerial.split('.')[0]!;
+  return [...new Set([n, noSerial, short].filter(Boolean))];
+}
 
 interface DeviceRow {
   id: string;
@@ -160,8 +187,8 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
 
     // ── switch level: what the switches read over SNMP actually saw ──
     const switches = (
-      await db.query<{ id: string; device_id: string | null; name: string; sys_name: string | null; last_ok_at: Date | null }>(
-        `SELECT id, device_id, coalesce(name, sys_name, host(host)) AS name, sys_name, last_ok_at FROM snmp_targets WHERE site_id = $1 AND last_ok_at IS NOT NULL`,
+      await db.query<{ id: string; device_id: string | null; name: string; sys_name: string | null; host: string; last_ok_at: Date | null }>(
+        `SELECT id, device_id, coalesce(name, sys_name, host(host)) AS name, sys_name, host(host) AS host, last_ok_at FROM snmp_targets WHERE site_id = $1 AND last_ok_at IS NOT NULL`,
         [siteId],
       )
     ).rows;
@@ -214,10 +241,14 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
           last_verified_at: new Date(loc.last_seen_at).toISOString(),
         });
       }
-      // Switch ↔ switch: an LLDP neighbour whose name is another switch that is read.
-      const byName = new Map(switches.flatMap((sw) => [sw.sys_name, sw.name].filter((n): n is string => Boolean(n)).map((n) => [n.toLowerCase(), sw] as const)));
+      // Switch ↔ switch: a neighbour entry (LLDP, CDP or the MikroTik table) that names another read
+      // switch — by system name / device ID, by its management address, or by its chassis MAC.
+      const byName = new Map(switches.flatMap((sw) => [sw.sys_name, sw.name].filter((n): n is string => Boolean(n)).flatMap((n) => nameKeys(n).map((k) => [k, sw] as const))));
+      const byHost = new Map(switches.map((sw) => [sw.host, sw] as const));
+      const macOfDevice = new Map(devices.rows.filter((d) => d.mac).map((d) => [d.id, d.mac!.toLowerCase()] as const));
+      const byMacSw = new Map(switches.flatMap((sw) => (sw.device_id && macOfDevice.has(sw.device_id) ? [[macOfDevice.get(sw.device_id)!, sw] as const] : [])));
       const linkPorts = (
-        await db.query<{ target_id: string; name: string; neighbors: { sys_name?: string; port_id?: string }[]; updated_at: Date }>(
+        await db.query<{ target_id: string; name: string; neighbors: NeighborEntry[]; updated_at: Date }>(
           `SELECT p.target_id, p.name, p.neighbors, p.updated_at FROM switch_ports p JOIN snmp_targets t ON t.id = p.target_id WHERE t.site_id = $1 AND p.neighbors <> '[]'::jsonb`,
           [siteId],
         )
@@ -225,7 +256,13 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
       const seen = new Set<string>();
       for (const lp of linkPorts) {
         for (const n of lp.neighbors) {
-          const other = n.sys_name ? byName.get(n.sys_name.toLowerCase()) : undefined;
+          const viaName = n.sys_name ? nameKeys(n.sys_name).map((k) => byName.get(k)).find(Boolean) : undefined;
+          const viaAddress = n.address ? byHost.get(n.address) : undefined;
+          const chassis = n.chassis_id && /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(n.chassis_id) ? n.chassis_id.toLowerCase() : null;
+          const viaMac = chassis ? byMacSw.get(chassis) : undefined;
+          const other = viaName ?? viaAddress ?? viaMac;
+          const matched = viaName ? `name "${n.sys_name}"` : viaAddress ? `management address ${n.address}` : `chassis MAC ${n.chassis_id}`;
+          const proto = PROTOCOL_LABEL[n.protocol ?? 'lldp'];
           const a = switchNode.get(lp.target_id);
           const b = other ? switchNode.get(other.id) : undefined;
           if (!a || !b || a === b) continue;
@@ -240,12 +277,76 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
             port: lp.name,
             basis: 'observed',
             confidence: 'high',
-            evidence: `${nodeById.get(a)!.label} heard ${n.sys_name} as its LLDP neighbour on port ${lp.name}${n.port_id ? ` (remote port ${n.port_id})` : ''}.`,
-            evidence_source: 'LLDP neighbour table (SNMP)',
+            evidence: `${nodeById.get(a)!.label} lists ${n.sys_name || n.address || n.chassis_id} as its ${proto.short} neighbour on port ${lp.name}${n.port_id ? ` (remote port ${n.port_id})` : ''}${n.platform ? `, platform ${n.platform}` : ''}; matched to ${nodeById.get(b)!.label} by ${matched}.`,
+            evidence_source: proto.source,
             last_verified_at: lp.updated_at.toISOString(),
           });
         }
       }
+    }
+
+    // Router → Wi-Fi client: a configured router listed the device as associated over Wi-Fi in the last
+    // day. A device a switch already places on a port keeps that wired link and gets no Wi-Fi edge.
+    // Same edge id as the impact twin (e:wifi:<client>), so both views describe one link.
+    const wired = new Set(edges.filter((e) => e.relation === 'connected_to').map((e) => e.source));
+    const wifiClients = (
+      await db.query<{ router_name: string; router_device_id: string; client_device_id: string; connection: string; interface: string | null; signal_dbm: number | null; active: boolean | null; last_seen_at: Date }>(
+        `SELECT DISTINCT ON (c.device_id) r.name AS router_name, r.device_id AS router_device_id, c.device_id AS client_device_id,
+                c.connection, c.interface, c.signal_dbm, c.active, c.last_seen_at
+           FROM router_clients c JOIN site_routers r ON r.id = c.router_id
+          WHERE c.site_id = $1 AND r.enabled AND r.device_id IS NOT NULL AND c.device_id IS NOT NULL
+            AND c.connection ILIKE 'wifi%' AND c.last_seen_at > now() - interval '1 day'
+          ORDER BY c.device_id, c.last_seen_at DESC`,
+        [siteId],
+      )
+    ).rows;
+    const now = Date.now();
+    let wireless = 0;
+    for (const w of wifiClients) {
+      const client = `dev:${w.client_device_id}`;
+      const router = `dev:${w.router_device_id}`;
+      if (!nodeById.has(client) || !nodeById.has(router) || client === router || wired.has(client)) continue;
+      const fresh = now - w.last_seen_at.getTime() < 3_600_000 && w.active !== false;
+      const band = WIFI_BAND[w.connection.toLowerCase()] ?? null;
+      const facts = [band, w.interface ? `on ${w.interface}` : null, w.signal_dbm !== null ? `signal ${w.signal_dbm} dBm` : null].filter(Boolean).join(', ');
+      edges.push({
+        id: `e:wifi:${client}`,
+        source: client,
+        target: router,
+        relation: 'wireless_client',
+        ...(w.interface ? { port: w.interface } : {}),
+        basis: 'observed',
+        confidence: fresh ? 'high' : 'medium',
+        evidence: `Router "${w.router_name}" listed it as a Wi-Fi client${facts ? ` (${facts})` : ''}${fresh ? '' : '; that list is more than an hour old'}.`,
+        evidence_source: 'Router client table',
+        last_verified_at: w.last_seen_at.toISOString(),
+      });
+      wireless++;
+    }
+
+    // What MikroTik devices announce about themselves over MNDP (heard by a collector in the last 24 h).
+    const announced = (
+      await db.query<{ device_id: string; identity: string | null; platform: string | null; version: string | null; board: string | null; interface_name: string | null; collector_name: string; last_seen_at: Date }>(
+        `SELECT DISTINCT ON (n.device_id) n.device_id, n.identity, n.platform, n.version, n.board, n.interface_name, c.name AS collector_name, n.last_seen_at
+           FROM mndp_neighbors n JOIN collectors c ON c.id = n.collector_id
+          WHERE n.site_id = $1 AND n.device_id IS NOT NULL AND n.last_seen_at > now() - interval '24 hours'
+          ORDER BY n.device_id, n.last_seen_at DESC`,
+        [siteId],
+      )
+    ).rows;
+    for (const m of announced) {
+      const node = nodeById.get(`dev:${m.device_id}`);
+      if (!node) continue;
+      node.mndp = {
+        identity: m.identity,
+        platform: m.platform,
+        version: m.version,
+        board: m.board,
+        interface_name: m.interface_name,
+        heard_by: m.collector_name,
+        last_seen_at: m.last_seen_at.toISOString(),
+        evidence: `Announced itself over MNDP${m.identity ? ` as "${m.identity}"` : ''}${m.board ? ` (${m.board})` : ''}${m.interface_name ? ` from its interface ${m.interface_name}` : ''}; heard by collector "${m.collector_name}", so it shares a layer-2 segment with that collector.`,
+      };
     }
 
     const unread = switches.filter((sw) => !switchNode.has(sw.id)).map((sw) => sw.name);
@@ -256,6 +357,7 @@ export async function buildTopology(db: Db, siteId: string): Promise<Topology> {
       'The gateway relationship is known only for the segment a collector sits in.',
       'VLANs are shown per port in Port Detective; this map does not group by VLAN.',
     ];
+    if (wireless) limitations.push(`${wireless} Wi-Fi link(s) come from router client tables; access points that are not a configured router are not visible, so the router may only be the path to the access point.`);
     if (unread.length) limitations.push(`${unread.join(', ')}: read over SNMP but not in the device inventory, so its ports are not drawn here.`);
     if (!collectors.rows.length) limitations.unshift('No collector is enrolled at this site, so no gateway or layer-2 evidence exists.');
     if (devices.rows.length === 2000) limitations.push('Only the first 2000 devices are shown.');

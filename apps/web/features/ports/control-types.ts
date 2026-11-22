@@ -112,6 +112,10 @@ export interface Quarantine {
   activated_at: string | null;
   released_at: string | null;
   released_by_email: string | null;
+  /** Optional automatic release, minutes after the verified move; auto_release_at once active. */
+  auto_release_minutes: number | null;
+  auto_release_at: string | null;
+  auto_released: boolean;
 }
 
 export interface DeviceQuarantine {

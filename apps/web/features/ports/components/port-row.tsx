@@ -12,6 +12,7 @@ import { PortHistoryChart } from './port-history-chart';
 import { controlText } from '../control-text';
 import { portsText } from '../text';
 import { DeviceLink } from '@/components/device-link';
+import { ProtocolBadge } from './neighbors-card';
 
 export function speed(mbps: number): string {
   return mbps >= 1000 ? `${mbps / 1000} Gb/s` : mbps > 0 ? `${mbps} Mb/s` : '';
@@ -56,8 +57,21 @@ export function PortRow({ p, switchId, admin = false }: { p: SwitchPort; switchI
           </span>
         )}
         {p.neighbors.map((n, i) => (
-          <span key={i} className="block text-xs text-muted" dir="auto">
-            {tx.neighbor} {n.sys_name ?? n.chassis_id ?? '?'} {n.port_id && <span className="mono">({n.port_id})</span>}
+          <span key={i} className="mb-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+            <ProtocolBadge protocol={n.protocol} />
+            <span dir="auto">
+              {tx.neighbor} {n.sys_name ?? n.chassis_id ?? n.address ?? '?'}
+            </span>
+            {n.port_id && (
+              <span className="mono" dir="ltr">
+                ({n.port_id})
+              </span>
+            )}
+            {n.platform && (
+              <span className="text-faint" dir="auto">
+                {n.platform}
+              </span>
+            )}
           </span>
         ))}
         {p.devices.map((d) => (

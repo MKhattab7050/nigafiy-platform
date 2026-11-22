@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"errors"
+	"net/netip"
 	"reflect"
 	"testing"
 
@@ -83,20 +85,22 @@ func TestRun(t *testing.T) {
 		},
 	}
 	ctx := context.Background()
+	lan := netip.MustParsePrefix("192.168.1.0/24")
+	inLAN := func(a netip.Addr) bool { return lan.Contains(a) }
 
-	out, err := r.Run(ctx, Request{Tool: "ping", Target: "192.168.1.9"})
+	out, err := r.Run(ctx, Request{Tool: "ping", Target: "192.168.1.9", InScope: inLAN})
 	if err != nil || out["replied"] != true || out["latency_ms"] != 2.5 || out["resolved"] != "192.168.1.9" {
 		t.Fatalf("ping: %v %v", out, err)
 	}
-	out, err = r.Run(ctx, Request{Tool: "tcp", Target: "192.168.1.9", Port: 22})
+	out, err = r.Run(ctx, Request{Tool: "tcp", Target: "192.168.1.9", Port: 22, InScope: inLAN})
 	if err != nil || out["open"] != true {
 		t.Fatalf("tcp open: %v %v", out, err)
 	}
-	out, err = r.Run(ctx, Request{Tool: "tcp", Target: "192.168.1.9", Port: 23})
+	out, err = r.Run(ctx, Request{Tool: "tcp", Target: "192.168.1.9", Port: 23, InScope: inLAN})
 	if err != nil || out["open"] != false || out["detail"] != "connection refused" {
 		t.Fatalf("tcp closed: %v %v", out, err)
 	}
-	out, err = r.Run(ctx, Request{Tool: "ports", Target: "192.168.1.9"})
+	out, err = r.Run(ctx, Request{Tool: "ports", Target: "192.168.1.9", InScope: inLAN})
 	if err != nil {
 		t.Fatalf("ports: %v", err)
 	}
@@ -121,10 +125,65 @@ func TestRun(t *testing.T) {
 	}
 	rLoop := r
 	rLoop.AllowLoopback = true
-	if _, err := rLoop.Run(ctx, Request{Tool: "tcp", Target: "127.0.0.1", Port: 22}); err != nil {
+	loop := func(a netip.Addr) bool { return a.IsLoopback() }
+	if _, err := rLoop.Run(ctx, Request{Tool: "tcp", Target: "127.0.0.1", Port: 22, InScope: loop}); err != nil {
 		t.Fatalf("expected loopback tcp to succeed when AllowLoopback=true: %v", err)
 	}
-	if _, err := rLoop.Run(ctx, Request{Tool: "ports", Target: "127.0.0.1"}); err != nil {
+	if _, err := rLoop.Run(ctx, Request{Tool: "ports", Target: "127.0.0.1", InScope: loop}); err != nil {
 		t.Fatalf("expected loopback ports to succeed when AllowLoopback=true: %v", err)
+	}
+}
+
+func TestScopeRule(t *testing.T) {
+	icmpCalls := 0
+	latency := 1.0
+	r := Runner{
+		ICMP: func(_ context.Context, ip string) probe.Result {
+			icmpCalls++
+			return probe.Result{OK: true, LatencyMs: &latency}
+		},
+		TCP: func(context.Context, string, int) probe.Result {
+			t.Fatal("TCP probe must not run for a refused target")
+			return probe.Result{}
+		},
+	}
+	scope := netip.MustParsePrefix("192.168.70.0/24")
+	in := func(a netip.Addr) bool { return scope.Contains(a) }
+	ctx := context.Background()
+
+	// In scope: allowed for ping.
+	if _, err := r.Run(ctx, Request{Tool: "ping", Target: "192.168.70.5", InScope: in}); err != nil {
+		t.Fatalf("in-scope ping refused: %v", err)
+	}
+	// Public: ping allowed (diagnostics), TCP and port scan refused before any probe.
+	if _, err := r.Run(ctx, Request{Tool: "ping", Target: "1.1.1.1", InScope: in}); err != nil {
+		t.Fatalf("public ping refused: %v", err)
+	}
+	for _, req := range []Request{
+		{Tool: "ping", Target: "10.20.30.40", InScope: in},       // private, outside every scope
+		{Tool: "traceroute", Target: "172.16.0.1", InScope: in},  // private, outside
+		{Tool: "rdns", Target: "192.168.71.1", InScope: in},      // private, outside
+		{Tool: "ping", Target: "192.168.70.5"},                   // no scopes delivered: nothing local
+		{Tool: "ping", Target: "169.254.1.1", InScope: in},       // link-local, outside
+		{Tool: "ping", Target: "100.64.0.1", InScope: in},        // CGNAT, outside
+		{Tool: "tcp", Target: "1.1.1.1", Port: 443, InScope: in}, // public port check
+		{Tool: "ports", Target: "8.8.8.8", InScope: in},          // public port scan
+		{Tool: "tcp", Target: "10.0.0.1", Port: 22, InScope: in}, // private, outside
+		{Tool: "ping", Target: "255.255.255.255", InScope: in},
+		{Tool: "ping", Target: "224.0.0.1", InScope: in},
+		{Tool: "ping", Target: "240.0.0.1", InScope: in},
+		{Tool: "ping", Target: "0.0.0.0", InScope: in},
+		{Tool: "ping", Target: "127.0.0.1", InScope: func(netip.Addr) bool { return true }}, // loopback not allowed
+	} {
+		before := icmpCalls
+		if _, err := r.Run(ctx, req); err == nil {
+			t.Errorf("expected %s %s to be refused", req.Tool, req.Target)
+		}
+		if icmpCalls != before {
+			t.Errorf("%s %s: probe ran although the target was refused", req.Tool, req.Target)
+		}
+	}
+	if err := r.CheckTarget("ping", "10.1.1.1", in); !errors.Is(err, ErrOutOfScope) {
+		t.Fatalf("expected ErrOutOfScope, got %v", err)
 	}
 }

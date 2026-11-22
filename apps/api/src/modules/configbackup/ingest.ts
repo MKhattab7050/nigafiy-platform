@@ -1,12 +1,15 @@
 import { gunzipSync } from 'node:zlib';
 import { auditSystem } from '../../common/audit.ts';
-import { type CollectorContext, type ConfigBackupProbeResultItem, type ConfigBackupResultItem, ItemRejected } from '../../common/collector-protocol.ts';
+import { type CollectorContext, type ConfigBackupProbeResultItem, type ConfigBackupResultItem, type ConfigRestoreResultItem, ItemRejected } from '../../common/collector-protocol.ts';
 import { decryptSecret, encryptSecret } from '../../common/crypto.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { diffLines } from './diff.ts';
 import { normalizeConfig } from './normalize.ts';
+import { fingerprintKey, prepareConfig, resanitizeTarget } from './resanitize.ts';
+import { continueAfterBackup, processRestoreResult } from './restore.ts';
+import { REDACTED_MARK } from './sanitize.ts';
 import { MAX_CONFIG_BYTES } from './schema.ts';
 
 // Applies config_backup_result and config_backup_probe_result telemetry. Runs inside the telemetry
@@ -24,9 +27,18 @@ interface Target {
   last_error_kind: string | null;
 }
 
-export async function processConfigBackupItem(db: Db, c: CollectorContext, item: ConfigBackupResultItem | ConfigBackupProbeResultItem): Promise<void> {
+export async function processConfigBackupItem(
+  db: Db,
+  c: CollectorContext,
+  item: ConfigBackupResultItem | ConfigBackupProbeResultItem | ConfigRestoreResultItem,
+): Promise<void> {
   if (item.type === 'config_backup_probe_result') await processProbeResult(db, c, item);
-  else await processBackupResult(db, c, item);
+  else if (item.type === 'config_restore_result') await processRestoreResult(db, c, item);
+  else {
+    await processBackupResult(db, c, item);
+    // The backup before a restore: the restore continues (or stops) from here.
+    await continueAfterBackup(db, c, item.run_id);
+  }
   await notifyRealtime(db, c.organizationId, 'devices');
 }
 
@@ -125,8 +137,13 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
   let errorText = item.error?.message ?? null;
 
   if (item.ok) {
-    const norm = normalizeConfig(decodeConfig(item.config_gzip_b64!));
-    if (norm.lineCount === 0) {
+    const raw = normalizeConfig(decodeConfig(item.config_gzip_b64!));
+    // Secrets are replaced by keyed fingerprints before anything is hashed, compared or stored; the
+    // unsanitized text is kept only as the version's sealed raw copy (restore). Rows written before
+    // sanitization existed are converted first so the comparison below is like for like.
+    await resanitizeTarget(db, t.id);
+    const norm = prepareConfig(raw.text, await fingerprintKey(db, t.id));
+    if (raw.lineCount === 0) {
       errorKind = 'empty_config';
       errorText = 'The device returned an empty configuration';
     } else {
@@ -142,14 +159,24 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
         outcome = 'unchanged';
         versionId = latest.id;
         await db.query(`UPDATE config_backup_versions SET last_seen_at = greatest(last_seen_at, $2), confirmations = confirmations + 1 WHERE id = $1`, [latest.id, at]);
+        await db.query(
+          `INSERT INTO config_backup_raw (target_id, sha256, organization_id, raw_enc) VALUES ($1,$2,$3,$4) ON CONFLICT (target_id, sha256) DO NOTHING`,
+          [t.id, norm.sha256, c.organizationId, encryptSecret(raw.text)],
+        );
       } else {
         await db.query(
-          `INSERT INTO config_backup_contents (target_id, sha256, organization_id, content_enc, size_bytes, line_count)
-           VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
-          [t.id, norm.sha256, c.organizationId, encryptSecret(norm.text), norm.sizeBytes, norm.lineCount],
+          `INSERT INTO config_backup_contents (target_id, sha256, organization_id, content_enc, size_bytes, line_count, sanitized, redactions)
+           VALUES ($1,$2,$3,$4,$5,$6,true,$7) ON CONFLICT DO NOTHING`,
+          [t.id, norm.sha256, c.organizationId, encryptSecret(norm.text), norm.sizeBytes, norm.lineCount, JSON.stringify(norm.redactions)],
+        );
+        await db.query(
+          `INSERT INTO config_backup_raw (target_id, sha256, organization_id, raw_enc) VALUES ($1,$2,$3,$4)
+           ON CONFLICT (target_id, sha256) DO UPDATE SET raw_enc = EXCLUDED.raw_enc, created_at = now()`,
+          [t.id, norm.sha256, c.organizationId, encryptSecret(raw.text)],
         );
         let added = norm.lineCount;
         let removed = 0;
+        let secretLines = 0;
         let previousText: string | null = null;
         if (latest) {
           try {
@@ -161,6 +188,7 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
             const d = diffLines(previousText, norm.text, 0);
             added = d.added;
             removed = d.removed;
+            secretLines = d.hunks.reduce((n, h) => n + h.lines.filter((l) => l.op === '+' && l.text.includes(REDACTED_MARK)).length, 0);
           }
         }
         versionId = (
@@ -189,6 +217,8 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
               to_version_id: versionId,
               added_lines: added,
               removed_lines: removed,
+              // Added lines carrying a redacted secret: a secret was set or changed (values never shown).
+              secret_lines_changed: secretLines,
               detected_by: 'scheduled or manual backup comparing the normalized running configuration with the previous version',
               trigger: run.trigger,
             },

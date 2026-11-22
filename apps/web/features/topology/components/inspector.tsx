@@ -84,6 +84,9 @@ export function Inspector({
   const attached = topology.edges.filter(
     (e) => e.relation === "connected_to" && e.target === n.id,
   ).length;
+  const wifiClients = topology.edges.filter(
+    (e) => e.relation === "wireless_client" && e.target === n.id,
+  ).length;
   return (
     <Card
       title={<span dir="auto">{n.label}</span>}
@@ -132,6 +135,50 @@ export function Inspector({
       )}
       {n.runs_collector && (
         <p className="mt-2 text-xs text-cyan">{t("topo.runsCollector")}</p>
+      )}
+      {wifiClients > 0 && (
+        <p className="mt-2 text-xs text-cyan">
+          {wifiClients} {t("topo.wifiClients")}
+        </p>
+      )}
+      {n.mndp && (
+        <div className="mt-4 border-t border-line pt-3">
+          <p className="mb-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-muted">
+            {t("topo.mndp.title")}
+            <Badge tone="ok" dot={false}>
+              {t("topo.basis.observed")}
+            </Badge>
+          </p>
+          <dl>
+            {n.mndp.identity && (
+              <Fact label={t("topo.mndp.identity")}>
+                <span dir="auto">{n.mndp.identity}</span>
+              </Fact>
+            )}
+            {(n.mndp.board || n.mndp.platform) && (
+              <Fact label={t("topo.mndp.board")}>
+                <span dir="auto">{n.mndp.board ?? n.mndp.platform}</span>
+              </Fact>
+            )}
+            {n.mndp.version && (
+              <Fact label={t("topo.mndp.version")}>
+                <span dir="ltr">{n.mndp.version}</span>
+              </Fact>
+            )}
+            {n.mndp.interface_name && (
+              <Fact label={t("topo.mndp.interface")}>
+                <span className="mono" dir="ltr">{n.mndp.interface_name}</span>
+              </Fact>
+            )}
+            <Fact label={t("topo.mndp.heardBy")}>
+              <span dir="auto">{n.mndp.heard_by}</span>
+            </Fact>
+            <Fact label={t("topo.lastVerified")}>
+              <span title={absoluteTime(n.mndp.last_seen_at, locale)}>{relativeTime(n.mndp.last_seen_at, locale)}</span>
+            </Fact>
+          </dl>
+          <p className="mt-1 text-xs text-muted">{t("topo.mndp.note")}</p>
+        </div>
       )}
       {n.kind === "gateway" && !n.device_id && (
         <p className="mt-2 text-xs leading-relaxed text-muted">

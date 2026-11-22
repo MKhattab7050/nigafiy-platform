@@ -2,7 +2,7 @@ import type { z } from 'zod';
 import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint, EndpointSummary, Role } from '@lan-detective/shared-types';
 import { notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
-import { buildCapabilities } from '../capabilities.ts';
+import { buildCapabilities, evaluateComplianceItems } from '../capabilities.ts';
 import { ENDPOINT_SUMMARY_SELECT, payloadForAudit } from '../repo.ts';
 import { latestFrame } from '../remote-desktop/frames.ts';
 import type { SeriesRange, endpointListQuery } from '../schema.ts';
@@ -61,6 +61,8 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
     // The latest frame of an open session, from the transient relay (never stored); not for viewers.
     ep.last_rd_frame = !isViewer && ep.rd_session ? (latestFrame(ep.id)?.frame ?? null) : null;
     ep.capabilities = buildCapabilities(ep.platform);
+    // Per-item verdicts with their evidence (the stored status/reasons come from the same function).
+    ep.compliance_items = evaluateComplianceItems({ platform: ep.platform, diskUsedPct: ep.disk_used_pct, security: ep.security });
     return ep;
   });
 }
