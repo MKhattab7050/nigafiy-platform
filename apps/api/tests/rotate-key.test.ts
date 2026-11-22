@@ -68,6 +68,22 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
       seal('config_backup_targets', 'secret_enc', [target], JSON.stringify({ username: 'backup', password: `ssh-${label}` })),
       seal('config_backup_targets', 'secret_fp_key_enc', [target], 'ab'.repeat(32)),
     ]);
+    const idpId = (
+      await c.query<{ id: string }>(
+        `INSERT INTO identity_providers (organization_id, kind, name, oidc_issuer, oidc_client_id, oidc_client_secret_enc, allowed_email_domains)
+         VALUES ($1, 'oidc', 'idp', 'https://idp.example.test', 'client', 'placeholder', ARRAY['example.test']) RETURNING id`,
+        [org],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE identity_providers SET oidc_client_secret_enc = $2 WHERE id = $1`, [idpId, seal('identity_providers', 'oidc_client_secret_enc', [idpId], `oidc-secret-${label}`)]);
+    const ssoReq = (
+      await c.query<{ id: string }>(
+        `INSERT INTO sso_requests (provider_id, organization_id, binding_hash, expires_at) VALUES ($1, $2, 'h', now() + interval '10 minutes') RETURNING id`,
+        [idpId, org],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE sso_requests SET code_verifier_enc = $2 WHERE id = $1`, [ssoReq, seal('sso_requests', 'code_verifier_enc', [ssoReq], `verifier-${label}`)]);
+
     // Several contents per target, so the composite key and batching are exercised.
     for (let i = 0; i < 3; i++) {
       const text = `hostname core-${label}\n! config ${i}\n`;
@@ -104,7 +120,7 @@ describe('sealed column list', () => {
     for (const sc of SEALED_COLUMNS) {
       expect([...expected.keys()].some((k) => k.startsWith(`${sc.table}.${sc.column}|`)), `${sc.table}.${sc.column}`).toBe(true);
     }
-    expect(SEALED_COLUMNS).toHaveLength(10);
+    expect(SEALED_COLUMNS).toHaveLength(12);
   });
 });
 

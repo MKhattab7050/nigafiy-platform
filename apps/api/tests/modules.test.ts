@@ -26,6 +26,7 @@ describe('module registry', () => {
         ['retention', 3_600_000, 727103, 'system'],
         ['router-schedules', 30_000, 727150, 'routers'],
         ['rollup', 600_000, 727104, 'monitoring'],
+        ['sso-cleanup', 3_600_000, 727142, 'auth'],
       ].sort(),
     );
   });
@@ -83,6 +84,7 @@ describe('GET /api/v1/system/modules', () => {
       'retention',
       'rollup',
       'router-schedules',
+      'sso-cleanup',
     ]);
     for (const j of jobs) expect(j.state).toBe('not_scheduled'); // the test process does not run the scheduler
     for (const j of jobs as unknown as Array<{ overdue: boolean; overdue_at: string | null }>) {

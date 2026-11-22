@@ -1341,6 +1341,57 @@ export type AccountMailOutcome = 'sent' | 'not_configured' | 'failed';
 export interface AuthOptions {
   allow_registration: boolean;
   account_mail_configured: boolean;
+  /** At least one organization on this server has an enabled SSO identity provider. */
+  sso_available: boolean;
+}
+
+// ── Enterprise single sign-on (docs/features/sso.md) ──
+export type IdentityProviderKind = 'oidc' | 'saml';
+export type SsoAssignableRole = Exclude<Role, 'owner'>;
+
+export interface IdentityProviderRoleMapping {
+  /** A value of the role claim / attribute (exact, case-sensitive). */
+  value: string;
+  role: SsoAssignableRole;
+}
+
+/** An organization's identity provider as administrators see it. The OIDC client secret is write-only. */
+export interface IdentityProvider {
+  id: string;
+  kind: IdentityProviderKind;
+  name: string;
+  enabled: boolean;
+  oidc_issuer: string | null;
+  oidc_client_id: string | null;
+  oidc_client_secret_set: boolean;
+  oidc_scopes: string;
+  saml_entry_point: string | null;
+  saml_idp_entity_id: string | null;
+  saml_idp_cert: string | null;
+  saml_request_binding: 'redirect' | 'post';
+  email_attribute: string;
+  name_attribute: string | null;
+  role_attribute: string | null;
+  role_mapping: IdentityProviderRoleMapping[];
+  allowed_email_domains: string[];
+  jit_provisioning: boolean;
+  default_role: SsoAssignableRole;
+  trust_idp_mfa: boolean;
+  linked_users: number;
+  created_at: string;
+  updated_at: string;
+  /** What to configure at the identity provider for this Nigafiy server. */
+  service_provider: {
+    oidc_redirect_uri: string;
+    saml_acs_url: string;
+    saml_entity_id: string;
+    saml_metadata_url: string;
+  };
+}
+
+/** Providers that accept a typed email address (sign-in page). */
+export interface SsoDiscoverResponse {
+  providers: Array<{ id: string; name: string; kind: IdentityProviderKind }>;
 }
 
 export type LoginResponse =

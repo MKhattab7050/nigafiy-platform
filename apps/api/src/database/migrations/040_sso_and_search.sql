@@ -98,6 +98,12 @@ CREATE TABLE saml_cache (
 );
 CREATE INDEX saml_cache_expires_idx ON saml_cache (expires_at);
 
+-- A session (and a pending MFA step) started through SSO stays pinned to the provider's
+-- organization: it cannot switch to another organization the user belongs to, and it ends when
+-- the provider is deleted (CASCADE) or disabled (checked on every request).
+ALTER TABLE sessions ADD COLUMN sso_provider_id uuid REFERENCES identity_providers (id) ON DELETE CASCADE;
+ALTER TABLE auth_tokens ADD COLUMN sso_provider_id uuid REFERENCES identity_providers (id) ON DELETE CASCADE;
+
 -- ── 2. Global search indexes ──────────────────────────────────────────────────────────────────
 -- The trigram indexes of migration 020 covered only some of the columns search.ts compared one by
 -- one, so the planner could not use them. Each searchable table now has ONE trigram index on the

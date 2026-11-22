@@ -42,6 +42,8 @@ export interface AuthContext {
   sessionId: string;
   organizationId: string;
   role: Role;
+  /** Set when the session came from an SSO sign-in: it is pinned to that provider's organization. */
+  ssoProviderId?: string | null;
 }
 
 export function auth(req: Request): AuthContext {
