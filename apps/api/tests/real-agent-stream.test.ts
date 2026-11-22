@@ -18,10 +18,17 @@ const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agen
 // real tile encoding, the real session banner (it appears top-centre for a few seconds), the real
 // WebSocket hub. Input and clipboard are not sent here: they would move the mouse and replace the
 // clipboard of the person using this computer (both are covered by Go tests and fleet-stream.test.ts).
+//
+// Twice: the agent in the foreground (desktop work in its own process), and `endpoint-agent run`
+// (the service's mode: every capture, the banner and the stream's frames go through a real session
+// helper process, `endpoint-agent session-helper`, over its stdin/stdout pipes).
 describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go agent: live stream over WebSocket (run `pnpm build:agent` first)', () => {
-  it(
-    'opens the session banner, connects its stream and sends real tile-encoded frames, then closes on stop',
-    async () => {
+  it.each([
+    { mode: 'foreground', args: [] as string[], desktopMode: 'local' },
+    { mode: 'run (session helper)', args: ['run'], desktopMode: 'session_helper' },
+  ])(
+    '$mode: opens the session banner, connects its stream and sends real tile-encoded frames, then closes on stop',
+    async ({ args, desktopMode }) => {
       await endpointsModule.lifecycle.start();
       const srv = http.createServer(app);
       await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
@@ -37,7 +44,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go a
         const a = await newAccount('real-stream');
         const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Real stream host', platform: 'windows' });
         const epId: string = created.body.endpoint.id;
-        child = spawn(binPath, ['-server', serverUrl, '-allow-insecure-http', '-token', created.body.enrollment_token, '-state-dir', stateDir, '-log-level', 'info'], { stdio: 'pipe' });
+        child = spawn(binPath, [...args, '-server', serverUrl, '-allow-insecure-http', '-token', created.body.enrollment_token, '-state-dir', stateDir, '-log-level', 'info'], { stdio: 'pipe' });
         child.stdout?.on('data', (d) => logs.push(String(d)));
         child.stderr?.on('data', (d) => logs.push(String(d)));
 
@@ -57,9 +64,10 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go a
         const until = Date.now() + 20_000;
         let fs: Record<string, unknown> | undefined;
         for (;;) {
-          fs = (await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`)).body.fleet_session;
-          const st = (await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`)).body.stream_connected;
-          if (fs?.banner_state !== 'pending' && st) break;
+          // One read for both, so the row (transport) and the connection state agree.
+          const body = (await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`)).body;
+          fs = body.fleet_session;
+          if (fs?.banner_state !== 'pending' && body.stream_connected && fs?.transport === 'ws') break;
           if (Date.now() > until) throw new Error(`stream never connected: ${JSON.stringify(fs)}\n${logs.join('')}`);
           await new Promise((r) => setTimeout(r, 250));
         }
@@ -102,10 +110,11 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go a
         expect(tile0[1]).toBe(0xd8);
         const hello = texts.find((m) => m.t === 'hello');
         expect(hello?.encoder).toBe('jpeg');
+        expect((hello?.desktop as { mode?: string } | undefined)?.mode).toBe(desktopMode);
         const stats = texts.find((m) => m.t === 'stats');
         expect(stats).toBeDefined();
         console.info(
-          `[real stream] ${header.sw}x${header.sh} → ${header.w}x${header.h}, ${header.tiles.length} tile(s), first packet ${first.length} bytes, mode ${header.mode}, frames ${frames.length}, stats ${JSON.stringify(stats)}`,
+          `[real stream, ${desktopMode}] ${header.sw}x${header.sh} → ${header.w}x${header.h}, ${header.tiles.length} tile(s), first packet ${first.length} bytes, mode ${header.mode}, frames ${frames.length}, stats ${JSON.stringify(stats)}`,
         );
 
         await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({});
@@ -116,6 +125,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go a
         expect(Number(row.frames_relayed)).toBeGreaterThan(0);
         expect(row.end_reason).toBe('operator');
       } finally {
+        if (process.env.LD_TEST_AGENT_LOGS) console.info(logs.join(''));
         child?.kill();
         await hub.stop();
         srv.closeAllConnections();

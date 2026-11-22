@@ -248,3 +248,48 @@ func TestRealHelperProcessCapturesTheScreen(t *testing.T) {
 	}
 	t.Logf("helper captured %dx%d (%d bytes) of display %d, mode %s", f.Header.W, f.Header.H, len(f.Data), f.Header.Display, f.Header.Mode)
 }
+
+type slowLauncher struct {
+	countingLauncher
+	delay time.Duration
+}
+
+func (l *slowLauncher) Launch(ctx context.Context) (io.ReadWriteCloser, func(), error) {
+	time.Sleep(l.delay)
+	return l.countingLauncher.Launch(ctx)
+}
+
+// A session opening asks for the banner, the displays and a frame at the same moment; the calls
+// that arrive while the helper is starting wait for it instead of failing with ErrHelperGone.
+func TestSupervisorCallsDuringALaunchWaitForTheHelper(t *testing.T) {
+	ui := &fakeUI{}
+	l := &slowLauncher{countingLauncher: countingLauncher{ui: ui}, delay: 200 * time.Millisecond}
+	s := NewSupervisor(l, nil)
+	defer s.Close()
+	var wg sync.WaitGroup
+	errs := make(chan error, 3)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		errs <- s.ShowBanner(userui.BannerInfo{SessionID: "s1", Operator: "tech"}, func() {})
+	}()
+	go func() { defer wg.Done(); _, err := s.Displays(); errs <- err }()
+	go func() {
+		defer wg.Done()
+		_, err := s.Grab("s1", remotedesktop.GrabRequest{Quality: 60, Scale: 1})
+		errs <- err
+	}()
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("a call during the launch failed: %v", err)
+		}
+	}
+	if l.launches != 1 {
+		t.Fatalf("launches %d, want 1", l.launches)
+	}
+	if len(ui.banners) != 1 {
+		t.Fatalf("banners %d", len(ui.banners))
+	}
+}

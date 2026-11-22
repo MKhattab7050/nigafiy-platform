@@ -211,6 +211,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
+// Enroll spends the enrollment token now (installing the service does this, so the single-use
+// token never lands on the service command line). Nothing happens when already enrolled.
+func (a *Agent) Enroll(ctx context.Context) error { return a.ensureEnrolled(ctx) }
+
 func (a *Agent) ensureEnrolled(ctx context.Context) error {
 	if raw, err := os.ReadFile(a.credentialPath()); err == nil {
 		var c credentialFile

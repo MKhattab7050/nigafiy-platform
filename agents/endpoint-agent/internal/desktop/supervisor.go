@@ -34,6 +34,7 @@ type Supervisor struct {
 	stop       func()
 	lastLaunch time.Time
 	lastErr    error
+	launching  chan struct{}
 	banner     *bannerState
 }
 
@@ -52,28 +53,58 @@ func NewSupervisor(l Launcher, log *slog.Logger) *Supervisor {
 const relaunchGap = 2 * time.Second
 
 func (s *Supervisor) get() (*HelperClient, error) {
-	s.mu.Lock()
-	if s.client != nil {
-		select {
-		case <-s.client.Done():
-			s.client, s.stop = nil, nil
-		default:
-			c := s.client
+	for {
+		s.mu.Lock()
+		if s.client != nil {
+			select {
+			case <-s.client.Done():
+				s.client, s.stop = nil, nil
+			default:
+				c := s.client
+				s.mu.Unlock()
+				return c, nil
+			}
+		}
+		if s.launching != nil {
+			// Another call is starting the helper (a session opening asks for the banner, the
+			// displays and a frame at once): wait for it instead of failing.
+			ch := s.launching
 			s.mu.Unlock()
-			return c, nil
+			<-ch
+			continue
 		}
-	}
-	if !s.lastLaunch.IsZero() && time.Since(s.lastLaunch) < relaunchGap {
-		err := s.lastErr
+		if !s.lastLaunch.IsZero() && time.Since(s.lastLaunch) < relaunchGap {
+			err := s.lastErr
+			s.mu.Unlock()
+			if err == nil {
+				err = ErrHelperGone
+			}
+			return nil, err
+		}
+		s.lastLaunch = time.Now()
+		ch := make(chan struct{})
+		s.launching = ch
 		s.mu.Unlock()
-		if err == nil {
-			err = ErrHelperGone
-		}
-		return nil, err
-	}
-	s.lastLaunch = time.Now()
-	s.mu.Unlock()
 
+		c, b, err := s.launch()
+		s.mu.Lock()
+		s.launching = nil
+		s.mu.Unlock()
+		close(ch)
+		if err != nil {
+			return nil, err
+		}
+		if b != nil {
+			if err := c.ShowBanner(b.info, b.onEnd); err != nil {
+				s.log.Warn("session banner could not be shown again on the new helper", "error", err.Error())
+			}
+		}
+		return c, nil
+	}
+}
+
+// launch starts a helper and checks it answers; the caller holds the launching slot.
+func (s *Supervisor) launch() (*HelperClient, *bannerState, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	rwc, stop, err := s.launcher.Launch(ctx)
@@ -82,7 +113,7 @@ func (s *Supervisor) get() (*HelperClient, error) {
 		s.lastErr = err
 		s.mu.Unlock()
 		s.log.Warn("session helper could not be started", "where", s.launcher.Describe(), "error", err.Error())
-		return nil, err
+		return nil, nil, err
 	}
 	c := NewHelperClient(rwc)
 	if err := c.Ping(); err != nil {
@@ -90,19 +121,14 @@ func (s *Supervisor) get() (*HelperClient, error) {
 		s.mu.Lock()
 		s.lastErr = err
 		s.mu.Unlock()
-		return nil, err
+		return nil, nil, err
 	}
 	s.mu.Lock()
 	s.client, s.stop, s.lastErr = c, stop, nil
 	b := s.banner
 	s.mu.Unlock()
 	s.log.Info("session helper started", "where", s.launcher.Describe())
-	if b != nil {
-		if err := c.ShowBanner(b.info, b.onEnd); err != nil {
-			s.log.Warn("session banner could not be shown again on the new helper", "error", err.Error())
-		}
-	}
-	return c, nil
+	return c, b, nil
 }
 
 // Restart stops the current helper; the next call starts one in the (new) active session.
