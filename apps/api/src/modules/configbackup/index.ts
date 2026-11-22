@@ -27,3 +27,4 @@ export const configBackupModule = defineModule({
 
 export { withConfigBackupSecrets } from './commands.ts';
 export { processConfigBackupItem } from './ingest.ts';
+export { expireStale as expireStaleConfigBackups, loadTarget as loadConfigBackupTarget, onlineCollector as configBackupCollector, queueRun as queueConfigBackupRun, readiness as configBackupReadiness } from './service.ts';

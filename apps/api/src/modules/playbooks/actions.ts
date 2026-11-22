@@ -3,6 +3,13 @@ import { AppError } from '../../common/http.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { dnsFilterEnabled, setDeviceInternetPause } from '../access/index.ts';
 import { collectorCommandStates, queueSiteCollectorCommand } from '../collectors/index.ts';
+import {
+  configBackupCollector,
+  configBackupReadiness,
+  expireStaleConfigBackups,
+  loadConfigBackupTarget,
+  queueConfigBackupRun,
+} from '../configbackup/index.ts';
 import { queueWakeOnLan, setDeviceTrust } from '../devices/index.ts';
 import { endpointCommandState, parseAutomatableCommand, queueEndpointCommandFor } from '../endpoints/index.ts';
 import { emitEvent } from '../events/index.ts';
@@ -349,6 +356,49 @@ export async function executeAction(ctx: ActionContext): Promise<ActionOutcome> 
       return { kind: 'failed', input, error: 'Router changes run only at the moment an administrator approves them; this one was not carried out' };
     }
 
+    case 'router_wifi':
+    case 'router_reboot': {
+      const routerId = String(step.params.router_id);
+      const r = (await db.query<{ name: string; site_id: string }>(`SELECT name, site_id FROM site_routers WHERE id = $1`, [routerId])).rows[0];
+      if (!r) return { kind: 'failed', error: 'The router no longer exists' };
+      const input =
+        step.action === 'router_wifi'
+          ? { router_id: routerId, router: r.name, wifi_id: step.params.wifi_id, enabled: step.params.enabled, confirm_main_network: step.params.confirm_main_network === true }
+          : { router_id: routerId, router: r.name };
+      if (dry) return { kind: 'previewed', input };
+      return { kind: 'failed', input, error: 'Router changes run only at the moment an administrator approves them; this one was not carried out' };
+    }
+
+    case 'switch_port_quarantine':
+    case 'switch_port_disable': {
+      const input = { ...deviceInput, ...(step.action === 'switch_port_quarantine' ? { reason: step.params.reason ?? null } : { admin_up: false }) };
+      if (dry) return { kind: 'previewed', input };
+      return { kind: 'failed', input, error: 'Switch port changes run only at the moment an administrator approves them; this one was not carried out' };
+    }
+
+    case 'config_backup': {
+      const ownTarget = typeof step.params.target_id === 'string' && step.params.target_id ? step.params.target_id : null;
+      let targetId = ownTarget;
+      if (!targetId) {
+        const deviceId = stepDeviceId(run, step);
+        if (!deviceId) return { kind: 'failed', error: NEEDS_DEVICE };
+        targetId = (await db.query<{ id: string }>(`SELECT id FROM config_backup_targets WHERE device_id = $1 ORDER BY created_at LIMIT 1`, [deviceId])).rows[0]?.id ?? null;
+        if (!targetId) return { kind: 'failed', error: 'This device is not set up for configuration backup (Configuration backup → Add device)' };
+      }
+      await expireStaleConfigBackups(db);
+      const t = await loadConfigBackupTarget(db, targetId, true);
+      // device_id: the loop guard links the backup's config_changed event back to this step.
+      const input = { target_id: t.id, target: t.name, address: t.address, device_id: t.device_id };
+      if (dry) return { kind: 'previewed', input };
+      if (t.pending_run_id) return { kind: 'pending', input: { ...input, already_pending: true }, external: { kind: 'config_backup_run', id: t.pending_run_id } };
+      const ready = configBackupReadiness(t);
+      if (ready !== 'ready') return { kind: 'failed', input, error: `The device cannot be backed up now (${ready.replace(/_/g, ' ')})` };
+      const collector = await configBackupCollector(db, t.site_id);
+      if (!collector) return { kind: 'failed', input, error: 'No collector of this site is online to reach the device' };
+      const q = await queueConfigBackupRun(db, org, t, 'playbook', collector, ctx.actor ? { id: ctx.actor.id, email: ctx.actor.email } : null);
+      return { kind: 'pending', input: { ...input, collector: q.collector }, external: { kind: 'config_backup_run', id: q.run_id } };
+    }
+
     case 'endpoint_command': {
       const command = parseAutomatableCommand(step.params.command);
       const deviceId = stepDeviceId(run, step);
@@ -446,6 +496,23 @@ export async function pollExternal(db: Db, step: StepRow, now: Date): Promise<Po
       const output = { requests: rows.map((r) => ({ id: r.id, status: r.status, error: r.error })) };
       if (rows.some((r) => r.status === 'completed')) return { kind: 'done', output };
       return { kind: 'failed', error: rows.map((r) => r.error ?? r.status).join('; ') || 'The router request is gone', output };
+    }
+    case 'switch_port_requests': {
+      const rows = (await db.query<{ id: string; status: string; error: string | null; result: unknown }>(`SELECT id, status, error, result FROM switch_port_requests WHERE id = ANY($1)`, [ext.ids])).rows;
+      if (rows.some((r) => r.status === 'pending')) {
+        return timedOut(LIMITS.switchPortTimeoutMinutes) ? { kind: 'failed', error: `The switch did not confirm within ${LIMITS.switchPortTimeoutMinutes} minutes` } : { kind: 'waiting' };
+      }
+      const output = { requests: rows.map((r) => ({ id: r.id, status: r.status, error: r.error, result: r.result })) };
+      // "verified": the collector read the port back and it matches the change.
+      if (rows.length && rows.every((r) => r.status === 'verified')) return { kind: 'done', output };
+      return { kind: 'failed', error: rows.map((r) => r.error ?? r.status).join('; ') || 'The switch port request is gone', output };
+    }
+    case 'config_backup_run': {
+      const r = (await db.query<{ status: string; outcome: string | null; version_id: string | null; error: string | null }>(`SELECT status, outcome, version_id, error FROM config_backup_runs WHERE id = $1`, [ext.id])).rows[0];
+      if (!r) return { kind: 'failed', error: 'The backup run no longer exists' };
+      if (r.status === 'ok') return { kind: 'done', output: { config_backup_run_id: ext.id, outcome: r.outcome, version_id: r.version_id } };
+      if (r.status === 'failed' || r.status === 'expired') return { kind: 'failed', error: r.error ?? `The backup ${r.status}`, output: { config_backup_run_id: ext.id } };
+      return timedOut(LIMITS.configBackupTimeoutMinutes) ? { kind: 'failed', error: `No backup result within ${LIMITS.configBackupTimeoutMinutes} minutes` } : { kind: 'waiting' };
     }
     case 'endpoint_command': {
       const s = await endpointCommandState(db, ext.id);

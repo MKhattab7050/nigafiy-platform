@@ -26,3 +26,4 @@ export { processSnmpPoll } from './ingest.ts';
 export { processPortControlItem } from './control/ingest.ts';
 export { devicePortLocation } from './finder/service.ts';
 export { type PortLocation, type Sighting, locate, portRole } from './locate.ts';
+export { disableDevicePort, quarantineDevice } from './control/service.ts';

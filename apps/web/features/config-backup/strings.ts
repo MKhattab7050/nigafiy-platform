@@ -195,6 +195,8 @@ export const en = {
   'cb.run.status.expired': 'Expired',
   'cb.run.by': 'by {who}',
   'cb.run.scheduled': 'scheduled',
+  'cb.run.playbook': 'by a playbook',
+  'cb.run.restore': 'before a restore',
   'cb.run.none': 'No backup has run yet.',
 
   'cb.card.title': 'Configuration backup',
@@ -410,6 +412,8 @@ export const ar: Record<keyof typeof en, string> = {
   'cb.run.status.expired': 'انتهت المهلة',
   'cb.run.by': 'بواسطة {who}',
   'cb.run.scheduled': 'مجدول',
+  'cb.run.playbook': 'بواسطة كتيّب تشغيل',
+  'cb.run.restore': 'قبل الاستعادة',
   'cb.run.none': 'لم يعمل أي نسخ بعد.',
 
   'cb.card.title': 'النسخ الاحتياطي للإعدادات',

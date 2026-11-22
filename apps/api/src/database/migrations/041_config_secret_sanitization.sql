@@ -53,3 +53,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON config_backup_raw TO lan_app;
 ALTER TABLE config_backup_versions DROP CONSTRAINT config_backup_versions_target_id_sha256_fkey;
 ALTER TABLE config_backup_versions ADD CONSTRAINT config_backup_versions_target_id_sha256_fkey
   FOREIGN KEY (target_id, sha256) REFERENCES config_backup_contents (target_id, sha256) ON UPDATE CASCADE ON DELETE CASCADE;
+
+-- Backups started by a playbook step (`config_backup` action) and the fresh backup taken right before
+-- an administrator-confirmed restore are recorded as such.
+ALTER TABLE config_backup_runs DROP CONSTRAINT config_backup_runs_trigger_check;
+ALTER TABLE config_backup_runs ADD CONSTRAINT config_backup_runs_trigger_check CHECK (trigger IN ('manual', 'scheduled', 'playbook', 'restore'));

@@ -45,7 +45,7 @@ function RunsCard({ runs }: { runs: BackupRun[] }) {
                 <td data-label={t('cb.v.captured')} title={absoluteTime(r.created_at, locale)}>
                   {relativeTime(r.created_at, locale)}
                   <span className="block text-xs text-faint" dir="auto">
-                    {r.trigger === 'scheduled' ? t('cb.run.scheduled') : r.created_by_email ? fill(t('cb.run.by'), { who: r.created_by_email }) : ''}
+                    {r.trigger === 'scheduled' ? t('cb.run.scheduled') : r.trigger === 'playbook' ? t('cb.run.playbook') : r.trigger === 'restore' ? t('cb.run.restore') : r.created_by_email ? fill(t('cb.run.by'), { who: r.created_by_email }) : ''}
                     {r.collector_name ? ` · ${r.collector_name}` : ''}
                     {r.duration_ms !== null ? ` · ${ms(r.duration_ms)}` : ''}
                   </span>

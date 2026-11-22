@@ -684,3 +684,22 @@ export function releaseQuarantine(req: Request, ctx: AuthContext, quarantineId: 
     return { quarantine_id: qr.id, request_id: q.request_id, expires_at: q.expires_at, status: 'releasing' };
   });
 }
+
+/**
+ * Shut down the device's own switch port (ifAdminStatus down) — the playbook action
+ * `switch_port_disable`. Only a port the device is alone on (located "direct") is ever touched, and
+ * the same protections as a manual change apply without any override: an uplink, a trunk, a port with
+ * many devices, or the path to the collector / gateway / the approving administrator's own machine is
+ * refused (409 risky_port).
+ */
+export async function disableDevicePort(req: Request, ctx: AuthContext, deviceId: string) {
+  const loc = await withTenant(ctx.organizationId, async (db) => {
+    const { location } = await locateForQuarantine(db, deviceId);
+    if (!location) throw new AppError(409, 'not_located', 'No switch read so far has seen this device, so its port is not known');
+    if (location.kind !== 'direct') {
+      throw new AppError(409, 'not_direct', 'The device is not alone on a port (shared port or behind an uplink); disabling that port would cut off other devices');
+    }
+    return { targetId: location.target_id, ifIndex: location.if_index };
+  });
+  return requestPortChange(req, ctx, loc.targetId, loc.ifIndex, { op: 'admin_status', admin_up: false, confirm: true });
+}

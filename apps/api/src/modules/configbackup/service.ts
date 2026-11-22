@@ -365,7 +365,7 @@ export async function queueRun(
   db: Db,
   organizationId: string,
   t: TargetRow,
-  trigger: 'manual' | 'scheduled',
+  trigger: 'manual' | 'scheduled' | 'playbook' | 'restore',
   collector: { id: string; name: string },
   user: { id: string; email: string } | null,
 ): Promise<{ run_id: string; collector: string }> {

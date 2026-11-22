@@ -65,7 +65,7 @@ export interface Target {
 
 export interface BackupRun {
   id: string;
-  trigger: 'manual' | 'scheduled';
+  trigger: 'manual' | 'scheduled' | 'playbook' | 'restore';
   status: 'pending' | 'ok' | 'failed' | 'expired';
   outcome: 'first' | 'changed' | 'unchanged' | null;
   version_id: string | null;
@@ -132,7 +132,7 @@ export interface Suggestion {
 export interface ProbeRun {
   id: string;
   site_id?: string;
-  trigger: 'manual' | 'scheduled';
+  trigger: 'manual' | 'scheduled' | 'playbook' | 'restore';
   status: 'pending' | 'done' | 'expired';
   address_count: number;
   open_count: number | null;

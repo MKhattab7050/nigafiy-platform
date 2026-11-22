@@ -42,6 +42,13 @@ export const TRIGGER_EVENT_TYPES = [
   // maintenance
   'maintenance_started',
   'maintenance_ended',
+  // configuration backup (modules/configbackup)
+  'config_changed',
+  'config_backup_failed',
+  'config_host_key_changed',
+  // switch port control (modules/ports/control)
+  'switch_port_changed',
+  'switch_port_change_failed',
 ] as const;
 export type TriggerEventType = (typeof TRIGGER_EVENT_TYPES)[number];
 
@@ -65,6 +72,11 @@ export const ACTION_KEYS = [
   'router_block',
   'router_unblock',
   'router_rate_limit',
+  'router_wifi',
+  'router_reboot',
+  'switch_port_quarantine',
+  'switch_port_disable',
+  'config_backup',
   'endpoint_command',
   'incident_comment',
   'incident_acknowledge',
@@ -109,6 +121,20 @@ export const ACTIONS: Record<ActionKey, ActionInfo> = {
   router_block: info({ needsDevice: true, alwaysApprove: true, produces: ['device_blocked'] }),
   router_unblock: info({ needsDevice: true, alwaysApprove: true, produces: ['device_unblocked'] }),
   router_rate_limit: info({ needsDevice: true, alwaysApprove: true }),
+  // Turning a Wi-Fi network off or on disconnects / reconnects every device on it.
+  router_wifi: info({ alwaysApprove: true, produces: ['device_offline', 'device_online'], siteWide: true }),
+  // A reboot takes the router, and everything behind it (often the collector too), offline for a while.
+  router_reboot: info({
+    alwaysApprove: true,
+    produces: ['router_unreachable', 'router_reachable', 'device_offline', 'device_online', 'collector_offline', 'collector_online', 'check_down', 'check_recovered'],
+    siteWide: true,
+  }),
+  // Moves the device's own switch port to the quarantine VLAN (refused on uplinks / trunks / LAN Detective's own path).
+  switch_port_quarantine: info({ needsDevice: true, alwaysApprove: true, produces: ['switch_port_changed', 'switch_port_change_failed', 'device_offline'] }),
+  // Shuts the device's own switch port down (ifAdminStatus down; same protections as quarantine).
+  switch_port_disable: info({ needsDevice: true, alwaysApprove: true, produces: ['switch_port_changed', 'switch_port_change_failed', 'device_offline'] }),
+  // Read-only: takes a configuration backup of the device (or the named backup target).
+  config_backup: info({ produces: ['config_changed', 'config_backup_failed', 'config_host_key_changed'] }),
   endpoint_command: info({ needsDevice: true, produces: ['endpoint_command'] }),
   incident_comment: info({ needsIncident: true }),
   incident_acknowledge: info({ needsIncident: true }),
@@ -124,6 +150,10 @@ export function riskOf(action: ActionKey, params: Record<string, unknown>): Risk
     case 'router_block':
     case 'router_unblock':
     case 'router_rate_limit':
+    case 'router_wifi':
+    case 'router_reboot':
+    case 'switch_port_quarantine':
+    case 'switch_port_disable':
     case 'dns_pause':
     case 'endpoint_command':
       return 'disruptive';
@@ -162,6 +192,10 @@ export const LIMITS = {
   toolTimeoutMinutes: 6,
   collectorCommandTimeoutMinutes: 15,
   routerRequestTimeoutMinutes: 12,
+  /** Switch port changes expire after PORT_REQUEST_TTL_MINUTES (10) on their own; this is the outer bound. */
+  switchPortTimeoutMinutes: 12,
+  /** Configuration backups expire after RUN_TTL_MINUTES (20). */
+  configBackupTimeoutMinutes: 22,
   endpointCommandTimeoutMinutes: 10,
   /** A step claimed but not finished this long ago (process restarted mid-action) is failed, never retried. */
   interruptedAfterSeconds: 120,

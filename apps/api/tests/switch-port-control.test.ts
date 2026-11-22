@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { playbookTick } from '../src/modules/playbooks/index.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry, type TestCollector } from './helpers.ts';
 
 // Phase 5: switch port control (admin status, description, access VLAN), write credentials,
@@ -293,5 +294,59 @@ describe('switch port control', () => {
     expect(view.current).toBeNull();
     expect(view.history[0]).toMatchObject({ status: 'failed', last_error: 'the PVID is not the new VLAN' });
     expect(view.plan).toMatchObject({ possible: true, quarantine_vlan_source: 'switch' }); // can be tried again
+  });
+
+  it('playbook steps disable / quarantine a device port only at an administrator approval, with the same protections', async () => {
+    const { a, c, sw, byIp } = await office();
+    await a.agent.put(`/api/v1/switches/${sw}/write-credentials`).set(CSRF).send({ credentials: { version: '2c', community: WRITE } });
+    await a.agent.put(`/api/v1/sites/${a.siteId}/port-control`).set(CSRF).send({ quarantine_vlan: 99 });
+    const nas = byIp('192.168.7.10').id as string;
+    const printer = byIp('192.168.7.11').id as string;
+    const gw = byIp('192.168.7.1').id as string;
+    const pb = await a.agent
+      .post('/api/v1/playbooks')
+      .set(CSRF)
+      .send({ name: 'cut off', site_id: a.siteId, trigger: { kind: 'manual' }, approval_mode: 'run_automatically', auto_run_confirmed: true, steps: [{ key: 'off', action: 'switch_port_disable', params: {} }] });
+    expect(pb.status, JSON.stringify(pb.body)).toBe(201);
+
+    // Even "run automatically" waits for an administrator; nothing is queued before the approval.
+    let run = await a.agent.post(`/api/v1/playbooks/${pb.body.id}/run`).set(CSRF).send({ device_id: nas });
+    expect(run.body.status).toBe('awaiting_approval');
+    expect((await portCommands(c)).cmds).toHaveLength(0);
+    const step = run.body.steps[0];
+    const approved = await a.agent.post(`/api/v1/playbook-runs/${run.body.id}/steps/${step.id}/decision`).set(CSRF).send({ decision: 'approve' });
+    expect(approved.status).toBe(200);
+    expect(approved.body.steps[0]).toMatchObject({ status: 'running', actor_email: a.email });
+    const { cmds } = await portCommands(c);
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0].payload).toMatchObject({ if_index: 1, op: 'admin_status', admin_up: false });
+    expect((await telemetry(c, [result(cmds[0], { after: { admin_up: false } })])).body.rejected).toEqual([]);
+    await systemPool.query(`UPDATE playbook_runs SET next_run_at = now() - interval '1 second' WHERE id = $1`, [run.body.id]);
+    await playbookTick();
+    run = await a.agent.get(`/api/v1/playbook-runs/${run.body.id}`);
+    expect(run.body.status).toBe('succeeded');
+    expect(run.body.steps[0].output).toMatchObject({ requests: [{ status: 'verified' }] });
+    const audit = await systemPool.query(`SELECT 1 FROM audit_logs WHERE organization_id = $1 AND action = 'switch_port.admin_status'`, [a.organizationId]);
+    expect(audit.rowCount).toBe(1);
+
+    // The gateway's port is LAN Detective's own path: refused at approval, no override, nothing queued.
+    const gwRun = await a.agent.post(`/api/v1/playbooks/${pb.body.id}/run`).set(CSRF).send({ device_id: gw });
+    const gwDecided = await a.agent.post(`/api/v1/playbook-runs/${gwRun.body.id}/steps/${gwRun.body.steps[0].id}/decision`).set(CSRF).send({ decision: 'approve' });
+    expect(gwDecided.body.status).toBe('failed');
+    expect(gwDecided.body.steps[0].error).toContain('risky_port');
+    expect((await portCommands(c)).cmds.filter((x: any) => x.payload.if_index === 4)).toHaveLength(0);
+    expect((await systemPool.query(`SELECT 1 FROM switch_port_requests WHERE target_id = $1 AND if_index = 4`, [sw])).rowCount).toBe(0);
+
+    // Quarantine through a playbook: the quarantine record, its VLAN change and the reason.
+    const qpb = await a.agent
+      .post('/api/v1/playbooks')
+      .set(CSRF)
+      .send({ name: 'isolate', site_id: a.siteId, trigger: { kind: 'manual' }, steps: [{ key: 'iso', action: 'switch_port_quarantine', params: { reason: 'Isolated by playbook' } }] });
+    const qrun = await a.agent.post(`/api/v1/playbooks/${qpb.body.id}/run`).set(CSRF).send({ device_id: printer });
+    await a.agent.post(`/api/v1/playbook-runs/${qrun.body.id}/steps/${qrun.body.steps[0].id}/decision`).set(CSRF).send({ decision: 'approve' });
+    const q = await systemPool.query(`SELECT status, reason, quarantine_vlan FROM device_quarantines WHERE device_id = $1`, [printer]);
+    expect(q.rows[0]).toMatchObject({ status: 'requested', reason: 'Isolated by playbook', quarantine_vlan: 99 });
+    const qc = (await portCommands(c)).cmds.find((x: any) => x.payload.if_index === 2);
+    expect(qc.payload).toMatchObject({ if_index: 2, op: 'access_vlan', vlan: 99 });
   });
 });
