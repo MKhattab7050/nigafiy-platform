@@ -38,6 +38,16 @@ const schema = z.object({
       .transform((u) => u.replace(/\/+$/, ''))
       .optional(),
   ),
+  /** Interface for the HTTPS listener (e.g. 0.0.0.0 to serve collectors on the LAN). Unset: HOST. */
+  HTTPS_HOST: optionalNonEmpty,
+  /**
+   * Built-in LAN TLS (infrastructure/lan-tls.ts): with HTTPS_PORT set and no TLS_CERT_FILE /
+   * TLS_KEY_FILE, "auto" (default) creates a local CA and server certificate under TLS_AUTO_DIR and
+   * renews them; "off" starts no HTTPS listener without certificate files.
+   */
+  LAN_TLS: z.enum(['auto', 'off']).default('auto'),
+  /** Where the built-in LAN TLS files live. Unset: <working directory>/.data/tls. scripts/local.mjs sets <data dir>/tls. */
+  TLS_AUTO_DIR: optionalNonEmpty,
   TLS_CERT_FILE: optionalNonEmpty,
   TLS_KEY_FILE: optionalNonEmpty,
   TLS_PIN_SHA256: z.preprocess(

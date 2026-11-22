@@ -7,6 +7,7 @@ import { Async, Card, EmptyState, PageHeader } from '@/components/ui';
 import { ProgramLink } from '@/features/platform';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { LanTlsCard } from '../components/lan-tls-card';
 import { SiteSensors } from '../components/site-sensors';
 import { TokenModal } from '../components/token-modal';
 
@@ -51,6 +52,9 @@ export function SensorsScreen() {
           )
         }
       </Async>
+      <div className="mt-4">
+        <LanTlsCard />
+      </div>
       {token && <TokenModal created={token} onClose={() => setToken(null)} />}
     </>
   );

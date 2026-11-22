@@ -1957,3 +1957,19 @@ export interface PortfolioOrganizations {
   generated_at: string;
   items: PortfolioOrganization[];
 }
+
+/** GET /system/tls: what the HTTPS listener serves and the fingerprint collectors / agents pin. */
+export interface TlsStatus {
+  /** auto: built-in LAN TLS (local CA); files: TLS_CERT_FILE / TLS_KEY_FILE; off: no HTTPS listener. */
+  mode: 'auto' | 'files' | 'off';
+  https_port: number | null;
+  https_host: string | null;
+  /** Colon-separated SHA-256: the local CA (auto) or the configured certificate / TLS_PIN_SHA256 (files). */
+  pin_sha256: string | null;
+  pin_kind: 'ca' | 'leaf' | null;
+  leaf_not_after: string | null;
+  ca_not_after: string | null;
+  dns_names: string[];
+  ip_addresses: string[];
+  last_renewed_at: string | null;
+}
