@@ -192,7 +192,13 @@ func (s *stream) serve(ctx context.Context) bool {
 		}
 		s.maybeStats(time.Now())
 		if wait := minGap - time.Since(started); wait > 0 {
-			s.waitWake(cctx, wait)
+			// The frame-rate cap holds even when acks arrive sooner (they only wake a blocked loop).
+			t := time.NewTimer(wait)
+			select {
+			case <-cctx.Done():
+			case <-t.C:
+			}
+			t.Stop()
 		}
 	}
 	cancel()

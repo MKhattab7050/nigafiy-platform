@@ -24,6 +24,8 @@ type DisplayInfo struct {
 	Width   int    `json:"width"`
 	Height  int    `json:"height"`
 	Primary bool   `json:"primary"`
+	// All: the whole virtual screen (every monitor), listed last when there is more than one.
+	All bool `json:"all,omitempty"`
 }
 
 type CaptureOptions struct {

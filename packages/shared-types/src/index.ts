@@ -974,6 +974,8 @@ export interface RemoteDesktopDisplay {
   width: number;
   height: number;
   primary: boolean;
+  /** The whole virtual screen (every monitor); listed last when there is more than one. */
+  all?: boolean;
 }
 
 export interface RemoteDesktopFrame {
