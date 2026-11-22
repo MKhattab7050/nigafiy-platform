@@ -1,0 +1,154 @@
+import type { FleetSession, FleetSessionEndReason, RemoteDesktopSession } from '@lan-detective/shared-types';
+import type { Db } from '../../../infrastructure/db.ts';
+import { dropFrames, publishFramesCleared } from './frames.ts';
+
+// Fleet session history (fleet_sessions, migration 034) and the signals the live stream hub
+// listens to. endpoints.rd_session stays the current-session cache; this table is the record.
+
+/** pg_notify channel of the live stream hub (stream-hub.ts): session state and socket routing only, never frames. */
+export const RD_STREAM_CHANNEL = 'ld_rd_stream';
+
+/** How long the person at the computer has to answer the consent dialog. */
+export const CONSENT_TIMEOUT_SECONDS = 60;
+
+export const FLEET_SESSION_COLUMNS = `id, endpoint_id, public_id, operator_email, reason, state, consent_mode, consent_result, consent_error,
+  consent_decided_at, banner_state, banner_error, transport, stream_connected_at, desktop_mode, display_index, quality, scale,
+  frames_relayed::float8 AS frames_relayed, bytes_relayed::float8 AS bytes_relayed, clipboard_to_remote, clipboard_from_remote,
+  started_at, accepted_at, ended_at, end_reason, ended_by_email, source`;
+
+/** Records an action the endpoint (its agent or the person at it) took, in the caller's transaction. */
+export async function auditEndpointEvent(db: Db, orgId: string, endpointId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
+  await db.query(
+    `INSERT INTO audit_logs (organization_id, user_id, user_email, action, target_type, target_id, metadata, actor)
+     VALUES ($1, NULL, NULL, $2, 'endpoint', $3, $4, 'system')`,
+    [orgId, action, endpointId, JSON.stringify({ ...metadata, source: 'endpoint_agent' })],
+  );
+}
+
+/** Tells every API instance's hub that an endpoint's session changed (delivered on COMMIT). */
+export async function signalSessionState(db: Db, endpointId: string, state: 'waiting_consent' | 'active' | 'ended'): Promise<void> {
+  await db.query('SELECT pg_notify($1, $2)', [RD_STREAM_CHANNEL, state === 'ended' ? `end|${endpointId}` : `state|${endpointId}|${state}`]);
+}
+
+export async function currentFleetSession(db: Db, endpointId: string): Promise<FleetSession | null> {
+  const r = await db.query<FleetSession>(
+    `SELECT ${FLEET_SESSION_COLUMNS} FROM fleet_sessions WHERE endpoint_id = $1 AND state <> 'ended' ORDER BY started_at DESC LIMIT 1`,
+    [endpointId],
+  );
+  return r.rows[0] ?? null;
+}
+
+export async function fleetSessionByPublicId(db: Db, endpointId: string, publicId: string): Promise<FleetSession | null> {
+  const r = await db.query<FleetSession>(`SELECT ${FLEET_SESSION_COLUMNS} FROM fleet_sessions WHERE endpoint_id = $1 AND public_id = $2`, [endpointId, publicId]);
+  return r.rows[0] ?? null;
+}
+
+/**
+ * Ends the endpoint's open session (if `publicId` is given, only that one): the history row, the
+ * rd_session cache, pending frame/input commands, the frames held in memory on every instance, the
+ * live sockets on every instance, and a close command for the agent (banner off). Returns the
+ * session that was ended, or null.
+ */
+export async function endOpenSession(
+  db: Db,
+  orgId: string,
+  endpointId: string,
+  reason: FleetSessionEndReason,
+  endedBy: { userId: string | null; email: string | null },
+  publicId?: string,
+): Promise<FleetSession | null> {
+  // Command rows are locked before the endpoint row (the order an agent's result upload uses).
+  await db.query(
+    `UPDATE endpoint_commands SET status = 'expired', error = 'Remote desktop session ended', completed_at = now()
+      WHERE endpoint_id = $1 AND kind IN ('rd_capture', 'rd_input', 'rd_session_open') AND status = 'pending'`,
+    [endpointId],
+  );
+  await db.query(
+    `UPDATE endpoint_commands SET status = 'expired', error = 'Remote desktop session ended', completed_at = now()
+      WHERE endpoint_id = $1 AND kind IN ('rd_capture', 'rd_input') AND status = 'delivered'`,
+    [endpointId],
+  );
+  const ep = (await db.query<{ rd_session: RemoteDesktopSession | null }>(`SELECT rd_session FROM endpoints WHERE id = $1 FOR UPDATE`, [endpointId])).rows[0];
+  const cur = ep?.rd_session ?? null;
+  if (publicId && cur?.id !== publicId) {
+    // Not the current session: only close its history row if still open.
+    const old = await db.query<FleetSession>(
+      `UPDATE fleet_sessions SET state = 'ended', ended_at = now(), end_reason = $3, ended_by_email = $4
+        WHERE endpoint_id = $1 AND public_id = $2 AND state <> 'ended' RETURNING ${FLEET_SESSION_COLUMNS}`,
+      [endpointId, publicId, reason, endedBy.email],
+    );
+    return old.rows[0] ?? null;
+  }
+  const ended = await db.query<FleetSession>(
+    `UPDATE fleet_sessions SET state = 'ended', ended_at = now(), end_reason = $2, ended_by_email = $3
+      WHERE endpoint_id = $1 AND state <> 'ended' RETURNING ${FLEET_SESSION_COLUMNS}`,
+    [endpointId, reason, endedBy.email],
+  );
+  await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [endpointId]);
+  dropFrames(endpointId);
+  await publishFramesCleared(db, endpointId);
+  await signalSessionState(db, endpointId, 'ended');
+  if (cur?.id) {
+    // The agent removes the banner and closes the stream (a no-op for agents that never opened one).
+    await db.query(
+      `INSERT INTO endpoint_commands (organization_id, endpoint_id, kind, payload, created_by, created_by_name)
+       VALUES ($1,$2,'rd_session_close',$3,$4,$5)`,
+      [orgId, endpointId, JSON.stringify({ session_id: cur.id, reason }), endedBy.userId, endedBy.email],
+    );
+  }
+  return ended.rows[0] ?? null;
+}
+
+interface OpenResultData {
+  consent?: string;
+  consent_error?: string;
+  banner?: string;
+  banner_error?: string;
+  stream?: string;
+  desktop?: { mode?: string };
+}
+
+/**
+ * The agent's answer to rd_session_open (called from applyCommandResults, in the upload's
+ * transaction): consent accepted → the session goes live; denied / timed out / impossible → it
+ * ends. A failed command is an agent that does not know Fleet Pro sessions: an attended session
+ * cannot be honoured (no way to ask), an unattended one goes on with the start notice only.
+ */
+export async function applySessionOpenResult(
+  db: Db,
+  orgId: string,
+  endpointId: string,
+  payload: Record<string, unknown>,
+  ok: boolean,
+  data: OpenResultData | null,
+  error: string | null,
+): Promise<void> {
+  const publicId = typeof payload.session_id === 'string' ? payload.session_id : '';
+  if (!publicId) return;
+  const fs = await fleetSessionByPublicId(db, endpointId, publicId);
+  if (!fs || fs.state === 'ended') return;
+  const banner = !ok ? 'not_supported' : data?.banner === 'shown' ? 'shown' : data?.banner === 'unavailable' ? 'unavailable' : 'pending';
+  await db.query(`UPDATE fleet_sessions SET banner_state = $2, banner_error = $3, desktop_mode = coalesce($4, desktop_mode) WHERE id = $1`, [
+    fs.id,
+    banner,
+    data?.banner_error?.slice(0, 300) ?? null,
+    data?.desktop?.mode?.slice(0, 40) ?? null,
+  ]);
+  const consent = !ok ? (fs.consent_mode === 'prompt' ? 'unavailable' : 'not_required') : (data?.consent ?? 'unavailable');
+  if (fs.consent_mode !== 'prompt') {
+    await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_banner', { fleet_session_id: fs.id, session_id: publicId, banner, banner_error: data?.banner_error ?? (ok ? null : error) });
+    return;
+  }
+  if (consent === 'accepted') {
+    await db.query(`UPDATE fleet_sessions SET state = 'active', consent_result = 'accepted', consent_decided_at = now(), accepted_at = now() WHERE id = $1`, [fs.id]);
+    await db.query(`UPDATE endpoints SET rd_session = rd_session || '{"state":"active"}'::jsonb WHERE id = $1 AND rd_session->>'id' = $2`, [endpointId, publicId]);
+    await signalSessionState(db, endpointId, 'active');
+    await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result: 'accepted', banner });
+    return;
+  }
+  const result = consent === 'denied' || consent === 'timeout' ? consent : 'unavailable';
+  const consentError = result === 'unavailable' ? (data?.consent_error ?? error ?? 'the agent cannot ask the user for consent').slice(0, 300) : null;
+  await db.query(`UPDATE fleet_sessions SET consent_result = $2, consent_error = $3, consent_decided_at = now() WHERE id = $1`, [fs.id, result, consentError]);
+  await endOpenSession(db, orgId, endpointId, result === 'denied' ? 'consent_denied' : result === 'timeout' ? 'consent_timeout' : 'consent_unavailable', { userId: null, email: null }, publicId);
+  await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result, error: consentError });
+}

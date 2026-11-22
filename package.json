@@ -16,6 +16,7 @@
     "dev:api": "pnpm --filter @lan-detective/api dev",
     "dev:web": "pnpm --filter @lan-detective/web dev",
     "migrate": "pnpm --filter @lan-detective/api migrate",
+    "build": "pnpm --filter @nigafiy/brand build && pnpm --filter @lan-detective/web build",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome lint .",
     "test": "pnpm --filter @lan-detective/api test",

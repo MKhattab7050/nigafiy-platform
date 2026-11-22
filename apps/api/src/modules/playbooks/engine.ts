@@ -6,7 +6,8 @@ import { logger } from '../../infrastructure/logger.ts';
 import { safeErrorMessage } from '../../infrastructure/scheduler.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
-import { changeBlocks, setRateLimit } from '../routers/index.ts';
+import { disableDevicePort, quarantineDevice } from '../ports/index.ts';
+import { changeBlocks, rebootRouter, setRateLimit, setWifi } from '../routers/index.ts';
 import { type ActionContext, type ActionOutcome, type StepActor, executeAction, loadDevice, pollExternal, stepDeviceId, stepRouters } from './actions.ts';
 import { ACTIONS, LIMITS, riskOf } from './catalog.ts';
 import { type ApprovalAlert, sendApprovalEmails } from './notify.ts';
@@ -18,7 +19,14 @@ import { ACTIVE_RUN_STATUSES, type ExternalRef, type PlaybookRow, RUN_COLUMNS, t
 // (FOR UPDATE SKIP LOCKED), so the job and an API request never advance the same run at once.
 // Each step's action runs inside a savepoint: a failing action fails its step, never the run's record.
 
-export const ROUTER_ACTIONS = ['router_block', 'router_unblock', 'router_rate_limit'] as const;
+/**
+ * Actions carried out only inside the approving administrator's own request (never by the engine):
+ * the owning services audit them as that administrator's and apply their protections against the
+ * machine they are using (routers: never block / cut off your own machine or the collector; switch
+ * ports: never touch an uplink, trunk, or the path to the collector, the gateway or your machine).
+ */
+export const ROUTER_ACTIONS = ['router_block', 'router_unblock', 'router_rate_limit', 'router_wifi', 'router_reboot', 'switch_port_quarantine', 'switch_port_disable'] as const;
+const DEVICE_CONTROL_ACTIONS: readonly string[] = ['router_wifi', 'router_reboot', 'switch_port_quarantine', 'switch_port_disable'];
 const isRouterAction = (a: string) => (ROUTER_ACTIONS as readonly string[]).includes(a);
 const TERMINAL_STEP: readonly StepStatus[] = ['succeeded', 'failed', 'skipped', 'rejected', 'expired', 'previewed', 'cancelled'];
 const MAX_STEPS_PER_PASS = 30;
@@ -357,6 +365,10 @@ export async function executeRouterStep(req: Request, ctx: AuthContext, runId: s
     return { run, step, device, routers };
   });
   if (!loaded) return;
+  if (DEVICE_CONTROL_ACTIONS.includes(loaded.step.action)) {
+    await executeDeviceControlStep(req, ctx, runId, stepId);
+    return;
+  }
   const { step, device, routers } = loaded;
   const results: Record<string, unknown>[] = [];
   let error: string | null = null;
@@ -390,6 +402,74 @@ export async function executeRouterStep(req: Request, ctx: AuthContext, runId: s
       await applyOutcome(db, run, steps, s, { kind: 'failed', error, input: { ...(s.input ?? {}), router_results: results } }, actorOf(s), now);
     } else {
       await applyOutcome(db, run, steps, s, { kind: 'pending', output: { router_results: results }, external: { kind: 'router_requests', ids } }, actorOf(s), now);
+    }
+  });
+}
+
+/**
+ * Router Wi-Fi / reboot and switch port quarantine / disable, approved: carried out with the approver's
+ * request through the owning service (same validation, protections and audit as the Routers and
+ * Switches pages; no override of a refused risky port). The step then waits for the router or switch
+ * request the service queued.
+ */
+async function executeDeviceControlStep(req: Request, ctx: AuthContext, runId: string, stepId: string): Promise<void> {
+  const org = ctx.organizationId;
+  const loaded = await withTenant(org, async (db) => {
+    const run = await loadRun(db, runId);
+    const step = (await loadSteps(db, runId)).find((s) => s.id === stepId);
+    if (!run || !step) return null;
+    return { run, step, deviceId: stepDeviceId(run, step) };
+  });
+  if (!loaded) return;
+  const { step, deviceId } = loaded;
+  let external: ExternalRef | null = null;
+  let error: string | null = null;
+  let result: Record<string, unknown> = {};
+  try {
+    switch (step.action) {
+      case 'router_wifi': {
+        const p = step.params as { router_id: string; wifi_id: string; enabled: boolean; confirm_main_network?: boolean };
+        const q = (await setWifi(req, ctx, p.router_id, { wifi_id: p.wifi_id, enabled: p.enabled, confirm: p.confirm_main_network === true })) as { request_id: string };
+        result = { router_id: p.router_id, wifi_id: p.wifi_id, enabled: p.enabled, request_id: q.request_id };
+        external = { kind: 'router_requests', ids: [q.request_id] };
+        break;
+      }
+      case 'router_reboot': {
+        const routerId = String(step.params.router_id);
+        const q = (await rebootRouter(req, ctx, routerId)) as { request_id: string };
+        result = { router_id: routerId, request_id: q.request_id };
+        external = { kind: 'router_requests', ids: [q.request_id] };
+        break;
+      }
+      case 'switch_port_quarantine': {
+        if (!deviceId) throw new AppError(409, 'no_device', 'This step needs a device');
+        const reason = typeof step.params.reason === 'string' && step.params.reason ? step.params.reason : `Playbook step "${step.step_key}"`;
+        const q = await quarantineDevice(req, ctx, deviceId, reason);
+        result = { device_id: deviceId, quarantine_id: q.quarantine_id, request_id: q.request_id };
+        external = { kind: 'switch_port_requests', ids: [q.request_id] };
+        break;
+      }
+      case 'switch_port_disable': {
+        if (!deviceId) throw new AppError(409, 'no_device', 'This step needs a device');
+        const q = await disableDevicePort(req, ctx, deviceId);
+        result = { device_id: deviceId, request_id: q.request_id };
+        external = { kind: 'switch_port_requests', ids: [q.request_id] };
+        break;
+      }
+    }
+  } catch (err) {
+    error = err instanceof AppError ? `${err.code}: ${err.message}` : errorText(err);
+  }
+  await withTenant(org, async (db) => {
+    const run = await loadRun(db, runId, 'wait');
+    const steps = await loadSteps(db, runId);
+    const s = steps.find((x) => x.id === stepId);
+    if (!run || !s || s.status !== 'running') return;
+    const now = new Date();
+    if (error || !external) {
+      await applyOutcome(db, run, steps, s, { kind: 'failed', error: error ?? 'Nothing was changed', input: { ...(s.input ?? {}), refused: true } }, actorOf(s), now);
+    } else {
+      await applyOutcome(db, run, steps, s, { kind: 'pending', output: result, external }, actorOf(s), now);
     }
   });
 }

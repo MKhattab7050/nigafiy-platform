@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/netip"
 	"time"
 
 	"github.com/lan-detective/lan-collector/internal/cloud"
@@ -24,6 +26,10 @@ func (a *Agent) runTool(ctx context.Context, cmd cloud.Command) {
 		a.log.Warn("toolbox request ignored: malformed payload")
 		return
 	}
+	// The scope rule is applied by the runner on the address actually probed (after resolving a
+	// name), against the scopes this collector was given — never against anything in the request.
+	prefixes := a.authorizedPrefixes()
+	req.InScope = func(addr netip.Addr) bool { return inPrefixes(addr, prefixes) }
 	select {
 	case a.toolSlots <- struct{}{}:
 		defer func() { <-a.toolSlots }()
@@ -38,6 +44,9 @@ func (a *Agent) runTool(ctx context.Context, cmd cloud.Command) {
 	item := map[string]any{"type": "tool_result", "ts": time.Now().UTC(), "run_id": req.RunID, "duration_ms": time.Since(started).Milliseconds()}
 	if err != nil {
 		item["ok"], item["error"] = false, err.Error()
+		if errors.Is(err, tools.ErrOutOfScope) {
+			a.log.Warn("toolbox request refused: target outside the authorized scopes", "tool", req.Tool, "target", req.Target)
+		}
 	} else {
 		item["ok"], item["output"] = true, out
 	}

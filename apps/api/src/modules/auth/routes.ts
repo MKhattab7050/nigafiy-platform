@@ -11,6 +11,7 @@ import { logger } from '../../infrastructure/logger.ts';
 import { createDefaultChecks } from '../monitoring/index.ts';
 import { accountMailConfigured, anyAccountMailConfigured, sendAccountEmail } from '../notifications/index.ts';
 import { mfaRouter } from './mfa.ts';
+import { ssoRouter } from './sso/routes.ts';
 import { SESSION_COOKIE, clearSessionCookie, createSession, readCookie, requireSession } from './session.ts';
 import { webAppUrl } from './team.ts';
 import { limiterStore } from '../../infrastructure/rate-limit.ts';
@@ -47,9 +48,11 @@ function requireCsrfHeader(req: import('express').Request): void {
 }
 
 authRouter.get('/options', async (_req, res) => {
+  const sso = await systemPool.query(`SELECT 1 FROM identity_providers WHERE enabled LIMIT 1`);
   res.json({
     allow_registration: env.ALLOW_REGISTRATION,
     account_mail_configured: await anyAccountMailConfigured(),
+    sso_available: Boolean(sso.rowCount),
   });
 });
 
@@ -197,7 +200,10 @@ authRouter.get('/me', requireSession, async (req, res) => {
       mfa_required: active.mfa_required,
     },
     role: ctx.role,
-    memberships: memberships.rows.map(({ organization_id, organization_name, role }) => ({ organization_id, organization_name, role })),
+    // An SSO session is pinned to its provider's organization: no other organization is offered.
+    memberships: memberships.rows
+      .filter((m) => !ctx.ssoProviderId || m.organization_id === ctx.organizationId)
+      .map(({ organization_id, organization_name, role }) => ({ organization_id, organization_name, role })),
   };
   res.json(me);
 });
@@ -221,6 +227,9 @@ authRouter.patch('/me', requireSession, async (req, res) => {
 authRouter.post('/switch-organization', requireSession, async (req, res) => {
   const ctx = auth(req);
   const body = parse(z.object({ organization_id: z.uuid() }), req.body);
+  if (ctx.ssoProviderId && body.organization_id !== ctx.organizationId) {
+    throw new AppError(403, 'sso_session_pinned', 'This session came from your organization’s single sign-on and stays in that organization. Sign in again to use another one.');
+  }
   // Only active organizations the user is a member of.
   const targetRes = await systemPool.query<{
     role: Role;
@@ -569,3 +578,4 @@ authRouter.post('/invitations/:token/accept', credentialLimiter, async (req, res
 });
 
 authRouter.use(mfaRouter);
+authRouter.use('/sso', ssoRouter);

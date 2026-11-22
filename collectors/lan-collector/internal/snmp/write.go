@@ -307,9 +307,40 @@ func (s *session) adminStatus(ctx context.Context, t Target, ch PortChange) (*Ch
 	}
 	res.Verified = ok && int(num(av)) == want
 	if !res.Verified {
-		return res, fail("readback_mismatch", "the switch accepted the write but still reports the port as %s", map[bool]string{true: "enabled", false: "disabled"}[num(av) == 1])
+		msg := fmt.Sprintf("the switch accepted the write but still reports the port as %s", map[bool]string{true: "enabled", false: "disabled"}[num(av) == 1])
+		prev := int(num(v))
+		if s.rollbackSingle(res, gosnmp.SnmpPDU{Name: oid, Type: gosnmp.Integer, Value: prev}, func(x any) bool { return int(num(x)) == prev }) {
+			res.After.AdminUp = boolp(prev == 1)
+			msg += "; the previous state was written back and read back"
+		}
+		return res, fail("readback_mismatch", "%s", msg)
 	}
 	return res, nil
+}
+
+// rollbackSingle undoes a single-step write whose read-back did not match: the value read right
+// before the write is written back and read again. RolledBack is set only when the read-back shows
+// the previous value again. Called only after a mismatch (the switch answered), never after a
+// refused write (nothing changed then).
+func (s *session) rollbackSingle(res *ChangeResult, previous gosnmp.SnmpPDU, isPrevious func(any) bool) bool {
+	s.step("read-back mismatch: writing the previous value of %s back", key(previous.Name))
+	if err := s.set(previous); err != nil {
+		s.step("rollback write failed: %s", err.Error())
+		return false
+	}
+	after, err := s.get(previous.Name)
+	if err != nil {
+		s.step("rollback read-back failed: %s", err.Error())
+		return false
+	}
+	v, ok := after[key(previous.Name)]
+	res.RolledBack = ok && isPrevious(v)
+	if res.RolledBack {
+		s.step("rollback verified: %s is back to its previous value", key(previous.Name))
+	} else {
+		s.step("rollback not verified: %s still differs from its previous value", key(previous.Name))
+	}
+	return res.RolledBack
 }
 
 func (s *session) alias(ch PortChange) (*ChangeResult, error) {
@@ -336,7 +367,13 @@ func (s *session) alias(ch PortChange) (*ChangeResult, error) {
 		res.Verified = text(av) == strings.TrimSpace(ch.Alias)
 	}
 	if !res.Verified {
-		return res, fail("readback_mismatch", "the switch accepted the write but reports a different description")
+		msg := "the switch accepted the write but reports a different description"
+		prev := text(v)
+		if s.rollbackSingle(res, gosnmp.SnmpPDU{Name: oid, Type: gosnmp.OctetString, Value: []byte(prev)}, func(x any) bool { return text(x) == prev }) {
+			res.After.Alias = strp(prev)
+			msg += "; the previous description was written back and read back"
+		}
+		return res, fail("readback_mismatch", "%s", msg)
 	}
 	return res, nil
 }
@@ -377,7 +414,12 @@ func (s *session) ciscoVLAN(ctx context.Context, t Target, ch PortChange) (*Chan
 		res.Verified = int(num(av)) == ch.VLAN
 	}
 	if !res.Verified {
-		return res, fail("readback_mismatch", "the switch accepted the write but the port is not in VLAN %d", ch.VLAN)
+		msg := fmt.Sprintf("the switch accepted the write but the port is not in VLAN %d", ch.VLAN)
+		if s.rollbackSingle(res, gosnmp.SnmpPDU{Name: oid, Type: gosnmp.Integer, Value: old}, func(x any) bool { return int(num(x)) == old }) {
+			res.After.VLAN = intp(old)
+			msg += fmt.Sprintf("; the port was put back in VLAN %d and read back", old)
+		}
+		return res, fail("readback_mismatch", "%s", msg)
 	}
 	return res, nil
 }

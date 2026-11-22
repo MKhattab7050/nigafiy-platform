@@ -25,7 +25,11 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
   { table: 'users', column: 'mfa_secret_enc', key: ['id'], organizationColumn: null, holds: 'TOTP secret' },
   { table: 'users', column: 'mfa_pending_secret_enc', key: ['id'], organizationColumn: null, holds: 'TOTP secret being set up' },
   { table: 'config_backup_targets', column: 'secret_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'SSH credentials for configuration backups' },
-  { table: 'config_backup_contents', column: 'content_enc', key: ['target_id', 'sha256'], organizationColumn: 'organization_id', holds: 'backed-up device configuration text' },
+  { table: 'config_backup_contents', column: 'content_enc', key: ['target_id', 'sha256'], organizationColumn: 'organization_id', holds: 'backed-up device configuration text (secrets redacted)' },
+  { table: 'config_backup_targets', column: 'secret_fp_key_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'per-device key of the secret fingerprints in sanitized configurations' },
+  { table: 'identity_providers', column: 'oidc_client_secret_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'OIDC client secret of an SSO identity provider' },
+  { table: 'sso_requests', column: 'code_verifier_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'PKCE code verifier of an SSO sign-in in progress (10 minutes)' },
+  { table: 'config_backup_raw', column: 'raw_enc', key: ['target_id', 'sha256'], organizationColumn: 'organization_id', holds: 'unsanitized device configuration kept only for administrator-confirmed restore' },
 ];
 
 /** Column names that look like sealed values. */

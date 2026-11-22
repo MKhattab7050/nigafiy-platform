@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import type { Role } from '@lan-detective/shared-types';
 import { env, tlsPinSha256 } from '../config/env.ts';
+import { tlsStatus } from '../infrastructure/lan-tls.ts';
 import { logger } from '../infrastructure/logger.ts';
 
 export class AppError extends Error {
@@ -42,6 +43,8 @@ export interface AuthContext {
   sessionId: string;
   organizationId: string;
   role: Role;
+  /** Set when the session came from an SSO sign-in: it is pinned to that provider's organization. */
+  ssoProviderId?: string | null;
 }
 
 export function auth(req: Request): AuthContext {
@@ -55,7 +58,8 @@ export function auth(req: Request): AuthContext {
  * browser's origin (X-Forwarded-Host / -Proto, honoured per TRUST_PROXY), which also serves /api/v1/*.
  */
 export function publicServerUrl(req: Request): { server_url: string; server_url_source: 'configured' | 'request'; tls_pin_sha256: string | null } {
-  const tls_pin_sha256 = tlsPinSha256();
+  // Explicit pin / certificate files first; otherwise the built-in LAN TLS CA (when it is serving).
+  const tls_pin_sha256 = tlsPinSha256() ?? tlsStatus().pin_sha256;
   if (env.PUBLIC_URL) return { server_url: env.PUBLIC_URL, server_url_source: 'configured', tls_pin_sha256 };
   const host = req.host || req.get('host') || 'localhost';
   return { server_url: `${req.protocol}://${host}`, server_url_source: 'request', tls_pin_sha256 };

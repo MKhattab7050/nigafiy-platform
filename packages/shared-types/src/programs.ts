@@ -22,7 +22,7 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
     name: { en: 'Nigafiy Hub', ar: 'Nigafiy Hub' },
     job: { en: 'Home, sign-in, settings and the engine', ar: 'الرئيسية وتسجيل الدخول والإعدادات والمحرك' },
     home: '/',
-    pages: ['/', '/portfolio', '/sensors', '/programs', '/settings'],
+    pages: ['/', '/portfolio', '/sensors', '/programs', '/settings', '/system/modules'],
   },
   {
     id: 'radar',
@@ -61,7 +61,7 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
     name: { en: 'Nigafiy Fleet', ar: 'Nigafiy Fleet' },
     job: { en: 'Manage and support company computers', ar: 'إدارة أجهزة الشركة ودعمها' },
     home: '/fleet/endpoints',
-    pages: ['/fleet/endpoints'],
+    pages: ['/fleet/endpoints', '/fleet/sessions'],
   },
   {
     id: 'mind',

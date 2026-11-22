@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isIPv4 } from './net.ts';
-import { configBackupProbeResultSchema, configBackupResultSchema } from './config-backup-protocol.ts';
+import { configBackupProbeResultSchema, configBackupResultSchema, configRestoreResultSchema } from './config-backup-protocol.ts';
 import { smartCheckSchema } from './smart-check-protocol.ts';
 import { switchPortResultSchema, switchVlansSchema } from './switch-port-protocol.ts';
 
@@ -389,7 +389,7 @@ export const telemetryBatchSchema = z
   .object({
     batch_id: z.uuid(),
     sent_at: timestamp,
-    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema, toolResultSchema, routerResultSchema, smartCheckSchema, switchVlansSchema, switchPortResultSchema, configBackupResultSchema, configBackupProbeResultSchema])).min(1).max(500),
+    items: z.array(z.discriminatedUnion('type', [discoveryRunSchema, checkResultSchema, dnsStatsSchema, snmpPollSchema, toolResultSchema, routerResultSchema, smartCheckSchema, switchVlansSchema, switchPortResultSchema, configBackupResultSchema, configBackupProbeResultSchema, configRestoreResultSchema])).min(1).max(500),
   })
   .strict();
 
@@ -400,7 +400,7 @@ export type SnmpPollItem = z.infer<typeof snmpPollSchema>;
 export type DnsStatsItem = z.infer<typeof dnsStatsSchema>;
 export type ToolResultItem = z.infer<typeof toolResultSchema>;
 export type RouterResultItem = z.infer<typeof routerResultSchema>;
-export type { ConfigBackupProbeResultItem, ConfigBackupResultItem } from './config-backup-protocol.ts';
+export type { ConfigBackupProbeResultItem, ConfigBackupResultItem, ConfigRestoreResultItem } from './config-backup-protocol.ts';
 export type { SmartCheckItem } from './smart-check-protocol.ts';
 export type { SwitchPortResultItem, SwitchVlansItem } from './switch-port-protocol.ts';
 export type TelemetryBatch = z.infer<typeof telemetryBatchSchema>;

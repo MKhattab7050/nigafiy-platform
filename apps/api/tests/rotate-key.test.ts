@@ -63,7 +63,27 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
     await c.query(`UPDATE site_routers SET secret_enc = $2 WHERE id = $1`, [router, seal('site_routers', 'secret_enc', [router], JSON.stringify({ username: 'admin', password: `router-${label}` }))]);
 
     const target = (await c.query<{ id: string }>(`INSERT INTO config_backup_targets (organization_id, site_id, name, address) VALUES ($1, $2, 'core-sw', '10.20.0.3') RETURNING id`, [org, site])).rows[0]!.id;
-    await c.query(`UPDATE config_backup_targets SET secret_enc = $2 WHERE id = $1`, [target, seal('config_backup_targets', 'secret_enc', [target], JSON.stringify({ username: 'backup', password: `ssh-${label}` }))]);
+    await c.query(`UPDATE config_backup_targets SET secret_enc = $2, secret_fp_key_enc = $3 WHERE id = $1`, [
+      target,
+      seal('config_backup_targets', 'secret_enc', [target], JSON.stringify({ username: 'backup', password: `ssh-${label}` })),
+      seal('config_backup_targets', 'secret_fp_key_enc', [target], 'ab'.repeat(32)),
+    ]);
+    const idpId = (
+      await c.query<{ id: string }>(
+        `INSERT INTO identity_providers (organization_id, kind, name, oidc_issuer, oidc_client_id, oidc_client_secret_enc, allowed_email_domains)
+         VALUES ($1, 'oidc', 'idp', 'https://idp.example.test', 'client', 'placeholder', ARRAY['example.test']) RETURNING id`,
+        [org],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE identity_providers SET oidc_client_secret_enc = $2 WHERE id = $1`, [idpId, seal('identity_providers', 'oidc_client_secret_enc', [idpId], `oidc-secret-${label}`)]);
+    const ssoReq = (
+      await c.query<{ id: string }>(
+        `INSERT INTO sso_requests (provider_id, organization_id, binding_hash, expires_at) VALUES ($1, $2, 'h', now() + interval '10 minutes') RETURNING id`,
+        [idpId, org],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE sso_requests SET code_verifier_enc = $2 WHERE id = $1`, [ssoReq, seal('sso_requests', 'code_verifier_enc', [ssoReq], `verifier-${label}`)]);
+
     // Several contents per target, so the composite key and batching are exercised.
     for (let i = 0; i < 3; i++) {
       const text = `hostname core-${label}\n! config ${i}\n`;
@@ -74,6 +94,13 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
         org,
         seal('config_backup_contents', 'content_enc', [target, sha], text),
         text.length,
+      ]);
+      await c.query(`INSERT INTO config_backup_raw (target_id, sha256, organization_id, raw_enc) VALUES ($1, $2, $3, $4)`, [
+        target,
+        sha,
+        org,
+        seal('config_backup_raw', 'raw_enc', [target, sha], `${text}snmp-server community raw-${label} RO
+`),
       ]);
     }
   }
@@ -93,7 +120,7 @@ describe('sealed column list', () => {
     for (const sc of SEALED_COLUMNS) {
       expect([...expected.keys()].some((k) => k.startsWith(`${sc.table}.${sc.column}|`)), `${sc.table}.${sc.column}`).toBe(true);
     }
-    expect(SEALED_COLUMNS).toHaveLength(8);
+    expect(SEALED_COLUMNS).toHaveLength(12);
   });
 });
 

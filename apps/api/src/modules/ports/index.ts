@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { defineModule } from '../../infrastructure/module.ts';
 import { controlRouter } from './control/routes.ts';
+import { runQuarantineAutoRelease } from './control/service.ts';
 import { finderRouter } from './finder/routes.ts';
 import { switchesRouter } from './switches/routes.ts';
 
@@ -19,10 +20,16 @@ import { switchesRouter } from './switches/routes.ts';
 const portsApi: Router = Router();
 portsApi.use(switchesRouter, finderRouter, controlRouter);
 
-export const portsModule = defineModule({ name: 'ports', api: portsApi });
+export const portsModule = defineModule({
+  name: 'ports',
+  api: portsApi,
+  // Releases quarantines whose optional auto-release time has passed (control/service.ts).
+  jobs: [{ name: 'quarantine-auto-release', everyMs: 60_000, lockKey: 727161, run: async () => void (await runQuarantineAutoRelease()) }],
+});
 
 export { buildSnmpConfig } from './credentials.ts';
 export { processSnmpPoll } from './ingest.ts';
 export { processPortControlItem } from './control/ingest.ts';
 export { devicePortLocation } from './finder/service.ts';
 export { type PortLocation, type Sighting, locate, portRole } from './locate.ts';
+export { disableDevicePort, quarantineDevice, runQuarantineAutoRelease } from './control/service.ts';

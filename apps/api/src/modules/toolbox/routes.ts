@@ -1,43 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ToolKind, ToolRun } from '@lan-detective/shared-types';
+import type { ToolRun } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
-import { isIPv4 } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
+import { assertToolScope, assertToolTarget, TOOL_KINDS } from './queue.ts';
 
 export const toolboxRouter: Router = Router();
-
-const TOOLS = ['ping', 'tcp', 'ports', 'dns', 'rdns', 'traceroute'] as const satisfies readonly ToolKind[];
-// Same hostname pattern the collector enforces: cannot begin with '-', so it can never be parsed as an option flag.
-const HOSTNAME = /^[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9_]([A-Za-z0-9_-]{0,62}))*\.?$/;
 
 const RUN_SELECT = `
   SELECT r.id, r.site_id, r.collector_id, c.name AS collector_name, r.tool, r.target, r.port,
          r.status, r.output, r.error, r.duration_ms, r.created_at, r.completed_at
     FROM toolbox_runs r
     JOIN collectors c ON c.organization_id = r.organization_id AND c.id = r.collector_id`;
-
-function validateToolTarget(tool: ToolKind, target: string, port: number | null): void {
-  const ip = isIPv4(target);
-  const hostOk = ip || (target.length <= 253 && HOSTNAME.test(target));
-  if (!hostOk) {
-    throw new AppError(400, 'invalid_target', 'Target must be an IPv4 address or a valid hostname');
-  }
-  if (tool === 'dns' && ip) {
-    throw new AppError(400, 'invalid_target', 'A DNS lookup needs a hostname; use reverse DNS for an IPv4 address');
-  }
-  if (tool === 'rdns' && !ip) {
-    throw new AppError(400, 'invalid_target', 'Reverse DNS needs an IPv4 address');
-  }
-  if (tool === 'tcp' && port === null) {
-    throw new AppError(400, 'invalid_target', 'A TCP port check needs a port between 1 and 65535');
-  }
-  if (tool !== 'tcp' && port !== null) {
-    throw new AppError(400, 'invalid_target', 'Only a TCP port check takes a port');
-  }
-}
 
 async function expireStaleRuns(db: Db): Promise<void> {
   await db.query(
@@ -87,7 +63,7 @@ toolboxRouter.get('/toolbox/:id', async (req, res) => {
 const createRunSchema = z
   .object({
     site_id: z.uuid(),
-    tool: z.enum(TOOLS),
+    tool: z.enum(TOOL_KINDS),
     target: z.string().trim().min(1).max(253),
     port: z.number().int().min(1).max(65535).nullable().default(null),
   })
@@ -96,12 +72,13 @@ const createRunSchema = z
 toolboxRouter.post('/toolbox', requireRole('technician'), async (req, res) => {
   const ctx = auth(req);
   const body = parse(createRunSchema, req.body);
-  validateToolTarget(body.tool, body.target, body.port);
+  assertToolTarget(body.tool, body.target, body.port);
 
   const run = await withTenant(ctx.organizationId, async (db) => {
     await expireStaleRuns(db);
     const site = await db.query(`SELECT 1 FROM sites WHERE id = $1`, [body.site_id]);
     if (!site.rowCount) throw notFound('Site');
+    await assertToolScope(db, body.site_id, body.tool, body.target);
 
     const collector = (
       await db.query<{ id: string; name: string }>(

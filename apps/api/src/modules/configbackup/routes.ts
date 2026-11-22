@@ -4,7 +4,19 @@ import { audit } from '../../common/audit.ts';
 import { auth, idParams, parse, requireRole } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
-import { credentialsUpdateSchema, diffQuery, hostKeyAcceptSchema, listQuery, probeSchema, targetPatchSchema, targetsCreateSchema, versionsQuery } from './schema.ts';
+import { listRestores, requestRestore, restorePreview, restoreStatus } from './restore.ts';
+import {
+  credentialsUpdateSchema,
+  diffQuery,
+  hostKeyAcceptSchema,
+  listQuery,
+  probeSchema,
+  restorePreviewQuery,
+  restoreRequestSchema,
+  targetPatchSchema,
+  targetsCreateSchema,
+  versionsQuery,
+} from './schema.ts';
 import {
   acceptHostKey,
   addTargets,
@@ -28,7 +40,8 @@ import {
 
 // Roles: anyone in the organization sees the devices, their status and the version timeline;
 // technicians start a backup or an SSH check; administrators add / change devices, set credentials,
-// decide about host keys, and are the only ones who read configuration content (it holds secrets).
+// decide about host keys, and are the only ones who read configuration content (it holds secrets)
+// or restore a configuration to a device (typed device name + reason; restore.ts).
 
 export const configBackupRouter: Router = Router();
 
@@ -167,4 +180,32 @@ configBackupRouter.get('/config-backup/versions/:id/download', requireRole('admi
   res.setHeader('Content-Disposition', attachment(out.filename));
   res.setHeader('Cache-Control', 'no-store');
   res.send(out.text);
+});
+
+// ── restore (restore.ts) ──
+
+configBackupRouter.get('/config-backup/targets/:id/restore-preview', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  const { version_id } = parse(restorePreviewQuery, req.query);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await restorePreview(req, ctx, id, version_id));
+});
+
+configBackupRouter.post('/config-backup/targets/:id/restore', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  res.status(202).json(await requestRestore(req, ctx, id, parse(restoreRequestSchema, req.body)));
+});
+
+configBackupRouter.get('/config-backup/targets/:id/restores', async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  res.json(await listRestores(ctx.organizationId, id));
+});
+
+configBackupRouter.get('/config-backup/restores/:id', async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  res.json(await restoreStatus(ctx.organizationId, id));
 });

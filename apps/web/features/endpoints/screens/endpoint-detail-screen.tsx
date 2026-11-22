@@ -186,7 +186,6 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                   ep={ep}
                   online={online}
                   canControl={can('technician')}
-                  viewOnly={ep.platform === 'macos'}
                   onReload={query.reload}
                 />
               )}

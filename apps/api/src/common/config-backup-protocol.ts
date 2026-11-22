@@ -112,3 +112,31 @@ export const configBackupProbeResultSchema = z
 
 export type ConfigBackupResultItem = z.infer<typeof configBackupResultSchema>;
 export type ConfigBackupProbeResultItem = z.infer<typeof configBackupProbeResultSchema>;
+
+/**
+ * config_restore_result: the outcome of one `config_restore` command (collector
+ * internal/agent/configrestore.go). Steps and flags only: never configuration text or credentials.
+ * The configuration read back after the commit arrives separately, as the config_backup_result of the
+ * restore's verification run.
+ */
+export const configRestoreResultSchema = z
+  .object({
+    type: z.literal('config_restore_result'),
+    ts: timestamp,
+    restore_id: z.uuid(),
+    target_id: z.uuid(),
+    ok: z.boolean(),
+    duration_ms: z.number().int().min(0).max(3_600_000).optional(),
+    method: clean(60).optional(),
+    loaded: z.boolean().optional(),
+    committed: z.boolean().optional(),
+    confirmed: z.boolean().optional(),
+    rolled_back: z.boolean().optional(),
+    read_back: z.boolean().optional(),
+    steps: z.array(clean(300)).max(32).optional(),
+    host_key: z.object({ sha256: z.string().regex(HOST_KEY_FINGERPRINT), type: clean(60) }).strict().optional(),
+    error: z.object({ kind: z.enum(CONFIG_BACKUP_ERROR_KINDS), message: clean(500) }).strict().optional(),
+  })
+  .strict();
+
+export type ConfigRestoreResultItem = z.infer<typeof configRestoreResultSchema>;

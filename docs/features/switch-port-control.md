@@ -47,6 +47,16 @@ the new value back from the switch.
    its configuration with write credentials, address inside an authorized scope, closed list of
    operations, OIDs built locally), reads the current value, writes, reads back, and for 802.1Q VLAN
    moves undoes earlier steps if a later one fails.
+   **Automatic rollback of single-step writes.** For the three one-SET operations (ifAdminStatus,
+   ifAlias, Cisco `vmVlan`) a read-back that does not show the new value makes the collector write the
+   value it read right before the change back and read it back again (`rollbackSingle` in
+   `internal/snmp/write.go`). The result is still `failed` (error kind `readback_mismatch`), with
+   `rolled_back: true`, the rollback write and read-back listed in the steps and `after` set to the
+   restored value; if the rollback write fails or the switch does not show the previous value either,
+   `rolled_back` stays false, the steps say why, and `after` is what the switch last reported — check
+   the port on the switch. A SET the switch
+   refuses changes nothing, so it is not rolled back. Multi-step 802.1Q moves keep their own
+   step-by-step undo.
 6. **Result.** A `switch_port_result` item reports before / after (read from the switch), verified or
    not, rollback and steps. The request becomes `verified` or `failed`; the port's cached values are
    updated from the read-back; a `switch_port_changed` / `switch_port_change_failed` event is emitted.
@@ -65,6 +75,26 @@ writing. `POST /api/v1/quarantines/:id/release { confirm: true }` moves the port
 (`releasing` → `released`; on failure it stays `active` with the error). Manual VLAN changes of a
 quarantined port are refused.
 
+### Automatic release (optional TTL)
+
+The quarantine request may carry `release_after_minutes` (whole minutes, 5 to 43 200 = 30 days; the
+dialog offers 1 h, 4 h, 8 h, 1 day, 3 days, 7 days or "No"). The time counts from the **verified**
+move (`activated_at`), so a quarantine still waiting for the collector never releases early; the
+device view shows `auto_release_minutes` and, once active, `auto_release_at`.
+
+The `quarantine-auto-release` job (ports module, every 60 s, advisory lock 727161) queues the same
+verified release an administrator's **Release** queues, with the same checks (switch enabled and in
+scope, write credentials, collector online, no change pending on the port). The port request is
+recorded with `requested_via = 'auto_release'` and no user; the audit row is a system action
+(`device.quarantine.release`, `actor = system`, `metadata.automation = quarantine_auto_release`,
+`auto_release: true`). The history marks such a release "released automatically".
+
+Fail closed: if the release cannot be queued (for example the switch is disabled or no collector is
+online) or the collector cannot verify it, the quarantine stays `active` — the device stays isolated —
+the reason is shown (`last_error`, audited as `device.quarantine.auto_release_failed`), and the job
+tries again after 15 minutes (`auto_release_attempted_at`). An administrator can release by hand at any
+time. Columns: `device_quarantines.auto_release_minutes`, `auto_release_attempted_at` (migration 041).
+
 ## API
 
 | Method | Path | Role |
@@ -80,7 +110,8 @@ quarantined port are refused.
 | POST | `/quarantines/:id/release` | admin |
 
 Audit actions: `switch_port.admin_status|alias|access_vlan`, `switch.write_credentials.set|clear`,
-`switch.quarantine_vlan`, `site.port_control`, `device.quarantine`, `device.quarantine.release`.
+`switch.quarantine_vlan`, `site.port_control`, `device.quarantine`, `device.quarantine.release`
+(also as a system action for an automatic release), `device.quarantine.auto_release_failed`.
 Credentials are never in audit metadata.
 
 ## UI
@@ -93,6 +124,8 @@ Credentials are never in audit metadata.
   after (read back).
 - Port Detective → **Port control for this site**: the site's quarantine VLAN, with switches missing it.
 - Device page → switch-port card → **Quarantine** / **Release**, with why it is not possible when it isn't.
+  The quarantine dialog has **Release automatically** (No / after 1 h … 7 days, English and Arabic);
+  the card shows when the automatic release is due.
 
 ## Code
 
@@ -102,8 +135,9 @@ Credentials are never in audit metadata.
 - Collector: `collectors/lan-collector/internal/agent/switchports.go`, `internal/snmp/write.go`, `vlan.go`.
 - Web: `apps/web/features/ports/` (`control-text.ts`, `control-types.ts`, `components/port-actions.tsx`,
   `switch-control.tsx`, `site-port-control.tsx`, `device-quarantine.tsx`, `request-history.tsx`).
-- Tests: `apps/api/tests/switch-port-control.test.ts`, `internal/agent/switchports_test.go`,
-  `internal/snmp/write_test.go`.
+- Tests: `apps/api/tests/switch-port-control.test.ts` (including the auto-release job),
+  `internal/agent/switchports_test.go`, `internal/snmp/write_test.go`, `internal/snmp/rollback_test.go`
+  (single-step rollback against the SNMP simulator with a switch that ignores or mangles a SET).
 
 ## Limits
 

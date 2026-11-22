@@ -1,4 +1,6 @@
 import express, { Router } from 'express';
+import { z } from 'zod';
+import { endSessionByUser } from '../remote-desktop/service.ts';
 import { rateLimit } from 'express-rate-limit';
 import { AppError, parse } from '../../../common/http.ts';
 import { env } from '../../../config/env.ts';
@@ -6,7 +8,8 @@ import { logger } from '../../../infrastructure/logger.ts';
 import { HEARTBEAT_INTERVAL_SECONDS } from '../repo.ts';
 import { agentCommandResultsSchema, agentEnrollSchema, agentHeartbeatSchema, agentInventorySchema } from '../schema.ts';
 import { requireEndpointAgent } from './auth.ts';
-import { enrollAgent, pollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
+import { parsePollWaitMs } from './wake.ts';
+import { enrollAgent, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
 import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 
 /** Agent-facing gateway, mounted at /api/v1/agent. Agents only ever make outbound HTTPS requests to it. */
@@ -43,11 +46,16 @@ agentGatewayRouter.post('/heartbeat', requireEndpointAgent, async (req, res) => 
   res.json(await recordHeartbeat(ep, body));
 });
 
-// Fast sub-second command poll endpoint for interactive File Manager & Remote Desktop sessions.
+// Command poll. `?wait_ms=` (≤ 25 s) makes it a long poll: the request is held until a command is
+// queued for this endpoint (woken through pg_notify on any API instance, agent/wake.ts) or the wait
+// ends. Without it the poll answers at once (older agents poll every 500 ms that way).
 agentGatewayRouter.post('/poll', requireEndpointAgent, async (req, res) => {
   const ep = req.endpoint!;
-  const commands = await pollCommands(ep);
-  res.json({ commands });
+  const waitMs = parsePollWaitMs(req.query.wait_ms);
+  const aborted = new AbortController();
+  res.on('close', () => aborted.abort());
+  const commands = await longPollCommands(ep, waitMs, aborted.signal);
+  if (!aborted.signal.aborted) res.json({ commands });
 });
 
 // Immediate command result delivery endpoint.
@@ -63,4 +71,12 @@ agentGatewayRouter.post('/inventory', requireEndpointAgent, async (req, res) => 
   const body = parse(agentInventorySchema, req.body);
   await recordInventory(ep, body);
   res.json({ ok: true });
+});
+
+// The person at the computer pressed "End session" on the remote support banner.
+const rdSessionEndSchema = z.object({ session_id: z.string().min(1).max(64) }).strict();
+agentGatewayRouter.post('/rd-session/end', requireEndpointAgent, async (req, res) => {
+  const ep = req.endpoint!;
+  const body = parse(rdSessionEndSchema, req.body);
+  res.json({ ok: true, ended: await endSessionByUser(ep, body.session_id) });
 });

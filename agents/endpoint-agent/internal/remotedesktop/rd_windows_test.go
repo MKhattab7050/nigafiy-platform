@@ -66,3 +66,17 @@ func TestWinInputLayoutAndUnicodeEvents(t *testing.T) {
 		t.Fatalf("unexpected surrogate inputs: %+v", surr)
 	}
 }
+
+func TestEnumerateDisplaysListsRealMonitors(t *testing.T) {
+	d, err := EnumerateDisplays()
+	if err != nil || len(d) == 0 {
+		t.Fatalf("EnumerateDisplays: %v %+v", err, d)
+	}
+	if !d[0].Primary || d[0].Width <= 0 || d[0].Height <= 0 {
+		t.Fatalf("primary first with a size: %+v", d)
+	}
+	if len(d) > 1 && !d[len(d)-1].All {
+		t.Fatalf("several monitors end with All displays: %+v", d)
+	}
+	t.Logf("displays on this machine: %+v", d)
+}

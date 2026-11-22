@@ -10,14 +10,33 @@ const cleanText = (max: number) => z.string().min(1).max(max).regex(/^[^\u0000-\
 
 export const platformEnum = z.enum(['windows', 'linux', 'macos']);
 
+// eslint-disable-next-line no-control-regex
+const evidenceText = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001f\u007f]*$/, 'control characters are not allowed');
+
+/** One measured compliance fact from the agent: the command, what it printed (summarised) and when. */
+export const securityEvidenceSchema = z
+  .object({
+    check: z.enum(['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper']),
+    subject: cleanText(120),
+    state: z.enum(['pass', 'fail', 'warn', 'unknown', 'info']),
+    value: evidenceText(300),
+    source: cleanText(200),
+    measured_at: z.iso.datetime({ offset: true }),
+    reason: evidenceText(300).optional(),
+    count: z.number().int().min(0).max(100_000).optional(),
+  })
+  .strict();
+
 export const securityPostureSchema = z
   .object({
     firewall_enabled: z.boolean().optional(),
     antivirus_enabled: z.boolean().optional(),
     disk_encrypted: z.boolean().optional(),
-    pending_updates: z.number().int().min(0).max(10_000).optional(),
+    pending_updates: z.number().int().min(0).max(100_000).optional(),
     last_update_date: z.string().max(40).optional(),
     os_build: z.string().max(60).optional(),
+    checks: z.array(securityEvidenceSchema).max(64).optional(),
+    measured_at: z.iso.datetime({ offset: true }).optional(),
   })
   .strict();
 

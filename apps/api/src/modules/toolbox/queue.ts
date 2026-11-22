@@ -1,4 +1,6 @@
 import type { ToolKind } from '@lan-detective/shared-types';
+import ipaddr from 'ipaddr.js';
+import { env } from '../../config/env.ts';
 import { AppError, notFound } from '../../common/http.ts';
 import { isIPv4 } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
@@ -23,6 +25,49 @@ export function assertToolTarget(tool: ToolKind, target: string, port: number | 
   if (tool !== 'tcp' && port !== null) throw new AppError(400, 'invalid_target', 'Only a TCP port check takes a port');
 }
 
+/** Tools that open TCP connections to many or chosen ports: authorized private scopes only. */
+const SCOPE_ONLY_TOOLS: readonly ToolKind[] = ['tcp', 'ports'];
+
+/**
+ * Scope rule of the toolbox (same rule in the collector, internal/tools/scope.go):
+ *  - an address of the local kind (RFC 1918 private, loopback, link-local, CGNAT 100.64/10) must lie
+ *    inside one of the site's enabled authorized network_scopes, for every tool;
+ *  - TCP port check and service port scan only ever target such in-scope addresses — never a public
+ *    address, and never a host name (the API cannot know what it resolves to; the collector checks
+ *    again after resolving);
+ *  - ping, traceroute and reverse DNS may target a public address (internet reachability diagnostics:
+ *    a few ICMP/UDP probes, no port scanning); DNS lookups of a name are always allowed (a query to the
+ *    collector's resolver, nothing is sent to the name);
+ *  - unspecified, broadcast, multicast and reserved addresses are refused.
+ */
+export async function assertToolScope(db: Db, siteId: string, tool: ToolKind, target: string): Promise<void> {
+  if (tool === 'dns') return;
+  if (!isIPv4(target)) {
+    if (SCOPE_ONLY_TOOLS.includes(tool)) {
+      throw new AppError(422, 'out_of_scope', 'Port checks need an IPv4 address inside an authorized network scope of the site, not a host name');
+    }
+    return; // the collector resolves the name and applies the same rule to the address
+  }
+  const range = ipaddr.IPv4.parse(target).range();
+  if (['unspecified', 'broadcast', 'multicast', 'reserved'].includes(range)) {
+    throw new AppError(422, 'out_of_scope', 'This address cannot be a toolbox target (unspecified, broadcast, multicast or reserved)');
+  }
+  const local = range === 'private' || range === 'loopback' || range === 'linkLocal' || range === 'carrierGradeNat';
+  if (!local) {
+    if (SCOPE_ONLY_TOOLS.includes(tool)) {
+      throw new AppError(422, 'out_of_scope', 'Port checks are only allowed for addresses inside an authorized network scope of the site; public addresses are refused');
+    }
+    return;
+  }
+  if (range === 'loopback' && !env.ALLOW_LOOPBACK_SCOPES) {
+    throw new AppError(422, 'out_of_scope', 'Loopback addresses are not toolbox targets');
+  }
+  const inScope = await db.query(`SELECT 1 FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr LIMIT 1`, [siteId, target]);
+  if (!inScope.rowCount) {
+    throw new AppError(422, 'out_of_scope', 'This address is not inside an authorized network scope of the site');
+  }
+}
+
 export interface ToolRunQueued {
   run_id: string;
   collector_id: string;
@@ -37,6 +82,7 @@ export async function queueToolRun(
   assertToolTarget(run.tool, run.target, run.port);
   const site = await db.query(`SELECT 1 FROM sites WHERE id = $1`, [run.siteId]);
   if (!site.rowCount) throw notFound('Site');
+  await assertToolScope(db, run.siteId, run.tool, run.target);
   const collector = (
     await db.query<{ id: string; name: string }>(
       `SELECT id, name FROM collectors

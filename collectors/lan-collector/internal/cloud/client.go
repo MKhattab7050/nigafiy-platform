@@ -140,17 +140,8 @@ func New(serverURL, caFile, version string, tlsPinSHA256 ...string) (*Client, er
 			return nil, err
 		}
 		want := append([]byte(nil), pin...)
-		tlsCfg.InsecureSkipVerify = true // replaced by explicit leaf SHA-256 pin verification below
-		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
-			if len(cs.PeerCertificates) == 0 {
-				return errors.New("tls pin verification failed: server presented no certificate")
-			}
-			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
-			if subtle.ConstantTimeCompare(sum[:], want) != 1 {
-				return fmt.Errorf("tls pin mismatch: server leaf certificate sha256 %x does not match configured pin", sum[:])
-			}
-			return nil
-		}
+		tlsCfg.InsecureSkipVerify = true // replaced by explicit SHA-256 pin verification below
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error { return VerifyPinnedChain(cs.PeerCertificates, want, time.Now()) }
 	}
 	return &Client{
 		base: base,
@@ -251,3 +242,44 @@ func (b *Backoff) Next() time.Duration {
 }
 
 func (b *Backoff) Reset() { b.attempt = 0 }
+
+// VerifyPinnedChain accepts the server when the pin is either
+//   - the SHA-256 of the leaf (server) certificate, or
+//   - the SHA-256 of a CA certificate in the presented chain, and the leaf verifies up to that CA
+//     (signature, validity, serverAuth usage) with the pinned certificate as the only root.
+//
+// The second form is what built-in LAN TLS uses: the server pins its local CA, so the server
+// certificate can be re-issued without re-enrolling. The host name is not checked against the
+// certificate in either form; the pin alone identifies the server.
+func VerifyPinnedChain(chain []*x509.Certificate, want []byte, now time.Time) error {
+	if len(chain) == 0 {
+		return errors.New("tls pin verification failed: server presented no certificate")
+	}
+	leafSum := sha256.Sum256(chain[0].Raw)
+	if subtle.ConstantTimeCompare(leafSum[:], want) == 1 {
+		return nil
+	}
+	for i, c := range chain {
+		if i == 0 || !c.IsCA {
+			continue
+		}
+		sum := sha256.Sum256(c.Raw)
+		if subtle.ConstantTimeCompare(sum[:], want) != 1 {
+			continue
+		}
+		roots := x509.NewCertPool()
+		roots.AddCert(c)
+		inter := x509.NewCertPool()
+		for j, o := range chain {
+			if j != 0 && j != i {
+				inter.AddCert(o)
+			}
+		}
+		_, err := chain[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: inter, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}})
+		if err != nil {
+			return fmt.Errorf("tls pin verification failed: server certificate does not verify against the pinned CA: %w", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("tls pin mismatch: server leaf certificate sha256 %x does not match configured pin", leafSum[:])
+}

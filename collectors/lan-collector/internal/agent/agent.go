@@ -71,6 +71,8 @@ type Deps struct {
 	RouterCertificate func(ctx context.Context, addr netip.Addr, port int, opts router.Options) (router.CertificateInfo, error)
 	// ConfigBackup reads one device's running configuration over SSH (configbackup.Run); nil disables configuration backup.
 	ConfigBackup func(ctx context.Context, t configbackup.Target, opts configbackup.Options) (*configbackup.Result, error)
+	// ConfigRestore applies an administrator-confirmed restore (configbackup.Restore); nil disables restore.
+	ConfigRestore func(ctx context.Context, t configbackup.Target, spec configbackup.RestoreSpec, opts configbackup.Options) (*configbackup.RestoreResult, error)
 	// SSHProbe checks whether an address answers SSH, without logging in (configbackup.Probe); nil disables the check.
 	SSHProbe func(ctx context.Context, address string, port int, opts configbackup.Options) configbackup.ProbeResult
 	// Smart network checks (smartchecks.go); nil disables each one on this collector.
@@ -110,6 +112,7 @@ func SystemDeps() Deps {
 		RouterOpen:        router.Open,
 		RouterCertificate: router.FetchCertificate,
 		ConfigBackup:      configbackup.Run,
+		ConfigRestore:     configbackup.Restore,
 		SSHProbe:          configbackup.Probe,
 		SmartInterfaces:   smart.Interfaces,
 		SmartDHCP: func(ctx context.Context, ifaces []smart.DHCPInterface, listen time.Duration) []smart.DHCPInterfaceResult {
@@ -511,6 +514,12 @@ func (a *Agent) heartbeatOnce(ctx context.Context, bo *cloud.Backoff, connected 
 			go func(cmd cloud.Command) {
 				defer a.cmdWG.Done()
 				a.configBackup(ctx, cmd)
+			}(cmd)
+		case cmdConfigRestore: // administrator-confirmed configuration restore (configrestore.go)
+			a.cmdWG.Add(1)
+			go func(cmd cloud.Command) {
+				defer a.cmdWG.Done()
+				a.configRestore(ctx, cmd)
 			}(cmd)
 		case cmdConfigBackupProbe:
 			a.cmdWG.Add(1)

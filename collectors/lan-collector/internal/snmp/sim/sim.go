@@ -32,6 +32,9 @@ type Agent struct {
 	IgnoreSets bool
 	// RejectSet, when it returns non-zero for an OID, fails a SET on it with that error status.
 	RejectSet func(oid string) gosnmp.SNMPError
+	// MangleSet, when set, replaces the value a SET stores (a switch that answers success but applies
+	// something else, e.g. truncates a description or refuses to shut a port).
+	MangleSet func(oid string, value any) any
 
 	mu       sync.Mutex
 	entries  []entry

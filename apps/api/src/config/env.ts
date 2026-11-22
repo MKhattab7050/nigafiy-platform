@@ -22,6 +22,12 @@ const schema = z.object({
   APP_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes, hex encoded'),
   WEB_ORIGIN: z.string().default('http://localhost:3100'),
   /**
+   * Fleet live sessions with several API instances: the address other instances use to reach THIS
+   * instance for the remote-desktop frame relay (e.g. http://10.0.0.5:4100). Unset:
+   * http://127.0.0.1:<PORT> (instances on one host). See docs/features/fleet-pro.md.
+   */
+  RD_PEER_URL: optionalNonEmpty,
+  /**
    * Address collectors and endpoint agents should use to reach this server (e.g. https://lan.example.com),
    * returned as `server_url` with enrollment tokens. Unset: the origin each request arrived at is used.
    */
@@ -32,6 +38,16 @@ const schema = z.object({
       .transform((u) => u.replace(/\/+$/, ''))
       .optional(),
   ),
+  /** Interface for the HTTPS listener (e.g. 0.0.0.0 to serve collectors on the LAN). Unset: HOST. */
+  HTTPS_HOST: optionalNonEmpty,
+  /**
+   * Built-in LAN TLS (infrastructure/lan-tls.ts): with HTTPS_PORT set and no TLS_CERT_FILE /
+   * TLS_KEY_FILE, "auto" (default) creates a local CA and server certificate under TLS_AUTO_DIR and
+   * renews them; "off" starts no HTTPS listener without certificate files.
+   */
+  LAN_TLS: z.enum(['auto', 'off']).default('auto'),
+  /** Where the built-in LAN TLS files live. Unset: <working directory>/.data/tls. scripts/local.mjs sets <data dir>/tls. */
+  TLS_AUTO_DIR: optionalNonEmpty,
   TLS_CERT_FILE: optionalNonEmpty,
   TLS_KEY_FILE: optionalNonEmpty,
   TLS_PIN_SHA256: z.preprocess(

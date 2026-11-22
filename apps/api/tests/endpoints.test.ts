@@ -318,11 +318,16 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     const silentInput = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'x' });
     expect(silentInput.status).toBe(409);
 
-    // A policy that demands the user's consent is refused: the agent cannot ask for it.
+    // A policy that demands the user's consent: the session waits for the answer and nothing is
+    // captured or controlled meanwhile (the consent flow itself is in fleet-pro.test.ts).
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'prompt' });
-    const refused = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
-    expect(refused.status).toBe(409);
-    expect(refused.body.error.code).toBe('consent_unavailable');
+    const asked = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    expect(asked.status).toBe(200);
+    expect(asked.body.session.state).toBe('waiting_consent');
+    const early = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_capture' });
+    expect(early.status).toBe(409);
+    expect(early.body.error.code).toBe('consent_pending');
+    expect((await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({})).status).toBe(200);
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'unattended' });
 
     // Start a Remote Desktop session
@@ -476,7 +481,8 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
       `SELECT action FROM audit_logs WHERE target_id = $1 AND action LIKE 'endpoint.remote_desktop_%' ORDER BY created_at`,
       [epId],
     );
-    expect(sessionAudit.rows.map((r) => r.action)).toEqual(['endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped']);
+    // The first pair is the session that waited for consent under the "prompt" policy.
+    expect(sessionAudit.rows.map((r) => r.action)).toEqual(['endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped', 'endpoint.remote_desktop_started', 'endpoint.remote_desktop_stopped']);
     // A result arriving after the session ended (stop expired its capture) is not relayed.
     await request(app)
       .post('/api/v1/agent/command-result')
@@ -539,7 +545,14 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     expect((await hb({ security: {} })).status).toBe(200);
     detail = await a.agent.get(`/api/v1/endpoints/${epId}`);
     expect(detail.body.security).toEqual({});
-    expect(detail.body.compliance_reasons).toEqual([]);
+    // Nothing measured: unknown, and every unmeasured item says so (never "compliant").
+    expect(detail.body.compliance_status).toBe('unknown');
+    expect(detail.body.compliance_reasons).toEqual([
+      'Host firewall not measured: not reported by the agent',
+      'Disk encryption not measured: not reported by the agent',
+      'OS / security updates not measured: not reported by the agent',
+      'Free disk space not measured: not reported by the agent',
+    ]);
 
     // Values that would reach the agent as program arguments can never look like options.
     const send = (body: Record<string, unknown>) => a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send(body);
@@ -548,8 +561,8 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: '-type=any' })).status).toBe(400);
     expect((await send({ kind: 'mobile_action', action: 'lock_device' })).status).toBe(400);
 
-    // What this platform's agent cannot do is refused up front.
-    expect((await send({ kind: 'power_action', action: 'logoff' })).status).toBe(409);
+    // What this platform's agent cannot do is refused up front (sign-out now works on Linux: loginctl).
+    expect((await send({ kind: 'power_action', action: 'logoff' })).status).toBe(202);
     expect((await send({ kind: 'diagnostic_command', tool: 'gpresult' })).status).toBe(409);
     expect((await send({ kind: 'diagnostic_command', tool: 'nslookup', target: 'example.com' })).status).toBe(202);
 
