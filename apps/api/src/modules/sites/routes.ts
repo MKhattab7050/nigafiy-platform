@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { NetworkScope, Site } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
-import { validateScope } from '../../common/net.ts';
+import { IPV6_SWEEP_MIN_PREFIX, validateScope } from '../../common/net.ts';
 import { timeZoneSchema } from '../../common/timezone.ts';
 import { systemPool, withTenant } from '../../infrastructure/db.ts';
 import { createDefaultChecks } from '../monitoring/index.ts';
@@ -13,7 +13,9 @@ import { suggestScopes } from './scope-suggestions.ts';
 export const sitesRouter: Router = Router();
 
 const SITE_COLUMNS = `id, name, timezone, discovery_interval_seconds, created_at`;
-const SCOPE_COLUMNS = `id, site_id, cidr::text AS cidr, label, enabled, authorized_by_name, authorized_at, last_run_finished_at`;
+// discovery_method: IPv6 prefixes larger than /120 are never swept address by address (common/net.ts discoveryMethod).
+const SCOPE_COLUMNS = `id, site_id, cidr::text AS cidr, family(cidr) AS family, label, enabled, authorized_by_name, authorized_at, last_run_finished_at,
+  CASE WHEN family(cidr) = 6 AND masklen(cidr) < ${IPV6_SWEEP_MIN_PREFIX} THEN 'neighbor' ELSE 'sweep' END AS discovery_method`;
 
 const siteFields = {
   name: z.string().trim().min(1).max(80),
@@ -81,7 +83,8 @@ sitesRouter.get('/scopes', async (req, res) => {
 });
 
 const scopeInput = z.object({
-  cidr: z.string().trim().min(7).max(18),
+  // IPv4 (192.168.1.0/24) or IPv6 (fd12:3456:789a:1::/64); the longest IPv6 CIDR text is 43 characters.
+  cidr: z.string().trim().min(7).max(49),
   label: z.string().trim().max(80).optional(),
   // The administrator must explicitly attest ownership/authorization. Recorded with their identity.
   authorization_confirmed: z.literal(true, { error: 'You must confirm that you are authorized to monitor this network' }),
@@ -92,7 +95,7 @@ sitesRouter.post('/sites/:id/scopes', requireRole('admin'), async (req, res) => 
   const { id: siteId } = parse(idParams, req.params);
   const body = parse(scopeInput, req.body);
   const check = validateScope(body.cidr);
-  if (!check.ok) throw new AppError(400, 'invalid_scope', check.reason!);
+  if (!check.ok) throw new AppError(400, 'invalid_scope', check.reason!, { reason_code: check.code });
   const user = await systemPool.query<{ display_name: string }>(`SELECT display_name FROM users WHERE id = $1`, [ctx.userId]);
 
   const scope = await withTenant(ctx.organizationId, async (db) => {

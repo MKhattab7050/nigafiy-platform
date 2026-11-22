@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { CheckSeriesPoint, DefaultChecksRestored, MonitoringCheck } from '@lan-detective/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
-import { isIPv4 } from '../../common/net.ts';
+import { classifyTarget, isIP, isIPv6 } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { refreshSiteCorrelation, resolveOpenIncidentByKey } from '../correlation/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
@@ -38,14 +38,18 @@ const checkBase = z.object({
 });
 
 function assertValidTarget(kind: Kind, target: string, port: number | null): void {
-  const hostOk = isIPv4(target) || HOSTNAME.test(target);
+  const hostOk = isIP(target) || HOSTNAME.test(target);
   if (kind === 'snmp_oid') {
     if (port !== null) throw new AppError(400, 'invalid_target', 'An SNMP check reads the port configured for its device');
     return; // the target is the configured SNMP device
   }
-  if (kind === 'icmp' && target !== AUTO_GATEWAY && !hostOk) throw new AppError(400, 'invalid_target', `Target must be an IPv4 address, a hostname, or "${AUTO_GATEWAY}"`);
-  if (kind !== 'icmp' && !hostOk) throw new AppError(400, 'invalid_target', 'Target must be an IPv4 address or a hostname');
-  if (kind === 'dns' && isIPv4(target)) throw new AppError(400, 'invalid_target', 'A DNS check needs a hostname to resolve');
+  if (kind === 'icmp' && target !== AUTO_GATEWAY && !hostOk) throw new AppError(400, 'invalid_target', `Target must be an IPv4 or IPv6 address, a hostname, or "${AUTO_GATEWAY}"`);
+  if (kind !== 'icmp' && !hostOk) throw new AppError(400, 'invalid_target', 'Target must be an IPv4 or IPv6 address or a hostname');
+  if (isIPv6(target)) {
+    const cls = classifyTarget(target);
+    if (cls.kind === 'refused') throw new AppError(400, 'invalid_target', `This address cannot be a check target (${cls.reason})`);
+  }
+  if (kind === 'dns' && isIP(target)) throw new AppError(400, 'invalid_target', 'A DNS check needs a hostname to resolve');
   if ((kind === 'tcp' || kind === 'tls_expiry') && port === null) {
     throw new AppError(400, 'invalid_target', kind === 'tcp' ? 'A TCP check needs a port' : 'A certificate check needs a port (443 for HTTPS)');
   }

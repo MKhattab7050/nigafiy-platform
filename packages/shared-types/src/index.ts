@@ -133,6 +133,13 @@ export interface NetworkScope {
   id: string;
   site_id: string;
   cidr: string;
+  /** 4 or 6. */
+  family: 4 | 6;
+  /**
+   * sweep: every address is probed (IPv4, IPv6 /120 or longer). neighbor: an IPv6 prefix larger than
+   * /120 is never swept; the collector reads its neighbour table and echoes the all-nodes group ff02::1.
+   */
+  discovery_method: 'sweep' | 'neighbor';
   label: string | null;
   enabled: boolean;
   authorized_by_name: string | null;

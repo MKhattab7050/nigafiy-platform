@@ -1,8 +1,7 @@
 import type { ToolKind } from '@lan-detective/shared-types';
-import ipaddr from 'ipaddr.js';
 import { env } from '../../config/env.ts';
 import { AppError, notFound } from '../../common/http.ts';
-import { isIPv4 } from '../../common/net.ts';
+import { classifyTarget, isIP } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 
@@ -16,11 +15,11 @@ const HOSTNAME = /^[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9_]([A-Za-z0-9_-]{
 
 /** The toolbox's target rules (identical to routes.ts). Throws a 400 explaining what is wrong. */
 export function assertToolTarget(tool: ToolKind, target: string, port: number | null): void {
-  const ip = isIPv4(target);
+  const ip = isIP(target);
   const hostOk = ip || (target.length <= 253 && HOSTNAME.test(target));
-  if (!hostOk) throw new AppError(400, 'invalid_target', 'Target must be an IPv4 address or a valid hostname');
-  if (tool === 'dns' && ip) throw new AppError(400, 'invalid_target', 'A DNS lookup needs a hostname; use reverse DNS for an IPv4 address');
-  if (tool === 'rdns' && !ip) throw new AppError(400, 'invalid_target', 'Reverse DNS needs an IPv4 address');
+  if (!hostOk) throw new AppError(400, 'invalid_target', 'Target must be an IPv4 or IPv6 address or a valid hostname');
+  if (tool === 'dns' && ip) throw new AppError(400, 'invalid_target', 'A DNS lookup needs a hostname; use reverse DNS for an address');
+  if (tool === 'rdns' && !ip) throw new AppError(400, 'invalid_target', 'Reverse DNS needs an IPv4 or IPv6 address');
   if (tool === 'tcp' && port === null) throw new AppError(400, 'invalid_target', 'A TCP port check needs a port between 1 and 65535');
   if (tool !== 'tcp' && port !== null) throw new AppError(400, 'invalid_target', 'Only a TCP port check takes a port');
 }
@@ -30,42 +29,41 @@ const SCOPE_ONLY_TOOLS: readonly ToolKind[] = ['tcp', 'ports'];
 
 /**
  * Scope rule of the toolbox (same rule in the collector, internal/tools/scope.go):
- *  - an address of the local kind (RFC 1918 private, loopback, link-local, CGNAT 100.64/10) must lie
- *    inside one of the site's enabled authorized network_scopes, for every tool;
+ *  - an address of the local kind (RFC 1918 private, loopback, IPv4 link-local, CGNAT 100.64/10, IPv6
+ *    unique-local fc00::/7) must lie inside one of the site's enabled authorized network_scopes, for every tool;
+ *  - a global IPv6 address inside a scope is a LAN address (every tool); outside every scope it is public;
  *  - TCP port check and service port scan only ever target such in-scope addresses — never a public
  *    address, and never a host name (the API cannot know what it resolves to; the collector checks
  *    again after resolving);
  *  - ping, traceroute and reverse DNS may target a public address (internet reachability diagnostics:
  *    a few ICMP/UDP probes, no port scanning); DNS lookups of a name are always allowed (a query to the
  *    collector's resolver, nothing is sent to the name);
- *  - unspecified, broadcast, multicast and reserved addresses are refused.
+ *  - unspecified, broadcast, multicast and reserved addresses are refused, and so is IPv6 link-local
+ *    (fe80::/10 needs an interface to mean anything): see classifyTarget in common/net.ts.
  */
 export async function assertToolScope(db: Db, siteId: string, tool: ToolKind, target: string): Promise<void> {
   if (tool === 'dns') return;
-  if (!isIPv4(target)) {
+  if (!isIP(target)) {
     if (SCOPE_ONLY_TOOLS.includes(tool)) {
-      throw new AppError(422, 'out_of_scope', 'Port checks need an IPv4 address inside an authorized network scope of the site, not a host name');
+      throw new AppError(422, 'out_of_scope', 'Port checks need an address inside an authorized network scope of the site, not a host name');
     }
     return; // the collector resolves the name and applies the same rule to the address
   }
-  const range = ipaddr.IPv4.parse(target).range();
-  if (['unspecified', 'broadcast', 'multicast', 'reserved'].includes(range)) {
-    throw new AppError(422, 'out_of_scope', 'This address cannot be a toolbox target (unspecified, broadcast, multicast or reserved)');
+  const cls = classifyTarget(target);
+  if (cls.kind === 'refused') throw new AppError(422, 'out_of_scope', `This address cannot be a toolbox target (${cls.reason})`);
+  if (cls.kind === 'loopback' && !env.ALLOW_LOOPBACK_SCOPES) {
+    throw new AppError(422, 'out_of_scope', 'Loopback addresses are not toolbox targets');
   }
-  const local = range === 'private' || range === 'loopback' || range === 'linkLocal' || range === 'carrierGradeNat';
-  if (!local) {
+  const inScope = (await db.query(`SELECT 1 FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr LIMIT 1`, [siteId, target])).rowCount! > 0;
+  if (inScope) return;
+  if (cls.kind === 'global') {
+    // A public IPv4 address, or a global IPv6 address outside every scope of the site.
     if (SCOPE_ONLY_TOOLS.includes(tool)) {
       throw new AppError(422, 'out_of_scope', 'Port checks are only allowed for addresses inside an authorized network scope of the site; public addresses are refused');
     }
     return;
   }
-  if (range === 'loopback' && !env.ALLOW_LOOPBACK_SCOPES) {
-    throw new AppError(422, 'out_of_scope', 'Loopback addresses are not toolbox targets');
-  }
-  const inScope = await db.query(`SELECT 1 FROM network_scopes WHERE site_id = $1 AND enabled AND $2::inet <<= cidr LIMIT 1`, [siteId, target]);
-  if (!inScope.rowCount) {
-    throw new AppError(422, 'out_of_scope', 'This address is not inside an authorized network scope of the site');
-  }
+  throw new AppError(422, 'out_of_scope', 'This address is not inside an authorized network scope of the site');
 }
 
 export interface ToolRunQueued {

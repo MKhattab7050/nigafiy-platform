@@ -1,11 +1,11 @@
 import ipaddr from 'ipaddr.js';
 import type { Confidence, ScopeSuggestion, ScopeSuggestionSource, ScopeSuggestions } from '@lan-detective/shared-types';
 import { notFound } from '../../common/http.ts';
-import { MAX_SCOPE_HOSTS_PREFIX, validateScope } from '../../common/net.ts';
+import { MAX_SCOPE_HOSTS_PREFIX, MAX_SCOPE_IPV6_PREFIX, validateScope } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 
 /**
- * Scope suggestions: the private IPv4 networks the site's collectors are attached to (from the
+ * Scope suggestions: the private IPv4 networks (and IPv6 LAN prefixes) the site's collectors are attached to (from the
  * interfaces and default gateway they report in heartbeats) that no authorized scope covers yet.
  *
  * This only SUGGESTS. Authorizing a range is consent to scan it and stays the explicit
@@ -41,6 +41,30 @@ const contains = (outer: string, inner: string) => {
   return op <= ip && ia.match(oa, op);
 };
 
+/**
+ * IPv6: the on-link prefix of a unique-local or global address of the collector (normally a /64).
+ *   prefix /48…/64 as reported → not inferred, high confidence
+ *   prefix larger than /48     → the /64 around the collector's own address (inferred, medium)
+ *   longer than /64 (a DHCPv6 /128 host address) or link-local → nothing: the link's prefix is not reported
+ */
+function ipv6Candidate(col: CollectorNetworkFacts, iface: string, address: string, ip: ipaddr.IPv6, prefix: number): Candidate | null {
+  const range = ip.range();
+  const global = range === 'unicast' && (ip.parts[0]! & 0xe000) === 0x2000;
+  if ((range !== 'uniqueLocal' && !global) || prefix > 64) return null;
+  const source: ScopeSuggestionSource = { kind: 'interface', collector_id: col.id, collector_name: col.name, interface: iface, reported: address };
+  const seen = `Collector "${col.name}" has address ${address} on interface ${iface}`;
+  const net = (p: number) => `${ipaddr.IPv6.networkAddressFromCIDR(`${ip.toString()}/${p}`).toString()}/${p}`;
+  if (prefix >= MAX_SCOPE_IPV6_PREFIX) return { cidr: net(prefix), reported_cidr: null, inferred: false, confidence: 'high', evidence: [seen], sources: [source] };
+  return {
+    cidr: net(64),
+    reported_cidr: net(prefix),
+    inferred: true,
+    confidence: 'medium',
+    evidence: [seen, `${net(prefix)} is larger than the largest IPv6 range that can be authorized (/${MAX_SCOPE_IPV6_PREFIX}); suggesting the /64 around the collector's own address`],
+    sources: [source],
+  };
+}
+
 /** Pure: candidate networks from what the collectors report (before removing what scopes already cover). */
 export function scopeCandidates(collectors: CollectorNetworkFacts[]): Candidate[] {
   const out = new Map<string, Candidate>();
@@ -62,7 +86,11 @@ export function scopeCandidates(collectors: CollectorNetworkFacts[]): Candidate[
         let prefix: number;
         try {
           const [a, p] = ipaddr.parseCIDR(address);
-          if (a.kind() !== 'ipv4') continue;
+          if (a.kind() === 'ipv6') {
+            const c = ipv6Candidate(col, iface.name, address, a as ipaddr.IPv6, p);
+            if (c) add(c);
+            continue;
+          }
           ip = a as ipaddr.IPv4;
           prefix = p;
         } catch {
