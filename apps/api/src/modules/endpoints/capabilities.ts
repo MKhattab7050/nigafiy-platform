@@ -1,7 +1,10 @@
 import type {
   EndpointCapabilityItem,
+  EndpointComplianceCheck,
+  EndpointComplianceItem,
   EndpointComplianceStatus,
   EndpointPlatform,
+  EndpointSecurityEvidence,
   EndpointSecurityPosture,
 } from '@lan-detective/shared-types';
 
@@ -13,39 +16,185 @@ export function inferPlatformFromOs(osRaw?: string | null, current?: EndpointPla
   return current ?? 'windows';
 }
 
+// ── Evidence-only compliance ────────────────────────────────────────────────────────────────
+// Every item a platform needs is judged from the agent's evidence (command, value, time). An item
+// with no measurement is "unknown" with the reason, and an endpoint is "compliant" only when every
+// required item was measured and passed. Order of severity: non_compliant > attention > unknown > compliant.
+
+interface CheckDef {
+  label_en: string;
+  label_ar: string;
+  /** What a failed measurement of this item means for the endpoint. */
+  failVerdict: 'attention' | 'non_compliant';
+}
+
+export const COMPLIANCE_CHECKS: Record<EndpointComplianceCheck, CheckDef> = {
+  firewall: { label_en: 'Host firewall', label_ar: 'جدار الحماية على الجهاز', failVerdict: 'attention' },
+  antivirus: { label_en: 'Antivirus protection', label_ar: 'الحماية من الفيروسات', failVerdict: 'non_compliant' },
+  disk_encryption: { label_en: 'Disk encryption', label_ar: 'تشفير القرص', failVerdict: 'attention' },
+  os_updates: { label_en: 'OS / security updates', label_ar: 'تحديثات النظام والأمان', failVerdict: 'attention' },
+  sip: { label_en: 'System Integrity Protection', label_ar: 'حماية سلامة النظام (SIP)', failVerdict: 'non_compliant' },
+  gatekeeper: { label_en: 'Gatekeeper', label_ar: 'التحقق من التطبيقات (Gatekeeper)', failVerdict: 'attention' },
+  disk_space: { label_en: 'Free disk space', label_ar: 'المساحة الحرة على القرص', failVerdict: 'attention' },
+};
+
+/** The items an endpoint of each platform must pass to be called compliant. */
+export const REQUIRED_CHECKS: Record<EndpointPlatform, EndpointComplianceCheck[]> = {
+  windows: ['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'disk_space'],
+  linux: ['firewall', 'disk_encryption', 'os_updates', 'disk_space'],
+  macos: ['firewall', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper', 'disk_space'],
+};
+
+const RANK: Record<EndpointComplianceStatus, number> = { compliant: 0, unknown: 1, attention: 2, non_compliant: 3 };
+const LEGACY_SOURCE = 'agent posture field (no per-item evidence)';
+// First-strong isolates keep Windows volume names, paths and profile names readable inside Arabic text.
+const iso = (s: string) => `⁨${s}⁩`;
+
+/** Evidence for one item: the agent's checks, or (older agents) its yes/no summary fields. */
+function evidenceFor(key: EndpointComplianceCheck, sec: EndpointSecurityPosture, diskUsedPct: number | null | undefined): EndpointSecurityEvidence[] {
+  const measuredAt = sec.measured_at ?? '';
+  if (key === 'disk_space') {
+    if (typeof diskUsedPct !== 'number') return [];
+    return [
+      {
+        check: 'disk_space',
+        subject: 'Fullest volume',
+        state: diskUsedPct >= 92 ? 'fail' : 'pass',
+        value: `${diskUsedPct.toFixed(1)}% used`,
+        source: 'agent disk telemetry',
+        measured_at: measuredAt,
+        ...(diskUsedPct >= 92 ? { reason: 'at or above the 92% threshold' } : {}),
+      },
+    ];
+  }
+  const fromChecks = (sec.checks ?? []).filter((e) => e.check === key);
+  if (fromChecks.length > 0) return fromChecks;
+  const legacy = (field: string, value: boolean): EndpointSecurityEvidence => ({
+    check: key,
+    subject: 'Agent report',
+    state: value ? 'pass' : 'fail',
+    value: `${field}=${value}`,
+    source: LEGACY_SOURCE,
+    measured_at: measuredAt,
+  });
+  switch (key) {
+    case 'firewall':
+      return typeof sec.firewall_enabled === 'boolean' ? [legacy('firewall_enabled', sec.firewall_enabled)] : [];
+    case 'antivirus':
+      return typeof sec.antivirus_enabled === 'boolean' ? [legacy('antivirus_enabled', sec.antivirus_enabled)] : [];
+    case 'disk_encryption':
+      return typeof sec.disk_encrypted === 'boolean' ? [legacy('disk_encrypted', sec.disk_encrypted)] : [];
+    case 'os_updates':
+      if (typeof sec.pending_updates !== 'number') return [];
+      return [
+        {
+          check: 'os_updates',
+          subject: 'Agent report',
+          state: sec.pending_updates > 0 ? 'fail' : 'pass',
+          value: `pending_updates=${sec.pending_updates}`,
+          source: LEGACY_SOURCE,
+          measured_at: measuredAt,
+          count: sec.pending_updates,
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+function subjects(list: EndpointSecurityEvidence[]): string {
+  return [...new Set(list.map((e) => e.subject))].join(', ');
+}
+
+function judgeItem(key: EndpointComplianceCheck, evidence: EndpointSecurityEvidence[]): EndpointComplianceItem {
+  const def = COMPLIANCE_CHECKS[key];
+  const base = { key, label_en: def.label_en, label_ar: def.label_ar, evidence };
+  const by = (s: EndpointSecurityEvidence['state']) => evidence.filter((e) => e.state === s);
+  const fails = by('fail');
+  const warns = by('warn');
+  const unknowns = by('unknown');
+  const passes = by('pass');
+  const legacyOnly = (list: EndpointSecurityEvidence[]) => list.every((e) => e.source === LEGACY_SOURCE);
+
+  if (fails.length > 0) {
+    const s = subjects(fails);
+    let en = `${def.label_en} failed: ${s}`;
+    let ar = `${def.label_ar}: فشل التحقق (${iso(s)})`;
+    switch (key) {
+      case 'firewall':
+        [en, ar] = legacyOnly(fails) ? ['Host firewall is reported off', 'جدار الحماية على الجهاز متوقف'] : [`Host firewall is off: ${s}`, `جدار الحماية متوقف: ${iso(s)}`];
+        break;
+      case 'antivirus':
+        [en, ar] = legacyOnly(fails)
+          ? ['Antivirus protection is reported disabled', 'مكافح الفيروسات معطّل']
+          : [`No active antivirus protection: ${s}`, `لا توجد حماية فعّالة من الفيروسات: ${iso(s)}`];
+        break;
+      case 'disk_encryption':
+        [en, ar] = [`Disk encryption is off: ${s}`, `تشفير القرص غير مفعّل: ${iso(s)}`];
+        break;
+      case 'os_updates': {
+        const n = fails.reduce((sum, e) => sum + (e.count ?? 0), 0);
+        [en, ar] = [`${n} OS/security update(s) pending`, `توجد ${iso(String(n))} تحديثات نظام/أمان معلّقة`];
+        break;
+      }
+      case 'sip':
+        [en, ar] = ['System Integrity Protection is disabled', 'حماية سلامة النظام (SIP) معطّلة'];
+        break;
+      case 'gatekeeper':
+        [en, ar] = ['Gatekeeper is disabled', 'التحقق من التطبيقات (Gatekeeper) معطّل'];
+        break;
+      case 'disk_space': {
+        const pct = fails[0]!.value.replace(/ used$/, '');
+        [en, ar] = [`Disk usage is critically high (${pct})`, `امتلاء القرص وصل لمستوى حرج (${iso(pct)})`];
+        break;
+      }
+    }
+    return { ...base, verdict: def.failVerdict, reason_en: en, reason_ar: ar };
+  }
+  if (warns.length > 0) {
+    const s = subjects(warns);
+    return { ...base, verdict: 'attention', reason_en: `${def.label_en} needs attention: ${s}`, reason_ar: `${def.label_ar} يحتاج إلى متابعة: ${iso(s)}` };
+  }
+  if (unknowns.length > 0 || passes.length === 0) {
+    const why = unknowns[0]?.reason?.trim() || (evidence.length === 0 ? 'not reported by the agent' : 'no judging measurement');
+    return {
+      ...base,
+      verdict: 'unknown',
+      reason_en: `${def.label_en} not measured: ${why}`,
+      reason_ar: `لم يتم قياس ${def.label_ar}: ${iso(why)}`,
+    };
+  }
+  const s = subjects(passes);
+  return { ...base, verdict: 'compliant', reason_en: `${def.label_en} verified: ${s}`, reason_ar: `${def.label_ar}: تم التحقق (${iso(s)})` };
+}
+
+/** Judges every compliance item of the platform (plus any extra item the agent measured). */
+export function evaluateComplianceItems(params: {
+  platform: EndpointPlatform;
+  diskUsedPct?: number | null;
+  security?: EndpointSecurityPosture | null;
+}): EndpointComplianceItem[] {
+  const sec = params.security ?? {};
+  const keys = new Set<EndpointComplianceCheck>(REQUIRED_CHECKS[params.platform] ?? []);
+  for (const e of sec.checks ?? []) if (e.check in COMPLIANCE_CHECKS) keys.add(e.check);
+  return [...keys].map((key) => judgeItem(key, evidenceFor(key, sec, params.diskUsedPct)));
+}
+
 export function evaluateCompliance(params: {
   platform: EndpointPlatform;
   diskUsedPct?: number | null;
   security?: EndpointSecurityPosture | null;
-}): { status: EndpointComplianceStatus; reasons: string[] } {
-  const reasons: string[] = [];
-  let nonCompliant = false;
-  let attention = false;
-  const sec = params.security ?? {};
-
-  if (sec.firewall_enabled === false) {
-    attention = true;
-    reasons.push('Host firewall is reported off');
-  }
-  if (params.platform === 'windows' && sec.antivirus_enabled === false) {
-    nonCompliant = true;
-    reasons.push('Antivirus protection is reported disabled');
-  }
-  if (typeof params.diskUsedPct === 'number' && params.diskUsedPct >= 92) {
-    attention = true;
-    reasons.push(`Disk usage is critically high (${params.diskUsedPct.toFixed(1)}%)`);
-  }
-  if (typeof sec.pending_updates === 'number' && sec.pending_updates > 0) {
-    attention = true;
-    reasons.push(`${sec.pending_updates} OS/security update(s) pending`);
-  }
-
-  if (nonCompliant) return { status: 'non_compliant', reasons };
-  if (attention) return { status: 'attention', reasons };
-  // Nothing reported, nothing to judge: "compliant" would be a claim without evidence.
-  const reported = Object.values(sec).some((v) => v !== undefined && v !== null) || typeof params.diskUsedPct === 'number';
-  if (!reported) return { status: 'unknown', reasons: [] };
-  return { status: 'compliant', reasons: [] };
+}): { status: EndpointComplianceStatus; reasons: string[]; items: EndpointComplianceItem[] } {
+  const items = evaluateComplianceItems(params);
+  let status: EndpointComplianceStatus = 'compliant';
+  for (const item of items) if (RANK[item.verdict] > RANK[status]) status = item.verdict;
+  // Never "compliant" without a single measurement (e.g. a platform with no required items).
+  if (items.length === 0) status = 'unknown';
+  const reasons = items
+    .filter((i) => i.verdict !== 'compliant')
+    .sort((a, b) => RANK[b.verdict] - RANK[a.verdict])
+    .map((i) => i.reason_en);
+  return { status, reasons, items };
 }
 
 /**
@@ -145,6 +294,18 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
         reason_en: 'Supported on enrolled Windows workstations and servers with role-based checks.',
         reason_ar: 'مدعوم بالكامل مع التحقق من صلاحيات المشرف.',
       },
+      {
+        key: 'security_compliance',
+        category: 'inventory',
+        label_en: 'Security Compliance Evidence (Firewall profiles, Antivirus, BitLocker, Windows Update)',
+        label_ar: 'أدلة الامتثال الأمني (ملفات جدار الحماية، مكافحة الفيروسات، BitLocker، تحديثات Windows)',
+        state: 'implemented',
+        enabled: true,
+        reason_en:
+          'Reads all three firewall profiles (Get-NetFirewallProfile, registry fallback), every antivirus registered in Security Center plus Defender status, BitLocker per fixed volume (needs the agent to run elevated, otherwise unknown) and the Windows Update pending count.',
+        reason_ar:
+          'يقرأ ملفات جدار الحماية الثلاثة، وكل برامج مكافحة الفيروسات المسجلة وحالة Defender، وحالة BitLocker لكل قرص ثابت (يتطلب صلاحيات المسؤول) وعدد تحديثات Windows المعلّقة.',
+      },
     ];
   }
 
@@ -213,12 +374,12 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
       {
         key: 'software_management',
         category: 'software',
-        label_en: 'Package Inventory (dpkg/rpm) & APT Management',
-        label_ar: 'جرد وإدارة حزم البرامج (dpkg / rpm / apt)',
+        label_en: 'Package Inventory (dpkg/rpm) & APT / DNF / YUM / zypper Management',
+        label_ar: 'جرد وإدارة حزم البرامج (dpkg / rpm / apt / dnf / yum / zypper)',
         state: 'implemented',
         enabled: true,
-        reason_en: 'Queries dpkg-query or rpm and runs approved apt-get package actions.',
-        reason_ar: 'جرد الحزم المثبتة وتنفيذ التثبيت أو الحذف المعتمد.',
+        reason_en: 'Queries dpkg-query or rpm; detects apt-get, dnf, zypper or yum and runs approved install/upgrade/remove actions with the package name after "--".',
+        reason_ar: 'جرد الحزم المثبتة، واكتشاف مدير الحزم (apt-get أو dnf أو zypper أو yum) وتنفيذ التثبيت أو التحديث أو الحذف المعتمد.',
       },
       {
         key: 'diagnostics_logs',
@@ -233,12 +394,26 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
       {
         key: 'power_session',
         category: 'remote_control',
-        label_en: 'Power & Session Controls (Lock, Restart, Shutdown)',
-        label_ar: 'التحكم بالطاقة والجلسة',
-        state: 'partially_supported',
+        label_en: 'Power & Session Controls (Lock, Sign out, Restart, Shutdown, Notice)',
+        label_ar: 'التحكم بالطاقة والجلسة (قفل، خروج، إعادة تشغيل، إيقاف، رسائل)',
+        state: 'requires_permissions',
         enabled: true,
-        reason_en: 'Lock (loginctl), restart and shutdown are supported; interactive logoff is Windows-only.',
-        reason_ar: 'قفل الجلسة وإعادة التشغيل والإيقاف مدعومة.',
+        reason_en:
+          'Lock and sign-out use loginctl lock-session / terminate-session on the active graphical session (the desktop environment performs the lock). Notices use notify-send in the user\'s session and fall back to wall, saying which was used. Needs the agent to run as root.',
+        reason_ar:
+          'القفل وتسجيل الخروج عبر loginctl على جلسة سطح المكتب النشطة. الرسائل تظهر عبر notify-send في جلسة المستخدم، ومع تعذّرها تُرسل عبر wall مع ذكر الطريقة المستخدمة. يتطلب تشغيل الوكيل بصلاحية root.',
+      },
+      {
+        key: 'security_compliance',
+        category: 'inventory',
+        label_en: 'Security Compliance Evidence (ufw / firewalld / nftables, LUKS, security updates)',
+        label_ar: 'أدلة الامتثال الأمني (جدار الحماية، تشفير LUKS، تحديثات الأمان)',
+        state: 'requires_permissions',
+        enabled: true,
+        reason_en:
+          'Reads ufw status, firewall-cmd --state and nft list ruleset, lsblk (dm-crypt under each mount) and apt-get -s upgrade / dnf or yum updateinfo / zypper list-patches. ufw and nft need root; anything unreadable is reported as unknown with the reason.',
+        reason_ar:
+          'يقرأ حالة ufw و firewalld و nftables، وطبقة dm-crypt تحت كل نقطة تحميل، وتحديثات الأمان المعلّقة. بعض الأوامر تتطلب root؛ وما يتعذّر قراءته يُعرض كغير معروف مع السبب.',
       },
     ];
   }
@@ -318,12 +493,25 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
       {
         key: 'power_session',
         category: 'remote_control',
-        label_en: 'Display Lock, Restart & Shutdown',
-        label_ar: 'قفل الشاشة وإعادة التشغيل والإيقاف',
+        label_en: 'Lock, Sign out, Restart, Shutdown & Notices',
+        label_ar: 'القفل وتسجيل الخروج وإعادة التشغيل والإيقاف والرسائل',
         state: 'partially_supported',
         enabled: true,
-        reason_en: 'Uses pmset displaysleepnow and shutdown -r/-h.',
-        reason_ar: 'يدعم قفل الشاشة وإعادة التشغيل وإيقاف التشغيل.',
+        reason_en:
+          'Runs in the console user\'s session (launchctl asuser). Lock uses CGSession -suspend where macOS still ships it, otherwise starts the screen saver, which locks only if "Require password immediately" is set. Sign-out asks System Events to log out (the user confirms; apps can cancel; macOS may ask once to allow automation). Notices use osascript display notification, falling back to a dialog.',
+        reason_ar:
+          'يعمل داخل جلسة المستخدم الحالي. القفل عبر CGSession إن وُجد، وإلا بتشغيل شاشة التوقف التي تقفل فقط إذا كانت كلمة المرور مطلوبة فوراً. تسجيل الخروج عبر System Events (يؤكده المستخدم). الرسائل عبر إشعارات osascript أو نافذة حوار.',
+      },
+      {
+        key: 'security_compliance',
+        category: 'inventory',
+        label_en: 'Security Compliance Evidence (Firewall, FileVault, SIP, Gatekeeper, Updates)',
+        label_ar: 'أدلة الامتثال الأمني (جدار الحماية، FileVault، SIP، Gatekeeper، التحديثات)',
+        state: 'implemented',
+        enabled: true,
+        reason_en:
+          'Reads socketfilterfw --getglobalstate (pf via pfctl -s info as context, needs root), fdesetup status, csrutil status, spctl --status and softwareupdate -l.',
+        reason_ar: 'يقرأ حالة جدار حماية التطبيقات و FileVault و SIP و Gatekeeper والتحديثات المتاحة عبر أوامر النظام.',
       },
     ];
   }

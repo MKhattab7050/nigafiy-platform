@@ -21,6 +21,8 @@ export const fsOpCommandSchema = z
     append: z.boolean().optional(),
     data_base64: z.string().max(1_500_000).optional(),
     expected_sha256: z.string().max(64).optional(),
+    /** Upload only: replace an existing file. The console sets it only after the operator confirms in a dialog. */
+    overwrite: z.boolean().optional(),
   })
   .strict();
 export type FsOpCommand = z.infer<typeof fsOpCommandSchema>;

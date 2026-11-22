@@ -188,19 +188,17 @@ export function OverviewTab({
                             <Lock className="size-4" aria-hidden />
                             {tx.powerActions.lock}
                           </Button>
-                          {ep.platform === 'windows' && (
-                            <Button
-                              disabled={!online}
-                              busy={busy === 'power-logoff'}
-                              onClick={() =>
-                                window.confirm(tx.powerConfirm.logoff) &&
-                                void sendCommand('power-logoff', { kind: 'power_action', action: 'logoff' })
-                              }
-                            >
-                              <LogOut className="size-4" aria-hidden />
-                              {tx.powerActions.logoff}
-                            </Button>
-                          )}
+                          <Button
+                            disabled={!online}
+                            busy={busy === 'power-logoff'}
+                            onClick={() =>
+                              window.confirm(tx.powerConfirm.logoff) &&
+                              void sendCommand('power-logoff', { kind: 'power_action', action: 'logoff' })
+                            }
+                          >
+                            <LogOut className="size-4" aria-hidden />
+                            {tx.powerActions.logoff}
+                          </Button>
                           {can('admin') && (
                             <>
                               <Button
