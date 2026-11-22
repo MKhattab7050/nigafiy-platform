@@ -8,6 +8,7 @@ import { notifyRealtime } from '../realtime/index.ts';
 import { describeCredentials, openCredentials, sealCredentials } from './credentials.ts';
 import { suggestDriver } from './detect.ts';
 import { diffLines, unifiedText } from './diff.ts';
+import { fingerprintKey, prepareConfig } from './resanitize.ts';
 import { nextDailyRun } from './schedule.ts';
 import {
   type Credentials,
@@ -466,13 +467,14 @@ interface VersionWithContent {
   sha256: string;
   captured_at: Date;
   content_enc: string;
+  sanitized: boolean;
   target_name: string;
 }
 
 async function loadVersion(db: Db, id: string): Promise<VersionWithContent & { content: string }> {
   const v = (
     await db.query<VersionWithContent>(
-      `SELECT v.id, v.target_id, v.number, v.sha256, v.captured_at, c.content_enc, t.name AS target_name
+      `SELECT v.id, v.target_id, v.number, v.sha256, v.captured_at, c.content_enc, c.sanitized, t.name AS target_name
          FROM config_backup_versions v
          JOIN config_backup_contents c ON c.target_id = v.target_id AND c.sha256 = v.sha256
          JOIN config_backup_targets t ON t.id = v.target_id
@@ -487,6 +489,8 @@ async function loadVersion(db: Db, id: string): Promise<VersionWithContent & { c
   } catch {
     throw new AppError(409, 'content_unreadable', 'This configuration cannot be decrypted (the application key changed)');
   }
+  // Stored before secret sanitization (migration 041) and not converted yet: never shown unsanitized.
+  if (!v.sanitized) content = prepareConfig(content, await fingerprintKey(db, v.target_id)).text;
   return { ...v, content };
 }
 
