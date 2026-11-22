@@ -1,5 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import https from 'node:https';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -7,7 +8,7 @@ import path from 'node:path';
 import tls from 'node:tls';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
-import { CA_RENEW_DAYS, ensureLanTls, LEAF_RENEW_DAYS, LEAF_VALIDITY_DAYS, setTlsStatus, statusFromMaterial, tlsStatus } from '../src/infrastructure/lan-tls.ts';
+import { CA_RENEW_DAYS, ensureLanTls, LEAF_RENEW_DAYS, LEAF_VALIDITY_DAYS, newSerialHex, setTlsStatus, statusFromMaterial, tlsStatus } from '../src/infrastructure/lan-tls.ts';
 import { app, newAccount, setRole } from './helpers.ts';
 
 const DAY = 86_400_000;
@@ -20,6 +21,13 @@ const tempDir = () => {
 afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
+
+/** icacls listing of a path (Windows), without the trailing summary line. */
+const windowsAcl = (target: string) =>
+  execFileSync(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe'), [target], { encoding: 'utf8' })
+    .split(/\r?\n/)
+    .filter((l) => !/Successfully processed|Failed processing/.test(l))
+    .join('\n');
 
 const id = { hostnames: ['nigafiy-box', 'localhost'], ipAddresses: ['127.0.0.1', '192.168.50.10', '::1'] };
 
@@ -49,6 +57,35 @@ describe('built-in LAN TLS', () => {
     if (process.platform !== 'win32') {
       for (const f of ['ca.pem', 'ca-key.pem', 'server.pem', 'server-key.pem']) expect(statSync(path.join(dir, f)).mode & 0o777).toBe(0o600);
       expect(statSync(dir).mode & 0o777).toBe(0o700);
+    } else {
+      // Protected DACL: no inherited entries, and only the current user, SYSTEM and Administrators.
+      for (const target of [dir, ...['ca.pem', 'ca-key.pem', 'server.pem', 'server-key.pem'].map((f) => path.join(dir, f))]) {
+        const acl = windowsAcl(target);
+        expect(acl).not.toMatch(/\(I\)/);
+        expect(acl).not.toMatch(/Everyone|Authenticated Users|BUILTIN\\Users|S-1-1-0|S-1-5-11|S-1-5-32-545/i);
+        const entries = acl.split(/\r?\n/).filter((l) => /:\(/.test(l));
+        expect(entries).toHaveLength(3);
+        expect(acl.toLowerCase()).toContain(os.userInfo().username.toLowerCase());
+      }
+    }
+  });
+
+  it('gives files copied into the folder by hand the same owner-only access', () => {
+    const dir = tempDir();
+    ensureLanTls(dir, id);
+    const stray = path.join(dir, 'server-key.pem');
+    if (process.platform === 'win32') {
+      // widen the key file the way a careless copy would, then expect the next start to tighten it
+      execFileSync(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe'), [stray, '/inheritance:e', '/grant', '*S-1-5-32-545:R'], { stdio: 'ignore' });
+      expect(windowsAcl(stray)).toMatch(/\(I\)|Users/);
+    } else {
+      chmodSync(stray, 0o644);
+    }
+    expect(ensureLanTls(dir, id).action).toBe('loaded');
+    if (process.platform === 'win32') {
+      expect(windowsAcl(stray)).not.toMatch(/\(I\)|BUILTIN\\Users/);
+    } else {
+      expect(statSync(stray).mode & 0o777).toBe(0o600);
     }
   });
 
@@ -84,6 +121,14 @@ describe('built-in LAN TLS', () => {
     expect(next.caFingerprint256).not.toBe(first.caFingerprint256);
     const leaf = new X509Certificate(readFileSync(next.certFile, 'utf8'));
     expect(leaf.checkIssued(new X509Certificate(readFileSync(next.caFile)))).toBe(true);
+  });
+
+  it('writes serial numbers in minimal DER form (no illegal leading zero byte)', () => {
+    for (let i = 0; i < 512; i++) {
+      const s = newSerialHex();
+      expect(s).toMatch(/^[0-7][0-9a-f]{31}$/);
+      expect(s.startsWith('00')).toBe(false);
+    }
   });
 
   it('re-issues a server certificate that the CA did not sign', () => {

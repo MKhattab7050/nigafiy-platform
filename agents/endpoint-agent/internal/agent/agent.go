@@ -589,6 +589,7 @@ func (a *Agent) postWith(ctx context.Context, client *http.Client, path string, 
 //   - the SHA-256 of the leaf (server) certificate, or
 //   - the SHA-256 of a CA certificate in the presented chain, and the leaf verifies up to that CA
 //     (signature, validity, serverAuth usage) with the pinned certificate as the only root.
+//
 // The second form is what built-in LAN TLS uses: the server pins its local CA, so the server
 // certificate can be re-issued without re-enrolling. The host name is not checked against the
 // certificate in either form; the pin alone identifies the server.

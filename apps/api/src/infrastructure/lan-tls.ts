@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { X509Certificate, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -16,7 +17,13 @@ import forge from 'node-forge';
  * Node's crypto can create keys but not X.509 certificates, so certificates are built with
  * node-forge (pure JavaScript, no native code); keys come from Node's crypto.
  *
- * Files (directory 0700, files 0600 where the OS honours POSIX modes):
+ * Owner-only permissions: on POSIX the directory is 0700 and every file 0600. On Windows (where
+ * POSIX modes do nothing) the directory and each file get a protected DACL with no inherited
+ * entries that grants full control to the user running Nigafiy, LocalSystem and the Administrators
+ * group only (the same set the engine uses for its control token), set with the built-in icacls
+ * tool. If that fails the function throws and HTTPS stays off rather than leave a key readable.
+ *
+ * Files:
  *   ca.pem / ca-key.pem          the local CA (10 years)
  *   server.pem / server-key.pem  server certificate + CA (chain) and its key (397 days)
  */
@@ -66,18 +73,54 @@ export function localIdentity(): { hostnames: string[]; ipAddresses: string[] } 
   return { hostnames, ipAddresses: [...ips] };
 }
 
-function writeSecret(file: string, data: string): void {
-  const tmp = `${file}.${process.pid}.tmp`;
-  writeFileSync(tmp, data, { mode: 0o600 });
-  renameSync(tmp, file);
-  try {
-    chmodSync(file, 0o600);
-  } catch {
-    /* Windows: POSIX modes do not apply; the data folder's ACL (user profile) protects it */
-  }
+const sys32 = (exe: string) => path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', exe);
+let cachedSid: string | null = null;
+
+/** SID of the user running this process (Windows only), from the built-in whoami tool. */
+function currentUserSid(): string {
+  if (cachedSid) return cachedSid;
+  const out = execFileSync(sys32('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true });
+  const sid = out.match(/S-1-5-[0-9-]+/)?.[0];
+  if (!sid) throw new Error('LAN TLS: could not read the current user SID');
+  cachedSid = sid;
+  return sid;
 }
 
-const serial = () => `00${randomBytes(16).toString('hex')}`; // positive, 128 random bits
+/**
+ * Owner-only access to a TLS directory or file. POSIX: chmod 0700 / 0600. Windows: a protected
+ * (non-inherited) DACL for the current user, SYSTEM and Administrators; on a directory the entries
+ * are inheritable so files created inside start restricted too.
+ */
+export function restrictToOwner(target: string, isDir: boolean): void {
+  if (process.platform !== 'win32') {
+    chmodSync(target, isDir ? 0o700 : 0o600);
+    return;
+  }
+  const inherit = isDir ? '(OI)(CI)' : '';
+  const grants = [currentUserSid(), 'S-1-5-18', 'S-1-5-32-544'].flatMap((sid) => ['/grant:r', `*${sid}:${inherit}F`]);
+  const icacls = (args: string[]) => execFileSync(sys32('icacls.exe'), [target, ...args, '/q'], { stdio: 'ignore', windowsHide: true });
+  // 1. drop every explicit entry (a file then inherits from the already restricted directory);
+  // 2. turn inheritance off, removing the inherited entries, and grant exactly the three SIDs.
+  icacls(['/reset']);
+  icacls(['/inheritance:r', ...grants]);
+}
+
+function writeSecret(file: string, data: string): void {
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, data, { mode: 0o600 }); // inside the restricted directory, so never world-readable
+  renameSync(tmp, file);
+  restrictToOwner(file, false);
+}
+
+/**
+ * A positive serial with ~127 random bits in minimal DER form: the first byte is 0x01–0x7f, so no
+ * leading zero byte is needed (a needless 0x00 is "illegal padding" to OpenSSL 3 and Go).
+ */
+export function newSerialHex(): string {
+  const b = randomBytes(16);
+  b[0] = (b[0]! & 0x7f) || 0x01;
+  return b.toString('hex');
+}
 
 function newKeys() {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -87,15 +130,15 @@ function newKeys() {
   };
 }
 
-function createCa(now: Date): { certPem: string; keyPem: string } {
+function createCa(now: Date, host: string): { certPem: string; keyPem: string } {
   const keys = newKeys();
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.forgePublic;
-  cert.serialNumber = serial();
+  cert.serialNumber = newSerialHex();
   cert.validity.notBefore = new Date(now.getTime() - 5 * 60_000);
   cert.validity.notAfter = new Date(now.getTime() + CA_VALIDITY_DAYS * DAY);
   const name = [
-    { name: 'commonName', value: `Nigafiy local CA (${os.hostname().slice(0, 40)})` },
+    { name: 'commonName', value: `Nigafiy local CA (${host.slice(0, 40)})` },
     { name: 'organizationName', value: 'Nigafiy' },
   ];
   cert.setSubject(name);
@@ -115,7 +158,7 @@ function issueLeaf(caCertPem: string, caKeyPem: string, dnsNames: string[], ips:
   const keys = newKeys();
   const cert = forge.pki.createCertificate();
   cert.publicKey = keys.forgePublic;
-  cert.serialNumber = serial();
+  cert.serialNumber = newSerialHex();
   cert.validity.notBefore = new Date(now.getTime() - 5 * 60_000);
   const caEnd = ca.validity.notAfter.getTime();
   cert.validity.notAfter = new Date(Math.min(now.getTime() + LEAF_VALIDITY_DAYS * DAY, caEnd));
@@ -166,22 +209,20 @@ export function ensureLanTls(dir: string, opts: LanTlsOptions = {}): LanTlsMater
   const dnsNames = [...new Set((opts.hostnames ?? id.hostnames).map((h) => h.toLowerCase()))];
   const ips = [...new Set((opts.ipAddresses ?? id.ipAddresses).map(normalizeIp))];
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  try {
-    chmodSync(dir, 0o700);
-  } catch {
-    /* Windows */
-  }
+  restrictToOwner(dir, true);
   const caFile = path.join(dir, 'ca.pem');
   const caKeyFile = path.join(dir, 'ca-key.pem');
   const certFile = path.join(dir, 'server.pem');
   const keyFile = path.join(dir, 'server-key.pem');
+  // Files left by an earlier version or copied in by hand get the same owner-only access.
+  for (const f of [caFile, caKeyFile, certFile, keyFile]) if (existsSync(f)) restrictToOwner(f, false);
 
   let action: LanTlsMaterial['action'] = 'loaded';
   let caPem = existsSync(caFile) && existsSync(caKeyFile) ? readFileSync(caFile, 'utf8') : null;
   let caKeyPem = caPem ? readFileSync(caKeyFile, 'utf8') : null;
   if (caPem && new X509Certificate(caPem).validToDate.getTime() - now.getTime() < CA_RENEW_DAYS * DAY) caPem = null;
   if (!caPem || !caKeyPem) {
-    const ca = createCa(now);
+    const ca = createCa(now, dnsNames[0] ?? os.hostname());
     caPem = ca.certPem;
     caKeyPem = ca.keyPem;
     writeSecret(caKeyFile, caKeyPem);

@@ -42,6 +42,9 @@ if (env.HTTPS_PORT && env.TLS_CERT_FILE && env.TLS_KEY_FILE) {
   httpsServer = https.createServer({ cert: readFileSync(env.TLS_CERT_FILE), key: readFileSync(env.TLS_KEY_FILE) }, app);
   setTlsStatus({ ...tlsStatus(), mode: 'files', https_port: env.HTTPS_PORT, https_host: httpsHost ?? null, pin_sha256: tlsPin, pin_kind: tlsPin ? 'leaf' : null });
   listenHttps(httpsServer, () => logger.info({ https_port: env.HTTPS_PORT, host: httpsHost ?? 'all interfaces', tls_pin_sha256: tlsPin }, 'LAN Detective HTTPS listening'));
+} else if (env.HTTPS_PORT && (env.TLS_CERT_FILE || env.TLS_KEY_FILE)) {
+  // One file without the other is a mistake; do not silently replace it with the built-in certificate.
+  logger.error({ https_port: env.HTTPS_PORT }, 'TLS_CERT_FILE and TLS_KEY_FILE must both be set; HTTPS is off');
 } else if (env.HTTPS_PORT && env.LAN_TLS === 'auto') {
   // Built-in LAN TLS: local CA + server certificate in the data folder, renewed before expiry or when
   // this computer's names / addresses change. Collectors and agents pin the CA (docs/features/lan-tls.md).
