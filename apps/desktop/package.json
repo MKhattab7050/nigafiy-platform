@@ -12,7 +12,9 @@
     "icon": "node scripts/make-icon.mjs",
     "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
     "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
-    "bundle": "node scripts/bundle-backend.mjs"
+    "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
+    "bundle": "node scripts/bundle-backend.mjs",
+    "release": "node ../../scripts/release/release.mjs"
   },
   "devDependencies": {
     "electron": "^39.0.0",
@@ -66,6 +68,14 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "msi": {
+      "oneClick": true,
+      "perMachine": true,
+      "upgradeCode": "6DA7D862-27E7-4AC8-809D-89B4128FB3AE",
+      "createDesktopShortcut": true,
+      "runAfterFinish": false,
+      "warningsAsErrors": false
     }
   }
 }

@@ -41,11 +41,11 @@ func (r *recorder) deps() Deps {
 func TestApplyRunsTheInstallerSilentlyAndRestarts(t *testing.T) {
 	data, req := staged(t)
 	rec := &recorder{}
-	res := Apply(Plan{DataDir: data, Request: req, InstallDir: `C:\Program Files\Nigafiy`, WaitPid: 99, ServiceName: "NigafiyEngine"}, rec.deps())
+	res := Apply(Plan{DataDir: data, Request: req, InstallDir: `C:\Program Files\Nigafiy`, PerMachine: true, WaitPid: 99, ServiceName: "NigafiyEngine"}, rec.deps())
 	if !res.OK || !res.Restarted || res.Error != "" || res.ExitCode == nil || *res.ExitCode != 0 {
 		t.Fatalf("result %+v", res)
 	}
-	want := `wait|run Nigafiy-Setup-2.0.0.exe /S --updated /D=C:\Program Files\Nigafiy|service NigafiyEngine`
+	want := `wait|run Nigafiy-Setup-2.0.0.exe /S /allusers --updated /D=C:\Program Files\Nigafiy|service NigafiyEngine`
 	if got := strings.Join(rec.calls, "|"); got != want {
 		t.Fatalf("calls %q", got)
 	}
@@ -111,5 +111,25 @@ func TestValidateAndThumbprint(t *testing.T) {
 	}
 	if _, err := NormalizeThumbprint("xyz"); err == nil {
 		t.Fatal("bad thumbprint accepted")
+	}
+}
+
+func TestPerMachine(t *testing.T) {
+	if filepath.Separator == '/' {
+		t.Skip("Windows paths")
+	}
+	pf, pf86 := `C:\Program Files`, `C:\Program Files (x86)`
+	for dir, want := range map[string]bool{
+		`C:\Program Files\LAN Detective`:       true,
+		`c:\program files (x86)\Nigafiy`:       true,
+		`C:\Users\me\AppData\Local\Programs\N`: false,
+		`C:\Program FilesX\N`:                  false,
+	} {
+		if got := PerMachine(dir, pf, pf86, ""); got != want {
+			t.Errorf("%s: %v", dir, got)
+		}
+	}
+	if got := strings.Join(InstallerArgs(`C:\U\N`, false), " "); got != `/S /currentuser --updated /D=C:\U\N` {
+		t.Fatal(got)
 	}
 }

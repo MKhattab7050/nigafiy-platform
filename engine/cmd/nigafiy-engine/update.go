@@ -53,6 +53,7 @@ func cmdUpdateApply(args []string, stdout, stderr io.Writer) int {
 	}
 	p.Publisher = tp
 	p.WaitFor = 3 * time.Minute
+	p.PerMachine = update.PerMachine(p.InstallDir, os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("ProgramW6432"))
 
 	logFile, err := logs.OpenRotating(filepath.Join(p.DataDir, "logs", "update.log"), logs.DefaultMaxSize, logs.DefaultKeep)
 	if err != nil {

@@ -143,10 +143,30 @@ func Verify(req Request, publisher string, check SignatureChecker) error {
 	return nil
 }
 
-// InstallerArgs runs an electron-builder NSIS installer silently over installDir. /D= must be the
-// last argument and is not quoted (NSIS reads the rest of the command line as the folder).
-func InstallerArgs(installDir string) []string {
-	return []string{"/S", "--updated", "/D=" + installDir}
+// InstallerArgs runs an electron-builder NSIS installer silently over installDir, for all users
+// when the installation is per-machine (under Program Files) and for the current user otherwise, so
+// a silent update never switches the installation mode. /D= must be the last argument and is not
+// quoted (NSIS reads the rest of the command line as the folder).
+func InstallerArgs(installDir string, perMachine bool) []string {
+	mode := "/currentuser"
+	if perMachine {
+		mode = "/allusers"
+	}
+	return []string{"/S", mode, "--updated", "/D=" + installDir}
+}
+
+// PerMachine reports whether installDir is inside one of the Program Files folders.
+func PerMachine(installDir string, programFiles ...string) bool {
+	dir := strings.ToLower(filepath.Clean(installDir)) + string(filepath.Separator)
+	for _, pf := range programFiles {
+		if pf == "" {
+			continue
+		}
+		if strings.HasPrefix(dir, strings.ToLower(filepath.Clean(pf))+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Result is the outcome of the last installation (ResultPath).
@@ -200,6 +220,7 @@ type Plan struct {
 	DataDir    string
 	Request    Request
 	InstallDir string
+	PerMachine bool // the installation is under Program Files: install for all users
 	Publisher  string
 	WaitPid    int           // the engine that handed over; the installer runs once it has exited
 	WaitFor    time.Duration // how long to wait for it
@@ -284,7 +305,7 @@ func Apply(p Plan, d Deps) Result {
 	if p.InstallDir == "" || !filepath.IsAbs(p.InstallDir) {
 		return fail(errors.New("no installation folder"))
 	}
-	args := InstallerArgs(p.InstallDir)
+	args := InstallerArgs(p.InstallDir, p.PerMachine)
 	d.Logf("running %s %s", p.Request.Installer, strings.Join(args, " "))
 	code, err := d.RunInstaller(p.Request.Installer, args)
 	if err != nil {
