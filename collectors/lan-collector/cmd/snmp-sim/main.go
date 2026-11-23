@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lan-detective/lan-collector/internal/snmp/sim"
+	"github.com/nigafiy/sensor/internal/snmp/sim"
 )
 
 func main() {

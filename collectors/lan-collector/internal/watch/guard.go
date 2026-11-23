@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/scope"
+	"github.com/nigafiy/sensor/internal/scope"
 )
 
 // Guard decides which addresses a check may connect to.

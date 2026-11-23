@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/snmp"
-	"github.com/lan-detective/lan-collector/internal/watch"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/snmp"
+	"github.com/nigafiy/sensor/internal/watch"
 )
 
 type watchFakes struct {

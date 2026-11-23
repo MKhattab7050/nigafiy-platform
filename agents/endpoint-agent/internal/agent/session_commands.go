@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/lan-detective/endpoint-agent/internal/control"
-	"github.com/lan-detective/endpoint-agent/internal/rdstream"
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/control"
+	"github.com/nigafiy/agent/internal/rdstream"
+	"github.com/nigafiy/agent/internal/remotedesktop"
 )
 
 // Remote desktop session commands run through the Desktop (this process, or the session helper

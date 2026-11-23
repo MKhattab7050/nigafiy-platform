@@ -28,7 +28,7 @@ const LOCAL_SMOKE = process.argv.includes('--local-smoke');
 const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
 const PANEL_URL = pathToFileURL(PANEL_FILE).href;
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
-const BINARY_NAME = process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector';
+const BINARY_NAME = process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor';
 
 /** What this launch asked for: `--program=<id>` or a `nigafiy://` link (Hub by default). */
 const launch = launchRequest(process.argv);

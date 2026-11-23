@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gosnmp/gosnmp"
-	"github.com/lan-detective/lan-collector/internal/snmp/sim"
+	"github.com/nigafiy/sensor/internal/snmp/sim"
 )
 
 func start(t *testing.T, a *sim.Agent) Target {

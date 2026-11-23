@@ -1,4 +1,4 @@
-module github.com/lan-detective/lan-collector
+module github.com/nigafiy/sensor
 
 go 1.27.3
 

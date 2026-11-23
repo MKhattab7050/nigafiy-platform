@@ -168,7 +168,7 @@ export async function dispatchNotifications(): Promise<void> {
           const status = await post(d.url, body, {
             'Content-Type': 'application/json',
             'Content-Length': String(Buffer.byteLength(body)),
-            'User-Agent': 'LAN-Detective-Webhook/1',
+            'User-Agent': 'Nigafiy-Webhook/1',
             'X-LAN-Detective-Signature': `t=${timestamp},v1=${signature}`,
           });
           if (status < 200 || status >= 300) error = `receiver responded with HTTP ${status}`;

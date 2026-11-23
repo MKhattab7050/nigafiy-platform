@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/dhcp"
+	"github.com/nigafiy/sensor/internal/dhcp"
 )
 
 // DHCP fingerprints: the option list (55) each client asks for, its vendor class (60), hostname

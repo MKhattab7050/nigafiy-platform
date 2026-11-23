@@ -40,8 +40,8 @@ function TlsBody({ s }: { s: TlsStatus }) {
   const host = serverHost(s);
   const server = `https://${host.includes(':') ? `[${host}]` : host}:${s.https_port}`;
   const pin = s.pin_sha256;
-  const collector = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nLAN_COLLECTOR_ENROLLMENT_TOKEN=<token>${pin ? ` \\\nLAN_COLLECTOR_TLS_PIN_SHA256=${pin}` : ''} \\\n./lan-collector -config collector.yaml`;
-  const agent = `endpoint-agent install -server ${server} -token <token>${pin ? ` -tls-pin ${pin}` : ''}`;
+  const collector = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nNIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token>${pin ? ` \\\nNIGAFIY_SENSOR_TLS_PIN_SHA256=${pin}` : ''} \\\n./nigafiy-sensor -config collector.yaml`;
+  const agent = `nigafiy-agent install -server ${server} -token <token>${pin ? ` -tls-pin ${pin}` : ''}`;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">

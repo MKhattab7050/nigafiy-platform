@@ -10,9 +10,9 @@
     "smoke": "electron . --smoke",
     "test": "node --test \"test/*.test.cjs\"",
     "icon": "node scripts/make-icon.mjs",
-    "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
-    "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
-    "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/lan-collector.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
+    "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
+    "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
+    "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
     "bundle": "node scripts/bundle-backend.mjs",
     "release": "node ../../scripts/release/release.mjs"
   },
@@ -33,8 +33,8 @@
     ],
     "extraResources": [
       {
-        "from": "../../collectors/lan-collector/bin/lan-collector.exe",
-        "to": "collector/lan-collector.exe"
+        "from": "../../collectors/lan-collector/bin/nigafiy-sensor.exe",
+        "to": "collector/nigafiy-sensor.exe"
       },
       {
         "from": "build/backend",

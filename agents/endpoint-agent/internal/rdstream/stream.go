@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/clipboard"
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/wsclient"
+	"github.com/nigafiy/agent/internal/clipboard"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/wsclient"
 )
 
 // Socket messages. Binary messages from the agent are frame packets (remotedesktop.Packet); text

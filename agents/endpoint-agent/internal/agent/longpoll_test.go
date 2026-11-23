@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/config"
-	"github.com/lan-detective/endpoint-agent/internal/control"
-	"github.com/lan-detective/endpoint-agent/internal/sysinfo"
+	"github.com/nigafiy/agent/internal/config"
+	"github.com/nigafiy/agent/internal/control"
+	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
 func TestNextPollDelay(t *testing.T) {

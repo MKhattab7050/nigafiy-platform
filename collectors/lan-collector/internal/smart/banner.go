@@ -60,7 +60,7 @@ const (
 	maxBannerBody    = 64 << 10
 	bannerWorkers    = 8
 	bannerTimeout    = 3 * time.Second
-	bannerUserAgent  = "lan-collector banner probe"
+	bannerUserAgent  = "nigafiy-sensor banner probe"
 )
 
 var titleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)

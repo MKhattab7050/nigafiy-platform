@@ -162,7 +162,7 @@ func New(serverURL, caFile, version string, tlsPinSHA256 ...string) (*Client, er
 			// The API never redirects. Refusing redirects keeps the credential from following one.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
-		userAgent: "lan-collector/" + version,
+		userAgent: "nigafiy-sensor/" + version,
 	}, nil
 }
 

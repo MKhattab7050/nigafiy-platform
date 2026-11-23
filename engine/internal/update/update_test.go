@@ -133,3 +133,28 @@ func TestPerMachine(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestRestartTargetFollowsTheRenamedApp(t *testing.T) {
+	dir := filepath.Join("C:", "Users", "u", "AppData", "Local", "Programs", "LAN Detective")
+	old := filepath.Join(dir, "LAN Detective.exe")
+	renamed := filepath.Join(dir, "Nigafiy.exe")
+	have := map[string]bool{}
+	exists := func(p string) bool { return have[p] }
+
+	have[renamed] = true
+	if got := RestartTarget(old, dir, exists); got != renamed {
+		t.Fatalf("old exe gone, new one there: %s", got)
+	}
+	have[old] = true
+	if got := RestartTarget(old, dir, exists); got != old {
+		t.Fatalf("old exe still there: %s", got)
+	}
+	delete(have, old)
+	if got := RestartTarget(filepath.Join("D:", "elsewhere", "app.exe"), dir, exists); got != filepath.Join("D:", "elsewhere", "app.exe") {
+		t.Fatalf("outside the install folder: %s", got)
+	}
+	delete(have, renamed)
+	if got := RestartTarget(old, dir, exists); got != old {
+		t.Fatalf("nothing found: %s", got)
+	}
+}

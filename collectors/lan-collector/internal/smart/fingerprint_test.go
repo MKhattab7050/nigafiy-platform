@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/dhcp"
+	"github.com/nigafiy/sensor/internal/dhcp"
 )
 
 func clientMsg(mac string, typ byte, prl, host, vendor, server string) dhcp.ClientMessage {

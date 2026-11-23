@@ -22,11 +22,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/config"
-	"github.com/lan-detective/endpoint-agent/internal/control"
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
-	"github.com/lan-detective/endpoint-agent/internal/rdstream"
-	"github.com/lan-detective/endpoint-agent/internal/sysinfo"
+	"github.com/nigafiy/agent/internal/config"
+	"github.com/nigafiy/agent/internal/control"
+	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/rdstream"
+	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
 var (
@@ -150,7 +150,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			ServerURL:  a.baseURL,
 			TLS:        tlsCfg,
 			Credential: a.currentCredential,
-			UserAgent:  "lan-endpoint-agent/" + version,
+			UserAgent:  "nigafiy-agent/" + version,
 			Desktop:    deps.Desktop,
 			Log:        log,
 			NotifyEnded: func(ctx context.Context, sessionID string) error {
@@ -557,7 +557,7 @@ func (a *Agent) postWith(ctx context.Context, client *http.Client, path string, 
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "lan-endpoint-agent/"+a.version)
+	req.Header.Set("User-Agent", "nigafiy-agent/"+a.version)
 	if authed {
 		a.mu.Lock()
 		cred := a.credential

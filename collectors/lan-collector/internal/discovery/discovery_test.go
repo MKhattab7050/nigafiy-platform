@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/netinfo"
 )
 
 // fakeProber simulates a network: only addresses in `alive` answer.

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/config"
-	"github.com/lan-detective/lan-collector/internal/netinfo"
-	"github.com/lan-detective/lan-collector/internal/snmp"
-	"github.com/lan-detective/lan-collector/internal/snmp/sim"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/config"
+	"github.com/nigafiy/sensor/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/snmp"
+	"github.com/nigafiy/sensor/internal/snmp/sim"
 )
 
 const (

@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/config"
-	"github.com/lan-detective/lan-collector/internal/router"
-	_ "github.com/lan-detective/lan-collector/internal/router/zyxel"
-	"github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
-	"github.com/lan-detective/lan-collector/internal/snmp"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/config"
+	"github.com/nigafiy/sensor/internal/router"
+	_ "github.com/nigafiy/sensor/internal/router/zyxel"
+	"github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
+	"github.com/nigafiy/sensor/internal/snmp"
 )
 
 const routerTestPassword = "router-admin-pass-7f3"

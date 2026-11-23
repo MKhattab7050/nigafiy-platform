@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 func TestAllRouterVendorsRegistered(t *testing.T) {

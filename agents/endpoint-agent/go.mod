@@ -1,4 +1,4 @@
-module github.com/lan-detective/endpoint-agent
+module github.com/nigafiy/agent
 
 go 1.27.3
 

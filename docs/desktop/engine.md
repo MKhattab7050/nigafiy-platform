@@ -3,7 +3,7 @@
 `nigafiy-engine.exe` is a small Go supervisor for everything that runs on this computer: the
 **database** (embedded PostgreSQL), the **API** and the **web console** (three separate children,
 each started through `scripts/local.mjs --component=<name>`) and the local **Sensor**
-(`lan-collector.exe`). It keeps them running, restarts them when they crash, writes
+(`nigafiy-sensor.exe`). It keeps them running, restarts them when they crash, writes
 their logs, and answers a local control API that the Hub (desktop app) and the API use.
 
 It runs either in the foreground (`nigafiy-engine run`, used by the Hub when no service is
@@ -44,7 +44,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 | `--node` | `NIGAFIY_ENGINE_NODE` | `node` from `PATH`, else `C:\Program Files\nodejs\node.exe` |
 | `--stack-script` | `NIGAFIY_ENGINE_STACK_SCRIPT` | `<repo>/scripts/local.mjs` (repo = first folder above the engine exe, then above the working directory, that has `scripts/local.mjs`) |
 | `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `NIGAFIY_BUNDLE_DIR` (installed app) |
-| `--sensor-exe` | `NIGAFIY_ENGINE_SENSOR_EXE` | `<repo>/collectors/lan-collector/bin/lan-collector.exe` |
+| `--sensor-exe` | `NIGAFIY_ENGINE_SENSOR_EXE` | `<repo>/collectors/lan-collector/bin/nigafiy-sensor.exe` |
 | `--sensor-config` | `NIGAFIY_ENGINE_SENSOR_CONFIG` | `<data-dir>/collector/collector.yaml` |
 | `--no-sensor` | — | off. With it the Sensor is not supervised at all (see below) |
 | `--control-addr` | `NIGAFIY_ENGINE_CONTROL_ADDR` | `127.0.0.1:47140`. Must be a loopback IP literal with a port; anything else is refused |

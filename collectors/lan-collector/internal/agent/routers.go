@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 // Router control: the site's routers are read periodically (identity, capabilities, client list,

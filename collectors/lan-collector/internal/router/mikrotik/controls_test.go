@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 const mkPassword = "mk-rest-pass-3307"

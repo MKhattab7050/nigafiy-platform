@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/mndp"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/mndp"
 )
 
 type mndpPacket struct {

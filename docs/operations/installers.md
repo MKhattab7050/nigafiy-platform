@@ -61,9 +61,9 @@ needs nothing else. `NIGAFIY_REQUIRE_SIGNING=1` makes a missing certificate an e
 The installer is a thin wrapper around the agent's own `install` subcommand; it adds nothing the
 agent does not do itself. What it does:
 
-1. copies `endpoint-agent.exe` to `C:\Program Files\Nigafiy\Endpoint Agent`;
+1. copies `nigafiy-agent.exe` to `C:\Program Files\Nigafiy\Endpoint Agent`;
 2. runs, as administrator,
-   `endpoint-agent.exe install -server <url> -service-name <name> -log-level <level> [-tls-pin <hex>] [-ca-file <pem>] [-no-start]`
+   `nigafiy-agent.exe install -server <url> -service-name <name> -log-level <level> [-tls-pin <hex>] [-ca-file <pem>] [-no-start]`
    with the one-time enrollment token in the `NIGAFIY_AGENT_ENROLLMENT_TOKEN` environment variable
    (never on a command line, so it does not show in process lists or logs). The agent enrolls, stores
    its credential in `%ProgramData%\Nigafiy\EndpointAgent` and registers the service
@@ -109,7 +109,7 @@ once the computers have enrolled.
 ### Upgrade
 
 Run the newer setup with `/S` (no token, no server needed): it reuses the settings saved in
-`HKLM\Software\Nigafiy\EndpointAgent`, removes the old service (`endpoint-agent.exe uninstall`, which
+`HKLM\Software\Nigafiy\EndpointAgent`, removes the old service (`nigafiy-agent.exe uninstall`, which
 keeps the credential), replaces the exe and runs `install` again; the agent finds its stored
 credential and does not enroll again.
 
@@ -125,7 +125,7 @@ These are limits of the current agent and tooling, documented instead of worked 
 code was not changed for this milestone):
 
 - **No self-copy in `install`.** The service points at whatever path `install` was run from, so the
-  installer copies the exe first. Running `endpoint-agent.exe install` from a download folder
+  installer copies the exe first. Running `nigafiy-agent.exe install` from a download folder
   registers the service there.
 - **No in-place upgrade.** `install` refuses when the service exists, so an upgrade is
   uninstall-service → replace exe → install. There is a short window with no agent service.
@@ -136,7 +136,7 @@ code was not changed for this milestone):
 - **No token-file flag.** The agent takes the token from `-token` or `NIGAFIY_AGENT_ENROLLMENT_TOKEN`;
   the installer reads `/TOKENFILE` and passes it in the environment.
 - **NSIS 3.0.4 cannot sign the uninstaller it writes at install time.** `uninstall.exe` of the agent
-  is unsigned; the setup and `endpoint-agent.exe` are signed. (The desktop NSIS build signs its
+  is unsigned; the setup and `nigafiy-agent.exe` are signed. (The desktop NSIS build signs its
   uninstaller through electron-builder.)
 - **The engine cannot tell an MSI installation from an NSIS one**, so it would offer the NSIS update
   on MSI machines if updates are configured there (see above).

@@ -19,9 +19,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/filemgr"
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/sysinfo"
+	"github.com/nigafiy/agent/internal/filemgr"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
 var (

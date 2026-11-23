@@ -263,10 +263,10 @@ function InstallCommands({ issued }: { issued: EndpointCreated }) {
   }
   return (
     <>
-      {local && <CopyBlock label={tx.installLocal} multiline value={`pnpm build:agent && ./agents/endpoint-agent/bin/endpoint-agent ${flags}`} />}
-      {issued.endpoint.platform === 'windows' && <CopyBlock label={tx.installWindows} multiline value={`endpoint-agent.exe ${flags}`} />}
-      {issued.endpoint.platform === 'linux' && <CopyBlock label={tx.installLinux} multiline value={`sudo ./endpoint-agent ${flags}`} />}
-      {issued.endpoint.platform === 'macos' && <CopyBlock label={tx.installMacos} multiline value={`sudo ./endpoint-agent ${flags}`} />}
+      {local && <CopyBlock label={tx.installLocal} multiline value={`pnpm build:agent && ./agents/endpoint-agent/bin/nigafiy-agent ${flags}`} />}
+      {issued.endpoint.platform === 'windows' && <CopyBlock label={tx.installWindows} multiline value={`nigafiy-agent.exe ${flags}`} />}
+      {issued.endpoint.platform === 'linux' && <CopyBlock label={tx.installLinux} multiline value={`sudo ./nigafiy-agent ${flags}`} />}
+      {issued.endpoint.platform === 'macos' && <CopyBlock label={tx.installMacos} multiline value={`sudo ./nigafiy-agent ${flags}`} />}
       {issued.server_url_source === 'request' && <p className="text-xs text-muted">{fill(t('endpoints.install.serverFromRequest'), { url: server })}</p>}
       {insecure && <p className="text-xs text-warn">{t('endpoints.install.insecure')}</p>}
     </>

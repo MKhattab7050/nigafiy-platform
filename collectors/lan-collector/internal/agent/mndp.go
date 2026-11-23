@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/mndp"
+	"github.com/nigafiy/sensor/internal/mndp"
 )
 
 // Passive MikroTik neighbour discovery (MNDP). The listener only receives: the collector never

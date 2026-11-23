@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 const fgToken = "fg-api-token-secret-7731"

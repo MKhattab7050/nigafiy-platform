@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { CollectorManager, normalizeServerUrl, isLocalServerUrl, parseCidrs } = require('../src/collector-manager.cjs');
 
-const BINARY = path.join(__dirname, '..', '..', '..', 'collectors', 'lan-collector', 'bin', process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector');
+const BINARY = path.join(__dirname, '..', '..', '..', 'collectors', 'lan-collector', 'bin', process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
 const TOKEN = 'lde_desktop-test-token-0123456789abcdef';
 const CREDENTIAL = 'ldc_11111111-2222-4333-8444-555555555555.desktop-test-secret-0123456789';
 

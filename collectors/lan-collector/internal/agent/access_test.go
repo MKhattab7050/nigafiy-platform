@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/dnsfilter"
+	"github.com/nigafiy/sensor/internal/dnsfilter"
 )
 
 // A local address of this host (the loopback address is always one of them).

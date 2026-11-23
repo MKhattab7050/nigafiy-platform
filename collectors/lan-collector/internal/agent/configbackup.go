@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/configbackup"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/configbackup"
 )
 
 // Configuration backup: the `config_backup` and `config_backup_probe` commands (closed list, see

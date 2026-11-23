@@ -1,6 +1,6 @@
 // Package service runs the endpoint agent as an operating-system service (a Windows service, a
 // systemd unit, a launchd daemon) and starts the session helper (the same binary, run as
-// `endpoint-agent session-helper`) inside the signed-in user's desktop session, where the screen,
+// `nigafiy-agent session-helper`) inside the signed-in user's desktop session, where the screen,
 // the consent dialog, the session banner and the clipboard live.
 //
 // The service never hides: the consent dialog and the always-on session banner are shown by the
@@ -16,8 +16,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/config"
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/config"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 const (

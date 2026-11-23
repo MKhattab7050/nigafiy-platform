@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 // IsPrivileged: running as root.

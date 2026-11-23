@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 // linuxSession is the active graphical session on seat0 (from loginctl).

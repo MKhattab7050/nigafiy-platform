@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/dnsfilter"
+	"github.com/nigafiy/sensor/internal/dnsfilter"
 )
 
 const (

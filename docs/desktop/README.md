@@ -89,7 +89,7 @@ Runs the unit and integration tests (including driving the real collector binary
 pnpm --filter @nigafiy/desktop start
 ```
 
-Starts the app from source, using `collectors/lan-collector/bin/lan-collector.exe`.
+Starts the app from source, using `collectors/lan-collector/bin/nigafiy-sensor.exe`.
 
 ```bash
 pnpm --filter @nigafiy/desktop dist

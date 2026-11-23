@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 )
 
 // Session helper protocol. Each message: uint32 BE total length | uint32 BE JSON length | JSON |

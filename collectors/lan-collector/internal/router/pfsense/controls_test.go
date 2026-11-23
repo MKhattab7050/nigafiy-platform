@@ -14,7 +14,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 const pfKey = "pf-rest-api-key-secret-5512"

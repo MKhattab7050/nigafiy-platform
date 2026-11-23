@@ -31,7 +31,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 // 1. Collector binary (also bundled as resources/collector).
-run('go', ['build', '-o', path.join(root, 'collectors/lan-collector/bin', win ? 'lan-collector.exe' : 'lan-collector'), './cmd/lan-collector'], {
+run('go', ['build', '-o', path.join(root, 'collectors/lan-collector/bin', win ? 'nigafiy-sensor.exe' : 'nigafiy-sensor'), './cmd/nigafiy-sensor'], {
   cwd: path.join(root, 'collectors/lan-collector'),
 });
 

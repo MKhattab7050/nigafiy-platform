@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/probe"
+	"github.com/nigafiy/sensor/internal/probe"
 )
 
 func TestValidTarget(t *testing.T) {

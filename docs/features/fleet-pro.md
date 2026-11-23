@@ -105,7 +105,7 @@ instances relaying through pg_notify.
   (`POST /api/v1/agent/rd-session/end`) and is audited as ended by the endpoint user.
 
 ### Service mode and session helper
-`endpoint-agent install | uninstall | run | session-helper`. Running it with flags only, as before,
+`nigafiy-agent install | uninstall | run | session-helper`. Running it with flags only, as before,
 keeps everything in the agent's own process.
 
 - **`run`** (what the service runs) sends every desktop call (capture, input, consent dialog, banner,
@@ -127,8 +127,8 @@ keeps everything in the agent's own process.
 To install the service on Windows, run this from an elevated prompt, with the binary in Program Files:
 
 ```
-endpoint-agent.exe install -server https://<server> -token <enrollment token>
-endpoint-agent.exe uninstall
+nigafiy-agent.exe install -server https://<server> -token <enrollment token>
+nigafiy-agent.exe uninstall
 ```
 
 ### Monitors, clipboard, other platforms
@@ -168,7 +168,7 @@ endpoint-agent.exe uninstall
 - **Ran for real on this Windows desktop:**
   - The compiled agent streamed this screen (1920x1080 → 960x540, GDI, JPEG tiles) through the
     WebSocket hub to a test viewer, then closed with 4000. This ran twice: in the foreground, and as
-    `endpoint-agent run`, where every frame and the banner went through a real
+    `nigafiy-agent run`, where every frame and the banner went through a real
     `session-helper` process.
   - The Fleet web console through the Next.js proxy: "Live stream · direct", the banner on the
     screen, scale changes, ending the session, the history row, and Arabic RTL.

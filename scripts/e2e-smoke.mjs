@@ -13,7 +13,7 @@ import path from 'node:path';
 
 const API = process.env.API_URL ?? 'http://localhost:4100';
 const root = path.resolve(import.meta.dirname, '..');
-const binary = path.join(root, 'collectors/lan-collector/bin', process.platform === 'win32' ? 'lan-collector.exe' : 'lan-collector');
+const binary = path.join(root, 'collectors/lan-collector/bin', process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
 const keep = process.argv.includes('--keep-running');
 // E2E_SCOPE: a range YOU own. Defaults to the loopback test network.
 const SCOPE = process.env.E2E_SCOPE ?? '127.0.0.0/29';

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
-	"github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
+	"github.com/nigafiy/sensor/internal/router"
+	"github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
 )
 
 // Router controls beyond blocking (docs/features/router-controls.md), end to end through the

@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 // terminal is the interactive console. Passwords are read from it with echo off, byte by byte into

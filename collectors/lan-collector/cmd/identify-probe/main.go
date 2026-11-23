@@ -8,7 +8,7 @@ import (
 	"net/netip"
 	"os"
 
-	"github.com/lan-detective/lan-collector/internal/identify"
+	"github.com/nigafiy/sensor/internal/identify"
 )
 
 func main() {

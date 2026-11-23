@@ -75,9 +75,9 @@ function authenticode(file) {
 
 try {
   console.log(`[release] Nigafiy ${version} -> ${outDir}`);
-  const collectorExe = path.join(ROOT, 'collectors', 'lan-collector', 'bin', 'lan-collector.exe');
+  const collectorExe = path.join(ROOT, 'collectors', 'lan-collector', 'bin', 'nigafiy-sensor.exe');
   const engineExe = path.join(ROOT, 'engine', 'bin', 'nigafiy-engine.exe');
-  run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', collectorExe, './cmd/lan-collector'], path.join(ROOT, 'collectors', 'lan-collector'), goEnv);
+  run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', collectorExe, './cmd/nigafiy-sensor'], path.join(ROOT, 'collectors', 'lan-collector'), goEnv);
   run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', engineExe, './cmd/nigafiy-engine'], path.join(ROOT, 'engine'), goEnv);
   if (!signFiles([collectorExe, engineExe])) fail('the Go binaries were not signed');
 
@@ -103,7 +103,7 @@ try {
 
   // Every artefact (and the binaries inside the app) must carry a valid signature.
   const unpacked = path.join(releaseDir, 'win-unpacked');
-  const inner = [path.join(unpacked, 'resources', 'engine', 'nigafiy-engine.exe'), path.join(unpacked, 'resources', 'collector', 'lan-collector.exe')];
+  const inner = [path.join(unpacked, 'resources', 'engine', 'nigafiy-engine.exe'), path.join(unpacked, 'resources', 'collector', 'nigafiy-sensor.exe')];
   const appExe = existsSync(unpacked) ? readdirSync(unpacked).find((n) => n.toLowerCase().endsWith('.exe')) : null;
   if (appExe) inner.push(path.join(unpacked, appExe));
   const bad = [];

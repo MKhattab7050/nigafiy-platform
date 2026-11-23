@@ -4,7 +4,7 @@
 //   node scripts/installers/build-agent-installer.mjs [--version 1.2.3] [--out dist/installers]
 //
 // 1. go build agents/endpoint-agent for windows/amd64 with main.Version set;
-// 2. signs endpoint-agent.exe through apps/desktop/scripts/signing.cjs (the same free Authenticode
+// 2. signs nigafiy-agent.exe through apps/desktop/scripts/signing.cjs (the same free Authenticode
 //    hook the desktop build uses; NIGAFIY_REQUIRE_SIGNING=1 makes a missing certificate an error);
 // 3. compiles packaging/endpoint-agent/endpoint-agent.nsi with makensis (NIGAFIY_MAKENSIS, PATH, or
 //    the copy electron-builder keeps in its cache);
@@ -59,9 +59,9 @@ export function findMakensis(env = process.env) {
 try {
   const binDir = path.join(ROOT, 'agents', 'endpoint-agent', 'bin');
   mkdirSync(binDir, { recursive: true });
-  const agentExe = path.join(binDir, 'endpoint-agent.exe');
-  console.log(`[agent-installer] go build endpoint-agent ${version}`);
-  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X main.Version=${version}`, '-o', agentExe, './cmd/endpoint-agent'], {
+  const agentExe = path.join(binDir, 'nigafiy-agent.exe');
+  console.log(`[agent-installer] go build nigafiy-agent ${version}`);
+  execFileSync('go', ['build', '-trimpath', '-ldflags', `-s -w -X main.Version=${version}`, '-o', agentExe, './cmd/nigafiy-agent'], {
     cwd: path.join(ROOT, 'agents', 'endpoint-agent'),
     stdio: 'inherit',
     env: { ...process.env, GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' },

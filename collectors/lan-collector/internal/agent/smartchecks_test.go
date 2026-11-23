@@ -17,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/config"
-	"github.com/lan-detective/lan-collector/internal/dhcp"
-	"github.com/lan-detective/lan-collector/internal/smart"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/config"
+	"github.com/nigafiy/sensor/internal/dhcp"
+	"github.com/nigafiy/sensor/internal/smart"
 )
 
 const smartScopeID = "5c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f"

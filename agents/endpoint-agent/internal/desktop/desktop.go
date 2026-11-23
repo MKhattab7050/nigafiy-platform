@@ -4,7 +4,7 @@
 //
 //   - Local: in this process. Used when the agent itself runs in the user's desktop session.
 //   - Helper (Supervisor + HelperClient): forwards every call to a session helper — the same agent
-//     binary started as `endpoint-agent session-helper` inside the user's desktop session — over the
+//     binary started as `nigafiy-agent session-helper` inside the user's desktop session — over the
 //     helper's stdin/stdout. Used when the agent runs as a Windows service (session 0 has no
 //     desktop) or as root outside the graphical session on Linux/macOS. The helper never holds the
 //     agent's credential and has no network listener: it only answers its parent over an anonymous
@@ -16,9 +16,9 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/lan-detective/endpoint-agent/internal/clipboard"
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
+	"github.com/nigafiy/agent/internal/clipboard"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 )
 
 type Desktop interface {

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/snmp"
-	"github.com/lan-detective/lan-collector/internal/snmp/sim"
+	"github.com/nigafiy/sensor/internal/snmp"
+	"github.com/nigafiy/sensor/internal/snmp/sim"
 )
 
 func simTarget(t *testing.T, a *sim.Agent) snmp.Target {

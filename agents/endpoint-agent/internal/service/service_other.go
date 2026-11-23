@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 var errUnsupported = errors.New("installing the agent as a service is supported on Windows, Linux (systemd) and macOS (launchd)")

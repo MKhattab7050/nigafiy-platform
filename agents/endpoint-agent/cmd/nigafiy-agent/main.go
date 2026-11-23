@@ -1,4 +1,4 @@
-// endpoint-agent is the LAN Detective managed-endpoint agent.
+// nigafiy-agent is the Nigafiy Agent (managed-endpoint agent).
 //
 // Installed on company-owned computers, it reports hardware, health, running processes, services,
 // installed software and active network connections over outbound HTTPS, and executes authorized
@@ -6,11 +6,11 @@
 //
 // Usage:
 //
-//	endpoint-agent [flags]                 run in the foreground; the desktop work happens in this process
-//	endpoint-agent install [flags]         enroll (when -token is given) and install the Nigafiy service
-//	endpoint-agent uninstall [-service-name N]
-//	endpoint-agent run [flags]             what the service runs: the desktop work goes to a session helper
-//	endpoint-agent session-helper          started by the service inside the signed-in user's session
+//	nigafiy-agent [flags]                 run in the foreground; the desktop work happens in this process
+//	nigafiy-agent install [flags]         enroll (when -token is given) and install the Nigafiy service
+//	nigafiy-agent uninstall [-service-name N]
+//	nigafiy-agent run [flags]             what the service runs: the desktop work goes to a session helper
+//	nigafiy-agent session-helper          started by the service inside the signed-in user's session
 package main
 
 import (
@@ -26,10 +26,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/agent"
-	"github.com/lan-detective/endpoint-agent/internal/config"
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
-	"github.com/lan-detective/endpoint-agent/internal/service"
+	"github.com/nigafiy/agent/internal/agent"
+	"github.com/nigafiy/agent/internal/config"
+	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/service"
 )
 
 var Version = "0.1.0"
@@ -62,19 +62,19 @@ func bindConfig(fs *flag.FlagSet, cfg *config.Config) {
 
 func newLogger(w io.Writer, level string) *slog.Logger {
 	lv := map[string]slog.Level{"debug": slog.LevelDebug, "info": slog.LevelInfo, "warn": slog.LevelWarn, "error": slog.LevelError}[level]
-	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lv})).With("service", "lan-endpoint-agent", "version", Version)
+	return slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lv})).With("service", "nigafiy-agent", "version", Version)
 }
 
 // cmdForeground is the original mode: flags only, the desktop work in this process.
 func cmdForeground(args []string) int {
 	cfg := config.FromEnv()
-	fs := flag.NewFlagSet("endpoint-agent", flag.ExitOnError)
+	fs := flag.NewFlagSet("nigafiy-agent", flag.ExitOnError)
 	bindConfig(fs, &cfg)
 	showVersion := fs.Bool("version", false, "print version and exit")
 	_ = fs.Parse(args)
 
 	if *showVersion {
-		fmt.Println("lan-endpoint-agent", Version)
+		fmt.Println("nigafiy-agent", Version)
 		return 0
 	}
 	if err := cfg.Validate(); err != nil {

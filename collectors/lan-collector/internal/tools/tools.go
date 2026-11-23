@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/probe"
+	"github.com/nigafiy/sensor/internal/probe"
 )
 
 // Request is one toolbox run.

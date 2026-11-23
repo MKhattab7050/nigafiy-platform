@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/snmp"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/snmp"
 )
 
 // Port Detective port control: the `set_switch_port` command (closed list, see agent.go).

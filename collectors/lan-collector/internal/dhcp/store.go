@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/identify"
-	"github.com/lan-detective/lan-collector/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/identify"
+	"github.com/nigafiy/sensor/internal/netinfo"
 )
 
 const (

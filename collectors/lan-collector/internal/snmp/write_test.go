@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gosnmp/gosnmp"
-	"github.com/lan-detective/lan-collector/internal/snmp/sim"
+	"github.com/nigafiy/sensor/internal/snmp/sim"
 )
 
 const writeCommunity = "w-r1te-secret-77"

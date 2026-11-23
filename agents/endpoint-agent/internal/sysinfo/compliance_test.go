@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/config"
+	"github.com/nigafiy/agent/internal/config"
 )
 
 // The samples below are written from each tool's documented output format; they are not captured

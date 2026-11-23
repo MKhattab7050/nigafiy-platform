@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 func TestOnlyConsoleSessionChangesRestartTheHelper(t *testing.T) {

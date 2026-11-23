@@ -193,7 +193,7 @@ const beatAgent = () =>
         { pid: 2890, name: 'Code.exe', cpu_s: 88.1, mem_mb: 520.0 },
         { pid: 1104, name: 'svchost.exe', cpu_s: 34.2, mem_mb: 148.2 },
         { pid: 5512, name: 'Teams.exe', cpu_s: 61.0, mem_mb: 410.8 },
-        { pid: 920, name: 'endpoint-agent.exe', cpu_s: 2.1, mem_mb: 18.4 },
+        { pid: 920, name: 'nigafiy-agent.exe', cpu_s: 2.1, mem_mb: 18.4 },
       ],
       services: [
         { name: 'LanmanWorkstation', display_name: 'Workstation', state: 'running', start_mode: 'Auto' },

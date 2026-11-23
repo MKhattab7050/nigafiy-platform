@@ -237,8 +237,34 @@ type Deps struct {
 	CheckSig     SignatureChecker
 	StartService func(name string) error
 	StartExe     func(path string) error
+	Exists       func(path string) bool // nil: os.Stat
 	Now          func() time.Time
 	Logf         func(format string, args ...any)
+}
+
+// AppExeNames are the desktop app's executable names, newest first. electron-builder names the
+// .exe after productName, which the rename changed from "LAN Detective" to "Nigafiy"
+// (docs/architecture/naming.md): a helper started by the old app restarts the new one.
+var AppExeNames = []string{"Nigafiy.exe", "LAN Detective.exe"}
+
+// RestartTarget is the program to start after the installation: restartExe when it still exists,
+// else (it sat in installDir and the update renamed it) the app's executable under its other name.
+func RestartTarget(restartExe, installDir string, exists func(string) bool) string {
+	if exists == nil {
+		exists = func(p string) bool { _, err := os.Stat(p); return err == nil }
+	}
+	if restartExe == "" || exists(restartExe) || installDir == "" {
+		return restartExe
+	}
+	if !strings.EqualFold(filepath.Clean(filepath.Dir(restartExe)), filepath.Clean(installDir)) {
+		return restartExe
+	}
+	for _, name := range AppExeNames {
+		if p := filepath.Join(installDir, name); exists(p) {
+			return p
+		}
+	}
+	return restartExe
 }
 
 // Apply waits for the engine to exit, re-verifies the installer, runs it silently, records the
@@ -260,8 +286,9 @@ func Apply(p Plan, d Deps) Result {
 				d.Logf("starting the service %s", p.ServiceName)
 				err = d.StartService(p.ServiceName)
 			} else {
-				d.Logf("starting %s", p.RestartExe)
-				err = d.StartExe(p.RestartExe)
+				exe := RestartTarget(p.RestartExe, p.InstallDir, d.Exists)
+				d.Logf("starting %s", exe)
+				err = d.StartExe(exe)
 			}
 			if err != nil {
 				d.Logf("restart failed: %v", err)

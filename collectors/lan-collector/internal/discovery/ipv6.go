@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/identify"
-	"github.com/lan-detective/lan-collector/internal/netinfo"
-	"github.com/lan-detective/lan-collector/internal/scope"
+	"github.com/nigafiy/sensor/internal/identify"
+	"github.com/nigafiy/sensor/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/scope"
 )
 
 // MaxUnicast6 bounds the unicast echo requests of one IPv6 discovery (known addresses re-checked).

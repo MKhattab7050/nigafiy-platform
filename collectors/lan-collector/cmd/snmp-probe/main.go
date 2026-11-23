@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/snmp"
+	"github.com/nigafiy/sensor/internal/snmp"
 )
 
 func main() {

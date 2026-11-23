@@ -3,7 +3,7 @@
 ## Architecture
 
 ```
-cmd/lan-collector        flags, logging, signal handling
+cmd/nigafiy-sensor        flags, logging, signal handling
 internal/config          YAML + env, strict validation, hard ceilings
 internal/scope           what may be probed (private only, ≤ /20, optional local allow-list)
 internal/discovery       rate/concurrency-limited ICMP sweep + neighbour table + rDNS

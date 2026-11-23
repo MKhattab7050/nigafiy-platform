@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lan-detective/lan-collector/internal/router"
-	"github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
+	"github.com/nigafiy/sensor/internal/router"
+	"github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
 )
 
 func controlsFixture() zyxeltest.Config {

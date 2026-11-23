@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/configbackup"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/configbackup"
 )
 
 func restoreItems(t *testing.T, a *Agent) []map[string]any {

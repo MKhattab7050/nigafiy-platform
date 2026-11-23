@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/snmp"
+	"github.com/nigafiy/sensor/internal/snmp"
 )
 
 // SNMPConfig is an snmp_oid check's settings as delivered by the cloud. The thresholds are applied by

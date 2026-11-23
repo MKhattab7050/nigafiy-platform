@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 )
 
 // The test binary doubles as a session helper process: with NIGAFIY_TEST_HELPER=1 it serves the
-// real Local desktop of this computer on stdin/stdout (what `endpoint-agent session-helper` does).
+// real Local desktop of this computer on stdin/stdout (what `nigafiy-agent session-helper` does).
 func TestMain(m *testing.M) {
 	if os.Getenv("NIGAFIY_TEST_HELPER") == "1" {
 		_ = Serve(context.Background(), os.Stdin, os.Stdout, NewLocal())

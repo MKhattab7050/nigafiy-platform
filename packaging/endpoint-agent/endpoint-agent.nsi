@@ -1,10 +1,10 @@
 ; Nigafiy Endpoint Agent installer (docs/operations/installers.md).
 ;
 ; Built by scripts/installers/build-agent-installer.mjs:
-;   makensis /DVERSION=1.2.3 /DAGENT_EXE=<signed endpoint-agent.exe> /DOUTFILE=<setup.exe> /DICON=<agent.ico> endpoint-agent.nsi
+;   makensis /DVERSION=1.2.3 /DAGENT_EXE=<signed nigafiy-agent.exe> /DOUTFILE=<setup.exe> /DICON=<agent.ico> endpoint-agent.nsi
 ;
-; It copies endpoint-agent.exe to "%ProgramFiles%\Nigafiy\Endpoint Agent" and runs the agent's own
-;   endpoint-agent.exe install -server <url> [-tls-pin <sha256>] [-ca-file <pem>] [-service-name <n>] [-log-level <l>] [-no-start]
+; It copies nigafiy-agent.exe to "%ProgramFiles%\Nigafiy\Endpoint Agent" and runs the agent's own
+;   nigafiy-agent.exe install -server <url> [-tls-pin <sha256>] [-ca-file <pem>] [-service-name <n>] [-log-level <l>] [-no-start]
 ; which enrolls with the one-time token (passed in the NIGAFIY_AGENT_ENROLLMENT_TOKEN environment
 ; variable, never on the agent's command line) and registers the Windows service. The service, the
 ; consent prompt and the session banner are the agent's; this installer adds nothing hidden.
@@ -35,7 +35,7 @@ RequestExecutionLevel admin
   !define VERSION "0.0.0"
 !endif
 !ifndef AGENT_EXE
-  !error "define AGENT_EXE: the endpoint-agent.exe to package"
+  !error "define AGENT_EXE: the nigafiy-agent.exe to package"
 !endif
 !ifndef OUTFILE
   !define OUTFILE "Nigafiy-Endpoint-Agent-Setup-${VERSION}.exe"
@@ -234,13 +234,19 @@ Section "Install"
 
   ; Upgrade: the agent's install step refuses an existing service, so the old one is removed first
   ; (its credential in %ProgramData% stays and is used again).
-  ${If} ${FileExists} "$INSTDIR\endpoint-agent.exe"
+  ; An agent installed before the rename is endpoint-agent.exe (docs/architecture/naming.md): its
+  ; service (same name) is removed with that binary, which is deleted once the new one is installed.
+  ${If} ${FileExists} "$INSTDIR\nigafiy-agent.exe"
     DetailPrint "Removing the existing $ServiceName service"
+    nsExec::ExecToLog '"$INSTDIR\nigafiy-agent.exe" uninstall -service-name "$ServiceName"'
+    Pop $0
+  ${ElseIf} ${FileExists} "$INSTDIR\endpoint-agent.exe"
+    DetailPrint "Removing the existing $ServiceName service (agent from before the rename)"
     nsExec::ExecToLog '"$INSTDIR\endpoint-agent.exe" uninstall -service-name "$ServiceName"'
     Pop $0
   ${EndIf}
 
-  File "/oname=endpoint-agent.exe" "${AGENT_EXE}"
+  File "/oname=nigafiy-agent.exe" "${AGENT_EXE}"
 
   StrCpy $2 'install -server "$Server" -service-name "$ServiceName" -log-level "$LogLevel"'
   ${If} $Pin != ""
@@ -256,14 +262,14 @@ Section "Install"
   ; The token goes to the agent in its environment only, then is cleared from this process.
   System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", t "$Token") i'
   DetailPrint "Enrolling and installing the service"
-  nsExec::ExecToStack '"$INSTDIR\endpoint-agent.exe" $2'
+  nsExec::ExecToStack '"$INSTDIR\nigafiy-agent.exe" $2'
   Pop $0
   Pop $1
   System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", i 0) i'
   StrCpy $Token ""
 
   FileOpen $3 "$INSTDIR\install.log" w
-  FileWrite $3 "endpoint-agent $2$\r$\nexit code $0$\r$\n$1$\r$\n"
+  FileWrite $3 "nigafiy-agent $2$\r$\nexit code $0$\r$\n$1$\r$\n"
   FileClose $3
 
   ${If} $0 != "0"
@@ -272,11 +278,12 @@ Section "Install"
       MessageBox MB_ICONSTOP "The agent could not be installed:$\r$\n$\r$\n$1$\r$\nDetails: $INSTDIR\install.log"
     SetErrorLevel 1
     ${If} $Upgrade != "1"
-      Delete "$INSTDIR\endpoint-agent.exe"
+      Delete "$INSTDIR\nigafiy-agent.exe"
     ${EndIf}
     Abort
   ${EndIf}
   DetailPrint "$1"
+  Delete "$INSTDIR\endpoint-agent.exe"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
   WriteRegStr HKLM "${SETTINGS_KEY}" "InstallDir" "$INSTDIR"
@@ -289,7 +296,7 @@ Section "Install"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "Publisher" "Nigafiy"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\endpoint-agent.exe"
+  WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\nigafiy-agent.exe"
   WriteRegStr HKLM "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
   WriteRegStr HKLM "${UNINSTALL_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S'
   WriteRegDWORD HKLM "${UNINSTALL_KEY}" "NoModify" 1
@@ -317,8 +324,9 @@ FunctionEnd
 Section "Uninstall"
   SetRegView 64
   SetShellVarContext all
-  nsExec::ExecToLog '"$INSTDIR\endpoint-agent.exe" uninstall -service-name "$ServiceName"'
+  nsExec::ExecToLog '"$INSTDIR\nigafiy-agent.exe" uninstall -service-name "$ServiceName"'
   Pop $0
+  Delete "$INSTDIR\nigafiy-agent.exe"
   Delete "$INSTDIR\endpoint-agent.exe"
   Delete "$INSTDIR\install.log"
   Delete "$INSTDIR\uninstall.exe"

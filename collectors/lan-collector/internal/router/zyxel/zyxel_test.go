@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/router"
-	"github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
+	"github.com/nigafiy/sensor/internal/router"
+	"github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
 )
 
 const testPassword = "correct-horse-7"

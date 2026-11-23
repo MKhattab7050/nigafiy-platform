@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/desktop"
 )
 
 // DefaultName is the launchd label.

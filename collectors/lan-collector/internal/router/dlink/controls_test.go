@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 type fakeDLinkRadio struct {

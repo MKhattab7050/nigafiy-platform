@@ -1,7 +1,7 @@
 # Code signing (free)
 
 Nigafiy's Windows build signs every program it ships (the desktop app, its uninstaller, the
-installer, `nigafiy-engine.exe` and `lan-collector.exe`) with Authenticode. Signing uses only
+installer, `nigafiy-engine.exe` and `nigafiy-sensor.exe`) with Authenticode. Signing uses only
 built-in Windows PowerShell (`Set-AuthenticodeSignature`): no signtool, no paid service.
 
 ## The free route: your organisation's own certificate

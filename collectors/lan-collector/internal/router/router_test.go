@@ -87,7 +87,7 @@ func moduleRoot(t *testing.T) string {
 // product binary: no non-test file in the module imports it, and the dependency graphs of
 // lan-collector and router-probe do not contain it.
 func TestProductBinariesExcludeTestDouble(t *testing.T) {
-	const double = "github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
+	const double = "github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
 	root := moduleRoot(t)
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -127,7 +127,7 @@ func TestProductBinariesExcludeTestDouble(t *testing.T) {
 			t.Skip("go tool not found; the import scan above still ran")
 		}
 	}
-	for _, cmd := range []string{"./cmd/lan-collector", "./cmd/router-probe"} {
+	for _, cmd := range []string{"./cmd/nigafiy-sensor", "./cmd/router-probe"} {
 		c := exec.Command(goBin, "list", "-deps", cmd)
 		c.Dir = root
 		out, err := c.Output()

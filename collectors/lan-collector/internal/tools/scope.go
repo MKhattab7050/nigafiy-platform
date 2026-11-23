@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/netip"
 
-	"github.com/lan-detective/lan-collector/internal/scope"
+	"github.com/nigafiy/sensor/internal/scope"
 )
 
 // The toolbox scope rule (the API applies the same rule before queuing, modules/toolbox/queue.ts):

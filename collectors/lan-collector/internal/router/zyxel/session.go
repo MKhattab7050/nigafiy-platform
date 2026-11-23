@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/router"
+	"github.com/nigafiy/sensor/internal/router"
 )
 
 // envelope is the encrypted body format in both directions.

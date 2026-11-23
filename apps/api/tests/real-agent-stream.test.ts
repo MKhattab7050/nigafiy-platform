@@ -13,16 +13,16 @@ import { endpointsModule } from '../src/modules/endpoints/index.ts';
 import { StreamHub, frameMeta } from '../src/modules/endpoints/remote-desktop/stream-hub.ts';
 import { CSRF, app, newAccount } from './helpers.ts';
 
-const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', process.platform === 'win32' ? 'endpoint-agent.exe' : 'endpoint-agent');
+const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', process.platform === 'win32' ? 'nigafiy-agent.exe' : 'nigafiy-agent');
 
 // The compiled Go agent on this Windows desktop, live stream end to end: real screen capture,
 // real tile encoding, the real session banner (it appears top-centre for a few seconds), the real
 // WebSocket hub. Input and clipboard are not sent here: they would move the mouse and replace the
 // clipboard of the person using this computer (both are covered by Go tests and fleet-stream.test.ts).
 //
-// Twice: the agent in the foreground (desktop work in its own process), and `endpoint-agent run`
+// Twice: the agent in the foreground (desktop work in its own process), and `nigafiy-agent run`
 // (the service's mode: every capture, the banner and the stream's frames go through a real session
-// helper process, `endpoint-agent session-helper`, over its stdin/stdout pipes).
+// helper process, `nigafiy-agent session-helper`, over its stdin/stdout pipes).
 describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go agent: live stream over WebSocket (run `pnpm build:agent` first)', () => {
   it.each([
     { mode: 'foreground', args: [] as string[], desktopMode: 'local' },

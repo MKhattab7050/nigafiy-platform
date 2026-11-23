@@ -22,9 +22,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
-	"github.com/lan-detective/endpoint-agent/internal/wsclient"
+	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/userui"
+	"github.com/nigafiy/agent/internal/wsclient"
 )
 
 // OpenRequest is the payload of the server's rd_session_open command.

@@ -10,8 +10,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/configbackup"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/configbackup"
 )
 
 // config_restore: an administrator-confirmed restore of one configuration version

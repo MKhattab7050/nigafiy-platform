@@ -7,8 +7,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/tools"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/tools"
 )
 
 // At most this many toolbox requests run at once; further ones wait their turn.

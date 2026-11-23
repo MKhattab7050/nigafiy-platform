@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 )
 
 // Launcher starts one session helper and returns its pipe (helper's stdout to read, stdin to

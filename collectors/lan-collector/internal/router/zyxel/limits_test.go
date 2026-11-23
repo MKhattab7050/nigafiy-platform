@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/router"
-	"github.com/lan-detective/lan-collector/internal/router/zyxel/zyxeltest"
+	"github.com/nigafiy/sensor/internal/router"
+	"github.com/nigafiy/sensor/internal/router/zyxel/zyxeltest"
 )
 
 // limitsFixture plays the owner's firmware as read on 2026-11-21: QoS off, auto mapping None,

@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/cloud"
-	"github.com/lan-detective/lan-collector/internal/config"
-	"github.com/lan-detective/lan-collector/internal/dhcp"
-	"github.com/lan-detective/lan-collector/internal/netinfo"
-	"github.com/lan-detective/lan-collector/internal/probe"
-	"github.com/lan-detective/lan-collector/internal/tools"
+	"github.com/nigafiy/sensor/internal/cloud"
+	"github.com/nigafiy/sensor/internal/config"
+	"github.com/nigafiy/sensor/internal/dhcp"
+	"github.com/nigafiy/sensor/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/probe"
+	"github.com/nigafiy/sensor/internal/tools"
 )
 
 const goodToken = "lde_test-token-0123456789"

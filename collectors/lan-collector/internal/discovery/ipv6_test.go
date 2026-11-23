@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/netinfo"
+	"github.com/nigafiy/sensor/internal/netinfo"
 )
 
 func hostsByIP(hosts []Host) map[string]Host {

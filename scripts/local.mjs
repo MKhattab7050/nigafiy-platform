@@ -448,8 +448,8 @@ const agentDir = path.join(root, 'agents/endpoint-agent');
 const collectorData = path.join(dataDir, 'collector');
 const stateDir = path.join(collectorData, 'state');
 const credFile = path.join(stateDir, 'credential.json');
-const binary = path.join(collectorDir, 'bin', win ? 'lan-collector.exe' : 'lan-collector');
-const agentBinary = path.join(agentDir, 'bin', win ? 'endpoint-agent.exe' : 'endpoint-agent');
+const binary = path.join(collectorDir, 'bin', win ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
+const agentBinary = path.join(agentDir, 'bin', win ? 'nigafiy-agent.exe' : 'nigafiy-agent');
 
 function findGo() {
   const candidates = ['go', ...(win ? ['C:\\Program Files\\Go\\bin\\go.exe'] : ['/usr/local/go/bin/go'])];
@@ -473,8 +473,8 @@ function ensureAgentBinary() {
   if (!go) return;
   mkdirSync(path.dirname(agentBinary), { recursive: true });
   say(`${c.dim}Building endpoint-agent…${c.off}`);
-  const r = spawnSync(go, ['build', '-o', agentBinary, './cmd/endpoint-agent'], { cwd: agentDir, stdio: 'inherit' });
-  if (r.status === 0) ok('Updated endpoint-agent binary');
+  const r = spawnSync(go, ['build', '-o', agentBinary, './cmd/nigafiy-agent'], { cwd: agentDir, stdio: 'inherit' });
+  if (r.status === 0) ok('Updated nigafiy-agent binary');
 }
 function ensureBinary() {
   ensureAgentBinary();
@@ -491,12 +491,12 @@ function ensureBinary() {
   }
   mkdirSync(path.dirname(binary), { recursive: true });
   say(`${c.dim}Building the collector…${c.off}`);
-  const r = spawnSync(go, ['build', '-o', binary, './cmd/lan-collector'], { cwd: collectorDir, stdio: 'inherit' });
+  const r = spawnSync(go, ['build', '-o', binary, './cmd/nigafiy-sensor'], { cwd: collectorDir, stdio: 'inherit' });
   if (r.status !== 0) {
     warn('Collector build failed; skipping the collector.');
     return false;
   }
-  ok('Updated lan-collector binary');
+  ok('Updated nigafiy-sensor binary');
   return true;
 }
 

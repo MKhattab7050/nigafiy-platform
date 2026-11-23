@@ -10,13 +10,13 @@ import { CSRF, app, newAccount } from './helpers.ts';
 const binPath = path.resolve(
   import.meta.dirname,
   '../../../agents/endpoint-agent/bin',
-  process.platform === 'win32' ? 'endpoint-agent.exe' : 'endpoint-agent',
+  process.platform === 'win32' ? 'nigafiy-agent.exe' : 'nigafiy-agent',
 );
 
 // Needs an interactive Windows desktop and a binary built from the current source (`pnpm build:agent`).
-describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go endpoint-agent binary on Windows (end-to-end, run `pnpm build:agent` first)', () => {
+describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go Nigafiy Agent binary on Windows (end-to-end, run `pnpm build:agent` first)', () => {
   it(
-    'spawns the compiled endpoint-agent binary, enrolls, collects real host telemetry/inventory, and executes live File Manager, Remote Desktop, and Diagnostic commands',
+    'spawns the compiled nigafiy-agent binary, enrolls, collects real host telemetry/inventory, and executes live File Manager, Remote Desktop, and Diagnostic commands',
     async () => {
       const srv = http.createServer(app);
       await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
@@ -63,7 +63,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go e
 
         // 1. Live Remote File Manager: create a file, list directory, download & verify SHA-256, and delete
         const testFile = path.join(testWorkspace, 'e2e-real-test.txt');
-        const payloadText = 'Verified by real Go endpoint-agent on Windows!';
+        const payloadText = 'Verified by real Go Nigafiy Agent on Windows!';
         const touchRes = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=5000`).set(CSRF).send({
           kind: 'fs_op',
           op: 'touch',

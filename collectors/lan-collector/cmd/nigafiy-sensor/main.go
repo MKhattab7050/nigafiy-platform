@@ -14,25 +14,25 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lan-detective/lan-collector/internal/agent"
-	"github.com/lan-detective/lan-collector/internal/config"
+	"github.com/nigafiy/sensor/internal/agent"
+	"github.com/nigafiy/sensor/internal/config"
 	// Router drivers shipped in the collector (they register with internal/router).
-	_ "github.com/lan-detective/lan-collector/internal/router/asus"
-	_ "github.com/lan-detective/lan-collector/internal/router/ciscoxe"
-	_ "github.com/lan-detective/lan-collector/internal/router/dlink"
-	_ "github.com/lan-detective/lan-collector/internal/router/fortigate"
-	_ "github.com/lan-detective/lan-collector/internal/router/huawei"
-	_ "github.com/lan-detective/lan-collector/internal/router/huaweilte"
-	_ "github.com/lan-detective/lan-collector/internal/router/mikrotik"
-	_ "github.com/lan-detective/lan-collector/internal/router/omada"
-	_ "github.com/lan-detective/lan-collector/internal/router/openwrt"
-	_ "github.com/lan-detective/lan-collector/internal/router/opnsense"
-	_ "github.com/lan-detective/lan-collector/internal/router/pfsense"
-	_ "github.com/lan-detective/lan-collector/internal/router/tenda"
-	_ "github.com/lan-detective/lan-collector/internal/router/tplink"
-	_ "github.com/lan-detective/lan-collector/internal/router/unifi"
-	_ "github.com/lan-detective/lan-collector/internal/router/zte"
-	_ "github.com/lan-detective/lan-collector/internal/router/zyxel"
+	_ "github.com/nigafiy/sensor/internal/router/asus"
+	_ "github.com/nigafiy/sensor/internal/router/ciscoxe"
+	_ "github.com/nigafiy/sensor/internal/router/dlink"
+	_ "github.com/nigafiy/sensor/internal/router/fortigate"
+	_ "github.com/nigafiy/sensor/internal/router/huawei"
+	_ "github.com/nigafiy/sensor/internal/router/huaweilte"
+	_ "github.com/nigafiy/sensor/internal/router/mikrotik"
+	_ "github.com/nigafiy/sensor/internal/router/omada"
+	_ "github.com/nigafiy/sensor/internal/router/openwrt"
+	_ "github.com/nigafiy/sensor/internal/router/opnsense"
+	_ "github.com/nigafiy/sensor/internal/router/pfsense"
+	_ "github.com/nigafiy/sensor/internal/router/tenda"
+	_ "github.com/nigafiy/sensor/internal/router/tplink"
+	_ "github.com/nigafiy/sensor/internal/router/unifi"
+	_ "github.com/nigafiy/sensor/internal/router/zte"
+	_ "github.com/nigafiy/sensor/internal/router/zyxel"
 )
 
 // Version is set at build time: -ldflags "-X main.Version=1.2.3".
@@ -45,7 +45,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("lan-collector", Version)
+		fmt.Println("nigafiy-sensor", Version)
 		return
 	}
 
@@ -60,7 +60,7 @@ func main() {
 	}
 
 	level := map[string]slog.Level{"debug": slog.LevelDebug, "info": slog.LevelInfo, "warn": slog.LevelWarn, "error": slog.LevelError}[cfg.LogLevel]
-	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})).With("service", "lan-collector", "version", Version)
+	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})).With("service", "nigafiy-sensor", "version", Version)
 	if cfg.AllowInsecureHTTP || cfg.AllowLoopbackScopes {
 		log.Warn("development switches are enabled; do not use this configuration in production",
 			"allow_insecure_http", cfg.AllowInsecureHTTP, "allow_loopback_scopes", cfg.AllowLoopbackScopes)

@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lan-detective/endpoint-agent/internal/desktop"
-	"github.com/lan-detective/endpoint-agent/internal/remotedesktop"
-	"github.com/lan-detective/endpoint-agent/internal/userui"
-	"github.com/lan-detective/endpoint-agent/internal/wsclient"
+	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
+	"github.com/nigafiy/agent/internal/wsclient"
 )
 
 type fakeUI struct {

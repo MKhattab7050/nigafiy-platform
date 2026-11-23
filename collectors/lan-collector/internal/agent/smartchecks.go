@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lan-detective/lan-collector/internal/dhcp"
-	"github.com/lan-detective/lan-collector/internal/smart"
+	"github.com/nigafiy/sensor/internal/dhcp"
+	"github.com/nigafiy/sensor/internal/smart"
 )
 
 // Smart network checks (protocol: apps/api/src/common/smart-check-protocol.ts; schedule: the
