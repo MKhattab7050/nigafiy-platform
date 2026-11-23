@@ -27,7 +27,9 @@
     "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/endpoint-agent",
     "test:engine": "cd engine && go test ./...",
     "build:engine": "cd engine && go build -o bin/ ./cmd/nigafiy-engine",
-    "build:launchers": "node scripts/build-launchers.mjs"
+    "build:launchers": "node scripts/build-launchers.mjs",
+    "build:agent-installer": "node scripts/installers/build-agent-installer.mjs",
+    "release": "node scripts/release/release.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8"
