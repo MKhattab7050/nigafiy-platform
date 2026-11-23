@@ -342,7 +342,7 @@ func change(ctx context.Context, d router.Driver, term *terminal, mac string, bl
 		fmt.Println("It loses internet access; it stays on the local network. No other rule is touched.")
 	} else {
 		fmt.Println("The router's per-device Internet Blocking switch will be turned OFF for this device.")
-		fmt.Println("Only do this for a device you (or LAN Detective) blocked; the router cannot tell who did.")
+		fmt.Println("Only do this for a device you (or Nigafiy) blocked; the router cannot tell who did.")
 	}
 	ans, err := term.Line(fmt.Sprintf("Type the MAC address (%s) to confirm, anything else cancels: ", mac))
 	if err != nil {

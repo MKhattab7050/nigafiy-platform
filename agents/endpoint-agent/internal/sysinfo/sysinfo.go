@@ -1,5 +1,5 @@
 // Package sysinfo collects hardware, health, process, service, software and network connection
-// telemetry from the local machine for LAN Detective IT Operations.
+// telemetry from the local machine for Nigafiy IT Operations.
 package sysinfo
 
 import (

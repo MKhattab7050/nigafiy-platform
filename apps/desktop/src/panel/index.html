@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Local page: only its own script and stylesheet may load; no network access at all. -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
-    <title>LAN Detective — Collector</title>
+    <title>Nigafiy — Collector</title>
     <link rel="stylesheet" href="panel.css" />
   </head>
   <body>
     <header class="top">
       <div>
         <h1 data-i18n="title">Collector on this computer</h1>
-        <p class="muted" data-i18n="subtitle">Discovers and monitors the network this computer is connected to, and reports to your LAN Detective server.</p>
+        <p class="muted" data-i18n="subtitle">Discovers and monitors the network this computer is connected to, and reports to your Nigafiy server.</p>
       </div>
       <button id="lang" class="btn ghost" type="button">العربية</button>
     </header>
@@ -22,7 +22,7 @@
         <h2 data-i18n="localTitle">Local mode</h2>
         <span class="badge ok" data-i18n="localBadge">Running on this computer</span>
       </div>
-      <p class="muted small" data-i18n="localDesc">LAN Detective is running locally on this computer. To switch to a remote server, enter its https:// address below and save.</p>
+      <p class="muted small" data-i18n="localDesc">Nigafiy is running locally on this computer. To switch to a remote server, enter its https:// address below and save.</p>
       <p id="local-urls" class="muted small" dir="ltr"></p>
       <div id="local-scan-box" class="local-actions" hidden>
         <p id="local-scan-declined" class="muted small" hidden data-i18n="localScanDeclined">The first-run home-network scan was skipped.</p>
@@ -53,7 +53,7 @@
         </div>
       </div>
       <p id="error" class="alert" role="alert" hidden></p>
-      <p id="missing" class="alert" role="alert" hidden data-i18n="binaryMissing">The collector program is missing from this installation. Reinstall LAN Detective.</p>
+      <p id="missing" class="alert" role="alert" hidden data-i18n="binaryMissing">The collector program is missing from this installation. Reinstall Nigafiy.</p>
       <p id="sweep" class="muted small"></p>
       <div class="row gap">
         <button id="start" class="btn primary" type="button" data-i18n="start">Start collector</button>
@@ -65,12 +65,12 @@
     <section class="card">
       <h2 data-i18n="server">Server</h2>
       <form id="settings">
-        <label for="serverUrl" data-i18n="serverUrl">LAN Detective server address</label>
-        <input id="serverUrl" name="serverUrl" type="url" dir="ltr" placeholder="https://lan-detective.example.com" required />
+        <label for="serverUrl" data-i18n="serverUrl">Nigafiy server address</label>
+        <input id="serverUrl" name="serverUrl" type="url" dir="ltr" placeholder="https://nigafiy.example.com" required />
         <label for="cidrs" data-i18n="cidrs">Networks this computer may probe (optional)</label>
         <input id="cidrs" name="cidrs" dir="ltr" placeholder="192.168.1.0/24, 10.0.5.0/24" />
         <p class="muted small" data-i18n="cidrsHint">A local safety limit: even if the server asks for more, the collector only probes ranges listed here. Leave empty to accept any authorized private range.</p>
-        <label class="check"><input id="autoStart" type="checkbox" /> <span data-i18n="autoStart">Start the collector when LAN Detective opens</span></label>
+        <label class="check"><input id="autoStart" type="checkbox" /> <span data-i18n="autoStart">Start the collector when Nigafiy opens</span></label>
         <p id="settings-msg" class="small" role="status"></p>
         <button class="btn" type="submit" data-i18n="save">Save</button>
       </form>

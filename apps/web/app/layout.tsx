@@ -13,7 +13,7 @@ const arabic = IBM_Plex_Sans_Arabic({ subsets: ['arabic'], weight: ['400', '500'
 const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-plex-mono', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: { default: 'LAN Detective', template: '%s · LAN Detective' },
+  title: { default: 'Nigafiy', template: '%s · Nigafiy' },
   description: 'Know your network. Understand every incident.',
 };
 export const viewport: Viewport = {

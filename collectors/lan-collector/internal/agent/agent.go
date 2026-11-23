@@ -352,7 +352,7 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 			a.log.Info("enrolled", "collector_id", resp.CollectorID)
 			return nil
 		case errors.Is(err, cloud.ErrUnauthorized), errors.Is(err, cloud.ErrRejected):
-			return errors.New("enrollment refused: the token is invalid, already used, or expired — create a new one in LAN Detective")
+			return errors.New("enrollment refused: the token is invalid, already used, or expired — create a new one in Nigafiy")
 		}
 		wait := bo.Next()
 		a.log.Warn("enrollment failed, will retry", "error", err.Error(), "retry_in", wait.Round(time.Second).String())

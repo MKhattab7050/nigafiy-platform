@@ -106,7 +106,7 @@ function RouterDeviceRow({
   const [fromTime, setFromTime] = useState(stored?.windows[0]?.start ?? '22:00');
   const [toTime, setToTime] = useState(stored?.windows[0]?.end ?? '07:00');
   const [scheduleSaved, setScheduleSaved] = useState<string | null>(null);
-  // LAN Detective enforces the schedule itself on this router: times are in this computer's time zone.
+  // Nigafiy enforces the schedule itself on this router: times are in this computer's time zone.
   const productMode = !!stored || (entry.actions.schedule as { mode?: string }).mode === 'product';
   const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const [busy, setBusy] = useState(false);
@@ -164,7 +164,7 @@ function RouterDeviceRow({
         body: { device_id: device.id, windows, ...(productMode && windows ? { timezone: localZone } : {}) },
       });
       if (q.mode === 'product') {
-        // Stored and enforced by LAN Detective: there is no router request to follow.
+        // Stored and enforced by Nigafiy: there is no router request to follow.
         setScheduleSaved(windows ? t('routers.schedule.saved') : t('routers.req.success.clear_schedule'));
         onChanged();
       } else {
@@ -626,7 +626,7 @@ function RouterSettingsForDevice({
   );
 }
 
-/** A schedule LAN Detective enforces itself: what it is and what it is doing now. */
+/** A schedule Nigafiy enforces itself: what it is and what it is doing now. */
 function StoredSchedule({ schedule }: { schedule: ProductSchedule }) {
   const { t, locale } = useI18n();
   const state = schedule.removing

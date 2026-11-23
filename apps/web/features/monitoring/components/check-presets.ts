@@ -10,7 +10,7 @@ export interface Thresholds {
 }
 
 /**
- * The values the API itself uses, so a check added by hand starts like the ones LAN Detective creates:
+ * The values the API itself uses, so a check added by hand starts like the ones Nigafiy creates:
  * gateway / internet / DNS mirror the starter checks (apps/api monitoring/defaults.ts), a service the
  * one-click device monitor (apps/api devices/monitor.ts: 60 s, 3 samples, 200 ms, 20 %).
  */

@@ -171,7 +171,7 @@ const en = {
   approvedBy: 'Approved by {who}',
   rejectedBy: 'Rejected by {who}',
   ranBy: 'Carried out as {who}',
-  ranBySystem: 'Carried out by LAN Detective',
+  ranBySystem: 'Carried out by Nigafiy',
   selfApproved: 'Self-approved: {who} was the only administrator',
   live: 'Updates live',
   // approval panel
@@ -414,7 +414,7 @@ const ar: Dict = {
   approvedBy: 'وافق عليه {who}',
   rejectedBy: 'رفضه {who}',
   ranBy: 'نُفِّذ باسم {who}',
-  ranBySystem: 'نفّذه LAN Detective',
+  ranBySystem: 'نفّذه Nigafiy',
   selfApproved: 'موافقة ذاتية: {who} هو المسؤول الوحيد',
   live: 'يتحدّث مباشرة',
   approvalNeeded: 'بانتظار مسؤول',

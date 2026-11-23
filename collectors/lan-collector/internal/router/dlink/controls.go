@@ -305,7 +305,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set D-Link %s Enabled=%v", id, enabled),
-		Undo:      "Toggle the Wi-Fi radio back in LAN Detective or D-Link Wireless settings",
+		Undo:      "Toggle the Wi-Fi radio back in Nigafiy or D-Link Wireless settings",
 	}, nil
 }
 
@@ -364,7 +364,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on D-Link DHCP server", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Settings → Network → DHCP Reservations on D-Link",
+		Undo:      "Remove the reservation in Nigafiy or under Settings → Network → DHCP Reservations on D-Link",
 	}, nil
 }
 
@@ -398,7 +398,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed D-Link DHCP reservation %s for %s", removedIP, mac),
-		Undo:      "Add the reservation again in LAN Detective",
+		Undo:      "Add the reservation again in Nigafiy",
 	}, nil
 }
 
@@ -453,7 +453,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added D-Link port forward %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or under Features → Port Forwarding on D-Link",
+		Undo:      "Remove the rule in Nigafiy or under Features → Port Forwarding on D-Link",
 	}, nil
 }
 
@@ -481,7 +481,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed D-Link port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present on D-Link"}, nil

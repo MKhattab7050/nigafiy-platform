@@ -62,7 +62,7 @@ describe('email notifications', () => {
       { id: '1', type: 'device_offline', severity: 'critical', title: 'printer\r\nBcc: attacker@example.com is offline', details: { ip: '10.0.0.5', evidence: ['a', 'b'], nested: { last_seen: 'x' } }, occurred_at: '2026-01-02T03:04:05Z', site_name: 'HQ' },
       'Acme',
     );
-    expect(mail.subject).toBe('[LAN Detective] CRITICAL: printer Bcc: attacker@example.com is offline');
+    expect(mail.subject).toBe('[Nigafiy] CRITICAL: printer Bcc: attacker@example.com is offline');
     expect(mail.subject).not.toMatch(/[\r\n]/);
     expect(mail.text).toContain('Where:     Acme / HQ');
     expect(mail.text).toContain('ip: 10.0.0.5');
@@ -87,7 +87,7 @@ describe('email notifications', () => {
     try {
       const a = await newAccount('mail');
       const post = (body: Record<string, unknown>) => a.agent.post('/api/v1/notification-channels').set(CSRF).send(body);
-      const smtp = { host: '127.0.0.1', port, security: 'none', from: 'lan-detective@example.test' };
+      const smtp = { host: '127.0.0.1', port, security: 'none', from: 'nigafiy@example.test' };
       const base = { kind: 'email', name: 'IT team', recipients: ['it@example.test', 'boss@example.test'], min_severity: 'info' };
 
       expect((await post({ ...base, recipients: [] })).status).toBe(400);
@@ -111,13 +111,13 @@ describe('email notifications', () => {
 
       const created = await post({ ...base, smtp });
       expect(created.status).toBe(201);
-      expect(created.body.channel).toMatchObject({ kind: 'email', url: 'mailto:it@example.test,boss@example.test', config: { host: '127.0.0.1', port, security: 'none', username: null, from: 'lan-detective@example.test' } });
+      expect(created.body.channel).toMatchObject({ kind: 'email', url: 'mailto:it@example.test,boss@example.test', config: { host: '127.0.0.1', port, security: 'none', username: null, from: 'nigafiy@example.test' } });
 
       expect((await a.agent.post(`/api/v1/notification-channels/${created.body.channel.id}/test`).set(CSRF)).status).toBe(202);
       await dispatchNotifications();
       expect(received).toHaveLength(1);
-      expect(received[0]).toMatchObject({ from: 'lan-detective@example.test', to: ['it@example.test', 'boss@example.test'] });
-      expect(received[0]!.data).toContain('Subject: [LAN Detective] INFO: Test notification from LAN Detective');
+      expect(received[0]).toMatchObject({ from: 'nigafiy@example.test', to: ['it@example.test', 'boss@example.test'] });
+      expect(received[0]!.data).toContain('Subject: [Nigafiy] INFO: Test notification from Nigafiy');
       expect(received[0]!.data).toContain('Where:     mail corp');
       expect(received[0]!.data).not.toContain('text/html');
       expect((await a.agent.get('/api/v1/notification-channels')).body.items[0]).toMatchObject({ last_delivery_status: 'delivered' });

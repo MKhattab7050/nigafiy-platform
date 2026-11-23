@@ -24,5 +24,5 @@ export const logger = pino({
     ],
     censor: '[redacted]',
   },
-  base: { service: 'lan-detective-api' },
+  base: { service: 'nigafiy-api' },
 });

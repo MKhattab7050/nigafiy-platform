@@ -2,8 +2,8 @@
   "name": "@nigafiy/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "LAN Detective desktop app: the dashboard plus a bundled, managed collector",
-  "author": "LAN Detective",
+  "description": "Nigafiy desktop app (Nigafiy Hub): the programs plus a bundled, managed Sensor",
+  "author": "Nigafiy",
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
@@ -21,8 +21,8 @@
     "electron-builder": "^26.0.0"
   },
   "build": {
-    "appId": "com.landetective.desktop",
-    "productName": "LAN Detective",
+    "appId": "com.nigafiy.hub",
+    "productName": "Nigafiy",
     "directories": {
       "output": "release"
     },
@@ -65,6 +65,7 @@
       }
     },
     "nsis": {
+      "guid": "664f0038-fee2-574d-ae14-23d8a9c943e5",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true

@@ -131,7 +131,7 @@ export const ACTIONS: Record<ActionKey, ActionInfo> = {
     produces: ['router_unreachable', 'router_reachable', 'device_offline', 'device_online', 'collector_offline', 'collector_online', 'check_down', 'check_recovered'],
     siteWide: true,
   }),
-  // Moves the device's own switch port to the quarantine VLAN (refused on uplinks / trunks / LAN Detective's own path).
+  // Moves the device's own switch port to the quarantine VLAN (refused on uplinks / trunks / Nigafiy's own path).
   switch_port_quarantine: info({ needsDevice: true, alwaysApprove: true, produces: ['switch_port_changed', 'switch_port_change_failed', 'device_offline'] }),
   // Shuts the device's own switch port down (ifAdminStatus down; same protections as quarantine).
   switch_port_disable: info({ needsDevice: true, alwaysApprove: true, produces: ['switch_port_changed', 'switch_port_change_failed', 'device_offline'] }),

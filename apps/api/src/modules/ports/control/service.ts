@@ -129,7 +129,7 @@ async function loadPort(db: Db, targetId: string, ifIndex: number): Promise<Port
   return p;
 }
 
-/** What makes a disruptive change on this port risky, from what LAN Detective observed. */
+/** What makes a disruptive change on this port risky, from what Nigafiy observed. */
 export async function portRisks(db: Db, t: TargetRow, ifIndex: number, p: PortFacts, requesterIp: string | null): Promise<PortRisk[]> {
   const risks: PortRisk[] = [];
   const role = portRole(p);
@@ -162,7 +162,7 @@ export async function portRisks(db: Db, t: TargetRow, ifIndex: number, p: PortFa
       once.add(code);
       risks.push({ code, source: 'observed', evidence: `${what} (${d.label}, ${d.mac}) is in this port's forwarding table` });
     };
-    if (d.collector) add('collector_port', 'The computer running the LAN Detective collector');
+    if (d.collector) add('collector_port', 'The computer running the Nigafiy collector');
     if (d.gateway) add('gateway_port', 'The router / network gateway');
     if (d.own) add('own_machine', 'The machine you are using right now');
   }
@@ -183,7 +183,7 @@ interface QueueInput {
 }
 
 /** Records the request and queues the `set_switch_port` command for an online collector of the site. */
-/** Who queues a change: a signed-in administrator, or LAN Detective itself (userId null, `via` set). */
+/** Who queues a change: a signed-in administrator, or Nigafiy itself (userId null, `via` set). */
 type PortActor = Pick<AuthContext, 'organizationId'> & { userId: string | null; userEmail: string | null; via?: string };
 
 async function queueChange(db: Db, ctx: PortActor, q: QueueInput): Promise<{ request_id: string; expires_at: Date; method: string | null }> {
@@ -262,7 +262,7 @@ export function requestPortChange(req: Request, ctx: AuthContext, targetId: stri
     const override = 'override_reason' in body ? (body.override_reason ?? null) : null;
     const risks = isDisruptive(change) ? await portRisks(db, t, ifIndex, port, requesterAddress(req)) : [];
     if (risks.length && !override) {
-      throw new AppError(409, 'risky_port', 'This port looks like an uplink, a trunk or the path to LAN Detective itself. Give a reason to proceed anyway.', { risks });
+      throw new AppError(409, 'risky_port', 'This port looks like an uplink, a trunk or the path to Nigafiy itself. Give a reason to proceed anyway.', { risks });
     }
     const quarantined = await db.query(`SELECT 1 FROM device_quarantines WHERE target_id = $1 AND if_index = $2 AND status IN ('requested','active','releasing')`, [t.id, ifIndex]);
     if (quarantined.rowCount && change.op === 'access_vlan') {
@@ -622,9 +622,9 @@ export function quarantineDevice(req: Request, ctx: AuthContext, deviceId: strin
     if (!plan.possible || !plan.t || !plan.port || !plan.location) throw new AppError(409, plan.reason ?? 'not_possible', plan.message ?? 'Quarantine is not possible');
     const { t, port, location } = plan;
     const ifIndex = location.if_index;
-    // Quarantine never overrides: a port that looks like an uplink or LAN Detective's own path is refused.
+    // Quarantine never overrides: a port that looks like an uplink or Nigafiy's own path is refused.
     const risks = await portRisks(db, t, ifIndex, port, requesterAddress(req));
-    if (risks.length) throw new AppError(409, 'risky_port', 'This port looks like an uplink, a trunk or the path to LAN Detective itself; quarantine is refused', { risks });
+    if (risks.length) throw new AppError(409, 'risky_port', 'This port looks like an uplink, a trunk or the path to Nigafiy itself; quarantine is refused', { risks });
     const qv = plan.quarantine_vlan!;
     const row = (
       await db.query<{ id: string }>(
@@ -707,7 +707,7 @@ export const AUTO_RELEASE_RETRY_MINUTES = 15;
  * administrator when quarantining, counted from the verified move) has passed. The release is the
  * same verified VLAN change an administrator's "Release" queues, with the same checks (switch enabled
  * and in scope, write credentials, collector online, no change pending on the port); it is recorded as
- * requested by LAN Detective (requested_via 'auto_release') and audited as a system action. If it
+ * requested by Nigafiy (requested_via 'auto_release') and audited as a system action. If it
  * cannot be queued or the collector cannot verify it, the quarantine stays active (fail closed: the
  * device stays isolated), the reason is shown, and the release is retried after
  * AUTO_RELEASE_RETRY_MINUTES.

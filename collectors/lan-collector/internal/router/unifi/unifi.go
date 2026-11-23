@@ -482,7 +482,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    "unblocked client " + mac + " via UniFi stamgr",
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -500,7 +500,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or unblock %s under Client Devices → Blocked in UniFi Network", mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or unblock %s under Client Devices → Blocked in UniFi Network", mac)
 }
 
 func unifiRadio(radio, proto string) router.ConnectionType {

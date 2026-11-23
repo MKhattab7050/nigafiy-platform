@@ -16,7 +16,7 @@ interface Command {
 /**
  * Completes the `config_backup` commands of a heartbeat answer with what the collector needs for that
  * one run: the device address, its SSH credentials (decrypted here and only here), the pinned host
- * key, the vendor choice and what LAN Detective already knows about the device (hints). Stored
+ * key, the vendor choice and what Nigafiy already knows about the device (hints). Stored
  * commands never contain secrets; they are added to the response of the site's own collector over its
  * authenticated channel, for a run that is still pending.
  *

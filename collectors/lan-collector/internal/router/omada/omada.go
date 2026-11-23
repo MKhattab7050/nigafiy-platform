@@ -426,7 +426,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if err != nil {
 		return router.Change{}, err
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "unblocked " + omadaMAC(mac) + " on Omada controller", Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "unblocked " + omadaMAC(mac) + " on Omada controller", Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) SetRateLimit(ctx context.Context, rawMAC string, limit router.RateLimit) (router.Change, error) {
@@ -464,7 +464,7 @@ func (d *Driver) SetRateLimit(ctx context.Context, rawMAC string, limit router.R
 		Mechanism: mechLimit,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Omada custom rate limit for %s (down=%d kbps, up=%d kbps)", mac, limit.DownKbps, limit.UpKbps),
-		Undo:      "Clear rate limit in LAN Detective, or disable Rate Limit on the client in Omada Controller",
+		Undo:      "Clear rate limit in Nigafiy, or disable Rate Limit on the client in Omada Controller",
 	}, nil
 }
 
@@ -500,7 +500,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or unblock %s under Insights → Known Clients in Omada Controller", omadaMAC(mac))
+	return fmt.Sprintf("Unblock in Nigafiy, or unblock %s under Insights → Known Clients in Omada Controller", omadaMAC(mac))
 }
 
 func omadaConn(row map[string]any) router.ConnectionType {

@@ -88,7 +88,7 @@ What happens:
 
 1. **Guards (nothing changed if any fails):** `--confirm` must repeat the database name; the file
    must exist and be a readable custom-format archive that contains `schema_migrations` (i.e. a
-   Nigafiy / LAN Detective database); no session may be connected to the database (unless
+   Nigafiy / Nigafiy database); no session may be connected to the database (unless
    `--force`); the `lan_app` role is created from `APP_DATABASE_URL` if the server does not have it.
 2. **Restore into a new database** `<name>_restoring_<time>` with `pg_restore --single-transaction
    --exit-on-error --no-owner`. If pg_restore fails, the half-restored database is dropped and the

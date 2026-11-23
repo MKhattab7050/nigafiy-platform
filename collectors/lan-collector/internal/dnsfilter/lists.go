@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Categories LAN Detective knows. Large public lists are downloaded and cached; the small,
+// Categories Nigafiy knows. Large public lists are downloaded and cached; the small,
 // well-known service lists are built in.
 var downloaded = map[string]string{
 	// StevenBlack unified hosts: advertising + malware domains (MIT licence).

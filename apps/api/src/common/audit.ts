@@ -28,12 +28,12 @@ export interface SystemAuditEntry {
   /** The site the action concerned; stored as metadata.site_id (the automation's "last effect" is counted per site). */
   siteId?: string | null;
   metadata?: Record<string, unknown>;
-  /** 'system' (default): LAN Detective decided on its own. 'collector': a collector's report triggered it. */
+  /** 'system' (default): Nigafiy decided on its own. 'collector': a collector's report triggered it. */
   actor?: Exclude<AuditActor, 'user'>;
 }
 
 /**
- * Record an action LAN Detective took by itself (no user involved), inside the caller's transaction.
+ * Record an action Nigafiy took by itself (no user involved), inside the caller's transaction.
  * Works in tenant and platform transactions alike: the organization is set explicitly.
  */
 export async function auditSystem(db: Db, organizationId: string, entry: SystemAuditEntry): Promise<void> {

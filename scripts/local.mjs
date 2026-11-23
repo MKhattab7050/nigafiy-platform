@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs the whole of LAN Detective on this computer with one command:
+// Runs the whole of Nigafiy on this computer with one command:
 //   pnpm local                     database + API + web (+ collector once it is enrolled)
 //   pnpm local --token <token>     same, and enroll this computer as a collector (first time only)
 //   pnpm local --prod              serve an optimized web build instead of the dev server
@@ -116,7 +116,10 @@ if (component && (!['db', 'api', 'web'].includes(component) || !engineStatusFile
 // Windows Startup folder auto-start installer / uninstaller
 if (!component && win && (flag('--install-autostart') || flag('--uninstall-autostart'))) {
   const startupDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
-  const vbsPath = path.join(startupDir, 'LAN Detective.vbs');
+  const vbsPath = path.join(startupDir, 'Nigafiy.vbs');
+  // The launcher's name before the rename (docs/architecture/naming.md): replaced, never left running twice.
+  const legacyVbsPath = path.join(startupDir, 'LAN Detective.vbs');
+  if (existsSync(legacyVbsPath)) unlinkSync(legacyVbsPath);
   if (flag('--uninstall-autostart')) {
     if (existsSync(vbsPath)) unlinkSync(vbsPath);
     ok(`Removed Windows auto-start launcher (${vbsPath})`);
@@ -332,7 +335,7 @@ async function runDatabase(reuse) {
     process.exit(1);
   }
   if ((await portOpen(dbPort)) && !(await stopStaleDatabase())) {
-    fail(`Port ${dbPort} is in use by a program that is not a working LAN Detective database. Stop it or change DATABASE_URL in .env.`);
+    fail(`Port ${dbPort} is in use by a program that is not a working Nigafiy database. Stop it or change DATABASE_URL in .env.`);
     process.exit(1);
   }
   say(`${c.dim}Starting database…${c.off}`);
@@ -437,7 +440,7 @@ if (component) {
   await new Promise(() => undefined);
 }
 
-say(`${c.bold}LAN Detective — local${c.off}`);
+say(`${c.bold}Nigafiy — local${c.off}`);
 await runDatabase(true);
 await runApi(true);
 await runWeb(true);
@@ -574,7 +577,7 @@ async function homeNetwork() {
     const hit = addrs?.find((a) => a.family === 'IPv4' && a.address === address);
     if (!hit) continue;
     let prefix = Number(hit.cidr?.split('/')[1] ?? 24);
-    if (prefix < 20) prefix = 24; // LAN Detective scans at most a /20; a home LAN is almost always a /24
+    if (prefix < 20) prefix = 24; // Nigafiy scans at most a /20; a home LAN is almost always a /24
     const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
     return { iface: name, address, cidr: `${intToIp(ipToInt(address) & mask)}/${prefix}`, private: isPrivate(address) };
   }
@@ -688,7 +691,7 @@ async function homeSetup() {
     return null;
   }
   say(`This computer is on ${c.bold}${net0.cidr}${c.off} (${net0.iface}, address ${net0.address}).`);
-  say('LAN Detective will discover and monitor the devices on this network from this computer.');
+  say('Nigafiy will discover and monitor the devices on this network from this computer.');
   say(`${c.yellow}Only continue if this is your own network or you are allowed to scan it.${c.off}`);
   say(`${c.dim}تابع فقط إذا كانت هذه شبكتك أو مسموح لك بفحصها.${c.off}`);
   const preset = readEnv('NIGAFIY_SETUP_EMAIL') && readEnv('NIGAFIY_SETUP_PASSWORD');
@@ -718,7 +721,7 @@ async function homeSetup() {
   };
 
   say('');
-  say('Your LAN Detective account (stored only on this computer):');
+  say('Your Nigafiy account (stored only on this computer):');
   let email = readEnv('NIGAFIY_SETUP_EMAIL');
   let password = readEnv('NIGAFIY_SETUP_PASSWORD');
   for (let attempt = 0; attempt < 3; attempt++) {

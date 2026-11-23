@@ -375,7 +375,7 @@ export const READINESS_ERRORS: Record<Exclude<Readiness, 'ready'>, string> = {
   out_of_scope: 'The device address is no longer inside an authorized network range of the site',
   no_credentials: 'Set the SSH credentials of this device first',
   credentials_unreadable: 'The stored credentials cannot be decrypted (the application key changed); enter them again',
-  credentials_rejected: 'The device rejected the user name or credentials. Update them; LAN Detective stopped logging in so the account is not locked',
+  credentials_rejected: 'The device rejected the user name or credentials. Update them; Nigafiy stopped logging in so the account is not locked',
   host_key_changed: 'The device presented a different SSH host key than the one pinned. Check why, then accept the new key before backing up again',
 };
 

@@ -160,7 +160,7 @@ func (a *Agent) QBridge(ports int, vlans []VLAN, trunk ...int) {
 // no vmVlan row and report trunking. Writable: vmVlan, ifAdminStatus, ifAlias.
 func (a *Agent) Cisco(ports int, vlans []VLAN, trunk ...int) {
 	a.Set("1.3.6.1.2.1.1.2.0", gosnmp.ObjectIdentifier, ".1.3.6.1.4.1.9.1.1208")
-	a.Str("1.3.6.1.2.1.1.1.0", "Cisco IOS Software, C2960X Software (C2960X-UNIVERSALK9-M), Version 15.2(7)E (LAN Detective test agent)")
+	a.Str("1.3.6.1.2.1.1.1.0", "Cisco IOS Software, C2960X Software (C2960X-UNIVERSALK9-M), Version 15.2(7)E (Nigafiy test agent)")
 	access := map[int]int{}
 	for _, v := range vlans {
 		a.Int(fmt.Sprintf("1.3.6.1.4.1.9.9.46.1.3.1.1.2.1.%d", v.ID), 1)

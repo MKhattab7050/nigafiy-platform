@@ -196,7 +196,7 @@ func TestRouterWiFiOffRefusedForCollectorHost(t *testing.T) {
 	a.deps.LocalMACs = func() map[string]string { return map[string]string{"192.168.1.20": "AA-BB-CC-00-00-01"} }
 	a.routerCommand(context.Background(), command(cmdRouterWiFi, map[string]any{"request_id": "r", "router_id": tg.ID, "wifi_id": "5", "enabled": false}))
 	r := one(t, a, "own wifi off")
-	if r["ok"] != false || !strings.Contains(r["error"].(map[string]any)["message"].(string), "cut LAN Detective off") {
+	if r["ok"] != false || !strings.Contains(r["error"].(map[string]any)["message"].(string), "cut Nigafiy off") {
 		t.Fatalf("own Wi-Fi off: %+v", r)
 	}
 	if srv.WLAN()[4]["wlEnable"] != true {

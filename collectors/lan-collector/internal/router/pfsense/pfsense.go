@@ -397,7 +397,7 @@ func (d *Driver) Block(ctx context.Context, rawMAC string) (router.Change, error
 		if _, _, err := d.do(ctx, "block", http.MethodPost, "/api/v2/firewall/alias", map[string]any{
 			"name":    blockAlias,
 			"type":    "host",
-			"descr":   "Managed by LAN Detective",
+			"descr":   "Managed by Nigafiy",
 			"address": []string{ip},
 			"detail":  []string{"lan-detective:" + mac},
 		}); err != nil {
@@ -469,7 +469,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed %s from pfSense alias %s and applied firewall", mac, blockAlias),
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -480,7 +480,7 @@ func (d *Driver) Close(context.Context) error {
 }
 
 func undoBlock(ip string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s from Firewall → Aliases (%s) in pfSense", ip, blockAlias)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s from Firewall → Aliases (%s) in pfSense", ip, blockAlias)
 }
 
 func padDetails(d []string, n int) []string {

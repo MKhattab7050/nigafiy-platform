@@ -389,7 +389,7 @@ export async function restoreDatabase(opts: RestoreOptions): Promise<RestoreResu
     const pgRestore = resolveTool('pg_restore', major, opts.binDir);
     log(`Using ${pgRestore.path} (version ${pgRestore.major}) for PostgreSQL ${major}`);
     const toc = await archiveToc(pgRestore.path, file);
-    if (!/\bTABLE\b.*\bschema_migrations\b/.test(toc)) throw new OpsRefused(`${file} does not contain a schema_migrations table: it is not a Nigafiy / LAN Detective database backup.`);
+    if (!/\bTABLE\b.*\bschema_migrations\b/.test(toc)) throw new OpsRefused(`${file} does not contain a schema_migrations table: it is not a Nigafiy / Nigafiy database backup.`);
     const sha256 = await sha256File(file);
 
     const role = await admin.query('SELECT 1 FROM pg_roles WHERE rolname = $1', ['lan_app']);

@@ -234,7 +234,7 @@ describe('router control', () => {
       applied: !already,
       already_in_effect: already,
       detail: already ? 'already blocked' : 'internet blocked',
-      undo: 'Unblock in LAN Detective, or switch Internet Blocking off on the router',
+      undo: 'Unblock in Nigafiy, or switch Internet Blocking off on the router',
     });
     const t = await telemetry(s.c, [
       result(s.routerId, { request_id: reqFor('aa:bb:cc:00:00:20'), action: 'block', ok: true, mac: 'aa:bb:cc:00:00:20', change: change('aa:bb:cc:00:00:20', false) }),
@@ -307,7 +307,7 @@ describe('router control', () => {
     expect(rl.status).toBe(409);
     expect(rl.body.error.code).toBe('unsupported_on_router');
     expect(rl.body.error.details.note).toContain('global QoS');
-    // A router that can block but not schedule: LAN Detective stores the schedule and enforces it with the block
+    // A router that can block but not schedule: Nigafiy stores the schedule and enforces it with the block
     // (tests/router-product-schedule.test.ts); nothing is sent to the router as a schedule.
     const sc = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows: [{ days: [1, 2], start: '22:00', end: '06:00' }] });
     expect(sc.status).toBe(202);

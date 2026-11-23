@@ -5,13 +5,13 @@ the free Authenticode route in [code-signing.md](code-signing.md).
 
 | Installer | Built by | Use it for |
 | --- | --- | --- |
-| `LAN Detective Setup <v>.exe` (NSIS) | `pnpm --filter @nigafiy/desktop dist` | Interactive installs and the in-app updater. Per-user by default; an administrator can pick "all users". |
-| `LAN Detective <v>.msi` (WiX, per-machine) | `pnpm --filter @nigafiy/desktop dist:msi` | Group Policy software installation, Intune line-of-business apps, SCCM. |
+| `Nigafiy Setup <v>.exe` (NSIS) | `pnpm --filter @nigafiy/desktop dist` | Interactive installs and the in-app updater. Per-user by default; an administrator can pick "all users". |
+| `Nigafiy <v>.msi` (WiX, per-machine) | `pnpm --filter @nigafiy/desktop dist:msi` | Group Policy software installation, Intune line-of-business apps, SCCM. |
 | `Nigafiy-Endpoint-Agent-Setup-<v>.exe` (NSIS) | `pnpm build:agent-installer` | The endpoint agent on managed computers, interactive or silent (GPO, Intune Win32 app). |
 
 `pnpm release` builds all three signed (see [updates.md](updates.md#building-a-release)).
 
-The product name in the desktop installers is still "LAN Detective": the rename is a separate step.
+The product name in the desktop installers is still "Nigafiy": the rename is a separate step.
 New installers (the endpoint agent) say Nigafiy.
 
 ## Desktop app: NSIS
@@ -27,9 +27,9 @@ The in-app updater (updates.md) runs this installer silently over the existing i
 
 `apps/desktop/package.json` → `build.msi`:
 
-- `perMachine: true` — installs into `C:\Program Files\LAN Detective` for every user, which is what
+- `perMachine: true` — installs into `C:\Program Files\Nigafiy` for every user, which is what
   GPO computer-assigned software needs;
-- `oneClick: true` — no wizard; `msiexec /i "LAN Detective 0.1.0.msi" /qn` installs silently;
+- `oneClick: true` — no wizard; `msiexec /i "Nigafiy 0.1.0.msi" /qn` installs silently;
 - `upgradeCode: 6DA7D862-27E7-4AC8-809D-89B4128FB3AE` — fixed for the life of the product, so a newer
   MSI upgrades the older one in place. **Never change it.**
 
@@ -39,7 +39,7 @@ Deploy:
   Package, from a UNC share readable by Domain Computers; "Assigned". For a new version, add the new
   MSI and set it to upgrade the old package.
 - **Intune**: Apps → Windows → Line-of-business app → the .msi. Install context: device.
-- Uninstall: `msiexec /x "LAN Detective 0.1.0.msi" /qn` (or the product code from the GPO/Intune
+- Uninstall: `msiexec /x "Nigafiy 0.1.0.msi" /qn` (or the product code from the GPO/Intune
   console).
 
 Building the MSI needs WiX 4, which electron-builder downloads into its cache the first time

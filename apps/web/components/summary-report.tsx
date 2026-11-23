@@ -48,7 +48,7 @@ export function SummaryReportView() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lan-detective-summary-${report.days}d.json`;
+    a.download = `nigafiy-summary-${report.days}d.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();

@@ -111,7 +111,7 @@ export const en = {
   'devices.attn.unwanted': '{count} devices you marked as unwanted are on the network now.',
   'devices.attn.unwantedAction': 'See which ones',
   'device.resetType': 'Reset type to automatic',
-  'device.resetTypeHint': 'You set this type by hand. Resetting lets LAN Detective classify the device again from what it observes.',
+  'device.resetTypeHint': 'You set this type by hand. Resetting lets Nigafiy classify the device again from what it observes.',
   'device.resetTypeDone': 'The type is automatic again.',
 } as const;
 
@@ -227,6 +227,6 @@ export const ar: Record<keyof typeof en, string> = {
   'devices.attn.unwanted': '{count} من الأجهزة التي وسمتها غير مرغوب فيها متصلة بالشبكة الآن.',
   'devices.attn.unwantedAction': 'اعرض الأجهزة',
   'device.resetType': 'إعادة النوع إلى التلقائي',
-  'device.resetTypeHint': 'حدّدت هذا النوع يدويًا. إعادة الضبط تجعل LAN Detective يصنّف الجهاز من جديد مما يرصده.',
+  'device.resetTypeHint': 'حدّدت هذا النوع يدويًا. إعادة الضبط تجعل Nigafiy يصنّف الجهاز من جديد مما يرصده.',
   'device.resetTypeDone': 'أصبح النوع تلقائيًا من جديد.',
 };

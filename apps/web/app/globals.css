@@ -4,7 +4,7 @@
 @custom-variant rail (:where(html[data-sidebar='rail']) &);
 
 /*
- * LAN Detective design tokens.
+ * Nigafiy design tokens.
  *
  * A calm network-operations palette: cool graphite surfaces, one blue accent for anything you can
  * act on, and four reserved state colours (ok / warn / crit / idle) that always travel with an
@@ -31,6 +31,8 @@
   --color-accent-hover: #7aaaff;
   --color-on-accent: #ffffff;
   --color-cyan: #47c1d6;
+  /* the logo's wordmark (@nigafiy/brand): white on dark, wordmark navy on light */
+  --color-wordmark: #ffffff;
 
   /* state — reserved, never used as a chart series colour */
   --color-ok: #36b37e;
@@ -85,6 +87,7 @@
   --color-line: #e0e5eb;
   --color-line-strong: #c8d0da;
   --color-fg: #111821;
+  --color-wordmark: #0b1f5c;
   --color-muted: #4b5867;
   --color-faint: #657282;
   --color-accent: #1f62d6;

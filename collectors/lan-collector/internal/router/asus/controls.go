@@ -343,7 +343,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Asuswrt %s=%s", key, val),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or Asuswrt Wireless settings",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or Asuswrt Wireless settings",
 	}, nil
 }
 
@@ -388,7 +388,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s in Asuswrt dhcp_staticlist", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under LAN → DHCP Server in Asuswrt",
+		Undo:      "Remove the reservation in Nigafiy or under LAN → DHCP Server in Asuswrt",
 	}, nil
 }
 
@@ -425,7 +425,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed Asuswrt DHCP reservation %s for %s", removedIP, mac),
-		Undo:      "Add the reservation again in LAN Detective",
+		Undo:      "Add the reservation again in Nigafiy",
 	}, nil
 }
 
@@ -466,7 +466,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added Asuswrt port forward %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or under WAN → Virtual Server / Port Forwarding in Asuswrt",
+		Undo:      "Remove the rule in Nigafiy or under WAN → Virtual Server / Port Forwarding in Asuswrt",
 	}, nil
 }
 
@@ -500,7 +500,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed Asuswrt port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present on Asuswrt"}, nil
@@ -551,7 +551,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 		Mechanism: mechRename,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Asuswrt client nickname for %s to %q", mac, safeName),
-		Undo:      "Rename the client again in LAN Detective or Asuswrt Network Map",
+		Undo:      "Rename the client again in Nigafiy or Asuswrt Network Map",
 	}, nil
 }
 

@@ -55,7 +55,7 @@ function renderValue(value: unknown, indent: string): string {
 
 /** Plain text only: the body contains names announced by devices, which must never be interpreted as markup. */
 export function renderEmail(event: NotificationEvent, organizationName: string): { subject: string; text: string } {
-  const subject = oneLine(`[LAN Detective] ${event.severity.toUpperCase()}: ${event.title}`);
+  const subject = oneLine(`[Nigafiy] ${event.severity.toUpperCase()}: ${event.title}`);
   const lines = [
     event.title,
     '',
@@ -69,7 +69,7 @@ export function renderEmail(event: NotificationEvent, organizationName: string):
     '',
     `Open in Nigafiy: ${eventPageUrl(event)}`,
     '',
-    'Sent by LAN Detective. Open the event timeline for the full context.',
+    'Sent by Nigafiy. Open the event timeline for the full context.',
   ];
   return { subject, text: lines.join('\n') };
 }

@@ -363,7 +363,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if st != http.StatusOK {
 		return router.Change{}, router.Errorf(router.ErrRejected, "unblock", "Tenda delBlackRule returned HTTP %d", st)
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed " + mac + " from Tenda blacklist", Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed " + mac + " from Tenda blacklist", Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) SetRateLimit(ctx context.Context, rawMAC string, limit router.RateLimit) (router.Change, error) {
@@ -404,7 +404,7 @@ func (d *Driver) SetRateLimit(ctx context.Context, rawMAC string, limit router.R
 		Mechanism: mechLimit,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Tenda bandwidth limit for %s (down=%d KB/s, up=%d KB/s)", mac, downKB, upKB),
-		Undo:      "Clear rate limit in LAN Detective, or set limits to Unlimited in Tenda Bandwidth Control",
+		Undo:      "Clear rate limit in Nigafiy, or set limits to Unlimited in Tenda Bandwidth Control",
 	}, nil
 }
 
@@ -440,7 +440,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s from Bandwidth Control → Blocked Devices on Tenda", mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s from Bandwidth Control → Blocked Devices on Tenda", mac)
 }
 
 func tendaConn(s string) router.ConnectionType {

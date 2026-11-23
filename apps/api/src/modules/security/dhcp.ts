@@ -272,7 +272,7 @@ export async function evaluateDhcpSite(
           routers: s.routers,
           dns_servers: s.dns_servers,
           known_gateways: [...gateways],
-          source: origin.collectorName ? `Collector "${origin.collectorName}"` : 'LAN Detective',
+          source: origin.collectorName ? `Collector "${origin.collectorName}"` : 'Nigafiy',
         },
         source: 'collector',
         occurredAt: origin.at,

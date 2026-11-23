@@ -71,7 +71,7 @@ func KindOf(err error) string {
 	return "internal"
 }
 
-// Hints are what LAN Detective already knows about the device (from the server's database).
+// Hints are what Nigafiy already knows about the device (from the server's database).
 type Hints struct {
 	Driver    string // detected on an earlier backup
 	OUIVendor string // IEEE OUI vendor of the device's MAC
@@ -359,7 +359,7 @@ func connect(ctx context.Context, addr netip.Addr, port int, t Target, opts Opti
 			MACs:         append(algs.MACs, legacy.MACs...),
 		},
 		HostKeyAlgorithms: hostKeyAlgorithms(t, append(algs.HostKeys, legacy.HostKeys...)),
-		ClientVersion:     "SSH-2.0-LANDetective_ConfigBackup",
+		ClientVersion:     "SSH-2.0-Nigafiy_ConfigBackup",
 		Timeout:           opts.Handshake,
 	}
 	type out struct {

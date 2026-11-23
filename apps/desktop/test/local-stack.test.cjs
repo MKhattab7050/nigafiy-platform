@@ -36,7 +36,7 @@ test('finds the source checkout from inside the desktop app', () => {
 
 test('signIn preserves base64-padded cookies and does not overwrite saved account on transient 500/429 errors', async () => {
   let loginStatus = 503;
-  let saved = { email: 'owner@lan-detective.local', password: 'secret-password' };
+  let saved = { email: 'owner@nigafiy.local', password: 'secret-password' };
   const server = http.createServer((req, res) => {
     if (req.url === '/api/v1/auth/login') {
       res.writeHead(loginStatus, {
@@ -58,7 +58,7 @@ test('signIn preserves base64-padded cookies and does not overwrite saved accoun
   };
   try {
     await assert.rejects(signIn(url, url, store), /Temporary failure/);
-    assert.equal(saved.email, 'owner@lan-detective.local');
+    assert.equal(saved.email, 'owner@nigafiy.local');
 
     loginStatus = 200;
     const { api, created } = await signIn(url, url, store);

@@ -403,11 +403,11 @@ func (a *Agent) runRouterOp(ctx context.Context, t routerTarget, action, trigger
 		return
 	}
 	if sp, suspended := a.routers.suspension(t, time.Now()); suspended {
-		msg := "logins to this router are paused because it rejected the user name or password; update the credentials in LAN Detective"
+		msg := "logins to this router are paused because it rejected the user name or password; update the credentials in Nigafiy"
 		var retry time.Duration
 		if !sp.until.IsZero() {
 			retry = time.Until(sp.until)
-			msg = "logins to this router are paused because it locked the account after failed logins; LAN Detective waits before trying again"
+			msg = "logins to this router are paused because it locked the account after failed logins; Nigafiy waits before trying again"
 		}
 		item["ts"], item["ok"], item["duration_ms"] = time.Now().UTC(), false, 0
 		item["error"] = routerError("login_suspended", msg, retry)
@@ -642,7 +642,7 @@ func (a *Agent) guardOwnWiFi(ctx context.Context, d router.Driver, id string) er
 		for _, m := range w.ClientMACs {
 			if local[m] {
 				return router.Errorf(router.ErrInvalidArgument, "wifi",
-					"the computer running this collector is connected to %q; turning it off would cut LAN Detective off from the router", w.SSID)
+					"the computer running this collector is connected to %q; turning it off would cut Nigafiy off from the router", w.SSID)
 			}
 		}
 	}

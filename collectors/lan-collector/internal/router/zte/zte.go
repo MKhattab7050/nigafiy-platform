@@ -534,7 +534,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if st != http.StatusOK {
 		return router.Change{}, router.Errorf(router.ErrRejected, "unblock", "ZTE macfilter delete returned HTTP %d", st)
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed managed ZTE block rule for " + strings.ToUpper(mac), Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed managed ZTE block rule for " + strings.ToUpper(mac), Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {
@@ -550,7 +550,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s%s under Internet → Security → Filter Criteria on the ZTE gateway", ldTagPrefix, mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s%s under Internet → Security → Filter Criteria on the ZTE gateway", ldTagPrefix, mac)
 }
 
 func zteConn(s string) router.ConnectionType {

@@ -181,7 +181,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		return err
 	}
 	// Notice for transparency on managed company machines.
-	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in LAN Detective IT Operations (inventory, health, and authorized remote administration are active)")
+	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in Nigafiy IT Operations (inventory, health, and authorized remote administration are active)")
 
 	var wg sync.WaitGroup
 	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop} {

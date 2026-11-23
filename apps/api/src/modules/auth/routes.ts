@@ -331,9 +331,9 @@ authRouter.post('/forgot-password', credentialLimiter, async (req, res) => {
       );
       const resetUrl = `${webAppUrl(req)}/reset-password?token=${encodeURIComponent(token)}`;
       await sendAccountEmail(mailOrgId, user.email, {
-        subject: '[LAN Detective] Reset your password',
+        subject: '[Nigafiy] Reset your password',
         text: [
-          'A password reset was requested for your LAN Detective account.',
+          'A password reset was requested for your Nigafiy account.',
           '',
           `Reset your password: ${resetUrl}`,
           `Expires: ${expiresAt.toISOString()}`,

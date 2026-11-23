@@ -574,7 +574,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if _, err := d.postJSON(ctx, "unblock", "/api/ntwk/macfilter", cfg); err != nil {
 		return router.Change{}, err
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: fmt.Sprintf("removed %d managed Huawei blacklist entry(s)", removed), Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: fmt.Sprintf("removed %d managed Huawei blacklist entry(s)", removed), Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {
@@ -586,7 +586,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s%s under Security → MAC Filter on the Huawei gateway", ldTagPrefix, mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s%s under Security → MAC Filter on the Huawei gateway", ldTagPrefix, mac)
 }
 
 func huaweiConn(s string) router.ConnectionType {

@@ -1,6 +1,6 @@
 # Switch port control (Phase 5)
 
-Change switch ports from LAN Detective: enable / disable a port, set its description, move an access
+Change switch ports from Nigafiy: enable / disable a port, set its description, move an access
 port to another VLAN, and quarantine a device (move its own port to a quarantine VLAN, then release
 it back to the VLAN it was in). Every change goes through the site's collector over SNMP SET, is
 explicitly confirmed by an administrator, audited, and counts as done only after the collector reads
@@ -15,7 +15,7 @@ the new value back from the switch.
   `CISCO-VLAN-MEMBERSHIP-MIB::vmVlan`. Enter these as the switch's *write credentials*; they are
   separate from the read-only credentials. Restrict SNMP write on the switch to the collector's address.
 - For VLAN changes and quarantine: the switch must expose its VLAN tables (Q-BRIDGE-MIB or the Cisco
-  VTP / VLAN-membership MIB) in the SNMP view, so LAN Detective can read which VLANs exist and each
+  VTP / VLAN-membership MIB) in the SNMP view, so Nigafiy can read which VLANs exist and each
   port's access VLAN. Without them only enable/disable and description are offered.
 - For quarantine: an isolated VLAN created on the switches beforehand (no route to internal networks,
   typically only DHCP + a captive notice or nothing), chosen as the site's quarantine VLAN in

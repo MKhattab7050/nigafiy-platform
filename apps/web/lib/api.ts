@@ -27,7 +27,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       cache: 'no-store',
     });
   } catch {
-    throw new ApiError(0, 'network_error', 'Cannot reach the LAN Detective server');
+    throw new ApiError(0, 'network_error', 'Cannot reach the Nigafiy server');
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();

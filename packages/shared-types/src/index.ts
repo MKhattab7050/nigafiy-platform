@@ -1,4 +1,4 @@
-// Contract between the LAN Detective API (v1) and its clients.
+// Contract between the Nigafiy API (v1) and its clients.
 // Types only + a few constant lists. No runtime dependencies.
 
 export const ROLES = ['owner', 'admin', 'technician', 'viewer'] as const;
@@ -421,7 +421,7 @@ export interface AuditEntry {
   metadata: Record<string, unknown>;
   created_at: string;
   /**
-   * Who acted: 'user' (user_email is set), 'system' (LAN Detective acted by itself; metadata.automation
+   * Who acted: 'user' (user_email is set), 'system' (Nigafiy acted by itself; metadata.automation
    * is the automation key) or 'collector' (triggered by a collector's report).
    */
   actor: AuditActor;
@@ -557,7 +557,7 @@ export interface TopologyNode {
   runs_collector: boolean;
   segment: string | null;
   last_seen_at: string | null;
-  /** True when this device is a switch that LAN Detective reads over SNMP. */
+  /** True when this device is a switch that Nigafiy reads over SNMP. */
   is_switch?: boolean;
   /** "Gi0/4 on Core switch" when a read switch saw this device on an access port. */
   attached_to?: string | null;
@@ -1043,7 +1043,7 @@ export interface ToolRun {
 // ── Phase 3 & 4: Universal Endpoint Management & Remote Administration ──────
 
 export type EndpointStatus = 'pending' | 'active' | 'revoked';
-/** Platforms the LAN Detective endpoint agent runs on. iOS/Android are not supported. */
+/** Platforms the Nigafiy endpoint agent runs on. iOS/Android are not supported. */
 export type EndpointPlatform = 'windows' | 'linux' | 'macos';
 export type EndpointComplianceStatus = 'compliant' | 'non_compliant' | 'attention' | 'unknown';
 export type EndpointCommandKind =
@@ -1390,7 +1390,7 @@ export interface EndpointSeriesPoint {
 
 // ───────────────────────── Smart defaults / automation ─────────────────────────
 
-/** Facts LAN Detective worked out itself are labelled as such, with how sure it is and why. */
+/** Facts Nigafiy worked out itself are labelled as such, with how sure it is and why. */
 export interface InferredFact {
   inferred: true;
   confidence: Confidence;
@@ -1486,7 +1486,7 @@ export interface InsightDevice {
   ip: string | null;
   device_type: DeviceType;
   type_confidence: Confidence;
-  /** The device type was inferred by LAN Detective (never set by a person). */
+  /** The device type was inferred by Nigafiy (never set by a person). */
   inferred: true;
   evidence: string | null;
 }

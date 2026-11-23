@@ -244,7 +244,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		"ip":          ip.String(),
 		"mac":         mac,
 		"action":      "reserved",
-		"description": "Managed by LAN Detective",
+		"description": "Managed by Nigafiy",
 	})
 	st, _, err := d.do(ctx, "reserve", http.MethodPut, fmt.Sprintf("/api/v2/cmdb/system.dhcp/server/%d", srv.ID), map[string]any{
 		"reserved-address": updated,
@@ -261,7 +261,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on FortiGate DHCP server %d", ip, mac, srv.ID),
-		Undo:      "Remove the reservation in LAN Detective or under Network → Interfaces → DHCP Server in FortiGate",
+		Undo:      "Remove the reservation in Nigafiy or under Network → Interfaces → DHCP Server in FortiGate",
 	}, nil
 }
 
@@ -305,7 +305,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed FortiGate DHCP reservation %s for %s", removedIP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no DHCP reservation found for this MAC on FortiGate"}, nil
@@ -348,7 +348,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added FortiGate VIP %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the VIP in LAN Detective or under Policy & Objects → Virtual IPs in FortiGate",
+		Undo:      "Remove the VIP in Nigafiy or under Policy & Objects → Virtual IPs in FortiGate",
 	}, nil
 }
 
@@ -373,7 +373,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed FortiGate VIP %s", e.ID),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "VIP is no longer present on FortiGate"}, nil

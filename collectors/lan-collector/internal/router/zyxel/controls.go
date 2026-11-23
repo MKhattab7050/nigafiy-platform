@@ -468,7 +468,7 @@ func (d *Driver) RenameClient(ctx context.Context, mac, name string) (router.Cha
 	}
 	if ch.Applied {
 		ch.Detail = "renamed " + norm + " on the router from \"" + clipText(old, 63) + "\" to \"" + clean + "\""
-		ch.Undo = "rename the device back to \"" + clipText(old, 63) + "\" in LAN Detective or in the router's Home Networking > connected devices page"
+		ch.Undo = "rename the device back to \"" + clipText(old, 63) + "\" in Nigafiy or in the router's Home Networking > connected devices page"
 	} else {
 		ch.Detail = "the router already shows this name; nothing changed"
 	}
@@ -554,7 +554,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 	state := map[bool]string{true: "on", false: "off"}
 	if ch.Applied {
 		ch.Detail = "turned Wi-Fi network \"" + clipText(ssid, 64) + "\" " + state[enabled]
-		ch.Undo = "turn \"" + clipText(ssid, 64) + "\" " + state[!enabled] + " again in LAN Detective or in the router's Wireless page"
+		ch.Undo = "turn \"" + clipText(ssid, 64) + "\" " + state[!enabled] + " again in Nigafiy or in the router's Wireless page"
 	} else {
 		ch.Detail = "Wi-Fi network \"" + clipText(ssid, 64) + "\" was already " + state[enabled] + "; nothing changed"
 	}
@@ -597,7 +597,7 @@ func (d *Driver) AddReservation(ctx context.Context, mac, ip string) (router.Cha
 			if r.MAC == m && r.IP == addr.String() {
 				ch.Applied = true
 				ch.Detail = "reserved " + addr.String() + " for " + m + "; the device gets it at its next DHCP renewal (or reconnect)"
-				ch.Undo = "remove the reservation of " + m + " in LAN Detective or in the router's Static DHCP page"
+				ch.Undo = "remove the reservation of " + m + " in Nigafiy or in the router's Static DHCP page"
 				return nil
 			}
 		}
@@ -647,7 +647,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, mac string) (router.Chan
 		}
 		ch.Applied = true
 		ch.Detail = "removed the reservation of " + found.IP + " for " + norm
-		ch.Undo = "reserve " + found.IP + " for " + norm + " again in LAN Detective or in the router's Static DHCP page"
+		ch.Undo = "reserve " + found.IP + " for " + norm + " again in Nigafiy or in the router's Static DHCP page"
 		return nil
 	})
 	if err != nil {
@@ -668,7 +668,7 @@ func describeRule(r router.PortForward) string {
 	return s
 }
 
-// AddPortForward creates a port-forwarding rule on the default WAN, named "LAN Detective: …".
+// AddPortForward creates a port-forwarding rule on the default WAN, named "LAN Detective: …" (router.ProductRulePrefix).
 func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (router.Change, error) {
 	ch := router.Change{Action: "add_port_forward", Mechanism: mechanismPortForward}
 	err := d.withSession(ctx, func() error {
@@ -699,7 +699,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 			if router.SameRule(a, r) {
 				ch.Applied = true
 				ch.Detail = "added port forward " + describeRule(r) + " (" + r.Description + ")"
-				ch.Undo = "remove the rule \"" + r.Description + "\" in LAN Detective or in the router's NAT > Port Forwarding page"
+				ch.Undo = "remove the rule \"" + r.Description + "\" in Nigafiy or in the router's NAT > Port Forwarding page"
 				return nil
 			}
 		}

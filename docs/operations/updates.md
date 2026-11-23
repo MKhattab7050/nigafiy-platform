@@ -75,7 +75,7 @@ Every URL must be `https://`. Size and SHA-256 are read from the files. Sign one
 
 ```powershell
 node scripts\release\sign-manifest.mjs --key E:\nigafiy-release-key\nigafiy-update-key.pem --version 1.2.3 `
-  --component "desktop-windows-x64=apps\desktop\release\LAN Detective Setup 1.2.3.exe@https://downloads.example.com/1.2.3/LAN%20Detective%20Setup%201.2.3.exe" `
+  --component "desktop-windows-x64=apps\desktop\release\Nigafiy Setup 1.2.3.exe@https://downloads.example.com/1.2.3/LAN%20Detective%20Setup%201.2.3.exe" `
   --expect-public-key <the key the installs have> --out manifest.json
 ```
 

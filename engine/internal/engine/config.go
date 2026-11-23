@@ -58,7 +58,7 @@ const (
 // line). Both --name value and --name=value work.
 func FlagSet(name string, cfg *Config) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.StringVar(&cfg.DataDir, "data-dir", "", "data folder (default: <repo>/.data in a source checkout, else %APPDATA%\\Nigafiy\\data, or the legacy %APPDATA%\\LAN Detective\\data while only that exists) [env "+EnvDataDir+"]")
+	fs.StringVar(&cfg.DataDir, "data-dir", "", "data folder (default: <repo>/.data in a source checkout, else %APPDATA%\\Nigafiy\\data, or the legacy %APPDATA%\\Nigafiy\\data while only that exists) [env "+EnvDataDir+"]")
 	fs.StringVar(&cfg.Node, "node", "", "Node.js 24 executable, or the desktop app's exe (run with ELECTRON_RUN_AS_NODE=1) [env "+EnvNode+"]")
 	fs.StringVar(&cfg.StackScript, "stack-script", "", "the stack launcher, local.mjs (default: <repo>/scripts/local.mjs) [env "+EnvStackScript+"]")
 	fs.StringVar(&cfg.BundleDir, "bundle-dir", "", "installed app only: folder with the packaged API and web server, passed on as NIGAFIY_BUNDLE_DIR [env "+EnvBundleDir+"]")

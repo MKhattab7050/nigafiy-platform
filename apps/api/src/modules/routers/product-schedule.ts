@@ -7,7 +7,7 @@ import { notifyRealtime } from '../realtime/index.ts';
 import { type DeviceRef, capability, protectedDevice } from './control.ts';
 import { type RouterRow, assertControllable, delivery, expireStaleRequests, loadRouter, queueRequest } from './service.ts';
 
-// Schedules LAN Detective enforces itself (migration 029). For a router that can block a device but
+// Schedules Nigafiy enforces itself (migration 029). For a router that can block a device but
 // cannot schedule it (no driver support, or the router ignores its own schedule), the windows are
 // stored here and the `router-schedules` job switches the router's own block on at the start of a
 // window and off at the end. Only blocks the schedule applied are ever lifted by it: a block an
@@ -48,7 +48,7 @@ const SELECT = `SELECT id, organization_id, site_id, router_id, device_id, mac::
 /** Minimum time between two attempts of the same schedule (a refusal or failure is not retried in a loop). */
 export const RETRY_AFTER_MS = 60_000;
 export const PRODUCT_SCHEDULE_NOTE =
-  'LAN Detective enforces this schedule itself: it turns the router’s block for the device on at the start of each window and off at the end. It works only while LAN Detective and the site’s collector are running.';
+  'Nigafiy enforces this schedule itself: it turns the router’s block for the device on at the start of each window and off at the end. It works only while Nigafiy and the site’s collector are running.';
 
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
@@ -98,7 +98,7 @@ export function checkWindows(windows: ScheduleWindow[]): void {
   }
 }
 
-/** Whether LAN Detective enforces schedules for this router itself: the router can block but not schedule. */
+/** Whether Nigafiy enforces schedules for this router itself: the router can block but not schedule. */
 export function productScheduling(r: RouterRow): boolean {
   if (!r.capabilities) return false;
   return !capability(r, 'schedule')?.supported && !!capability(r, 'block')?.supported;
@@ -221,7 +221,7 @@ export async function enforceSchedule(db: Db, s: ProductScheduleRow, now: Date):
     const overridden = !!(own && !own.pre_existing && own.released_at && !endedByUs);
     const fields: Record<string, unknown> = { block_request_id: null, unblock_request_id: null };
     if (overridden && state.active && !s.removing) {
-      // Lifted by hand (from LAN Detective or on the router) during a window: respect it until the window ends.
+      // Lifted by hand (from Nigafiy or on the router) during a window: respect it until the window ends.
       fields.paused_until = new Date(now.getTime() + state.minutesLeft * 60_000);
       await auditSystem(db, s.organization_id, {
         automation: 'router_schedule',

@@ -226,7 +226,7 @@ export function setWifi(req: Request, ctx: AuthContext, routerId: string, body: 
       const macs = new Set((net.client_macs ?? []).map(normalizeMac));
       const guard = await guardedMacs(db, r, requesterAddress(req));
       if ([...guard.collector].some((m) => macs.has(m))) {
-        throw new AppError(409, 'collector_host', 'The computer running the LAN Detective collector is connected to this network; turning it off would cut LAN Detective off from the router');
+        throw new AppError(409, 'collector_host', 'The computer running the Nigafiy collector is connected to this network; turning it off would cut Nigafiy off from the router');
       }
       if ([...guard.requester].some((m) => macs.has(m))) {
         throw new AppError(409, 'own_machine', 'The machine you are using right now is connected to this network; turning it off would cut you off');
@@ -362,7 +362,7 @@ export function addPortForward(req: Request, ctx: AuthContext, routerId: string,
     if (!d.ip) throw new AppError(409, 'no_address', 'The device’s current IP address is not known');
     // Exposing the collector host or the router itself to the internet is never offered.
     const guard = await protectedDevice(db, d, null);
-    if (guard) throw new AppError(409, guard.code, guard.code === 'gateway' ? 'Ports cannot be forwarded to the router itself' : 'Ports cannot be forwarded to the computer running the LAN Detective collector');
+    if (guard) throw new AppError(409, guard.code, guard.code === 'gateway' ? 'Ports cannot be forwarded to the router itself' : 'Ports cannot be forwarded to the computer running the Nigafiy collector');
     const lan = await lanSubnet(db, r, settings);
     const problem = lanAddressProblem(lan, d.ip);
     if (problem) throw new AppError(422, problem.code, problem.message, { lan: lan.cidr });

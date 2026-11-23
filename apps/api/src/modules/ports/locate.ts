@@ -70,7 +70,7 @@ export function locate(sightings: Sighting[]): PortLocation | null {
   }
   const why =
     role === 'uplink'
-      ? `That port leads to another switch (${s.neighbors.map((n) => n.sys_name || n.port_id).filter(Boolean).join(', ') || 'LLDP neighbour'}), which LAN Detective does not read`
+      ? `That port leads to another switch (${s.neighbors.map((n) => n.sys_name || n.port_id).filter(Boolean).join(', ') || 'LLDP neighbour'}), which Nigafiy does not read`
       : `${others} other addresses are on that port, so it leads to an access point or an unmanaged switch`;
   return { ...s, role, kind: 'behind', confidence: 'low', evidence: [...base, why, 'The exact port beyond it is unknown'] };
 }

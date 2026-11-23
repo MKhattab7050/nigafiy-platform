@@ -1,5 +1,5 @@
 // snmp-probe reads one switch the way the collector does and prints a summary. Use it to check
-// that SNMP is enabled and the credentials work before adding the switch in LAN Detective.
+// that SNMP is enabled and the credentials work before adding the switch in Nigafiy.
 // The community is read from the SNMP_COMMUNITY environment variable so it stays out of shell history.
 //
 //	SNMP_COMMUNITY=... snmp-probe -host 192.168.1.2

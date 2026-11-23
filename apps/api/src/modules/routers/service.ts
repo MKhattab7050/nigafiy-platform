@@ -289,7 +289,7 @@ export async function removeRouter(req: Request, ctx: AuthContext, id: string): 
     const r = await loadRouter(db, id, true);
     const open = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM router_blocks WHERE router_id = $1 AND released_at IS NULL AND NOT pre_existing`, [id])).rows[0]!.n;
     await db.query(`DELETE FROM site_routers WHERE id = $1`, [id]);
-    // Blocks LAN Detective applied stay on the router: removing the router from the product does not lift them.
+    // Blocks Nigafiy applied stay on the router: removing the router from the product does not lift them.
     await audit(db, req, 'router.remove', { type: 'router', id }, { name: r.name, address: r.address, blocks_left_in_place: open });
     await notifyRealtime(db, ctx.organizationId, 'devices');
   });
@@ -313,13 +313,13 @@ export function assertControllable(r: RouterRow): void {
   if (d === 'active') return;
   const pause = loginPause(r);
   const messages: Record<Exclude<typeof d, 'active'>, string> = {
-    disabled: 'The router is disabled in LAN Detective',
+    disabled: 'The router is disabled in Nigafiy',
     out_of_scope: 'The router address is no longer inside an authorized network range of the site',
     awaiting_certificate: 'Confirm the router’s certificate first (fetch it, check the fingerprint, then trust it)',
     login_paused:
       pause.reason === 'bad_credentials'
-        ? 'The router rejected the user name or password. LAN Detective stopped logging in so it cannot lock you out; update the credentials to resume'
-        : `The router locked the account after failed logins. LAN Detective waits until ${pause.until?.toISOString()} before logging in again`,
+        ? 'The router rejected the user name or password. Nigafiy stopped logging in so it cannot lock you out; update the credentials to resume'
+        : `The router locked the account after failed logins. Nigafiy waits until ${pause.until?.toISOString()} before logging in again`,
   };
   throw new AppError(409, d === 'login_paused' ? 'router_login_paused' : `router_${d}`, messages[d], d === 'login_paused' ? { reason: pause.reason, until: pause.until } : undefined);
 }

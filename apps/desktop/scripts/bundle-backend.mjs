@@ -1,4 +1,4 @@
-// Prepares everything the installed desktop app needs to run LAN Detective on its own:
+// Prepares everything the installed desktop app needs to run Nigafiy on its own:
 //   build/backend/local.mjs      the launcher (same one `pnpm local` uses)
 //   build/backend/.env.example   template; the app writes its own .env with fresh secrets on first run
 //   build/backend/api/           API + database runner with production dependencies (pnpm deploy)

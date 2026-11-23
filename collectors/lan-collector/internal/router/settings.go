@@ -72,7 +72,8 @@ type PortForward struct {
 	Owner         Owner  `json:"owner,omitempty"`
 }
 
-// ProductRulePrefix marks rules this product creates, so they are recognisable on the router.
+// ProductRulePrefix marks rules this product creates, so they are recognisable on the router. It is
+// persisted on routers, so it keeps the name from before the rename (docs/architecture/naming.md).
 const ProductRulePrefix = "LAN Detective: "
 
 // Settings is what SettingsReader reports. A nil/empty part was not offered or not readable.

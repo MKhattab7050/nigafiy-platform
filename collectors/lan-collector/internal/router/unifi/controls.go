@@ -276,7 +276,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set UniFi WLAN %s enabled=%v", id, enabled),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or UniFi Network Settings → WiFi",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or UniFi Network Settings → WiFi",
 	}, nil
 }
 
@@ -325,7 +325,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set UniFi fixed IP %s for %s", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or disable Fixed IP Address on the client in UniFi",
+		Undo:      "Remove the reservation in Nigafiy or disable Fixed IP Address on the client in UniFi",
 	}, nil
 }
 
@@ -352,7 +352,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("cleared UniFi fixed IP %s for %s", r.IP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no fixed IP configured for this MAC in UniFi"}, nil
@@ -387,7 +387,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added UniFi port forward %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or UniFi Network Settings → Routing & Firewall → Port Forwarding",
+		Undo:      "Remove the rule in Nigafiy or UniFi Network Settings → Routing & Firewall → Port Forwarding",
 	}, nil
 }
 
@@ -409,7 +409,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed UniFi port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present on UniFi"}, nil
@@ -441,7 +441,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 		Mechanism: mechRename,
 		Applied:   true,
 		Detail:    fmt.Sprintf("renamed UniFi client %s to %q", mac, name),
-		Undo:      "Rename the client again in LAN Detective or UniFi Network",
+		Undo:      "Rename the client again in Nigafiy or UniFi Network",
 	}, nil
 }
 

@@ -16,7 +16,7 @@ export function useScopeSuggestions(siteId: string | null): Query<ScopeSuggestio
 }
 
 /**
- * Detected ranges, each with where it came from and how sure LAN Detective is. The only action is
+ * Detected ranges, each with where it came from and how sure Nigafiy is. The only action is
  * the explicit one: tick the ownership attestation (never pre-ticked) and press Authorize, which
  * calls the same POST /sites/:id/scopes as the manual form. Nothing is ever authorized automatically.
  */

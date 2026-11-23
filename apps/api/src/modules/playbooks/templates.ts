@@ -21,7 +21,7 @@ export const TEMPLATES: readonly PlaybookTemplate[] = [
       'When a device nobody has reviewed joins the network: notify, then ask an administrator whether to block it on the router and pause its internet through the DNS filter. Each of the two needs an approval; rejecting one keeps the other.',
     trigger: { kind: 'event', event_types: ['device_discovered'], filters: { device_trust: ['unreviewed'] } },
     steps: [
-      { key: 'notify', action: 'notify', params: { title: 'Unknown device joined: {device}', message: 'IP {ip}, MAC {mac} at {site}. Approve or reject the block in LAN Detective → Playbooks → Approvals.', severity: 'warning', attach: 'trigger' } },
+      { key: 'notify', action: 'notify', params: { title: 'Unknown device joined: {device}', message: 'IP {ip}, MAC {mac} at {site}. Approve or reject the block in Nigafiy → Playbooks → Approvals.', severity: 'warning', attach: 'trigger' } },
       { key: 'block', action: 'router_block', on_error: 'continue', params: { router_id: null, device_id: null } },
       { key: 'pause', action: 'dns_pause', on_error: 'continue', params: { minutes: 24 * 60, device_id: null } },
     ],

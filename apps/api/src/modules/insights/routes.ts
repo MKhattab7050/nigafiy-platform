@@ -121,7 +121,7 @@ export async function loadInsightFacts(db: Db, organizationId: string, siteFilte
           ORDER BY p.errors_delta DESC LIMIT 10`,
         [siteFilter],
     );
-    // Infrastructure LAN Detective classified itself (inferred, medium/high confidence) that nothing watches yet.
+    // Infrastructure Nigafiy classified itself (inferred, medium/high confidence) that nothing watches yet.
     // Only proposed where the site's `suggest.monitor_infrastructure` automation is on; nothing is created here.
     const infraRows = (
       await db.query<InfrastructureFact & { site_id: string }>(

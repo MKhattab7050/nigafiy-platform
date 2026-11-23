@@ -60,7 +60,7 @@ export function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
   );
 }
 
-/** Something LAN Detective worked out itself: always labelled as inferred, with how sure it is. */
+/** Something Nigafiy worked out itself: always labelled as inferred, with how sure it is. */
 export function InferredBadge({ confidence }: { confidence: Confidence | null }) {
   const { t } = useI18n();
   return (
@@ -73,7 +73,7 @@ export function InferredBadge({ confidence }: { confidence: Confidence | null })
   );
 }
 
-/** A value LAN Detective filled in for the user (a default or a suggestion); the field stays editable. */
+/** A value Nigafiy filled in for the user (a default or a suggestion); the field stays editable. */
 export function SuggestedBadge({ children }: { children: React.ReactNode }) {
   return (
     <Badge tone="idle" dot={false}>

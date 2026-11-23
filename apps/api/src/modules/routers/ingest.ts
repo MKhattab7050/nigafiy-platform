@@ -134,8 +134,8 @@ async function applyHealth(db: Db, c: CollectorContext, r: Target, item: RouterR
       ...base,
       type: 'router_login_failed',
       severity: 'warning',
-      title: next === 'locked_out' ? `Router ${r.name} locked its administrator account` : `Router ${r.name} rejected LAN Detective’s login`,
-      details: { ...details, note: 'LAN Detective stopped logging in to this router so it cannot lock you out. Update the credentials to resume.' },
+      title: next === 'locked_out' ? `Router ${r.name} locked its administrator account` : `Router ${r.name} rejected Nigafiy’s login`,
+      details: { ...details, note: 'Nigafiy stopped logging in to this router so it cannot lock you out. Update the credentials to resume.' },
     });
   } else if (next === 'unreachable' && r.status === 'ok') {
     await emitEvent(db, c.organizationId, {
@@ -209,7 +209,7 @@ async function applyRefresh(db: Db, c: CollectorContext, r: Target, item: Router
   }
 
   if (item.blocked) {
-    // Blocks lifted on the router itself (not through LAN Detective) close their ledger entry.
+    // Blocks lifted on the router itself (not through Nigafiy) close their ledger entry.
     const still = item.blocked.map((b) => b.mac.toLowerCase());
     const lifted = (
       await db.query<{ id: string; mac: string; device_id: string | null; pre_existing: boolean }>(
@@ -226,8 +226,8 @@ async function applyRefresh(db: Db, c: CollectorContext, r: Target, item: Router
         collectorId: c.id,
         type: 'device_unblocked',
         severity: 'info',
-        title: `A block applied by LAN Detective is no longer in effect on ${r.name}`,
-        details: { router_id: r.id, router: r.name, mac: l.mac, released_via: 'router', note: 'Lifted on the router itself, not through LAN Detective.' },
+        title: `A block applied by Nigafiy is no longer in effect on ${r.name}`,
+        details: { router_id: r.id, router: r.name, mac: l.mac, released_via: 'router', note: 'Lifted on the router itself, not through Nigafiy.' },
         source: 'collector',
         occurredAt: at,
       });
@@ -250,7 +250,7 @@ async function applyBlockChange(
   ).rows[0]?.label ?? mac;
   await db.query(`UPDATE router_clients SET blocked = $3 WHERE router_id = $1 AND mac = $2::macaddr`, [r.id, mac, item.action === 'block']);
   if (item.action === 'block') {
-    // already_in_effect: the device was blocked before LAN Detective acted (the administrator's own
+    // already_in_effect: the device was blocked before Nigafiy acted (the administrator's own
     // block). It is recorded as pre-existing and never claimed: the product will not lift it.
     const inserted = await db.query(
       `INSERT INTO router_blocks (organization_id, site_id, router_id, mac, device_id, request_id, mechanism, pre_existing, applied_by, applied_by_email, applied_at, undo)

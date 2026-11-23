@@ -10,7 +10,7 @@ import type { Locale } from '@/lib/i18n';
 const en = {
   title: 'Unified Endpoint Management',
   subtitle:
-    'Inventory, health, compliance, remote desktop, remote files and IT administration for company computers running the LAN Detective agent (Windows, Linux, macOS).',
+    'Inventory, health, compliance, remote desktop, remote files and IT administration for company computers running the Nigafiy agent (Windows, Linux, macOS).',
   addEndpoint: 'Enroll endpoint',
   endpointName: 'Device label',
   endpointNamePlaceholder: 'e.g. Accounting-PC-01, Ubuntu-DB-01',
@@ -23,7 +23,7 @@ const en = {
   create: 'Create & generate enrollment credentials',
   emptyTitle: 'No enrolled endpoints yet',
   emptyBody:
-    'Enroll company Windows, Linux or macOS computers with the LAN Detective agent to inspect health, applications and compliance, and run authorized remote administration. Phones and tablets (iOS, Android) are not supported.',
+    'Enroll company Windows, Linux or macOS computers with the Nigafiy agent to inspect health, applications and compliance, and run authorized remote administration. Phones and tablets (iOS, Android) are not supported.',
   tokenModalTitle: 'Endpoint Enrollment & Provisioning',
   tokenOnce: 'This single-use enrollment token is shown only once and expires in 24 hours.',
   tokenLabel: 'Enrollment token',
@@ -202,7 +202,7 @@ type Dict = typeof en;
 const ar: Dict = {
   title: 'مركز الإدارة الشاملة للأجهزة (Unified Endpoint Management)',
   subtitle:
-    'الجرد والصحة والامتثال وسطح المكتب البعيد والملفات عن بُعد وإدارة تقنية المعلومات لحواسيب الشركة التي تعمل بوكيل LAN Detective (Windows و Linux و macOS).',
+    'الجرد والصحة والامتثال وسطح المكتب البعيد والملفات عن بُعد وإدارة تقنية المعلومات لحواسيب الشركة التي تعمل بوكيل Nigafiy (Windows و Linux و macOS).',
   addEndpoint: 'تسجيل جهاز جديد',
   endpointName: 'اسم تعريف الجهاز',
   endpointNamePlaceholder: 'مثال: Accounting-PC-01 أو Ubuntu-DB-01',
@@ -215,7 +215,7 @@ const ar: Dict = {
   create: 'إنشاء وإصدار بيانات التسجيل',
   emptyTitle: 'لا توجد أجهزة مُدارة مسجَّلة بعد',
   emptyBody:
-    'سجّل حواسيب الشركة (Windows / Linux / macOS) بوكيل LAN Detective لمعرفة صحتها وتطبيقاتها وامتثالها وإدارتها عن بُعد بصلاحية. الهواتف والأجهزة اللوحية (iOS و Android) غير مدعومة.',
+    'سجّل حواسيب الشركة (Windows / Linux / macOS) بوكيل Nigafiy لمعرفة صحتها وتطبيقاتها وامتثالها وإدارتها عن بُعد بصلاحية. الهواتف والأجهزة اللوحية (iOS و Android) غير مدعومة.',
   tokenModalTitle: 'تسجيل وإعداد الجهاز (Endpoint Enrollment)',
   tokenOnce: 'يُعرض رمز التسجيل ذو الاستخدام الواحد مرة واحدة فقط وتنتهي صلاحيته بعد 24 ساعة.',
   tokenLabel: 'رمز التسجيل (Enrollment Token)',

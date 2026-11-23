@@ -32,7 +32,7 @@ export function requesterAddress(req: Request): string | null {
 /**
  * Devices that must never be blocked from the product: the collector host (it would cut LAN
  * Detective off), the router/gateway itself, and the machine the request comes from (it would cut
- * the operator off). Identification uses what LAN Detective observed; when nothing identifies a
+ * the operator off). Identification uses what Nigafiy observed; when nothing identifies a
  * device as one of these, it is not protected.
  */
 export async function protectedDevice(db: Db, d: DeviceRef, requesterIp: string | null): Promise<Refusal | null> {
@@ -47,7 +47,7 @@ export async function protectedDevice(db: Db, d: DeviceRef, requesterIp: string 
       [d.id],
     )
   ).rows[0];
-  if (facts?.local || facts?.collector_ip) return { code: 'collector_host', message: 'This is the computer running the LAN Detective collector; blocking it would stop monitoring and control' };
+  if (facts?.local || facts?.collector_ip) return { code: 'collector_host', message: 'This is the computer running the Nigafiy collector; blocking it would stop monitoring and control' };
   if (facts?.router || facts?.gateway) return { code: 'gateway', message: 'This is the router or the network gateway itself' };
   if (requesterIp && d.ip && requesterIp === d.ip) return { code: 'own_machine', message: 'This is the machine you are using right now; blocking it would cut you off' };
   return null;
@@ -60,7 +60,7 @@ export function capability(r: RouterRow, name: string): CapabilityStatus | null 
 /** Throws unless the router reported the capability as supported. */
 export function assertCapability(r: RouterRow, name: string): void {
   if (!r.capabilities) {
-    throw new AppError(409, 'capabilities_unknown', 'The router has not been read yet; run "Test / refresh" first so LAN Detective knows what it supports');
+    throw new AppError(409, 'capabilities_unknown', 'The router has not been read yet; run "Test / refresh" first so Nigafiy knows what it supports');
   }
   const c = capability(r, name);
   if (!c?.supported) {
@@ -133,16 +133,16 @@ export function changeBlocks(req: Request, ctx: AuthContext, routerId: string, d
           continue;
         }
         if (open) {
-          refuse('already_blocked', open.pre_existing ? 'The device is already blocked on the router by the administrator' : `Already blocked by ${open.applied_by_email ?? 'LAN Detective'}`);
+          refuse('already_blocked', open.pre_existing ? 'The device is already blocked on the router by the administrator' : `Already blocked by ${open.applied_by_email ?? 'Nigafiy'}`);
           continue;
         }
       } else if (!open || open.pre_existing) {
-        // Only blocks LAN Detective applied itself can be lifted from the product.
+        // Only blocks Nigafiy applied itself can be lifted from the product.
         refuse(
           'not_applied_by_product',
           open?.pre_existing
-            ? 'This block was made on the router by an administrator; LAN Detective does not lift blocks it did not apply'
-            : 'LAN Detective has no block of its own on this device on this router',
+            ? 'This block was made on the router by an administrator; Nigafiy does not lift blocks it did not apply'
+            : 'Nigafiy has no block of its own on this device on this router',
         );
         continue;
       }
@@ -189,7 +189,7 @@ export function setRateLimit(req: Request, ctx: AuthContext, routerId: string, d
 
 /**
  * Schedule. On a router whose driver schedules devices itself, the windows are sent to the router.
- * On a router that can block but not schedule (or ignores its own schedule), LAN Detective stores the
+ * On a router that can block but not schedule (or ignores its own schedule), Nigafiy stores the
  * windows and enforces them with the router's block (product-schedule.ts). A schedule stored that
  * way stays in that mode until it is removed.
  */

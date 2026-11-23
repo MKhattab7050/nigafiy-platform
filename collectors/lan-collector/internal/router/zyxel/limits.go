@@ -19,7 +19,7 @@ package zyxel
 //                               UrlPolicy:"Block", WebRedirect:0, URLFilter:"", NetworkServiceList:""}
 //       PUT  DAL?oid=paren_ctl {PrentalCtlEnable:true} (the global switch)
 //
-// Objects made by LAN Detective are named "LD-<mac without colons>" so they are recognisable on the
+// Objects made by Nigafiy are named "LD-<mac without colons>" so they are recognisable on the
 // router's pages and are the only ones this driver changes or deletes.
 
 import (
@@ -45,10 +45,10 @@ const (
 	pcpMaxProfiles     = 20
 )
 
-// ldName is the router-side name of the objects LAN Detective makes for one device.
+// ldName is the router-side name of the objects Nigafiy makes for one device.
 func ldName(mac string) string { return ldObjectPrefix + strings.ReplaceAll(mac, ":", "") }
 
-// isLDObject reports whether a router object name belongs to LAN Detective.
+// isLDObject reports whether a router object name belongs to Nigafiy.
 func isLDObject(name string) bool {
 	if !strings.HasPrefix(name, ldObjectPrefix) || len(name) != len(ldObjectPrefix)+12 {
 		return false
@@ -246,7 +246,7 @@ func (d *Driver) SetRateLimit(ctx context.Context, mac string, limit router.Rate
 		return ch, nil
 	}
 	ch.Detail = fmt.Sprintf("limited upload of %s to %d kbit/s (QoS queue and class %q); download is not limited: this router cannot limit download per device", norm, limit.UpKbps, name) + ch.Detail
-	ch.Undo = fmt.Sprintf("remove the speed limit in LAN Detective, or delete the class and the queue named %q in the router's Network Setting > QoS", name)
+	ch.Undo = fmt.Sprintf("remove the speed limit in Nigafiy, or delete the class and the queue named %q in the router's Network Setting > QoS", name)
 	return ch, nil
 }
 
@@ -270,7 +270,7 @@ func classBody(name, physMAC, norm string, order, queue int) map[string]any {
 	return body
 }
 
-// ClearRateLimit removes the class and queue LAN Detective made for the device. QoS is turned off
+// ClearRateLimit removes the class and queue Nigafiy made for the device. QoS is turned off
 // again when no classification rule is left (the router's state before the first limit).
 func (d *Driver) ClearRateLimit(ctx context.Context, mac string) (router.Change, error) {
 	norm, err := router.NormalizeMAC(mac)
@@ -324,11 +324,11 @@ func (d *Driver) ClearRateLimit(ctx context.Context, mac string) (router.Change,
 		return router.Change{}, err
 	}
 	if ch.AlreadyInEffect {
-		ch.Detail = "no speed limit from LAN Detective on the router for " + norm + "; nothing changed"
+		ch.Detail = "no speed limit from Nigafiy on the router for " + norm + "; nothing changed"
 		return ch, nil
 	}
 	ch.Detail = "removed the upload limit of " + norm + extra
-	ch.Undo = "set the speed limit again in LAN Detective"
+	ch.Undo = "set the speed limit again in Nigafiy"
 	return ch, nil
 }
 
@@ -511,7 +511,7 @@ func (d *Driver) SetSchedule(ctx context.Context, mac string, blocked []router.W
 		return ch, nil
 	}
 	ch.Detail = fmt.Sprintf("internet of %s allowed only %s on %s (parental control profile %q)", norm, strings.Join(ranges, ", "), days, name) + ch.Detail
-	ch.Undo = fmt.Sprintf("remove the schedule in LAN Detective, or delete the profile %q in the router's Security > Parental Control", name)
+	ch.Undo = fmt.Sprintf("remove the schedule in Nigafiy, or delete the profile %q in the router's Security > Parental Control", name)
 	return ch, nil
 }
 
@@ -568,11 +568,11 @@ func (d *Driver) ClearSchedule(ctx context.Context, mac string) (router.Change, 
 		return router.Change{}, err
 	}
 	if ch.AlreadyInEffect {
-		ch.Detail = "no schedule from LAN Detective on the router for " + norm + "; nothing changed"
+		ch.Detail = "no schedule from Nigafiy on the router for " + norm + "; nothing changed"
 		return ch, nil
 	}
 	ch.Detail = "removed the internet schedule of " + norm + extra
-	ch.Undo = "set the schedule again in LAN Detective"
+	ch.Undo = "set the schedule again in Nigafiy"
 	return ch, nil
 }
 

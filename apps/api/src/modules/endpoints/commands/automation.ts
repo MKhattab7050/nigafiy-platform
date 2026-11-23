@@ -29,7 +29,7 @@ export function parseAutomatableCommand(raw: unknown): CommandInput {
 }
 
 export interface CommandRequester {
-  /** The person who approved or started the action; null when LAN Detective acts on its own. */
+  /** The person who approved or started the action; null when Nigafiy acts on its own. */
   userId: string | null;
   /** Shown as the requester (e-mail of the person, or e.g. 'Playbook "Server offline"'). */
   label: string;

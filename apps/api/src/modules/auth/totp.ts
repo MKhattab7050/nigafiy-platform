@@ -81,7 +81,7 @@ export function verifyTotp(secretBase32: string, code: string, timeMs: number, l
 }
 
 /** otpauth:// URI for QR codes (Key Uri Format used by authenticator apps). */
-export function otpauthUri(secretBase32: string, account: string, issuer = 'LAN Detective'): string {
+export function otpauthUri(secretBase32: string, account: string, issuer = 'Nigafiy'): string {
   const label = encodeURIComponent(`${issuer}:${account}`);
   return `otpauth://totp/${label}?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SECONDS}`;
 }

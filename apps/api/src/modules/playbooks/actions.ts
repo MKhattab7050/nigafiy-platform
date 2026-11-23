@@ -23,7 +23,7 @@ import type { ExternalRef, RunRow, StepRow } from './repo.ts';
 // exception: they run only inside the approving administrator's request (routers/control.ts needs
 // the request: audit trail, "never block the machine you are using"), see engine.ts executeRouterStep.
 
-/** Who the step acts for: the approving administrator, or LAN Detective itself (null). */
+/** Who the step acts for: the approving administrator, or Nigafiy itself (null). */
 export interface StepActor {
   id: string;
   email: string;

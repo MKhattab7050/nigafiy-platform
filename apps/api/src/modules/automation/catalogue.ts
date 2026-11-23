@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * Every automatic behaviour of LAN Detective, in one typed list. Each one:
+ * Every automatic behaviour of Nigafiy, in one typed list. Each one:
  *   - is checked with `automationEnabled()` by the module that owns it before it acts;
  *   - records what it did with `auditSystem()` (metadata.automation = its key);
  *   - can be switched off per organization or per site (PUT /automation/:key).
@@ -97,7 +97,7 @@ export const AUTOMATIONS = [
     kind: 'act',
     descriptionKey: 'automation.smart_wifi_analyzer',
     description:
-      'Every 10 minutes the collector reads its own Wi-Fi link and the nearby networks its adapter already sees, then LAN Detective scores channel congestion, recommends a clearer channel and flags weak signal, weak security and look-alike networks.',
+      'Every 10 minutes the collector reads its own Wi-Fi link and the nearby networks its adapter already sees, then Nigafiy scores channel congestion, recommends a clearer channel and flags weak signal, weak security and look-alike networks.',
     config: z.object({ interval_minutes: z.number().int().min(2).max(1440).default(10) }).strict(),
   }),
   define({

@@ -1,30 +1,34 @@
+import { BRAND, MARK_PATHS } from '@nigafiy/brand';
+import { WORDMARK } from '@nigafiy/brand/wordmark';
+
 /**
- * The LAN Detective mark: a lens whose glass holds a three-node network. Drawn with the accent and
- * the current ink, so it follows the theme. The wordmark is set in the UI face, one weight.
+ * The Nigafiy mark (logo D, @nigafiy/brand): the two-tone rounded lowercase n. Logo colours are
+ * fixed (they are the brand, not the theme); the program UI uses the program accents.
  */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 28 28" className={className ?? 'size-7 shrink-0'} aria-hidden>
-      <rect x="0.5" y="0.5" width="27" height="27" rx="7.5" className="fill-accent" />
-      <circle cx="12.2" cy="12.2" r="6.6" fill="none" stroke="var(--color-on-accent)" strokeWidth="1.9" />
-      <path d="M17 17l5 5" stroke="var(--color-on-accent)" strokeWidth="2.6" strokeLinecap="round" />
-      <path d="M9.6 13.9 12.2 9.4 14.8 13.9Z" fill="none" stroke="var(--color-on-accent)" strokeOpacity="0.7" strokeWidth="1" strokeLinejoin="round" />
-      <circle cx="12.2" cy="9.4" r="1.45" fill="var(--color-on-accent)" />
-      <circle cx="9.6" cy="13.9" r="1.45" fill="var(--color-on-accent)" />
-      <circle cx="14.8" cy="13.9" r="1.45" fill="var(--color-on-accent)" />
+    <svg viewBox="0 0 32 32" className={className ?? 'size-7 shrink-0'} aria-hidden>
+      <path d={MARK_PATHS.blue} fill={BRAND.blue} />
+      <path d={MARK_PATHS.navy} fill={BRAND.navy} />
+    </svg>
+  );
+}
+
+/** The lowercase wordmark as outlines (Poppins 600, no font needed), in the current ink: wordmark navy on light, white on dark. */
+export function Wordmark({ className }: { className?: string }) {
+  return (
+    <svg viewBox={WORDMARK.viewBox} className={className ?? 'h-[15px] w-auto text-wordmark'} role="img" aria-label="Nigafiy">
+      <path d={WORDMARK.d} fill="currentColor" />
     </svg>
   );
 }
 
 export function Logo({ compact }: { compact?: boolean }) {
   return (
-    <span className="flex items-center gap-2.5">
+    <span className="flex items-center gap-2" dir="ltr">
       <LogoMark />
-      {!compact && (
-        <span className="whitespace-nowrap text-[15px] font-semibold tracking-[-0.01em] text-fg" dir="ltr">
-          LAN Detective
-        </span>
-      )}
+      {!compact && <Wordmark />}
+      {compact && <span className="sr-only">Nigafiy</span>}
     </span>
   );
 }

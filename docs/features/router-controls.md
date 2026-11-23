@@ -90,7 +90,7 @@ device's MAC or `""` for router-wide changes (Wi-Fi, port forward without a devi
   length, at most 1000 ports per rule; the external range must not overlap an existing rule's
   external range of the same protocol, nor the router's own management ports (80, 443, 22, 23,
   7547 — TR-069). `internal_ip` must be inside the LAN subnet and not the router. The description
-  is stored as `LAN Detective: <description>` (max 60 chars of the operator's text) so the rule is
+  is stored as `LAN Detective: <description>` (the label is kept from before the rename, docs/architecture/naming.md) (max 60 chars of the operator's text) so the rule is
   recognisable; those rules list as `owner: "lan-detective"`.
 - **remove_port_forward**: the collector looks the rule up by `id` AND checks the protocol,
   external range and internal IP still match what the operator saw; if not, it refuses

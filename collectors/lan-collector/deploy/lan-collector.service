@@ -1,7 +1,7 @@
-# systemd unit for the LAN Detective collector (Linux service deployment).
+# systemd unit for the Nigafiy collector (Linux service deployment).
 # Not exercised in the development environment (Windows); review before production use.
 [Unit]
-Description=LAN Detective Collector
+Description=Nigafiy Collector
 After=network-online.target
 Wants=network-online.target
 

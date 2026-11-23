@@ -356,7 +356,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Omada SSID %s enabled=%v", id, enabled),
-		Undo:      "Toggle the SSID back in LAN Detective or Omada Controller Settings → Wireless Networks",
+		Undo:      "Toggle the SSID back in Nigafiy or Omada Controller Settings → Wireless Networks",
 	}, nil
 }
 
@@ -389,7 +389,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Omada fixed IP %s for %s", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or disable Use Fixed IP Address on the client in Omada",
+		Undo:      "Remove the reservation in Nigafiy or disable Use Fixed IP Address on the client in Omada",
 	}, nil
 }
 
@@ -413,7 +413,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("cleared Omada fixed IP for %s", mac),
-		Undo:      "Add the reservation again in LAN Detective",
+		Undo:      "Add the reservation again in Nigafiy",
 	}, nil
 }
 
@@ -443,7 +443,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added Omada port forward %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or Omada Settings → Transmission → NAT → Port Forwarding",
+		Undo:      "Remove the rule in Nigafiy or Omada Settings → Transmission → NAT → Port Forwarding",
 	}, nil
 }
 
@@ -468,7 +468,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed Omada port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present in Omada"}, nil
@@ -496,7 +496,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 		Mechanism: mechRename,
 		Applied:   true,
 		Detail:    fmt.Sprintf("renamed Omada client %s to %q", mac, name),
-		Undo:      "Rename the client again in LAN Detective or Omada Controller",
+		Undo:      "Rename the client again in Nigafiy or Omada Controller",
 	}, nil
 }
 

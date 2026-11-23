@@ -202,7 +202,7 @@ export function Notifications() {
           <Input
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://hooks.example.com/lan-detective"
+            placeholder="https://hooks.example.com/nigafiy"
             aria-label={t('settings.url')}
             required
             type="url"

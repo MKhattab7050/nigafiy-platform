@@ -238,7 +238,7 @@ describe('switch port control', () => {
     // A per-switch quarantine VLAN must exist on that switch.
     expect((await a.agent.put(`/api/v1/switches/${sw}/quarantine-vlan`).set(CSRF).send({ vlan: 444 })).body.error.code).toBe('vlan_not_found');
 
-    // The gateway is on its own port but quarantining it is refused (it is LAN Detective's path).
+    // The gateway is on its own port but quarantining it is refused (it is Nigafiy's path).
     const gw = await a.agent.post(`/api/v1/devices/${byIp('192.168.7.1').id}/quarantine`).set(CSRF).send({ confirm: true });
     expect(gw.body.error.code).toBe('risky_port');
 
@@ -393,7 +393,7 @@ describe('switch port control', () => {
     const audit = await systemPool.query(`SELECT 1 FROM audit_logs WHERE organization_id = $1 AND action = 'switch_port.admin_status'`, [a.organizationId]);
     expect(audit.rowCount).toBe(1);
 
-    // The gateway's port is LAN Detective's own path: refused at approval, no override, nothing queued.
+    // The gateway's port is Nigafiy's own path: refused at approval, no override, nothing queued.
     const gwRun = await a.agent.post(`/api/v1/playbooks/${pb.body.id}/run`).set(CSRF).send({ device_id: gw });
     const gwDecided = await a.agent.post(`/api/v1/playbook-runs/${gwRun.body.id}/steps/${gwRun.body.steps[0].id}/decision`).set(CSRF).send({ decision: 'approve' });
     expect(gwDecided.body.status).toBe('failed');

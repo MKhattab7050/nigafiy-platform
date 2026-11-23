@@ -239,7 +239,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set ZTE WLAN %s Enable=%s", id, en),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or the ZTE gateway UI",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or the ZTE gateway UI",
 	}, nil
 }
 
@@ -271,7 +271,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on ZTE gateway", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Local Network → LAN → DHCP Binding on ZTE",
+		Undo:      "Remove the reservation in Nigafiy or under Local Network → LAN → DHCP Binding on ZTE",
 	}, nil
 }
 
@@ -299,7 +299,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed ZTE DHCP reservation %s for %s", r.IP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no ZTE DHCP reservation found for this MAC"}, nil
@@ -334,7 +334,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added ZTE port forward %s %d-%d → %s:%d-%d", clean.Protocol, clean.ExternalStart, clean.ExternalEnd, clean.InternalIP, clean.InternalStart, clean.InternalEnd),
-		Undo:      "Remove the rule in LAN Detective or under Internet → Security → Port Forwarding on ZTE",
+		Undo:      "Remove the rule in Nigafiy or under Internet → Security → Port Forwarding on ZTE",
 	}, nil
 }
 
@@ -359,7 +359,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed ZTE port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present on ZTE gateway"}, nil

@@ -1,12 +1,12 @@
 'use strict';
-// LAN Detective desktop app.
+// Nigafiy desktop app.
 //
-//  - Dashboard window: the LAN Detective web app, loaded from the configured server.
+//  - Dashboard window: the Nigafiy web app, loaded from the configured server.
 //    It is remote content, so it runs sandboxed with no preload and no desktop access.
 //  - Collector panel: a local page that manages the bundled lan-collector program on this computer.
 //  - Tray icon: the collector keeps monitoring while the windows are closed.
 //  - Local mode (running from a source checkout, no remote server configured): opening the app starts
-//    LAN Detective itself on this computer (database, API, web app), signs in with a local account,
+//    Nigafiy itself on this computer (database, API, web app), signs in with a local account,
 //    asks once to scan the home network, enrolls this computer's collector and shows the dashboard.
 //  - Nigafiy programs (src/programs.cjs): one window per program, each with its own taskbar identity
 //    (AppUserModelID Nigafiy.<Program>). `--program=<id>` picks the window a launch opens, and
@@ -20,7 +20,21 @@ const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs'
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
 const { readEnv } = require('./env-compat.cjs');
+const { resolveDataDir, DEV_PROFILE_NAME, LEGACY_DEV_PROFILE_NAME } = require('./data-dir.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
+
+// The profile folder, before anything reads userData (or takes the single-instance lock, which is
+// per profile): the legacy "Nigafiy" one while only that exists (src/data-dir.cjs). An explicit
+// --user-data-dir always wins.
+if (!app.commandLine.hasSwitch('user-data-dir')) {
+  const profile = resolveDataDir({
+    appData: app.getPath('appData'),
+    exists: (p) => fs.existsSync(p),
+    ...(app.isPackaged ? {} : { name: DEV_PROFILE_NAME, legacyName: LEGACY_DEV_PROFILE_NAME }),
+  });
+  app.setPath('userData', profile.dir);
+  if (profile.legacy) console.info(`[profile] using the profile folder from before the rename (${profile.dir}); it is migrated in a later update`);
+}
 
 const SMOKE = process.argv.includes('--smoke');
 // Non-interactive check of local mode: consent comes from NIGAFIY_DESKTOP_AUTO_CONSENT=1 (legacy LD_DESKTOP_AUTO_CONSENT), then it reports and quits.
@@ -186,7 +200,7 @@ function showPanel() {
     height: 780,
     minWidth: 520,
     minHeight: 560,
-    title: 'LAN Detective — Collector',
+    title: 'Nigafiy — Collector',
     backgroundColor: '#070d1a',
     icon: ICON,
     autoHideMenuBar: true,
@@ -223,7 +237,7 @@ function showDashboard() {
     height: 900,
     minWidth: 420,
     minHeight: 600,
-    title: startProgram === 'hub' ? 'LAN Detective' : PROGRAM_NAME[startProgram],
+    title: startProgram === 'hub' ? 'Nigafiy' : PROGRAM_NAME[startProgram],
     backgroundColor: '#070d1a',
     icon: ICON,
     autoHideMenuBar: true,
@@ -240,8 +254,8 @@ function showDashboard() {
     void dialog
       .showMessageBox(dashboard, {
         type: 'warning',
-        title: 'LAN Detective',
-        message: 'Cannot reach the LAN Detective server',
+        title: 'Nigafiy',
+        message: 'Cannot reach the Nigafiy server',
         detail: `${activeOrigin}\n${description}\n\nThe local collector keeps monitoring and will upload its results when the server is reachable again.`,
         buttons: ['Try again', 'Server settings', 'Close'],
         defaultId: 0,
@@ -262,7 +276,7 @@ function showDashboard() {
   void contents.loadURL(
     origin && (!localMode || localShown)
       ? startUrl(origin)
-      : splashUrl(localError ?? 'Starting LAN Detective…', Boolean(localError)),
+      : splashUrl(localError ?? 'Starting Nigafiy…', Boolean(localError)),
   );
   return dashboard;
 }
@@ -273,7 +287,7 @@ function refreshTray() {
   const running = state.status === 'running' || state.status === 'starting';
   const summary = !state.enrolled ? 'Collector: not enrolled' : running ? (state.connected === false ? 'Collector: running, server unreachable' : 'Collector: running') : 'Collector: stopped';
   const modeLabel = localMode ? 'Mode: local (this computer)' : state.settings.serverUrl ? `Server: ${state.settings.serverUrl}` : 'Server: not configured';
-  tray.setToolTip(`LAN Detective${localMode ? ' (Local)' : ''}\n${summary}`);
+  tray.setToolTip(`Nigafiy${localMode ? ' (Local)' : ''}\n${summary}`);
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open dashboard', click: () => showDashboard() },
@@ -286,7 +300,7 @@ function refreshTray() {
         ? { label: 'Stop collector', click: () => void collector.stop() }
         : { label: 'Start collector', enabled: state.enrolled && Boolean(state.settings.serverUrl), click: () => tryStart() },
       { type: 'separator' },
-      { label: 'Quit LAN Detective', click: () => quit() },
+      { label: 'Quit Nigafiy', click: () => quit() },
     ]),
   );
 }
@@ -315,10 +329,10 @@ function splashUrl(message, error = false) {
   const spinner = error
     ? ''
     : '<div class="spin"></div><style>.spin{width:28px;height:28px;margin:0 auto 16px;border:3px solid #22406e;border-top-color:#4f8cff;border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.spin{animation:none}}</style>';
-  const html = `<!doctype html><meta charset="utf-8"><title>LAN Detective</title>
+  const html = `<!doctype html><meta charset="utf-8"><title>Nigafiy</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;background:#070d1a;color:#e6edf7;font:15px system-ui,'Segoe UI',sans-serif">
 <div style="text-align:center;max-width:520px;padding:24px">
-<div style="font-size:22px;font-weight:600;margin-bottom:16px">LAN Detective</div>${spinner}
+<div style="font-size:22px;font-weight:600;margin-bottom:16px">Nigafiy</div>${spinner}
 <div style="color:${error ? '#ff8a8a' : '#9fb0c8'};white-space:pre-line">${esc(message)}</div></div></body>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
@@ -405,10 +419,10 @@ async function askToScan(net, parentWindow = dashboard) {
   const parent = parentWindow && !parentWindow.isDestroyed() && parentWindow.isVisible() ? parentWindow : undefined;
   const { response } = await dialog.showMessageBox(parent, {
     type: 'question',
-    title: 'LAN Detective',
+    title: 'Nigafiy',
     message: `Scan your network ${net.cidr}?\nفحص شبكتك ${net.cidr}؟`,
     detail:
-      `This computer is connected to ${net.cidr} (${net.iface}). LAN Detective will discover and monitor the devices on it from this computer.\n\n` +
+      `This computer is connected to ${net.cidr} (${net.iface}). Nigafiy will discover and monitor the devices on it from this computer.\n\n` +
       'Only continue if this is your own network or you are allowed to scan it.\nتابع فقط إذا كانت هذه شبكتك أو مسموح لك بفحصها.',
     buttons: ['Scan my network / افحص شبكتي', 'Not now / ليس الآن'],
     defaultId: 0,
@@ -441,7 +455,7 @@ async function startLocal() {
   } else {
     const nodePath = findNode();
     if (!nodePath) {
-      setSplash('Node.js 24 or newer is needed to run LAN Detective from source.\nInstall it from nodejs.org, then open the app again.', true);
+      setSplash('Node.js 24 or newer is needed to run Nigafiy from source.\nInstall it from nodejs.org, then open the app again.', true);
       return;
     }
     localStack = makeStack({ script: path.join(repoRoot, 'scripts', 'local.mjs'), nodePath, env: {}, dataDir: path.join(repoRoot, '.data') });
@@ -503,7 +517,7 @@ async function startLocal() {
     openPending();
   } catch (err) {
     if (!localMode) return;
-    setSplash(`LAN Detective could not start:\n${err.message}`, true);
+    setSplash(`Nigafiy could not start:\n${err.message}`, true);
   }
 }
 
@@ -542,7 +556,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    app.setAppUserModelId('com.landetective.desktop');
+    app.setAppUserModelId('com.nigafiy.hub');
     // nigafiy:// is registered by the installed app only; a source checkout or a test run never writes HKCU\Software\Classes\nigafiy.
     if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({

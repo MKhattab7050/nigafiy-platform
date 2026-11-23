@@ -114,7 +114,7 @@ teamRouter.post('/team/invitations', requireRole('admin'), async (req, res) => {
     const inviterRes = await db.query<{ display_name: string }>(`SELECT display_name FROM users WHERE id = $1`, [ctx.userId]);
     const orgRes = await db.query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [ctx.organizationId]);
     const inviterName = inviterRes.rows[0]?.display_name ?? ctx.userEmail;
-    const orgName = orgRes.rows[0]?.name ?? 'LAN Detective';
+    const orgName = orgRes.rows[0]?.name ?? 'Nigafiy';
 
     const inserted = await db.query<TeamInvitation>(
       `INSERT INTO invitations (organization_id, email, role, token_hash, invited_by, invited_by_name, expires_at)
@@ -127,9 +127,9 @@ teamRouter.post('/team/invitations', requireRole('admin'), async (req, res) => {
 
   const inviteUrl = `${webAppUrl(req)}/invite/${encodeURIComponent(token)}`;
   const mailOutcome = await sendAccountEmail(ctx.organizationId, body.email, {
-    subject: `[LAN Detective] Invitation to join ${created.orgName}`,
+    subject: `[Nigafiy] Invitation to join ${created.orgName}`,
     text: [
-      `${created.inviterName} invited you to join ${created.orgName} on LAN Detective as ${body.role}.`,
+      `${created.inviterName} invited you to join ${created.orgName} on Nigafiy as ${body.role}.`,
       '',
       `Accept your invitation: ${inviteUrl}`,
       `Expires: ${expiresAt.toISOString()}`,
@@ -373,9 +373,9 @@ teamRouter.post('/team/members/:userId/reset-password', requireRole('admin'), as
 
   const resetUrl = `${webAppUrl(req)}/reset-password?token=${encodeURIComponent(token)}`;
   const mailOutcome = await sendAccountEmail(ctx.organizationId, member.email, {
-    subject: '[LAN Detective] Password reset link',
+    subject: '[Nigafiy] Password reset link',
     text: [
-      `An administrator (${ctx.userEmail}) issued a password reset link for your LAN Detective account.`,
+      `An administrator (${ctx.userEmail}) issued a password reset link for your Nigafiy account.`,
       '',
       `Reset your password: ${resetUrl}`,
       `Expires: ${expiresAt.toISOString()}`,

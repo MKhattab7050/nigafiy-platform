@@ -268,7 +268,7 @@ func (s *session) guardSelf(ch PortChange) error {
 		check(macFrom(idx), int(num(v)))
 	})
 	if found != "" {
-		return fail("self_port", "the collector or the gateway (%s) is reached through this port; changing it would cut LAN Detective off. Give an override reason to proceed", found)
+		return fail("self_port", "the collector or the gateway (%s) is reached through this port; changing it would cut Nigafiy off. Give an override reason to proceed", found)
 	}
 	return nil
 }

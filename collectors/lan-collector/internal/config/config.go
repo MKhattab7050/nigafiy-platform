@@ -27,7 +27,7 @@ type Limits struct {
 }
 
 type Config struct {
-	// ServerURL is the LAN Detective cloud API. The collector only ever makes outbound requests to it.
+	// ServerURL is the Nigafiy cloud API. The collector only ever makes outbound requests to it.
 	ServerURL string `yaml:"server_url"`
 	// EnrollmentToken is needed once, on first start. Prefer the NIGAFIY_SENSOR_ENROLLMENT_TOKEN env var (legacy LAN_COLLECTOR_ENROLLMENT_TOKEN).
 	EnrollmentToken string `yaml:"enrollment_token"`
@@ -42,7 +42,7 @@ type Config struct {
 	TLSPinSHA256    string `yaml:"tls_pin_sha256"`
 	LogLevel        string `yaml:"log_level"`
 	// DNSListen is where the access-control DNS filter answers once the owner turns it on in
-	// LAN Detective. Default ":53"; "off" disables the feature on this collector.
+	// Nigafiy. Default ":53"; "off" disables the feature on this collector.
 	DNSListen string `yaml:"dns_listen"`
 	// MNDPListen is where the passive MikroTik neighbour listener (receive-only, UDP 5678) binds
 	// when the site allows it. Default ":5678"; "off" disables it on this collector.

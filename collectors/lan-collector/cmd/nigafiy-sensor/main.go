@@ -1,6 +1,6 @@
-// lan-collector is the LAN Detective edge collector.
+// lan-collector is the Nigafiy edge collector.
 //
-// It runs inside the monitored network, makes only outbound HTTPS connections to the LAN Detective
+// It runs inside the monitored network, makes only outbound HTTPS connections to the Nigafiy
 // cloud, and probes only the network ranges an administrator has authorized.
 package main
 

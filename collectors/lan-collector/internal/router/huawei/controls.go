@@ -254,7 +254,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Huawei WLAN %s Enable=%v", id, enabled),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or the Huawei gateway web UI",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or the Huawei gateway web UI",
 	}, nil
 }
 
@@ -292,7 +292,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on Huawei gateway", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Home Network → LAN Interface → Static IP",
+		Undo:      "Remove the reservation in Nigafiy or under Home Network → LAN Interface → Static IP",
 	}, nil
 }
 
@@ -329,7 +329,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed Huawei static DHCP reservation %s for %s", removedIP, mac),
-		Undo:      "Add the reservation again in LAN Detective",
+		Undo:      "Add the reservation again in Nigafiy",
 	}, nil
 }
 
@@ -364,7 +364,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added Huawei port mapping %s %d-%d → %s:%d", clean.Protocol, clean.ExternalStart, clean.ExternalEnd, clean.InternalIP, clean.InternalStart),
-		Undo:      "Remove the rule in LAN Detective or under Internet → Forwarding → Port Mapping on the Huawei gateway",
+		Undo:      "Remove the rule in Nigafiy or under Internet → Forwarding → Port Mapping on the Huawei gateway",
 	}, nil
 }
 
@@ -395,7 +395,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed Huawei port mapping %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-mapping rule is no longer present on Huawei gateway"}, nil
@@ -422,7 +422,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 		Mechanism: mechRename,
 		Applied:   true,
 		Detail:    fmt.Sprintf("renamed Huawei client %s to %q", mac, name),
-		Undo:      "Rename the device again in LAN Detective or the Huawei gateway UI",
+		Undo:      "Rename the device again in Nigafiy or the Huawei gateway UI",
 	}, nil
 }
 

@@ -1,10 +1,10 @@
-# LAN Detective collector configuration.
+# Nigafiy collector configuration.
 # Every key is optional except server_url. Unknown keys are rejected (protects against typos).
 
-# The LAN Detective cloud API. The collector only makes OUTBOUND https requests to this address.
-server_url: https://lan-detective.example.com
+# The Nigafiy cloud API. The collector only makes OUTBOUND https requests to this address.
+server_url: https://nigafiy.example.com
 
-# Needed once, on first start. Create it in LAN Detective → Collectors → Add collector.
+# Needed once, on first start. Create it in Nigafiy → Collectors → Add collector.
 # Prefer the environment variable NIGAFIY_SENSOR_ENROLLMENT_TOKEN over writing it here.
 # enrollment_token: ""
 

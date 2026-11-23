@@ -330,7 +330,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set MikroTik Wi-Fi %s to %s", id, state),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or WinBox/WebFig",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or WinBox/WebFig",
 	}, nil
 }
 
@@ -392,7 +392,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on MikroTik DHCP server", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under IP → DHCP Server → Leases on MikroTik",
+		Undo:      "Remove the reservation in Nigafiy or under IP → DHCP Server → Leases on MikroTik",
 	}, nil
 }
 
@@ -422,7 +422,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed static DHCP reservation %s for %s", r.IP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no static DHCP lease found for this MAC"}, nil
@@ -465,7 +465,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("forwarded %s %s → %s:%s (%s)", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd), clean.Description),
-		Undo:      "Remove the port forward in LAN Detective or under IP → Firewall → NAT on MikroTik",
+		Undo:      "Remove the port forward in Nigafiy or under IP → Firewall → NAT on MikroTik",
 	}, nil
 }
 
@@ -493,7 +493,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed dst-nat rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "NAT rule is no longer present on MikroTik"}, nil
@@ -528,7 +528,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 				Mechanism: mechRename,
 				Applied:   true,
 				Detail:    fmt.Sprintf("set MikroTik DHCP lease comment for %s to %q", mac, name),
-				Undo:      "Rename the device again in LAN Detective or WinBox",
+				Undo:      "Rename the device again in Nigafiy or WinBox",
 			}, nil
 		}
 	}

@@ -98,7 +98,7 @@ export const scheduleSchema = z
       .min(1)
       .max(8)
       .nullable(),
-    // IANA time zone of the windows when LAN Detective enforces the schedule itself (default: the site's).
+    // IANA time zone of the windows when Nigafiy enforces the schedule itself (default: the site's).
     timezone: z.string().min(1).max(64).optional(),
   })
   .strict();
@@ -108,6 +108,7 @@ export const scheduleSchema = z
 /** Ports the router itself is managed on (web UI, SSH, Telnet, TR-069): never forwarded. */
 export const MANAGEMENT_PORTS = [22, 23, 80, 443, 7547] as const;
 export const MAX_PORTS_PER_RULE = 1000;
+/** Persisted on routers: kept from before the rename (docs/architecture/naming.md), like the Sensor's router.ProductRulePrefix. */
 export const PORT_FORWARD_PREFIX = 'LAN Detective: ';
 
 // Control characters (C0, DEL, C1) are refused in anything written to the router.

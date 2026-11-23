@@ -363,7 +363,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set OpenWrt wireless.%s disabled=%s", id, disabled),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or OpenWrt LuCI",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or OpenWrt LuCI",
 	}, nil
 }
 
@@ -393,7 +393,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 			if err := d.commitAndReload(ctx, "reserve", "dhcp", "dnsmasq"); err != nil {
 				return router.Change{}, err
 			}
-			return router.Change{Action: "reserve", MAC: mac, Mechanism: mechReservation, Applied: true, Detail: fmt.Sprintf("updated OpenWrt static lease for %s to %s", mac, ip), Undo: "Remove the reservation in LAN Detective or LuCI"}, nil
+			return router.Change{Action: "reserve", MAC: mac, Mechanism: mechReservation, Applied: true, Detail: fmt.Sprintf("updated OpenWrt static lease for %s to %s", mac, ip), Undo: "Remove the reservation in Nigafiy or LuCI"}, nil
 		}
 	}
 	vals := map[string]string{"mac": strings.ToUpper(mac), "ip": ip.String()}
@@ -414,7 +414,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s in OpenWrt UCI dhcp", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or LuCI (Network → DHCP and DNS → Static Leases)",
+		Undo:      "Remove the reservation in Nigafiy or LuCI (Network → DHCP and DNS → Static Leases)",
 	}, nil
 }
 
@@ -444,7 +444,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed OpenWrt static lease %s for %s", r.IP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no static lease found for this MAC"}, nil
@@ -491,7 +491,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added OpenWrt DNAT redirect %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the port forward in LAN Detective or OpenWrt LuCI (Network → Firewall → Port Forwards)",
+		Undo:      "Remove the port forward in Nigafiy or OpenWrt LuCI (Network → Firewall → Port Forwards)",
 	}, nil
 }
 
@@ -519,7 +519,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed OpenWrt redirect %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "redirect rule is no longer present on OpenWrt"}, nil
@@ -551,7 +551,7 @@ func (d *Driver) RenameClient(ctx context.Context, rawMAC, rawName string) (rout
 				if err := d.commitAndReload(ctx, "rename", "dhcp", "dnsmasq"); err != nil {
 					return router.Change{}, err
 				}
-				return router.Change{Action: "rename", MAC: mac, Mechanism: mechRename, Applied: true, Detail: fmt.Sprintf("renamed OpenWrt host %s to %q", mac, name), Undo: "Rename the device again in LAN Detective or LuCI"}, nil
+				return router.Change{Action: "rename", MAC: mac, Mechanism: mechRename, Applied: true, Detail: fmt.Sprintf("renamed OpenWrt host %s to %q", mac, name), Undo: "Rename the device again in Nigafiy or LuCI"}, nil
 			}
 		}
 	}

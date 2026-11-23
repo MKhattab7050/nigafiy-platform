@@ -102,7 +102,7 @@ export function IncidentDetailScreen({ id }: { id: string }) {
                           {localizeIncidentActivity(a.body, a.kind, locale)}
                         </p>
                         <p className="mt-0.5 text-[11px] text-faint">
-                          {a.user_name ?? 'LAN Detective'} · <span title={absoluteTime(a.created_at, locale)}>{relativeTime(a.created_at, locale)}</span>
+                          {a.user_name ?? 'Nigafiy'} · <span title={absoluteTime(a.created_at, locale)}>{relativeTime(a.created_at, locale)}</span>
                         </p>
                       </li>
                     ))}

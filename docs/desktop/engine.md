@@ -40,7 +40,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\Nigafiy\data` (or the legacy `%APPDATA%\LAN Detective\data` while only that one exists) |
+| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\Nigafiy\data` (or the legacy `%APPDATA%\Nigafiy\data` while only that one exists) |
 | `--node` | `NIGAFIY_ENGINE_NODE` | `node` from `PATH`, else `C:\Program Files\nodejs\node.exe` |
 | `--stack-script` | `NIGAFIY_ENGINE_STACK_SCRIPT` | `<repo>/scripts/local.mjs` (repo = first folder above the engine exe, then above the working directory, that has `scripts/local.mjs`) |
 | `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `NIGAFIY_BUNDLE_DIR` (installed app) |
@@ -52,7 +52,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 | `--update-publisher` | `NIGAFIY_UPDATE_PUBLISHER_THUMBPRINT` | none; SHA-1 thumbprint every update installer must be Authenticode-signed with |
 
 Note for the installed app: the desktop app keeps the collector's files in
-`%APPDATA%\LAN Detective\collector\`, not under `data\`, so it must pass `--sensor-config` (or
+`%APPDATA%\Nigafiy\collector\`, not under `data\`, so it must pass `--sensor-config` (or
 `--no-sensor`) explicitly.
 
 ## What it supervises
@@ -271,7 +271,7 @@ Milestone 5 (2026-11-23, per-component supervision):
 - Packaged app: `pnpm --filter @nigafiy/desktop run pack` into a scratch output folder
   (unsigned: no certificate on the build computer), then the packaged
   `resources\engine\nigafiy-engine.exe run` with a scratch data folder and `.env`, `--node` = the
-  packaged `LAN Detective.exe`, `--stack-script`/`--bundle-dir` = `resources\backend`, control
+  packaged `Nigafiy.exe`, `--stack-script`/`--bundle-dir` = `resources\backend`, control
   47641, `--no-sensor`: database, API and web started from the bundle as three processes (ready in
   about 24 s, 54 s and 26 s on a first start), health `ok`, `/readyz` 200, web 200;
   `restart api` stopped web then API and brought both back in order; `POST /v1/update/apply` with a

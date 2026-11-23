@@ -198,7 +198,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 			"subnet":      subnetUUID,
 			"hw_address":  mac,
 			"ip_address":  ip.String(),
-			"description": "Managed by LAN Detective",
+			"description": "Managed by Nigafiy",
 		},
 	}
 	st, _, err := d.do(ctx, "reserve", http.MethodPost, "/api/kea/dhcpv4/addReservation", payload)
@@ -215,7 +215,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s in OPNsense Kea DHCPv4", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Services → Kea DHCP → Kea DHCPv4 → Reservations in OPNsense",
+		Undo:      "Remove the reservation in Nigafiy or under Services → Kea DHCP → Kea DHCPv4 → Reservations in OPNsense",
 	}, nil
 }
 
@@ -246,7 +246,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 			Mechanism: mechReservation,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed OPNsense Kea DHCP reservation %s for %s", r.IP, mac),
-			Undo:      "Add the reservation again in LAN Detective",
+			Undo:      "Add the reservation again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "unreserve", MAC: mac, Mechanism: mechReservation, Applied: false, AlreadyInEffect: true, Detail: "no Kea reservation found for this MAC"}, nil

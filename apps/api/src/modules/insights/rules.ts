@@ -1,7 +1,7 @@
 import type { Insight, InsightAction, InsightsReport, Severity } from '@nigafiy/shared-types';
 
 /**
- * Smart insights: deterministic rules over facts already stored by LAN Detective.
+ * Smart insights: deterministic rules over facts already stored by Nigafiy.
  * Every insight states what was observed (evidence) and offers the next step as an action.
  * Nothing here guesses beyond the data; where a cause is uncertain the text says so.
  */
@@ -22,7 +22,7 @@ export interface DeviceFact {
 /** Device types worth a monitoring check of their own: the network's infrastructure. */
 export const INFRASTRUCTURE_TYPES = ['router', 'printer', 'nas', 'camera', 'access_point', 'server'] as const;
 
-/** An infrastructure device whose type LAN Detective inferred (medium/high confidence) and that has no check. */
+/** An infrastructure device whose type Nigafiy inferred (medium/high confidence) and that has no check. */
 export interface InfrastructureFact {
   id: string;
   label: string;
@@ -63,7 +63,7 @@ export interface InsightFacts {
   };
   /**
    * Router control: for each unwanted device that is online, the configured routers that can block it
-   * (block supported, reachable, logins not paused, no block of LAN Detective's own already open).
+   * (block supported, reachable, logins not paused, no block of Nigafiy's own already open).
    */
   routerBlockable?: { device_id: string; router_id: string; router_name: string }[];
   /** Network access control (DNS filter), when the site has it configured. */
@@ -160,7 +160,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       severity: 'warning',
       category: 'security',
       title: `Block ${d.label} on ${r.router_name}?`,
-      detail: 'You marked this device as unwanted and it is online. Your router can block it. LAN Detective does not do this on its own: it waits for you.',
+      detail: 'You marked this device as unwanted and it is online. Your router can block it. Nigafiy does not do this on its own: it waits for you.',
       evidence: [`Marked unwanted by you`, `Online at ${d.ip ?? 'unknown address'}`, `${r.router_name} supports blocking devices`],
       actions: [api('block_on_router', `Block on ${r.router_name}`, `/api/v1/routers/${r.router_id}/block`, { device_ids: [d.id] }, `Block ${d.label} on ${r.router_name}?`)],
     });
@@ -377,7 +377,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       severity: 'info',
       category: 'inventory',
       title: `${nameless.length} phones or tablets have no name yet`,
-      detail: 'They use private Wi-Fi addresses and stay silent. Turn Wi-Fi off and on again on a phone: LAN Detective learns its name when it reconnects.',
+      detail: 'They use private Wi-Fi addresses and stay silent. Turn Wi-Fi off and on again on a phone: Nigafiy learns its name when it reconnects.',
       evidence: [`${nameless.length} online devices with a private (randomized) MAC and no announced name`],
       actions: [link('review', 'See them', '/radar/devices?type=mobile')],
     });
@@ -450,7 +450,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         params: { ip: ac.dns_server_ip ?? '' },
         severity: 'warning',
         category: 'setup',
-        title: 'No device is using LAN Detective for DNS yet',
+        title: 'No device is using Nigafiy for DNS yet',
         detail: `Set the router's DHCP "DNS server" to ${ac.dns_server_ip ?? 'this computer'} so devices receive the rules, then reconnect them to Wi-Fi.`,
         evidence: ['No DNS questions arrived from any device in the last 30 minutes'],
         actions: [link('open_access', 'Show me how', '/guard/access')],
@@ -464,7 +464,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
         severity: 'info',
         category: 'setup',
         title: `${ac.protected_devices} of ${ac.online_devices} online devices use the filter`,
-        detail: 'The others did not ask LAN Detective for any name recently: they may use their own DNS (Private DNS, VPN) or not have renewed their address yet.',
+        detail: 'The others did not ask Nigafiy for any name recently: they may use their own DNS (Private DNS, VPN) or not have renewed their address yet.',
         evidence: [`${ac.protected_devices} devices sent DNS questions in the last 30 minutes`],
         actions: [link('open_access', 'See which', '/guard/access')],
       });

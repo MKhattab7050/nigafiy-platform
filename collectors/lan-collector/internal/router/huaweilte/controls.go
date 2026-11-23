@@ -248,7 +248,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Huawei HiLink SSID %s WifiEnable=%s", id, en),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or the Huawei CPE web UI",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or the Huawei CPE web UI",
 	}, nil
 }
 
@@ -281,7 +281,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added Huawei HiLink virtual server %s %d → %s:%d", clean.Protocol, clean.ExternalStart, clean.InternalIP, clean.InternalStart),
-		Undo:      "Remove the rule in LAN Detective or under Security → Virtual Server on the Huawei CPE",
+		Undo:      "Remove the rule in Nigafiy or under Security → Virtual Server on the Huawei CPE",
 	}, nil
 }
 
@@ -309,7 +309,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed Huawei HiLink virtual server %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "virtual server rule is no longer present on Huawei CPE"}, nil

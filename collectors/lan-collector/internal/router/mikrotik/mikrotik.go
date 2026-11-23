@@ -495,7 +495,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed %d managed firewall block rule(s)", removed),
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -570,7 +570,7 @@ func (d *Driver) SetRateLimit(ctx context.Context, rawMAC string, limit router.R
 		Mechanism: mechLimit,
 		Applied:   true,
 		Detail:    fmt.Sprintf("simple queue %s on %s/32 set to max-limit %s (up/down)", name, ip, maxLimit),
-		Undo:      fmt.Sprintf("Clear rate limit in LAN Detective, or remove simple queue %q on MikroTik", name),
+		Undo:      fmt.Sprintf("Clear rate limit in Nigafiy, or remove simple queue %q on MikroTik", name),
 	}, nil
 }
 
@@ -646,7 +646,7 @@ func (d *Driver) SetSchedule(ctx context.Context, rawMAC string, windows []route
 		Mechanism: mechSchedule,
 		Applied:   true,
 		Detail:    fmt.Sprintf("applied %d scheduled drop rule(s) for %s", len(specs), strings.ToUpper(mac)),
-		Undo:      fmt.Sprintf("Remove schedule in LAN Detective, or delete firewall filter rules commented %q on MikroTik", scheduleCommentPrefix+mac),
+		Undo:      fmt.Sprintf("Remove schedule in Nigafiy, or delete firewall filter rules commented %q on MikroTik", scheduleCommentPrefix+mac),
 	}, nil
 }
 
@@ -695,7 +695,7 @@ func (d *Driver) Close(context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or delete the /ip/firewall/filter rule commented %q on MikroTik", blockCommentPrefix+mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or delete the /ip/firewall/filter rule commented %q on MikroTik", blockCommentPrefix+mac)
 }
 
 func decodeSingleObject(raw []byte) (map[string]any, bool) {

@@ -2,7 +2,7 @@
   "name": "nigafiy",
   "private": true,
   "version": "0.1.0",
-  "description": "LAN Detective — Network Intelligence & IT Infrastructure Operations Platform",
+  "description": "Nigafiy — Network Intelligence & IT Infrastructure Operations Platform",
   "packageManager": "pnpm@10.34.8",
   "engines": {
     "node": ">=24"

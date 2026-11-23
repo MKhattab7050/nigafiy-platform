@@ -1,4 +1,4 @@
-# Backing services for running LAN Detective with Docker.
+# Backing services for running Nigafiy with Docker.
 # NOT exercised in the environment this repository was built in (no Docker available there).
 # Without Docker, use `pnpm dev:db` instead.
 services:

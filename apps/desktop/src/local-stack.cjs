@@ -1,5 +1,5 @@
 'use strict';
-// Runs LAN Detective itself (database, API, web app) on this computer for the desktop app, and does
+// Runs Nigafiy itself (database, API, web app) on this computer for the desktop app, and does
 // the one-time setup so the person sees their network without creating tokens by hand.
 // No Electron imports here, so this file can be tested with plain Node.
 const { fork, spawnSync } = require('node:child_process');
@@ -67,7 +67,7 @@ class LocalStack {
       const timeout = setTimeout(() => {
         this.startingPromise = null;
         void this.stop();
-        reject(new Error(lastError ?? 'Timed out waiting for LAN Detective to start (60s).'));
+        reject(new Error(lastError ?? 'Timed out waiting for Nigafiy to start (60s).'));
       }, 60_000);
       child.on('message', (msg) => {
         if (msg?.type === 'status') this.onStatus(String(msg.message));
@@ -88,7 +88,7 @@ class LocalStack {
         clearTimeout(timeout);
         this.startingPromise = null;
         this.child = null;
-        if (!this.urls) reject(new Error(lastError ?? `LAN Detective could not start (exit code ${code}). The logs folder has details.`));
+        if (!this.urls) reject(new Error(lastError ?? `Nigafiy could not start (exit code ${code}). The logs folder has details.`));
         this.urls = null;
       });
     });
@@ -158,7 +158,7 @@ async function signIn(apiUrl, webUrl, store) {
     if (r.status !== 401) throw new Error(`Could not sign in to the local account: ${r.json?.error?.message ?? r.status}`);
   }
   // First run (or the local database was reset): create the owner account for this computer.
-  account = { email: `owner-${crypto.randomBytes(4).toString('hex')}@lan-detective.local`, password: crypto.randomBytes(24).toString('base64url') };
+  account = { email: `owner-${crypto.randomBytes(4).toString('hex')}@nigafiy.local`, password: crypto.randomBytes(24).toString('base64url') };
   const name = os.userInfo().username || 'Me';
   const r = await api.call('POST', '/auth/register', { ...account, display_name: name, organization_name: 'My home', site_name: 'Home' });
   if (r.status !== 201 && r.status !== 200) throw new Error(`Could not create the local account: ${r.json?.error?.message ?? r.status}`);
@@ -176,7 +176,7 @@ function networkFor(address, interfaces = os.networkInterfaces()) {
     const hit = addrs?.find((a) => (a.family === 'IPv4' || a.family === 4) && a.address === address);
     if (!hit) continue;
     let prefix = Number(hit.cidr?.split('/')[1] ?? 24);
-    if (prefix < 20) prefix = 24; // LAN Detective scans at most a /20; a home LAN is almost always a /24
+    if (prefix < 20) prefix = 24; // Nigafiy scans at most a /20; a home LAN is almost always a /24
     const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
     return { iface: name, address, cidr: `${intToIp(ipToInt(address) & mask)}/${prefix}`, private: isPrivate(address) };
   }

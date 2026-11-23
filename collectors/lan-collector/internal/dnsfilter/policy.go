@@ -1,4 +1,4 @@
-// Package dnsfilter is LAN Detective's network-wide access control that works with any router.
+// Package dnsfilter is Nigafiy's network-wide access control that works with any router.
 //
 // The collector answers DNS for the devices on the network (the owner points the router's DHCP
 // "DNS server" at the collector host). Ordinary questions are forwarded unchanged to the real

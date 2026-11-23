@@ -12,7 +12,7 @@ export function KnowledgeStatusBadge({ status }: { status: KnowledgeStatus }) {
   return <Badge tone={STATUS_TONE[status]}>{t(`kb.statusOne.${status}` as Key)}</Badge>;
 }
 
-/** Where the entry came from: a resolved incident (pre-filled by LAN Detective) or a person. */
+/** Where the entry came from: a resolved incident (pre-filled by Nigafiy) or a person. */
 export function SourceLabel({ entry }: { entry: KnowledgeEntry }) {
   const { t } = useI18n();
   return <span>{entry.source === 'incident' && entry.incident_number !== null ? fill(t('kb.source.incident'), { n: entry.incident_number }) : t('kb.source.manual')}</span>;

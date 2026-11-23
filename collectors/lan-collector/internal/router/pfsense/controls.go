@@ -217,7 +217,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		"parent_id": "lan",
 		"mac":       mac,
 		"ipaddr":    ip.String(),
-		"descr":     "Managed by LAN Detective",
+		"descr":     "Managed by Nigafiy",
 	}); err != nil {
 		return router.Change{}, err
 	}
@@ -228,7 +228,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on pfSense DHCP server", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Services → DHCP Server → Static Mappings in pfSense",
+		Undo:      "Remove the reservation in Nigafiy or under Services → DHCP Server → Static Mappings in pfSense",
 	}, nil
 }
 
@@ -255,7 +255,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 				Mechanism: mechReservation,
 				Applied:   true,
 				Detail:    fmt.Sprintf("removed pfSense DHCP static mapping %s for %s", s.IPAddr, mac),
-				Undo:      "Add the reservation again in LAN Detective",
+				Undo:      "Add the reservation again in Nigafiy",
 			}, nil
 		}
 	}
@@ -295,7 +295,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added pfSense NAT port forward %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or under Firewall → NAT → Port Forward in pfSense",
+		Undo:      "Remove the rule in Nigafiy or under Firewall → NAT → Port Forward in pfSense",
 	}, nil
 }
 
@@ -319,7 +319,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed pfSense port-forward rule %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "port-forward rule is no longer present on pfSense"}, nil

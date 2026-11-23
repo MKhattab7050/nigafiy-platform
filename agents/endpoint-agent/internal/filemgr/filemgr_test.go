@@ -28,7 +28,7 @@ func TestFileManagerLifecycleAndSecurity(t *testing.T) {
 
 	// 3. Touch / Create file
 	helloPath := filepath.Join(subDir, "notes.txt")
-	content := []byte("LAN Detective Enterprise File Manager Test")
+	content := []byte("Nigafiy Enterprise File Manager Test")
 	if _, err := Execute(Request{
 		Op:           "touch",
 		Path:         helloPath,

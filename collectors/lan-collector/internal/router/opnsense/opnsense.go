@@ -331,7 +331,7 @@ func (d *Driver) ensureBlockAlias(ctx context.Context, op string) error {
 			"name":        blockAlias,
 			"type":        "host",
 			"content":     "",
-			"description": "Managed by LAN Detective",
+			"description": "Managed by Nigafiy",
 		},
 	}
 	st, _, err = d.do(ctx, op, http.MethodPost, "/api/firewall/alias/addItem", addPayload)
@@ -497,7 +497,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed %s from OPNsense alias %s", ip, blockAlias),
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -508,7 +508,7 @@ func (d *Driver) Close(context.Context) error {
 }
 
 func undoBlock(ip string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s from Firewall → Diagnostics → Aliases (%s) in OPNsense", ip, blockAlias)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s from Firewall → Diagnostics → Aliases (%s) in OPNsense", ip, blockAlias)
 }
 
 func str(v any) string {

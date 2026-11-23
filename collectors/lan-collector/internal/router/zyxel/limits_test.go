@@ -146,7 +146,7 @@ func TestScheduleProfileFromBlockedWindows(t *testing.T) {
 		t.Fatalf("profile: %v", p)
 	}
 
-	// The blocks list shows it as LAN Detective's own schedule.
+	// The blocks list shows it as Nigafiy's own schedule.
 	blocks, err := d.Blocked(ctx)
 	if err != nil {
 		t.Fatal(err)

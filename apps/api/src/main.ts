@@ -27,7 +27,7 @@ for (let attempt = 1; ; attempt++) {
 }
 
 const app = createApp(modules);
-const onListening = () => logger.info({ port: env.PORT, host: env.HOST ?? 'all interfaces', env: env.NODE_ENV }, 'LAN Detective API listening');
+const onListening = () => logger.info({ port: env.PORT, host: env.HOST ?? 'all interfaces', env: env.NODE_ENV }, 'Nigafiy API listening');
 const server = env.HOST ? app.listen(env.PORT, env.HOST, onListening) : app.listen(env.PORT, onListening);
 
 let httpsServer: https.Server | undefined;
@@ -41,7 +41,7 @@ if (env.HTTPS_PORT && env.TLS_CERT_FILE && env.TLS_KEY_FILE) {
   const tlsPin = tlsPinSha256();
   httpsServer = https.createServer({ cert: readFileSync(env.TLS_CERT_FILE), key: readFileSync(env.TLS_KEY_FILE) }, app);
   setTlsStatus({ ...tlsStatus(), mode: 'files', https_port: env.HTTPS_PORT, https_host: httpsHost ?? null, pin_sha256: tlsPin, pin_kind: tlsPin ? 'leaf' : null });
-  listenHttps(httpsServer, () => logger.info({ https_port: env.HTTPS_PORT, host: httpsHost ?? 'all interfaces', tls_pin_sha256: tlsPin }, 'LAN Detective HTTPS listening'));
+  listenHttps(httpsServer, () => logger.info({ https_port: env.HTTPS_PORT, host: httpsHost ?? 'all interfaces', tls_pin_sha256: tlsPin }, 'Nigafiy HTTPS listening'));
 } else if (env.HTTPS_PORT && (env.TLS_CERT_FILE || env.TLS_KEY_FILE)) {
   // One file without the other is a mistake; do not silently replace it with the built-in certificate.
   logger.error({ https_port: env.HTTPS_PORT }, 'TLS_CERT_FILE and TLS_KEY_FILE must both be set; HTTPS is off');

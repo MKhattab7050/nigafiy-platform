@@ -133,7 +133,7 @@ export function EmailChannelModal({ onClose, onSaved }: { onClose: () => void; o
             </div>
           )}
         </div>
-        <Field label={t('settings.email.from')}>{(id) => <Input id={id} dir="ltr" type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="lan-detective@example.com" maxLength={254} />}</Field>
+        <Field label={t('settings.email.from')}>{(id) => <Input id={id} dir="ltr" type="email" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="nigafiy@example.com" maxLength={254} />}</Field>
         <Field label={t('settings.email.security')}>
           {(id) => (
             <Select

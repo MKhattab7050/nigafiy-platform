@@ -439,7 +439,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if err := d.setMACFilters(ctx, "unblock", info); err != nil {
 		return router.Change{}, err
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed managed D-Link MAC block for " + strings.ToUpper(mac), Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed managed D-Link MAC block for " + strings.ToUpper(mac), Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {
@@ -451,7 +451,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s%s under Features → Website / MAC Filter on D-Link", ldTagPrefix, mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s%s under Features → Website / MAC Filter on D-Link", ldTagPrefix, mac)
 }
 
 func dlinkConn(t string) router.ConnectionType {

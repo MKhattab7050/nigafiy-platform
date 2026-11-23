@@ -242,7 +242,7 @@ func (d *Driver) SetWiFiEnabled(ctx context.Context, id string, enabled bool) (r
 		Mechanism: mechWiFi,
 		Applied:   true,
 		Detail:    fmt.Sprintf("set Tenda Wi-Fi %s enabled=%s", id, val),
-		Undo:      "Toggle the Wi-Fi network back in LAN Detective or Tenda Wireless Settings",
+		Undo:      "Toggle the Wi-Fi network back in Nigafiy or Tenda Wireless Settings",
 	}, nil
 }
 
@@ -283,7 +283,7 @@ func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (rout
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("reserved %s for %s on Tenda router", ip, mac),
-		Undo:      "Remove the reservation in LAN Detective or under Advanced → Static IP Assignment on Tenda",
+		Undo:      "Remove the reservation in Nigafiy or under Advanced → Static IP Assignment on Tenda",
 	}, nil
 }
 
@@ -314,7 +314,7 @@ func (d *Driver) RemoveReservation(ctx context.Context, rawMAC string) (router.C
 		Mechanism: mechReservation,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed Tenda static IP reservation %s for %s", removedIP, mac),
-		Undo:      "Add the reservation again in LAN Detective",
+		Undo:      "Add the reservation again in Nigafiy",
 	}, nil
 }
 
@@ -351,7 +351,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 		Mechanism: mechPortForward,
 		Applied:   true,
 		Detail:    fmt.Sprintf("added Tenda virtual server %s %s → %s:%s", clean.Protocol, formatPortRange(clean.ExternalStart, clean.ExternalEnd), clean.InternalIP, formatPortRange(clean.InternalStart, clean.InternalEnd)),
-		Undo:      "Remove the rule in LAN Detective or under Advanced → Port Forwarding on Tenda",
+		Undo:      "Remove the rule in Nigafiy or under Advanced → Port Forwarding on Tenda",
 	}, nil
 }
 
@@ -373,7 +373,7 @@ func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward)
 			Mechanism: mechPortForward,
 			Applied:   true,
 			Detail:    fmt.Sprintf("removed Tenda virtual server %s (%s)", e.ID, e.Description),
-			Undo:      "Add the port forward again in LAN Detective",
+			Undo:      "Add the port forward again in Nigafiy",
 		}, nil
 	}
 	return router.Change{Action: "remove_port_forward", Mechanism: mechPortForward, Applied: false, AlreadyInEffect: true, Detail: "virtual server rule is no longer present on Tenda"}, nil

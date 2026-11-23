@@ -48,7 +48,7 @@ export function RequestHistory({ targetId, deviceId, ifIndex, limit = 25 }: { ta
               <tbody className="divide-y divide-line">
                 {items.map((r) => {
                   // "Before" is what the collector read right before writing when it got that far;
-                  // otherwise the value LAN Detective last read (marked as such).
+                  // otherwise the value Nigafiy last read (marked as such).
                   const observedBefore = r.result?.before && Object.keys(r.result.before).length > 0;
                   return (
                     <tr key={r.id} className="align-top">

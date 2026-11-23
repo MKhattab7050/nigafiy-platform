@@ -248,7 +248,7 @@ notificationsRouter.post(['/notification-channels/:id/test', '/notifications/cha
     if (!(await db.query(`SELECT 1 FROM notification_channels WHERE id = $1`, [id])).rowCount) throw notFound('Channel');
     const event = await db.query<{ id: string }>(
       `INSERT INTO network_events (organization_id, type, severity, title, details, source, occurred_at)
-       VALUES ($1,'notification_test','info','Test notification from LAN Detective',$2,'platform',now()) RETURNING id`,
+       VALUES ($1,'notification_test','info','Test notification from Nigafiy',$2,'platform',now()) RETURNING id`,
       [ctx.organizationId, JSON.stringify({ requested_by: ctx.userEmail, test: true })],
     );
     await db.query(`INSERT INTO notification_deliveries (organization_id, channel_id, event_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [

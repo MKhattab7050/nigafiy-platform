@@ -605,7 +605,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    fmt.Sprintf("removed %d managed UCI firewall rule(s)", removed),
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -661,7 +661,7 @@ func (d *Driver) SetSchedule(ctx context.Context, rawMAC string, windows []route
 		Mechanism: mechSchedule,
 		Applied:   true,
 		Detail:    fmt.Sprintf("applied %d scheduled OpenWrt firewall rule(s)", len(windows)),
-		Undo:      fmt.Sprintf("Remove schedule in LAN Detective, or delete firewall rules named %q in LuCI", scheduleNamePrefix+mac),
+		Undo:      fmt.Sprintf("Remove schedule in Nigafiy, or delete firewall rules named %q in LuCI", scheduleNamePrefix+mac),
 	}, nil
 }
 
@@ -714,7 +714,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove the firewall rule %q in OpenWrt LuCI", blockNamePrefix+mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove the firewall rule %q in OpenWrt LuCI", blockNamePrefix+mac)
 }
 
 func strVal(v any) string {

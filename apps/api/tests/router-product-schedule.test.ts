@@ -3,7 +3,7 @@ import { withSystem } from '../src/infrastructure/db.ts';
 import { type ProductScheduleRow, enforceSchedule, localClock, windowState } from '../src/modules/routers/product-schedule.ts';
 import { CSRF, type TestAccount, type TestCollector, addScope, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
-// Schedules LAN Detective enforces itself with the router's block, for a router that can block a
+// Schedules Nigafiy enforces itself with the router's block, for a router that can block a
 // device but cannot schedule it (docs/features/router-controls.md, "Schedules").
 
 const CAPS = [
@@ -77,7 +77,7 @@ const change = (action: 'block' | 'unblock', already = false) => ({
   applied: !already,
   already_in_effect: already,
   detail: action === 'block' ? 'internet blocked' : 'internet allowed',
-  undo: 'Unblock in LAN Detective',
+  undo: 'Unblock in Nigafiy',
 });
 
 /** The collector carries out the pending block/unblock command and reports it. */
@@ -144,11 +144,11 @@ describe('product-enforced router schedules', () => {
     const s = await setup('ps-cycle');
     const laptop = s.devices['192.168.60.20']!;
 
-    // The router cannot schedule; the device card offers a schedule LAN Detective enforces itself.
+    // The router cannot schedule; the device card offers a schedule Nigafiy enforces itself.
     const before = await s.a.agent.get(`/api/v1/devices/${laptop}/controls`);
     const rc = before.body.sections.router.routers[0];
     expect(rc.actions.schedule).toMatchObject({ possible: true, mode: 'product', href: `/api/v1/routers/${s.routerId}/schedule` });
-    expect(rc.actions.schedule.note).toContain('LAN Detective enforces this schedule itself');
+    expect(rc.actions.schedule.note).toContain('Nigafiy enforces this schedule itself');
     expect(rc.schedule).toBeNull();
 
     // Validation: a window needs different start and end; the time zone must exist.
@@ -166,7 +166,7 @@ describe('product-enforced router schedules', () => {
     const blockCmd = await carryOut(s, 'block');
     expect(blockCmd.payload).toMatchObject({ router_id: s.routerId, mac: LAPTOP_MAC, schedule_id: expect.any(String) });
 
-    // The ledger records the block as LAN Detective's, on behalf of the administrator who set the schedule.
+    // The ledger records the block as Nigafiy's, on behalf of the administrator who set the schedule.
     const detail = await s.a.agent.get(`/api/v1/routers/${s.routerId}`);
     expect(detail.body.blocks[0]).toMatchObject({ mac: LAPTOP_MAC, pre_existing: false, applied_by_email: s.a.email, released_at: null });
     expect(await enforceAt(s.routerId, new Date())).toBe('in_effect');

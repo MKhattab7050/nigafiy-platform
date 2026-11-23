@@ -1,5 +1,5 @@
 /**
- * Vendor suggestion from what LAN Detective already knows about a device, BEFORE any login: the SSH
+ * Vendor suggestion from what Nigafiy already knows about a device, BEFORE any login: the SSH
  * identification line (reachability check), the SNMP sysDescr (Port Detective) and the IEEE OUI
  * vendor of its MAC. It mirrors the collector's own signatures (internal/configbackup/drivers.go,
  * detect.go) with the same weights. It is only a suggestion ("inferred"): the collector detects the

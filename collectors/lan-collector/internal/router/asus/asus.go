@@ -402,7 +402,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if err := d.writeMultifilter(ctx, "unblock", kept); err != nil {
 		return router.Change{}, err
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: fmt.Sprintf("removed %d managed MULTIFILTER entry(s)", removed), Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: fmt.Sprintf("removed %d managed MULTIFILTER entry(s)", removed), Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {
@@ -414,7 +414,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s%s under AiProtection → Parental Controls in Asuswrt", ldTagPrefix, mac)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s%s under AiProtection → Parental Controls in Asuswrt", ldTagPrefix, mac)
 }
 
 func asusConn(isWL string) router.ConnectionType {

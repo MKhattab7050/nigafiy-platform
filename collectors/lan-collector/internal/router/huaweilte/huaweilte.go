@@ -509,7 +509,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 	if code, isErr := parseHiLinkError(postRaw); isErr || st != http.StatusOK {
 		return router.Change{}, router.Errorf(router.ErrRejected, "unblock", "HiLink macfilter update failed (HTTP %d, code %d)", st, code)
 	}
-	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed " + strings.ToUpper(mac) + " from Huawei HiLink WLAN blacklist", Undo: "Block the device again in LAN Detective"}, nil
+	return router.Change{Action: "unblock", MAC: mac, Mechanism: mechBlock, Applied: true, Detail: "removed " + strings.ToUpper(mac) + " from Huawei HiLink WLAN blacklist", Undo: "Block the device again in Nigafiy"}, nil
 }
 
 func (d *Driver) Close(ctx context.Context) error {
@@ -522,7 +522,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(mac string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s under Wi-Fi → Wi-Fi MAC Filter on the Huawei 4G/5G CPE", strings.ToUpper(mac))
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s under Wi-Fi → Wi-Fi MAC Filter on the Huawei 4G/5G CPE", strings.ToUpper(mac))
 }
 
 func xmlEscape(s string) string {

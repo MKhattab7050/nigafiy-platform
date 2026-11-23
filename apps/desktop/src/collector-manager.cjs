@@ -17,7 +17,7 @@ function normalizeServerUrl(input) {
   try {
     url = new URL(String(input).trim());
   } catch {
-    throw new Error('Server address is not a valid URL (example: https://lan-detective.example.com)');
+    throw new Error('Server address is not a valid URL (example: https://nigafiy.example.com)');
   }
   if (url.username || url.password) throw new Error('Server address must not contain a username or password');
   if (url.protocol === 'http:' && !LOCAL_HOSTS.has(url.hostname)) throw new Error('Server address must use https:// (http is only accepted for localhost)');
@@ -89,7 +89,7 @@ class CollectorManager extends EventEmitter {
   renderConfig(settings, stateDir = this.stateDir) {
     const url = new URL(settings.serverUrl);
     return [
-      '# Written by the LAN Detective desktop app. Change these values in the app, not here.',
+      '# Written by the Nigafiy desktop app. Change these values in the app, not here.',
       `server_url: ${JSON.stringify(settings.serverUrl)}`,
       `state_dir: ${JSON.stringify(stateDir)}`,
       `allowed_cidrs: [${settings.allowedCidrs.map((c) => JSON.stringify(c)).join(', ')}]`,
@@ -173,7 +173,7 @@ class CollectorManager extends EventEmitter {
     if (!this.settings.serverUrl) throw new Error('Set the server address first');
     if (!this.binaryAvailable()) throw new Error('The collector program is missing from this installation');
     const token = options.enrollmentToken ? String(options.enrollmentToken).trim() : '';
-    if (!this.isEnrolled() && !token) throw new Error('This computer is not enrolled yet. Paste an enrollment token from LAN Detective → Discovery & Collectors.');
+    if (!this.isEnrolled() && !token) throw new Error('This computer is not enrolled yet. Paste an enrollment token from Nigafiy → Discovery & Collectors.');
     if (token && !/^lde_[A-Za-z0-9_-]{20,200}$/.test(token)) throw new Error('That does not look like an enrollment token (it starts with "lde_")');
 
     fs.writeFileSync(this.configPath, this.renderConfig(this.settings), { mode: 0o600 });

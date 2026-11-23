@@ -455,7 +455,7 @@ func (d *Driver) Blocked(ctx context.Context) ([]router.BlockEntry, error) {
 						continue
 					}
 					out = append(out, router.BlockEntry{MAC: mac, Name: e.HostName, Mechanism: "MAC filter (deny list)",
-						Owner: router.OwnerAdmin, Detail: "administrator rule under Security > MAC Filter; not modified by LAN Detective"})
+						Owner: router.OwnerAdmin, Detail: "administrator rule under Security > MAC Filter; not modified by Nigafiy"})
 				}
 			}
 		case isExpired(err):
@@ -481,12 +481,12 @@ func (d *Driver) Blocked(ctx context.Context) ([]router.BlockEntry, error) {
 					if p.Name == ldName(mac) {
 						out = append(out, router.BlockEntry{MAC: mac, Name: p.Name, Mechanism: mechanismSchedule,
 							Owner: router.OwnerProduct, Managed: true, Partial: true,
-							Detail: fmt.Sprintf("schedule set by LAN Detective: internet allowed %s on %s", p.TimeRangeList, p.Days)})
+							Detail: fmt.Sprintf("schedule set by Nigafiy: internet allowed %s on %s", p.TimeRangeList, p.Days)})
 						continue
 					}
 					out = append(out, router.BlockEntry{MAC: mac, Name: p.Name, Mechanism: "parental control profile",
 						Owner: router.OwnerAdmin, Partial: true,
-						Detail: fmt.Sprintf("profile %q: internet allowed %s on %s; not modified by LAN Detective", p.Name, p.TimeRangeList, p.Days)})
+						Detail: fmt.Sprintf("profile %q: internet allowed %s on %s; not modified by Nigafiy", p.Name, p.TimeRangeList, p.Days)})
 				}
 			}
 		case isExpired(err):
@@ -558,7 +558,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 			{router.CapOverview, "status", "DAL status (uptime, WAN links)", ""},
 			{router.CapWiFi, "wlan", mechanismWiFi, "turn a main or guest Wi-Fi network on or off; Wi-Fi keys are never read"},
 			{router.CapReservations, "static_dhcp", mechanismReservation, "the router keeps no owner for a reservation"},
-			{router.CapPortForward, "nat", mechanismPortForward, "rules made by LAN Detective are named \"LAN Detective: …\""},
+			{router.CapPortForward, "nat", mechanismPortForward, "rules made by Nigafiy are named \"LAN Detective: …\""},
 		} {
 			cs, err := probe(p.c, p.oid, p.mechanism, p.note)
 			if err != nil {
@@ -677,10 +677,10 @@ func (d *Driver) setBlocking(ctx context.Context, action, mac string, want bool)
 	if ch.Applied {
 		if want {
 			ch.Detail = "turned on Internet Blocking for " + norm
-			ch.Undo = "unblock " + norm + " in LAN Detective (router-probe -unblock " + norm + "), or turn Internet Blocking off for this device in the router's Home Networking > connected devices page"
+			ch.Undo = "unblock " + norm + " in Nigafiy (router-probe -unblock " + norm + "), or turn Internet Blocking off for this device in the router's Home Networking > connected devices page"
 		} else {
 			ch.Detail = "turned off Internet Blocking for " + norm
-			ch.Undo = "block " + norm + " again in LAN Detective (router-probe -block " + norm + ")"
+			ch.Undo = "block " + norm + " again in Nigafiy (router-probe -block " + norm + ")"
 		}
 	}
 	return ch, nil

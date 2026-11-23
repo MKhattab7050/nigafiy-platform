@@ -1,4 +1,4 @@
-# LAN Detective
+# Nigafiy
 
 **Know your network. Understand every incident.**
 
@@ -29,7 +29,7 @@ cloud platform.
 | IT Toolbox | On-demand network probes run from the site collector: ICMP ping, TCP port check, 19-port common IT/management service scanner, DNS lookup, reverse DNS, and hop-by-hop traceroute |
 | Time Machine | State of the network at any recorded moment; comparison of two periods; 90-day charts from hourly roll-ups |
 | Topology | Evidence-based map (internet → gateway → switches / subnets → devices) using routing tables, ARP, SNMP forwarding tables and LLDP; every link marked observed or inferred |
-| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), one-click IT Toolbox probes, and guidance plus the MAC and router link to block a device on the router. LAN Detective never disconnects or interferes with devices itself |
+| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), one-click IT Toolbox probes, and guidance plus the MAC and router link to block a device on the router. Nigafiy never disconnects or interferes with devices itself |
 | Managed endpoints | Company computers running the agent: **Windows**, **Linux**, **macOS** (`agents/endpoint-agent`). Per-platform capability list, compliance from measured evidence only (`unknown` when nothing was measured), **Remote File Manager** (browse, search, chunked upload/download with SHA-256 verification, create, rename, copy, move, delete; never overwrites; protected-path, link and UNC guards), **Remote Desktop** (Windows GDI / Linux X11 / macOS view-only, session notice on screen, audit), processes, services, packages (`winget`/`apt-get`/`brew`), event logs, allow-listed diagnostics, power actions and user messages. Phones and tablets (iOS/Android) are not managed |
 | Access control (any router) | The collector can answer DNS for the network (point the router's DHCP DNS at it). Block categories (ads & malware, adult, gambling, social, video, games, chat) and sites for the whole network, per profile (Kids, Guests, Focus templates) or per device; pause the internet for a device or a profile; bedtimes; per-device activity (requests, blocked names). Encrypted-DNS endpoints are blocked so devices fall back to the rules. A device using a VPN or its own DNS can bypass it, and speed limits need router control — both stated in the UI |
 | Smart insights | Rule-based summary on the Overview: network score with the reasons behind it, and the few things worth doing now (unwanted devices online, devices to review, silent collector, router/internet/DNS problems, IP changes, important devices offline or unmonitored), each with evidence and a one-click action |
@@ -39,7 +39,7 @@ cloud platform.
 
 ## Use it on your home network: desktop app
 
-Install **LAN Detective** (`apps/desktop`, installer built with `pnpm --filter @nigafiy/desktop dist`) and
+Install **Nigafiy** (`apps/desktop`, installer built with `pnpm --filter @nigafiy/desktop dist`) and
 open it. Nothing else is needed — the installer carries the database, API, web app and collector, and runs
 them with the app's own built-in Node.js.
 
@@ -62,7 +62,7 @@ using the repository's code and your system Node.js 24, and shares `.data/` with
 
 Requirements: Node.js ≥ 24 and Go ≥ 1.24 (Go builds the collector; pnpm is installed for you if missing).
 
-On Windows, double-click **`Start LAN Detective.cmd`**. On any system:
+On Windows, double-click **`Start Nigafiy.cmd`**. On any system:
 
 ```bash
 pnpm local

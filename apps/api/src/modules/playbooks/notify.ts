@@ -33,10 +33,10 @@ export async function sendApprovalEmails(alerts: ApprovalAlert[]): Promise<void>
       const approvers = await approverAccounts(a.organizationId);
       for (const person of approvers) {
         const outcome = await sendAccountEmail(a.organizationId, person.email, {
-          subject: `LAN Detective: approval needed for playbook "${a.playbookName}"`,
+          subject: `Nigafiy: approval needed for playbook "${a.playbookName}"`,
           text:
             `The playbook "${a.playbookName}" is waiting for an administrator before it will ${a.what}.\n\n` +
-            `Approve or reject it in LAN Detective → Playbooks → Approvals (run ${a.runId}).\n` +
+            `Approve or reject it in Nigafiy → Playbooks → Approvals (run ${a.runId}).\n` +
             `If nobody decides by ${a.expiresAt.toISOString()} the step expires and is not carried out.\n`,
         });
         if (outcome === 'not_configured') break; // no account e-mail channel: the timeline event and channels still carry it

@@ -26,7 +26,7 @@ import (
 
 const goodToken = "lde_test-token-0123456789"
 
-// fakeCloud is a stand-in for the LAN Detective API speaking collector protocol v1.
+// fakeCloud is a stand-in for the Nigafiy API speaking collector protocol v1.
 type fakeCloud struct {
 	mu          sync.Mutex
 	outage      atomic.Bool

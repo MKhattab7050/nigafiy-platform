@@ -1,8 +1,8 @@
-# LAN Detective desktop app
+# Nigafiy desktop app
 
 `apps/desktop` — a Windows desktop program (Electron) that combines:
 
-1. **The dashboard** — the LAN Detective web app in its own sandboxed window.
+1. **The dashboard** — the Nigafiy web app in its own sandboxed window.
 2. **A bundled collector** — the Go `lan-collector` program ships inside the installer. The app
    enrolls it, starts/stops it, shows its status and activity, and keeps it running from the
    system tray while the windows are closed.
@@ -15,7 +15,7 @@
 ### 1. Self-contained local mode (default)
 
 When no remote server (`https://…`) is configured, opening the desktop app runs the entire
-LAN Detective stack locally on `127.0.0.1` (`src/local-stack.cjs` → `scripts/local.mjs`):
+Nigafiy stack locally on `127.0.0.1` (`src/local-stack.cjs` → `scripts/local.mjs`):
 
 1. Starts the bundled PostgreSQL database, API (running all migrations), and web server on loopback ports.
 2. Creates (on first run) or signs in to a local owner account whose random password is encrypted
@@ -23,7 +23,7 @@ LAN Detective stack locally on `127.0.0.1` (`src/local-stack.cjs` → `scripts/l
    dashboard session cookie automatically.
 3. Detects the computer's default-route private IPv4 subnet and asks once for confirmation to scan it.
 4. Authorizes the subnet, enrolls the bundled `lan-collector`, starts discovery, and loads the live dashboard.
-5. Choosing *Quit LAN Detective* from the tray (or closing during Windows shutdown) cleanly stops the
+5. Choosing *Quit Nigafiy* from the tray (or closing during Windows shutdown) cleanly stops the
    collector and the local database/API/web process tree.
 
 ### Through the Nigafiy engine (Milestone 3)
@@ -43,26 +43,26 @@ update check (`GET /api/v1/platform/{programs,engine,updates}`).
 
 ### 2. Remote-server collector mode
 
-To connect this computer's collector and dashboard to a shared LAN Detective server instead:
+To connect this computer's collector and dashboard to a shared Nigafiy server instead:
 
 1. Open **Collector on this computer…** from the tray menu (or on first start when no local bundle is used).
 2. Enter the server address (`https://…`; plain `http://` is accepted only for `localhost`) and save.
 3. Click **Open dashboard**, sign in, go to *Discovery & Collectors*, authorize your network range,
    and add a collector to copy its one-time enrollment token.
 4. Back in the Collector panel: paste the token → **Enroll and start**.
-5. Closing the windows leaves LAN Detective in the tray while the collector keeps monitoring.
+5. Closing the windows leaves Nigafiy in the tray while the collector keeps monitoring.
 
 Optional: *Networks this computer may probe* is a local allow-list — the collector refuses any
 range outside it, whatever the server sends.
 
 ## Where things are stored
 
-- `%APPDATA%\LAN Detective\collector\` (or `.data\collector\` in a source checkout) — `settings.json`,
+- `%APPDATA%\Nigafiy\collector\` (or `.data\collector\` in a source checkout) — `settings.json`,
   the generated `collector.yaml`, and `state\` (collector identity, cached configuration, learned DHCP
   names, offline spool). The enrollment token is passed to the collector through its environment once
   and is never written to disk or shown in the log.
-- `%APPDATA%\LAN Detective\local-account.bin` — OS-encrypted local owner credentials for self-contained mode.
-- `%APPDATA%\LAN Detective\data\` (or `.data\` in a source checkout) — local PostgreSQL data directory
+- `%APPDATA%\Nigafiy\local-account.bin` — OS-encrypted local owner credentials for self-contained mode.
+- `%APPDATA%\Nigafiy\data\` (or `.data\` in a source checkout) — local PostgreSQL data directory
   (`pg\`), generated `.env`, and service logs (`logs\`).
 
 ## Security design

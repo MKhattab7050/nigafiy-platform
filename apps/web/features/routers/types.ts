@@ -219,7 +219,7 @@ export interface ProductSchedule {
   last_error: string | null;
 }
 
-/** POST /routers/:id/schedule: queued on the router, or stored and enforced by LAN Detective. */
+/** POST /routers/:id/schedule: queued on the router, or stored and enforced by Nigafiy. */
 export type ScheduleResponse = (QueuedRequest & { mode?: 'router' }) | { mode: 'product'; outcome: string; schedule: ProductSchedule | null };
 
 export interface DeviceRouterControls {
@@ -260,7 +260,7 @@ export interface DeviceRouterControls {
     reservation?: RouterReservation | null;
     port_forwards?: (PortForwardRule & { actions: { remove: ControlAction } })[] | null;
     lan?: { cidr: string; source: 'collector_interface' | 'assumed_24' };
-    /** A schedule LAN Detective enforces itself with the router's block (null: none). */
+    /** A schedule Nigafiy enforces itself with the router's block (null: none). */
     schedule?: ProductSchedule | null;
     actions: {
       block: ControlAction;

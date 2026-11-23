@@ -533,7 +533,7 @@ func (d *Driver) Unblock(ctx context.Context, rawMAC string) (router.Change, err
 		Mechanism: mechBlock,
 		Applied:   true,
 		Detail:    fmt.Sprintf("cleared quarantine for %s on FortiGate", ip),
-		Undo:      "Block the device again in LAN Detective",
+		Undo:      "Block the device again in Nigafiy",
 	}, nil
 }
 
@@ -546,7 +546,7 @@ func (d *Driver) Close(ctx context.Context) error {
 }
 
 func undoBlock(ip string) string {
-	return fmt.Sprintf("Unblock in LAN Detective, or remove %s under Dashboard → User Quarantine Monitor in FortiGate", ip)
+	return fmt.Sprintf("Unblock in Nigafiy, or remove %s under Dashboard → User Quarantine Monitor in FortiGate", ip)
 }
 
 func str(v any) string {

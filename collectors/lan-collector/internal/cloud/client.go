@@ -1,4 +1,4 @@
-// Package cloud is the collector's only network path to the LAN Detective platform:
+// Package cloud is the collector's only network path to the Nigafiy platform:
 // outbound HTTPS requests to three endpoints. The platform never connects to the collector.
 package cloud
 

@@ -8,6 +8,7 @@
   "types": "src/tokens.ts",
   "exports": {
     ".": "./src/tokens.ts",
+    "./wordmark": "./src/wordmark.ts",
     "./svg/*": "./svg/*",
     "./ico/*": "./ico/*"
   },

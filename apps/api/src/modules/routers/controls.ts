@@ -93,7 +93,7 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
         : // The driver's note says what the router can do (e.g. "upload only"); the form shows it.
           { possible: true, min_role: 'admin', method: 'POST', href: `/api/v1/routers/${r.id}/${path}`, ...(capability(r, name)?.note ? { note: capability(r, name)?.note } : {}) });
 
-    // Schedule: on the router itself when its driver can, else enforced by LAN Detective with the router's block.
+    // Schedule: on the router itself when its driver can, else enforced by Nigafiy with the router's block.
     const productSchedule = d.mac ? await findProductSchedule(db, r.id, d.mac) : null;
     const scheduleAction =
       productSchedule || productScheduling(r)
@@ -174,7 +174,7 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
       reservation: settings?.reservations ? reservation : null,
       port_forwards: settings?.port_forwards ? forwards.map((x) => ({ ...x, actions: { remove: removeForward(x.id) } })) : null,
       lan: { cidr: lan.cidr, source: lan.source },
-      // A schedule LAN Detective enforces itself (null: none; a schedule on the router itself is part of the router's own settings).
+      // A schedule Nigafiy enforces itself (null: none; a schedule on the router itself is part of the router's own settings).
       schedule: productSchedule ? presentProductSchedule(productSchedule) : null,
       actions: {
         block: blockAction,

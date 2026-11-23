@@ -206,7 +206,7 @@ func macIndex(mac string) string {
 // neighbour when uplinkName is set.
 func Switch(community, name string, ports int, devices []Device, uplinkName string) *Agent {
 	a := &Agent{Community: community}
-	a.Str("1.3.6.1.2.1.1.1.0", "Simulated 8-port managed switch (LAN Detective test agent)")
+	a.Str("1.3.6.1.2.1.1.1.0", "Simulated 8-port managed switch (Nigafiy test agent)")
 	a.Str("1.3.6.1.2.1.1.5.0", name)
 	used := map[int]bool{}
 	for _, d := range devices {
