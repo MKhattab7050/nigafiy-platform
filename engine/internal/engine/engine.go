@@ -1,5 +1,10 @@
-// Package engine is the Nigafiy Engine: it supervises the local stack (database, API, web server,
-// started through scripts/local.mjs) and the local Sensor, and serves the control API.
+// Package engine is the Nigafiy Engine: it supervises the local database, API and web server as
+// separate children (each one started through scripts/local.mjs --component=<name>), and the local
+// Sensor, and serves the control API.
+//
+// Start order: database → API → web, and the Sensor once the API runs. Stop order is the reverse.
+// Each child has its own restart backoff, ready check, health check, rotated and redacted log and
+// Job Object.
 package engine
 
 import (
@@ -10,9 +15,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,16 +39,32 @@ const (
 	SensorDisabledError = "disabled: the desktop app runs the Sensor"
 	notEnrolledError    = "not enrolled"
 
-	stackStopTimeout  = 45 * time.Second
-	stackReadyTimeout = 10 * time.Minute
 	sensorStopTimeout = 5 * time.Second
+	healthTimeout     = 3 * time.Second
 )
+
+// Components are the stack's children in start order, with what each needs running first.
+var Components = []struct {
+	Name         string
+	Deps         []string
+	StopTimeout  time.Duration
+	ReadyTimeout time.Duration
+}{
+	// The first start creates the database cluster; later starts take seconds.
+	{Name: "db", StopTimeout: 30 * time.Second, ReadyTimeout: 5 * time.Minute},
+	// The API runs its migrations before it answers /readyz.
+	{Name: "api", Deps: []string{"db"}, StopTimeout: 20 * time.Second, ReadyTimeout: 5 * time.Minute},
+	// The development server compiles on first request; the installed app's server starts in seconds.
+	{Name: "web", Deps: []string{"api"}, StopTimeout: 15 * time.Second, ReadyTimeout: 5 * time.Minute},
+}
 
 // Paths inside the data folder.
 func engineDir(dataDir string) string { return filepath.Join(dataDir, "engine") }
 func TokenPath(dataDir string) string { return filepath.Join(engineDir(dataDir), "control-token") }
-func StackStatusPath(dataDir string) string {
-	return filepath.Join(engineDir(dataDir), "stack-status.json")
+
+// ComponentStatusPath is where local.mjs --component=<name> reports that it is ready.
+func ComponentStatusPath(dataDir, name string) string {
+	return filepath.Join(engineDir(dataDir), name+"-status.json")
 }
 func logPath(dataDir, name string) string { return filepath.Join(dataDir, "logs", name+".log") }
 
@@ -49,18 +73,21 @@ type engine struct {
 	startedAt time.Time
 	log       *log.Logger
 
-	stack  *supervisor.Child
-	sensor *supervisor.Child // nil with --no-sensor
+	children map[string]*supervisor.Child // db, api, web, and sensor unless --no-sensor
+	group    *group
 
-	urls atomic.Pointer[control.StackDoc]
+	ready map[string]*atomic.Pointer[stackStatus] // what each component reported when it became ready
+
+	updates *updater
 
 	stopping     atomic.Bool
 	shutdownOnce sync.Once
 	shutdownCh   chan struct{}
 }
 
-// Run runs the engine until ctx is cancelled or POST /v1/shutdown, then stops the Sensor, then the
-// stack, and returns nil. cfg must have been through Resolve.
+// Run runs the engine until ctx is cancelled or POST /v1/shutdown, then stops the Sensor, the web
+// server, the API and the database (in that order), and returns nil. cfg must have been through
+// Resolve.
 func Run(ctx context.Context, cfg Config) error {
 	if doc, ok := control.Probe(cfg.ControlAddr, 2*time.Second); ok {
 		return fmt.Errorf("%w at %s (mode %s, data folder %s)", ErrAlreadyRunning, cfg.ControlAddr, doc.Mode, doc.DataDir)
@@ -79,7 +106,14 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	lw := logs.NewLineWriter(sink, nil)
 	defer lw.Flush()
-	e := &engine{cfg: cfg, startedAt: time.Now().UTC(), log: log.New(lw, "", 0), shutdownCh: make(chan struct{})}
+	e := &engine{
+		cfg:        cfg,
+		startedAt:  time.Now().UTC(),
+		log:        log.New(lw, "", 0),
+		shutdownCh: make(chan struct{}),
+		children:   map[string]*supervisor.Child{},
+		ready:      map[string]*atomic.Pointer[stackStatus]{},
+	}
 
 	listener, err := net.Listen("tcp", cfg.ControlAddr)
 	if err != nil {
@@ -105,13 +139,19 @@ func Run(ctx context.Context, cfg Config) error {
 
 	e.log.Printf("Nigafiy Engine %s starting (%s mode, pid %d), data folder %s, control API http://%s", cfg.Version, cfg.Mode, os.Getpid(), cfg.DataDir, addr)
 
-	stackOut, err := logs.OpenRotating(logPath(cfg.DataDir, "stack"), logs.DefaultMaxSize, logs.DefaultKeep)
-	if err != nil {
-		listener.Close()
-		return err
+	var members []member
+	for _, comp := range Components {
+		out, err := logs.OpenRotating(logPath(cfg.DataDir, comp.Name), logs.DefaultMaxSize, logs.DefaultKeep)
+		if err != nil {
+			listener.Close()
+			return err
+		}
+		defer out.Close()
+		e.ready[comp.Name] = &atomic.Pointer[stackStatus]{}
+		c := supervisor.New(e.componentSpec(comp.Name, comp.StopTimeout, comp.ReadyTimeout, logs.NewLineWriter(out, nil)), supervisor.Options{Logf: e.log.Printf})
+		e.children[comp.Name] = c
+		members = append(members, member{name: comp.Name, u: c, deps: comp.Deps})
 	}
-	defer stackOut.Close()
-	e.stack = supervisor.New(e.stackSpec(logs.NewLineWriter(stackOut, nil)), supervisor.Options{Logf: e.log.Printf})
 	if !cfg.NoSensor {
 		sensorOut, err := logs.OpenRotating(logPath(cfg.DataDir, "sensor"), logs.DefaultMaxSize, logs.DefaultKeep)
 		if err != nil {
@@ -119,10 +159,14 @@ func Run(ctx context.Context, cfg Config) error {
 			return err
 		}
 		defer sensorOut.Close()
-		e.sensor = supervisor.New(e.sensorSpec(logs.NewLineWriter(sensorOut, nil)), supervisor.Options{Logf: e.log.Printf})
+		c := supervisor.New(e.sensorSpec(logs.NewLineWriter(sensorOut, nil)), supervisor.Options{Logf: e.log.Printf})
+		e.children["sensor"] = c
+		members = append(members, member{name: "sensor", u: c, deps: []string{"api"}})
 	} else {
 		e.log.Printf("sensor: not supervised (--no-sensor)")
 	}
+	e.group = newGroup(members, e.log.Printf)
+	e.updates = newUpdater(e)
 
 	server := control.New(e, token, addr)
 	serveErr := make(chan error, 1)
@@ -131,10 +175,7 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.OnListen(addr)
 	}
 
-	e.stack.Start()
-	if e.sensor != nil {
-		e.sensor.Start()
-	}
+	e.group.StartAll()
 
 	var runErr error
 	select {
@@ -147,18 +188,18 @@ func Run(ctx context.Context, cfg Config) error {
 		e.log.Printf("%v", runErr)
 	}
 	e.stopping.Store(true)
-	if e.sensor != nil {
-		e.sensor.Close()
-	}
-	e.stack.Close()
+	e.group.Close() // sensor, web, api, db
 	server.Close()
-	os.Remove(StackStatusPath(cfg.DataDir))
+	for _, comp := range Components {
+		os.Remove(ComponentStatusPath(cfg.DataDir, comp.Name))
+	}
+	e.updates.afterStop()
 	e.log.Printf("Nigafiy Engine stopped")
 	return runErr
 }
 
-func (e *engine) stackSpec(out io.Writer) supervisor.Spec {
-	statusFile := StackStatusPath(e.cfg.DataDir)
+func (e *engine) componentSpec(name string, stopTimeout, readyTimeout time.Duration, out io.Writer) supervisor.Spec {
+	statusFile := ComponentStatusPath(e.cfg.DataDir, name)
 	env := withoutEnv(os.Environ(), "LD_DATA_DIR", "ELECTRON_RUN_AS_NODE", "LD_BUNDLE_DIR")
 	env = append(env, "LD_DATA_DIR="+e.cfg.DataDir)
 	if e.cfg.BundleDir != "" {
@@ -170,18 +211,19 @@ func (e *engine) stackSpec(out io.Writer) supervisor.Spec {
 		// The installed desktop app's own executable runs local.mjs as Node.
 		env = append(env, "ELECTRON_RUN_AS_NODE=1")
 	}
+	ready := e.ready[name]
 	return supervisor.Spec{
-		Name:         "stack",
+		Name:         name,
 		Path:         e.cfg.Node,
-		Args:         []string{e.cfg.StackScript, "--no-open", "--no-collector", "--engine-status-file=" + statusFile},
+		Args:         []string{e.cfg.StackScript, "--component=" + name, "--engine-status-file=" + statusFile},
 		Env:          env,
 		Dir:          filepath.Dir(e.cfg.StackScript),
 		Output:       out,
 		Graceful:     true,
-		StopTimeout:  stackStopTimeout,
-		ReadyTimeout: stackReadyTimeout,
+		StopTimeout:  stopTimeout,
+		ReadyTimeout: readyTimeout,
 		Precheck: func() error {
-			e.urls.Store(nil)
+			ready.Store(nil)
 			if err := os.Remove(statusFile); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("could not clear %s: %w", statusFile, err)
 			}
@@ -203,14 +245,63 @@ func (e *engine) stackSpec(out io.Writer) supervisor.Spec {
 			}
 			switch st.State {
 			case "ready":
-				e.urls.Store(&control.StackDoc{WebURL: st.WebURL, APIURL: st.APIURL})
+				if err := st.validate(name); err != nil {
+					return false, err
+				}
+				ready.Store(&st)
 				return true, nil
 			case "error":
 				return false, errors.New(st.Message)
 			}
 			return false, nil
 		},
+		HealthCheck: func(int) error {
+			st := ready.Load()
+			if st == nil {
+				return errors.New("no ready report")
+			}
+			return checkHealth(name, st, healthTimeout)
+		},
+		HealthInterval: 15 * time.Second,
+		HealthFailures: 3,
 	}
+}
+
+// checkHealth: the database accepts connections on its port; the API answers /readyz with 200; the
+// web server answers its start page with anything below 500.
+func checkHealth(name string, st *stackStatus, timeout time.Duration) error {
+	switch name {
+	case "db":
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(st.Port)), timeout)
+		if err != nil {
+			return fmt.Errorf("database port %d: %w", st.Port, err)
+		}
+		conn.Close()
+		return nil
+	case "api":
+		return httpHealth(strings.TrimRight(st.APIURL, "/")+"/readyz", timeout, func(code int) bool { return code == http.StatusOK })
+	case "web":
+		return httpHealth(st.WebURL, timeout, func(code int) bool { return code < 500 })
+	}
+	return nil
+}
+
+func httpHealth(u string, timeout time.Duration, good func(int) bool) error {
+	client := &http.Client{
+		Timeout: timeout,
+		// A health check never follows a redirect off the loopback address it was given.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	res, err := client.Get(u)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", u, err)
+	}
+	io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
+	res.Body.Close()
+	if !good(res.StatusCode) {
+		return fmt.Errorf("GET %s: HTTP %d", u, res.StatusCode)
+	}
+	return nil
 }
 
 func (e *engine) sensorSpec(out io.Writer) supervisor.Spec {
@@ -240,12 +331,48 @@ func (e *engine) sensorSpec(out io.Writer) supervisor.Spec {
 	}
 }
 
+// stackStatus is what local.mjs --component=<name> --engine-status-file=<path> writes.
 type stackStatus struct {
-	State   string `json:"state"`
-	WebURL  string `json:"webUrl"`
-	APIURL  string `json:"apiUrl"`
-	Pid     int    `json:"pid"`
-	Message string `json:"message"`
+	State     string `json:"state"`
+	Component string `json:"component"`
+	WebURL    string `json:"webUrl"`
+	APIURL    string `json:"apiUrl"`
+	Port      int    `json:"port"`
+	Pid       int    `json:"pid"`
+	Message   string `json:"message"`
+}
+
+// validate checks a ready report: the right component, and addresses on this computer only (the
+// engine sends health checks there).
+func (st stackStatus) validate(name string) error {
+	if st.Component != "" && st.Component != name {
+		return fmt.Errorf("status file reports component %q, expected %q", st.Component, name)
+	}
+	loopbackURL := func(raw string) error {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Port() == "" {
+			return fmt.Errorf("bad address %q in the ready report", raw)
+		}
+		host := u.Hostname()
+		if ip := net.ParseIP(host); (ip == nil || !ip.IsLoopback()) && !strings.EqualFold(host, "localhost") {
+			return fmt.Errorf("address %q in the ready report is not on this computer", raw)
+		}
+		return nil
+	}
+	switch name {
+	case "db":
+		if st.Port <= 0 || st.Port > 65535 {
+			return fmt.Errorf("bad database port %d in the ready report", st.Port)
+		}
+	case "api":
+		return loopbackURL(st.APIURL)
+	case "web":
+		if err := loopbackURL(st.WebURL); err != nil {
+			return err
+		}
+		return loopbackURL(st.APIURL)
+	}
+	return nil
 }
 
 func readStackStatus(path string) (stackStatus, error) {
@@ -296,59 +423,90 @@ func childDoc(st supervisor.Status) control.ChildDoc {
 		t := st.StartedAt.UTC()
 		d.StartedAt = &t
 	}
+	if st.Health != supervisor.HealthUnknown {
+		h := string(st.Health)
+		d.Health = &h
+	}
+	if st.HealthError != "" {
+		msg := st.HealthError
+		d.HealthError = &msg
+	}
+	if !st.HealthCheckedAt.IsZero() {
+		t := st.HealthCheckedAt.UTC()
+		d.HealthCheckedAt = &t
+	}
+	return d
+}
+
+func (e *engine) doc(name string) control.ChildDoc {
+	c := e.children[name]
+	d := childDoc(c.Status())
+	if m, ok := e.group.find(name); ok {
+		d.DependsOn = append([]string{}, m.deps...)
+	}
+	if w := e.group.WaitingFor(name); w != "" {
+		d.WaitingFor = &w
+	}
 	return d
 }
 
 func (e *engine) sensorDoc() control.ChildDoc {
-	if e.sensor == nil {
+	if _, ok := e.children["sensor"]; !ok {
 		msg := SensorDisabledError
-		return control.ChildDoc{Name: "sensor", State: string(supervisor.Stopped), LastError: &msg}
+		return control.ChildDoc{Name: "sensor", State: string(supervisor.Stopped), LastError: &msg, DependsOn: []string{"api"}}
 	}
-	return childDoc(e.sensor.Status())
+	return e.doc("sensor")
 }
 
 func (e *engine) Status() control.StatusDoc {
-	stack := e.stack.Status()
 	doc := control.StatusDoc{
 		Version:   e.cfg.Version,
 		Mode:      e.cfg.Mode,
 		DataDir:   e.cfg.DataDir,
 		StartedAt: e.startedAt,
-		Children:  []control.ChildDoc{childDoc(stack), e.sensorDoc()},
 	}
-	if stack.State == supervisor.Running {
-		doc.Stack = e.urls.Load()
+	for _, comp := range Components {
+		doc.Children = append(doc.Children, e.doc(comp.Name))
+	}
+	doc.Children = append(doc.Children, e.sensorDoc())
+	// The addresses are published once the API and the web server both run.
+	if e.children["api"].Status().State == supervisor.Running && e.children["web"].Status().State == supervisor.Running {
+		if api, web := e.ready["api"].Load(), e.ready["web"].Load(); api != nil && web != nil {
+			doc.Stack = &control.StackDoc{WebURL: web.WebURL, APIURL: api.APIURL}
+		}
+	}
+	if e.updates != nil {
+		doc.Update = e.updates.doc()
 	}
 	return doc
 }
 
 func (e *engine) Child(name, action string) (control.ChildDoc, bool, error) {
-	var c *supervisor.Child
-	switch name {
-	case "stack":
-		c = e.stack
-	case "sensor":
-		if e.sensor == nil {
+	if name == "sensor" {
+		if _, ok := e.children["sensor"]; !ok {
 			return e.sensorDoc(), true, fmt.Errorf("%w: the Sensor is not supervised by this engine (started with --no-sensor; the desktop app runs it)", control.ErrRefused)
 		}
-		c = e.sensor
-	default:
+	}
+	if _, ok := e.children[name]; !ok {
 		return control.ChildDoc{}, false, nil
 	}
 	if e.stopping.Load() {
-		return childDoc(c.Status()), true, errors.New("the engine is shutting down")
+		return e.doc(name), true, errors.New("the engine is shutting down")
 	}
 	e.log.Printf("%s: %s requested through the control API", name, action)
 	var err error
 	switch action {
 	case "start":
-		err = c.Start()
+		err = e.group.Start(name)
 	case "stop":
-		err = c.Stop()
+		err = e.group.Stop(name)
 	case "restart":
-		err = c.Restart()
+		err = e.group.Restart(name)
 	}
-	return childDoc(c.Status()), true, err
+	if errors.Is(err, errDependency) {
+		err = fmt.Errorf("%w: %v", control.ErrRefused, err)
+	}
+	return e.doc(name), true, err
 }
 
 func (e *engine) Shutdown() {

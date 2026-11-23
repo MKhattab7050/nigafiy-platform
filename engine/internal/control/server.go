@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nigafiy/engine/internal/update"
 )
 
 // ChildDoc is one supervised child in GET /v1/status.
@@ -21,6 +23,19 @@ type ChildDoc struct {
 	Restarts  int        `json:"restarts"`   // automatic restarts since the engine started
 	LastError *string    `json:"last_error"` // null when there is none
 	StartedAt *time.Time `json:"started_at"` // null when no process is running
+
+	Health          *string    `json:"health"`            // "ok" | "failing"; null before the first check or without one
+	HealthError     *string    `json:"health_error"`      // the latest failed check, while failing
+	HealthCheckedAt *time.Time `json:"health_checked_at"` // null until checked
+	DependsOn       []string   `json:"depends_on"`        // started only once these run
+	WaitingFor      *string    `json:"waiting_for"`       // the dependency it waits for before starting
+}
+
+// UpdateDoc is the engine's update state in GET /v1/status.
+type UpdateDoc struct {
+	State   string         `json:"state"`   // "idle" | "applying"
+	Version *string        `json:"version"` // the version being installed, while applying
+	Last    *update.Result `json:"last"`    // the outcome of the last installation, if any
 }
 
 // StackDoc carries the local stack's addresses once it is ready.
@@ -36,12 +51,17 @@ type StatusDoc struct {
 	DataDir   string     `json:"data_dir"`
 	StartedAt time.Time  `json:"started_at"`
 	Children  []ChildDoc `json:"children"`
-	Stack     *StackDoc  `json:"stack"` // null until the stack is ready
+	Stack     *StackDoc  `json:"stack"`  // null until the API and the web server are ready
+	Update    *UpdateDoc `json:"update"` // null when the engine has no update support
 }
 
 // ErrRefused marks a child action the engine will not perform in its current configuration (for
 // example starting the Sensor when the engine runs with --no-sensor). It is answered with 409.
 var ErrRefused = errors.New("refused")
+
+// ErrUpdateRejected marks an update the engine will not install (wrong place, wrong hash, wrong
+// signer, not an installed copy). It is answered with 422.
+var ErrUpdateRejected = errors.New("update rejected")
 
 // Backend is what the server controls.
 type Backend interface {
@@ -51,6 +71,9 @@ type Backend interface {
 	Child(name, action string) (doc ChildDoc, ok bool, err error)
 	// Shutdown asks the engine to stop its children and exit. It must not block.
 	Shutdown()
+	// ApplyUpdate verifies a staged installer and hands it to the update helper, which installs it
+	// once the engine has stopped (the engine then shuts down by itself).
+	ApplyUpdate(req update.Request) (UpdateDoc, error)
 }
 
 // Server serves the control API.
@@ -68,6 +91,7 @@ func New(backend Backend, token, addr string) *Server {
 	mux.HandleFunc("GET /v1/status", s.status)
 	mux.HandleFunc("POST /v1/children/{name}/{action}", s.authed(s.child))
 	mux.HandleFunc("POST /v1/shutdown", s.authed(s.shutdown))
+	mux.HandleFunc("POST /v1/update/apply", s.authed(s.applyUpdate))
 	s.http = &http.Server{
 		Handler:           s.guard(mux),
 		ReadHeaderTimeout: 5 * time.Second,
@@ -148,6 +172,27 @@ func (s *Server) child(w http.ResponseWriter, r *http.Request) {
 func (s *Server) shutdown(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 	s.backend.Shutdown()
+}
+
+func (s *Server) applyUpdate(w http.ResponseWriter, r *http.Request) {
+	var req update.Request
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", "body must be {installer, sha256, version}")
+		return
+	}
+	doc, err := s.backend.ApplyUpdate(req)
+	switch {
+	case errors.Is(err, ErrRefused):
+		writeError(w, http.StatusConflict, "refused", err.Error())
+	case errors.Is(err, ErrUpdateRejected):
+		writeError(w, http.StatusUnprocessableEntity, "update_rejected", err.Error())
+	case err != nil:
+		writeError(w, http.StatusServiceUnavailable, "update_failed", err.Error())
+	default:
+		writeJSON(w, http.StatusAccepted, doc)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

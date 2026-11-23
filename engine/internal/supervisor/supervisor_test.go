@@ -405,3 +405,114 @@ func TestStartFailureCountsAsCrash(t *testing.T) {
 		t.Fatalf("status %+v", st)
 	}
 }
+
+func TestHealthCheckRestartsAnUnhealthyChild(t *testing.T) {
+	var mu sync.Mutex
+	healthy := true
+	checks := 0
+	check := func(int) error {
+		mu.Lock()
+		defer mu.Unlock()
+		checks++
+		if healthy {
+			return nil
+		}
+		return errors.New("GET /readyz: 503")
+	}
+	c, clock, starter := newFakeChild(t, Spec{HealthCheck: check, HealthInterval: 10 * time.Second, HealthFailures: 3})
+	c.Start()
+	p := starter.waitStart(t)
+	waitFor(t, c, "running", inState(Running))
+	if st := c.Status(); st.Health != HealthUnknown {
+		t.Fatalf("health before the first check %q", st.Health)
+	}
+	waitTimers(t, clock, 1)
+	clock.Advance(10 * time.Second)
+	st := waitFor(t, c, "healthy", func(s Status) bool { return s.Health == HealthOK })
+	if st.HealthCheckedAt.IsZero() {
+		t.Fatal("check time not recorded")
+	}
+
+	mu.Lock()
+	healthy = false
+	mu.Unlock()
+	for i := 1; i <= 2; i++ {
+		waitTimers(t, clock, 1)
+		clock.Advance(10 * time.Second)
+		st = waitFor(t, c, "failing", func(s Status) bool { return s.Health == HealthFailing && s.HealthError != "" })
+		if st.State != Running {
+			t.Fatalf("killed after %d failures, want 3", i)
+		}
+		// Wait for the failed result to be fully handled (the next check scheduled).
+		waitTimers(t, clock, 1)
+	}
+	clock.Advance(10 * time.Second)
+	st = waitFor(t, c, "backoff after 3 failed checks", inState(Backoff))
+	if st.LastError != "health check failed 3 times in a row: GET /readyz: 503" {
+		t.Fatalf("last error %q", st.LastError)
+	}
+	if st.Health != HealthUnknown || st.HealthError != "" {
+		t.Fatalf("health not cleared after the kill: %+v", st)
+	}
+	p.mu.Lock()
+	killed := p.killed
+	p.mu.Unlock()
+	if !killed {
+		t.Fatal("unhealthy child was not killed")
+	}
+	// It is restarted like any crash.
+	mu.Lock()
+	healthy = true
+	mu.Unlock()
+	clock.Advance(st.RetryIn)
+	starter.waitStart(t)
+	st = waitFor(t, c, "running again", inState(Running))
+	if st.Restarts != 1 {
+		t.Fatalf("restarts %d", st.Restarts)
+	}
+}
+
+func TestHealthCheckRecoversWithoutRestart(t *testing.T) {
+	var mu sync.Mutex
+	fail := true
+	check := func(int) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if fail {
+			fail = false
+			return errors.New("timeout")
+		}
+		return nil
+	}
+	c, clock, starter := newFakeChild(t, Spec{HealthCheck: check, HealthInterval: time.Second, HealthFailures: 2})
+	c.Start()
+	starter.waitStart(t)
+	waitTimers(t, clock, 1)
+	clock.Advance(time.Second)
+	waitFor(t, c, "failing once", func(s Status) bool { return s.Health == HealthFailing })
+	waitTimers(t, clock, 1)
+	clock.Advance(time.Second)
+	waitFor(t, c, "ok again", func(s Status) bool { return s.Health == HealthOK })
+	waitTimers(t, clock, 1)
+	clock.Advance(time.Second)
+	starter.noStart(t)
+	if st := c.Status(); st.State != Running || st.Restarts != 0 {
+		t.Fatalf("status %+v", st)
+	}
+}
+
+func TestNoHealthCheckWhileStopping(t *testing.T) {
+	called := make(chan struct{}, 8)
+	c, clock, starter := newFakeChild(t, Spec{HealthCheck: func(int) error { called <- struct{}{}; return nil }, HealthInterval: time.Second})
+	starter.exitOnStop = true
+	c.Start()
+	starter.waitStart(t)
+	waitTimers(t, clock, 1)
+	c.Stop()
+	clock.Advance(time.Hour)
+	select {
+	case <-called:
+		t.Fatal("health check ran after stop")
+	case <-time.After(50 * time.Millisecond):
+	}
+}

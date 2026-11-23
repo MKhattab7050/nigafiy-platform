@@ -116,7 +116,8 @@ describe('platform: programs, engine status, update check', () => {
           started_at: '2026-11-21T08:00:00Z',
           stack: { web_url: 'http://127.0.0.1:47130', api_url: 'http://127.0.0.1:47100' },
           children: [
-            { name: 'stack', state: 'running', pid: 4242, restarts: 1, last_error: null, started_at: '2026-11-21T08:00:01Z', token: 'ldc_secret' },
+            { name: 'db', state: 'running', pid: 4242, restarts: 1, last_error: null, started_at: '2026-11-21T08:00:01Z', token: 'ldc_secret', health: 'ok', health_error: null, waiting_for: null },
+            { name: 'web', state: 'stopped', pid: null, restarts: 0, last_error: null, started_at: null, health: 'bogus', waiting_for: 'api', depends_on: ['api'] },
             { name: 'sensor', state: 'stopped', pid: null, restarts: 0, last_error: 'not enrolled', started_at: null },
           ],
         }),
@@ -129,8 +130,9 @@ describe('platform: programs, engine status, update check', () => {
       mode: 'service',
       started_at: '2026-11-21T08:00:00Z',
       children: [
-        { name: 'stack', state: 'running', pid: 4242, restarts: 1, last_error: null, started_at: '2026-11-21T08:00:01Z' },
-        { name: 'sensor', state: 'stopped', pid: null, restarts: 0, last_error: 'not enrolled', started_at: null },
+        { name: 'db', state: 'running', pid: 4242, restarts: 1, last_error: null, started_at: '2026-11-21T08:00:01Z', health: 'ok', health_error: null, waiting_for: null },
+        { name: 'web', state: 'stopped', pid: null, restarts: 0, last_error: null, started_at: null, health: null, health_error: null, waiting_for: 'api' },
+        { name: 'sensor', state: 'stopped', pid: null, restarts: 0, last_error: 'not enrolled', started_at: null, health: null, health_error: null, waiting_for: null },
       ],
     });
     expect(JSON.stringify(status)).not.toContain('ProgramData');

@@ -10,10 +10,17 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 
 const STATE_TONE: Record<EngineChildState, Tone> = { running: 'ok', starting: 'info', backoff: 'warn', failed: 'crit', stopped: 'idle' };
 
+const CHILD_KEYS: Record<string, Key> = {
+  stack: 'platform.child.stack',
+  db: 'platform.child.db',
+  api: 'platform.child.api',
+  web: 'platform.child.web',
+  sensor: 'platform.child.sensor',
+};
+
 function childLabel(name: string, t: (k: Key) => string): string {
-  if (name === 'stack') return t('platform.child.stack');
-  if (name === 'sensor') return t('platform.child.sensor');
-  return name;
+  const key = CHILD_KEYS[name];
+  return key ? t(key) : name;
 }
 
 function EngineStatus({ data }: { data: PlatformEngineResponse }) {
@@ -33,6 +40,13 @@ function EngineStatus({ data }: { data: PlatformEngineResponse }) {
           <li key={c.name} className="flex flex-wrap items-start justify-between gap-2 px-3 py-2.5">
             <div className="min-w-0">
               <p className="text-[13px] font-medium text-fg">{childLabel(c.name, t)}</p>
+              {c.state === 'running' && c.health === 'ok' && <p className="text-xs text-muted">{t('platform.health.ok')}</p>}
+              {c.state === 'running' && c.health === 'failing' && (
+                <p className="mt-0.5 break-words text-xs text-warn" dir="auto">
+                  {fill(t('platform.health.failing'), { e: c.health_error ?? '' })}
+                </p>
+              )}
+              {c.waiting_for && <p className="text-xs text-muted">{fill(t('platform.waitingFor'), { name: childLabel(c.waiting_for, t) })}</p>}
               {c.restarts > 0 && <p className="text-xs text-muted">{fill(t('platform.restarts'), { n: c.restarts })}</p>}
               {c.last_error && (
                 <p className="mt-0.5 break-words text-xs text-muted" dir="auto">

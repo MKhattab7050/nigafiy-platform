@@ -18,7 +18,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
-const { EngineStack } = require('./engine-stack.cjs');
+const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
 const SMOKE = process.argv.includes('--smoke');
@@ -560,6 +560,11 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     handle('collector:state', () => panelState());
+    // The Nigafiy engine's parts (database, API, web console, Sensor) for the panel's engine card.
+    handle('engine:state', async () => {
+      if (!localMode || !(localStack instanceof EngineStack)) return { available: false };
+      return { available: true, ...summarizeEngine(await localStack.status()) };
+    });
     handle('collector:save-settings', async (settings) => {
       const prevLocalMode = localMode;
       const nextState = await collector.saveSettings(settings ?? {});

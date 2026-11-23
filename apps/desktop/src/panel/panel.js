@@ -48,6 +48,25 @@ const TEXT = {
     lastSweep: 'Last discovery sweep',
     found: 'devices found of',
     probed: 'addresses probed',
+    engineTitle: 'Nigafiy Engine',
+    engineDesc: 'The engine runs each part on its own, restarts a part that stops or stops answering, and starts them in order: database, API, web console, Sensor.',
+    engineUnreachable: 'The engine is not answering.',
+    engineService: 'Windows service',
+    engineForeground: 'Started by this app',
+    part_db: 'Database',
+    part_api: 'API',
+    part_web: 'Web console',
+    part_sensor: 'Sensor',
+    part_stack: 'Database, API and web console',
+    eng_stopped: 'Stopped',
+    eng_starting: 'Starting',
+    eng_running: 'Running',
+    eng_backoff: 'Restarting',
+    eng_failed: 'Failed',
+    healthOk: 'answering',
+    healthFailing: 'not answering',
+    restarts: 'restarts',
+    waitingFor: 'waiting for',
     other: 'العربية',
   },
   ar: {
@@ -96,6 +115,25 @@ const TEXT = {
     lastSweep: 'آخر عملية اكتشاف',
     found: 'جهاز من أصل',
     probed: 'عنوانًا تم فحصه',
+    engineTitle: 'محرك Nigafiy',
+    engineDesc: 'يشغّل المحرك كل جزء على حدة، ويعيد تشغيل أي جزء يتوقف أو يتوقف عن الاستجابة، ويبدأ الأجزاء بالترتيب: قاعدة البيانات، ثم واجهة API، ثم وحدة التحكم على الويب، ثم المستشعر.',
+    engineUnreachable: 'المحرك لا يستجيب.',
+    engineService: 'خدمة Windows',
+    engineForeground: 'شغّله هذا التطبيق',
+    part_db: 'قاعدة البيانات',
+    part_api: 'واجهة API',
+    part_web: 'وحدة التحكم على الويب',
+    part_sensor: 'المستشعر',
+    part_stack: 'قاعدة البيانات وواجهة API ووحدة التحكم',
+    eng_stopped: 'متوقف',
+    eng_starting: 'جارٍ التشغيل',
+    eng_running: 'يعمل',
+    eng_backoff: 'إعادة التشغيل',
+    eng_failed: 'فشل',
+    healthOk: 'يستجيب',
+    healthFailing: 'لا يستجيب',
+    restarts: 'مرات إعادة التشغيل',
+    waitingFor: 'بانتظار',
     other: 'English',
   },
 };
@@ -112,6 +150,7 @@ function applyLanguage() {
   for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
   $('lang').textContent = t('other');
   if (state) render(state);
+  if (engineState) renderEngine(engineState);
 }
 
 function render(next) {
@@ -191,6 +230,56 @@ function render(next) {
   if (stick) list.scrollTop = list.scrollHeight;
 }
 
+const ENGINE_TONE = { running: 'ok', starting: 'warn', backoff: 'warn', failed: 'crit', stopped: 'idle' };
+const partName = (name) => (TEXT.en[`part_${name}`] ? t(`part_${name}`) : name);
+let engineState = null;
+
+function renderEngine(next) {
+  engineState = next;
+  const card = $('engine-card');
+  card.hidden = !next?.available;
+  if (!next?.available) return;
+  $('engine-unreachable').hidden = next.reachable;
+  const mode = $('engine-mode');
+  mode.hidden = !next.reachable;
+  if (next.reachable) mode.textContent = `${next.mode === 'service' ? t('engineService') : t('engineForeground')} · ${next.version ?? ''}`;
+  $('engine-parts').replaceChildren(
+    ...(next.reachable ? next.children : []).map((c) => {
+      const li = document.createElement('li');
+      const left = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'part-name';
+      name.textContent = partName(c.name);
+      left.append(name);
+      const details = [];
+      if (c.state === 'running' && c.health) details.push(c.health === 'ok' ? t('healthOk') : `${t('healthFailing')}: ${c.healthError ?? ''}`);
+      if (c.waitingFor) details.push(`${t('waitingFor')} ${partName(c.waitingFor)}`);
+      if (c.restarts > 0) details.push(`${t('restarts')}: ${c.restarts}`);
+      if (c.lastError && c.state !== 'running') details.push(c.lastError);
+      for (const d of details) {
+        const p = document.createElement('div');
+        p.className = 'muted small part-detail';
+        p.dir = 'auto';
+        p.textContent = d; // text only
+        left.append(p);
+      }
+      const badge = document.createElement('span');
+      badge.className = `badge ${ENGINE_TONE[c.state] ?? 'idle'}`;
+      badge.textContent = t(`eng_${c.state}`);
+      li.append(left, badge);
+      return li;
+    }),
+  );
+}
+
+async function pollEngine() {
+  try {
+    renderEngine(await desktop.getEngineState());
+  } catch {
+    renderEngine(null);
+  }
+}
+
 const message = (err) => String(err?.message ?? err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 
 async function guarded(fn) {
@@ -265,3 +354,5 @@ $('reset').addEventListener('click', () => {
 desktop.onState(render);
 applyLanguage();
 void desktop.getState().then(render);
+void pollEngine();
+setInterval(() => void pollEngine(), 5000);

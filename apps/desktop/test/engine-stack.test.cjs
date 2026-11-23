@@ -163,3 +163,47 @@ test('reports a child engine that exits while starting', async () => {
   });
   await assert.rejects(stack.start(), /exit code 3[\s\S]*another engine is already running/);
 });
+
+test('per-component engines: the first part that failed is named, progress follows the part being started', async () => {
+  const { stackProgress } = require('../src/engine-stack.cjs');
+  const part = (name, state, last_error = null) => ({ name, state, pid: null, restarts: 0, last_error, started_at: null });
+  assert.deepEqual(stackProgress({ children: [part('db', 'running'), part('api', 'starting'), part('web', 'stopped'), part('sensor', 'stopped', 'not enrolled')] }), {
+    failed: null,
+    lastError: null,
+    message: 'Starting the API (first start runs the database migrations)…',
+  });
+  const p = stackProgress({ children: [part('db', 'running'), part('api', 'failed', 'Port 47100 is in use'), part('web', 'stopped')] });
+  assert.equal(p.failed.name, 'api');
+  assert.equal(p.lastError, 'the API: Port 47100 is in use');
+  assert.deepEqual(stackProgress(null), { failed: null, lastError: null, message: null });
+
+  const engine = await fakeEngine({ status: { ...ready(), stack: null, children: [part('db', 'failed', 'database port 47133 in use'), part('api', 'stopped'), part('web', 'stopped')] }, token: 'x' });
+  try {
+    const stack = new EngineStack({ engineExe: 'e', dataDir: os.tmpdir(), nodePath: 'n', script: 's', controlUrl: engine.url, pollMs: 10 });
+    await assert.rejects(stack.start(), /could not start the database: database port 47133 in use/);
+  } finally {
+    await engine.close();
+  }
+});
+
+test('the panel summary keeps only known fields and clips text', () => {
+  const { summarizeEngine } = require('../src/engine-stack.cjs');
+  assert.deepEqual(summarizeEngine(null), { reachable: false });
+  const s = summarizeEngine({
+    version: '1.0.0',
+    mode: 'service',
+    data_dir: 'C:\\secret\\path',
+    children: [
+      { name: 'db', state: 'running', health: 'ok', restarts: 1, last_error: null, waiting_for: null },
+      { name: 'web', state: 'weird', health: 'maybe', restarts: -1, last_error: 'x'.repeat(1000), waiting_for: 'api' },
+    ],
+  });
+  assert.equal(s.mode, 'service');
+  assert.equal(JSON.stringify(s).includes('secret'), false);
+  assert.deepEqual(s.children[0], { name: 'db', state: 'running', health: 'ok', restarts: 1, lastError: null, healthError: null, waitingFor: null });
+  assert.equal(s.children[1].state, 'stopped');
+  assert.equal(s.children[1].health, null);
+  assert.equal(s.children[1].restarts, 0);
+  assert.equal(s.children[1].lastError.length, 400);
+  assert.equal(s.children[1].waitingFor, 'api');
+});

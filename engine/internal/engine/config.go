@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/nigafiy/engine/internal/update"
 )
 
 // DefaultControlAddr is where the engine's control API listens.
@@ -29,6 +31,9 @@ type Config struct {
 	NoSensor     bool // the desktop app runs the Sensor itself; the engine leaves it alone
 	ControlAddr  string
 	OwnerSID     string // a further user allowed to read the control token (set by install)
+	// UpdatePublisher, when set, is the SHA-1 thumbprint of the certificate every update installer
+	// must be Authenticode-signed with (checked again right before the installer runs).
+	UpdatePublisher string
 
 	// Console, when set, also receives the engine log (foreground mode).
 	Console io.Writer
@@ -45,6 +50,8 @@ const (
 	EnvSensorExe    = "NIGAFIY_ENGINE_SENSOR_EXE"
 	EnvSensorConfig = "NIGAFIY_ENGINE_SENSOR_CONFIG"
 	EnvControlAddr  = "NIGAFIY_ENGINE_CONTROL_ADDR"
+	// The same variable the API reads, so one setting covers both checks.
+	EnvUpdatePublisher = "NIGAFIY_UPDATE_PUBLISHER_THUMBPRINT"
 )
 
 // FlagSet returns the flags of `run` (and `install`, which records them in the service's command
@@ -60,6 +67,7 @@ func FlagSet(name string, cfg *Config) *flag.FlagSet {
 	fs.BoolVar(&cfg.NoSensor, "no-sensor", false, "do not supervise the Sensor (the desktop app runs it)")
 	fs.StringVar(&cfg.ControlAddr, "control-addr", "", "control API address, loopback only (default "+DefaultControlAddr+") [env "+EnvControlAddr+"]")
 	fs.StringVar(&cfg.OwnerSID, "owner-sid", "", "SID of a further user allowed to read the control token (recorded by install)")
+	fs.StringVar(&cfg.UpdatePublisher, "update-publisher", "", "SHA-1 thumbprint of the certificate update installers must be signed with [env "+EnvUpdatePublisher+"]")
 	return fs
 }
 
@@ -92,6 +100,12 @@ func Resolve(cfg Config, getenv func(string) string) (Config, error) {
 	pick(&cfg.SensorExe, EnvSensorExe)
 	pick(&cfg.SensorConfig, EnvSensorConfig)
 	pick(&cfg.ControlAddr, EnvControlAddr)
+	pick(&cfg.UpdatePublisher, EnvUpdatePublisher)
+	if tp, err := update.NormalizeThumbprint(cfg.UpdatePublisher); err != nil {
+		return cfg, err
+	} else {
+		cfg.UpdatePublisher = tp
+	}
 
 	repo := ""
 	if cfg.StackScript == "" || cfg.DataDir == "" || cfg.SensorExe == "" {

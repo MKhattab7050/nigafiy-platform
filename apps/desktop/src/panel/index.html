@@ -34,6 +34,16 @@
       </div>
     </section>
 
+    <section class="card" id="engine-card" hidden>
+      <div class="row between">
+        <h2 data-i18n="engineTitle">Nigafiy Engine</h2>
+        <span id="engine-mode" class="badge idle"></span>
+      </div>
+      <p class="muted small" data-i18n="engineDesc">The engine runs each part on its own, restarts a part that stops or stops answering, and starts them in order: database, API, web console, Sensor.</p>
+      <p id="engine-unreachable" class="alert" role="alert" hidden data-i18n="engineUnreachable">The engine is not answering.</p>
+      <ul id="engine-parts" class="parts"></ul>
+    </section>
+
     <section class="card">
       <div class="row between">
         <h2 data-i18n="status">Status</h2>

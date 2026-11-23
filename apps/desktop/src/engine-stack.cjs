@@ -15,6 +15,56 @@ const path = require('node:path');
 const DEFAULT_CONTROL_URL = 'http://127.0.0.1:47140';
 const START_TIMEOUT_MS = 120_000;
 
+/** The stack's parts as the engine reports them (Milestone 5: db, api, web; earlier engines: one "stack"). */
+const PARTS = {
+  db: { label: 'the database', starting: 'Starting the database…' },
+  api: { label: 'the API', starting: 'Starting the API (first start runs the database migrations)…' },
+  web: { label: 'the web console', starting: 'Starting the web console…' },
+  stack: { label: 'the database, API and web console', starting: 'Starting the database, API and web console…' },
+};
+
+/**
+ * Where the engine's start-up is: the first part that has failed for good, the latest error, and a
+ * message for the part being started (or waited for).
+ * @param {any} s /v1/status body, or null
+ */
+function stackProgress(s) {
+  const parts = (s?.children ?? []).filter((c) => c && Object.hasOwn(PARTS, c.name));
+  const out = { failed: null, lastError: null, message: null };
+  for (const c of parts) {
+    if (c.last_error) out.lastError = `${PARTS[c.name].label}: ${c.last_error}`;
+    if (c.state === 'failed' && !out.failed) out.failed = { ...c, label: PARTS[c.name].label };
+    if (!out.message && (c.state === 'starting' || c.state === 'backoff')) out.message = PARTS[c.name].starting;
+  }
+  return out;
+}
+
+const CHILD_STATES = new Set(['stopped', 'starting', 'running', 'backoff', 'failed']);
+const clip = (v, max = 400) => (typeof v === 'string' ? v.slice(0, max) : null);
+
+/**
+ * What the desktop panel shows of an engine status: each part's state, health, restarts and last
+ * error. Only known fields, length-limited (the panel renders them as text only).
+ * @param {any} s /v1/status body, or null when no engine answers
+ */
+function summarizeEngine(s) {
+  if (!s || typeof s !== 'object' || !Array.isArray(s.children)) return { reachable: false };
+  return {
+    reachable: true,
+    mode: s.mode === 'service' ? 'service' : 'foreground',
+    version: clip(s.version, 64),
+    children: s.children.slice(0, 16).map((c) => ({
+      name: clip(c?.name, 32) ?? '?',
+      state: CHILD_STATES.has(c?.state) ? c.state : 'stopped',
+      health: c?.health === 'ok' || c?.health === 'failing' ? c.health : null,
+      restarts: Number.isInteger(c?.restarts) && c.restarts >= 0 ? c.restarts : 0,
+      lastError: clip(c?.last_error),
+      healthError: clip(c?.health_error),
+      waitingFor: clip(c?.waiting_for, 32),
+    })),
+  };
+}
+
 class EngineStack {
   /**
    * @param {{
@@ -78,10 +128,10 @@ class EngineStack {
         this.urls = { webUrl: s.stack.web_url, apiUrl: s.stack.api_url };
         return this.urls;
       }
-      const stack = s?.children?.find((c) => c.name === 'stack');
-      if (stack?.last_error) lastError = stack.last_error;
-      if (stack?.state === 'failed') throw new Error(`The engine could not start the database, API and web console: ${stack.last_error ?? 'unknown error'}`);
-      if (stack?.state === 'starting') this.o.onStatus('Starting the database, API and web console…');
+      const progress = stackProgress(s);
+      if (progress.lastError) lastError = progress.lastError;
+      if (progress.failed) throw new Error(`The engine could not start ${progress.failed.label}: ${progress.failed.last_error ?? 'unknown error'}`);
+      if (progress.message) this.o.onStatus(progress.message);
       await new Promise((r) => setTimeout(r, this.o.pollMs));
     }
     throw new Error(lastError ?? 'Timed out waiting for the Nigafiy engine to start the stack (120 s).');
@@ -150,4 +200,4 @@ class EngineStack {
   }
 }
 
-module.exports = { EngineStack, DEFAULT_CONTROL_URL };
+module.exports = { EngineStack, DEFAULT_CONTROL_URL, stackProgress, summarizeEngine };

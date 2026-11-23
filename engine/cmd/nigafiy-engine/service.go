@@ -22,6 +22,7 @@ func serviceArgs(cfg engine.Config, ownerSID string) []string {
 		args = append(args, "--no-sensor")
 	}
 	add("control-addr", cfg.ControlAddr)
+	add("update-publisher", cfg.UpdatePublisher)
 	add("owner-sid", ownerSID)
 	return args
 }

@@ -65,7 +65,22 @@ type Spec struct {
 	ReadyCheck   func(pid int) (bool, error)
 	ReadyPoll    time.Duration
 	ReadyTimeout time.Duration // 0: wait as long as the process lives
+	// HealthCheck runs every HealthInterval while the child is Running (in its own goroutine, so a
+	// slow check never delays a stop). HealthFailures failures in a row kill the child, which then
+	// counts as a crash and is restarted with the usual backoff. nil: no health check.
+	HealthCheck    func(pid int) error
+	HealthInterval time.Duration // default 10 s
+	HealthFailures int           // default 3
 }
+
+// Health is the result of the latest health check of a running child.
+type Health string
+
+const (
+	HealthUnknown Health = ""        // no check configured, not running, or not checked yet
+	HealthOK      Health = "ok"      // the latest check passed
+	HealthFailing Health = "failing" // the latest check failed (the child is killed after HealthFailures in a row)
+)
 
 // Status is a snapshot of a child.
 type Status struct {
@@ -76,6 +91,10 @@ type Status struct {
 	LastError string
 	StartedAt time.Time     // zero when no process is running
 	RetryIn   time.Duration // in Backoff: the delay before the next start
+
+	Health          Health
+	HealthError     string    // the latest failed check's error, while Health is failing
+	HealthCheckedAt time.Time // zero until the first check of the current process
 }
 
 // Process is a started child.
@@ -116,6 +135,11 @@ const (
 type command struct {
 	kind cmdKind
 	done chan struct{}
+}
+
+type healthResult struct {
+	pid int
+	err error
 }
 
 // Child supervises one process. Its methods are safe for concurrent use.
@@ -165,6 +189,12 @@ func New(spec Spec, opts Options) *Child {
 	}
 	if c.spec.StopTimeout <= 0 {
 		c.spec.StopTimeout = 10 * time.Second
+	}
+	if c.spec.HealthInterval <= 0 {
+		c.spec.HealthInterval = 10 * time.Second
+	}
+	if c.spec.HealthFailures <= 0 {
+		c.spec.HealthFailures = 3
 	}
 	c.snap = Status{Name: spec.Name, State: Stopped}
 	go c.loop()
@@ -221,7 +251,10 @@ func (c *Child) loop() {
 		proc    Process
 		procEnd <-chan struct{}
 
-		retryC, readyC, killC <-chan time.Time
+		retryC, readyC, killC, healthC <-chan time.Time
+		healthRes                      = make(chan healthResult, 1)
+		healthBusy                     bool
+		healthFails                    int
 
 		stopping       bool
 		startAfterStop bool
@@ -243,6 +276,20 @@ func (c *Child) loop() {
 		deaths = nil
 		nextDelay = c.policy.InitialBackoff
 	}
+	clearHealth := func() {
+		healthC = nil
+		healthFails = 0
+		st.Health = HealthUnknown
+		st.HealthError = ""
+		st.HealthCheckedAt = time.Time{}
+	}
+	// becameRunning starts the health checks of a process that has just become Running.
+	becameRunning := func() {
+		clearHealth()
+		if c.spec.HealthCheck != nil {
+			healthC = c.clock.After(c.spec.HealthInterval)
+		}
+	}
 
 	// died records a crash (or a failed start) and schedules the next start, or gives up.
 	died := func(now time.Time, wasRunning bool) {
@@ -261,6 +308,7 @@ func (c *Child) loop() {
 		st.Pid = 0
 		st.StartedAt = time.Time{}
 		st.RetryIn = 0
+		clearHealth()
 		if len(deaths) >= c.policy.MaxDeaths {
 			st.State = Failed
 			st.LastError = fmt.Sprintf("%s; stopped after %d crashes within %s, start it again by hand", st.LastError, len(deaths), c.policy.DeathWindow)
@@ -280,6 +328,7 @@ func (c *Child) loop() {
 
 	launch := func() {
 		readyC, killC, retryC = nil, nil, nil
+		clearHealth()
 		exitReason, readyErr = "", ""
 		if c.spec.Precheck != nil {
 			if err := c.spec.Precheck(); err != nil {
@@ -308,6 +357,7 @@ func (c *Child) loop() {
 			st.State = Running
 			st.LastError = ""
 			runningSince = now
+			becameRunning()
 		} else {
 			st.State = Starting
 			readyC = c.clock.After(c.spec.ReadyPoll)
@@ -321,6 +371,7 @@ func (c *Child) loop() {
 		}
 		stopping = true
 		readyC = nil
+		healthC = nil
 		if c.spec.Graceful {
 			if err := proc.RequestStop(); err != nil {
 				c.logf("%s: graceful stop request failed: %v", c.spec.Name, err)
@@ -394,6 +445,7 @@ func (c *Child) loop() {
 				st.State = Stopped
 				st.Pid = 0
 				st.StartedAt = time.Time{}
+				clearHealth()
 				c.logf("%s: stopped", c.spec.Name)
 				if startAfterStop && !closing {
 					startAfterStop = false
@@ -452,6 +504,7 @@ func (c *Child) loop() {
 				st.State = Running
 				st.LastError = ""
 				runningSince = now
+				becameRunning()
 				c.logf("%s: ready", c.spec.Name)
 			case c.spec.ReadyTimeout > 0 && now.Sub(st.StartedAt) >= c.spec.ReadyTimeout:
 				exitReason = fmt.Sprintf("did not become ready within %s", c.spec.ReadyTimeout)
@@ -463,6 +516,43 @@ func (c *Child) loop() {
 			default:
 				readyC = c.clock.After(c.spec.ReadyPoll)
 			}
+
+		case <-healthC:
+			healthC = nil
+			if proc == nil || stopping || st.State != Running || healthBusy {
+				break
+			}
+			healthBusy = true
+			go func(pid int, check func(int) error) {
+				healthRes <- healthResult{pid: pid, err: check(pid)}
+			}(st.Pid, c.spec.HealthCheck)
+
+		case res := <-healthRes:
+			healthBusy = false
+			if proc == nil || stopping || st.State != Running || res.pid != st.Pid {
+				break // the process the check was about is gone
+			}
+			st.HealthCheckedAt = c.clock.Now()
+			if res.err == nil {
+				if healthFails > 0 {
+					c.logf("%s: health check passes again", c.spec.Name)
+				}
+				healthFails = 0
+				st.Health = HealthOK
+				st.HealthError = ""
+			} else {
+				healthFails++
+				st.Health = HealthFailing
+				st.HealthError = res.err.Error()
+				if healthFails >= c.spec.HealthFailures {
+					exitReason = fmt.Sprintf("health check failed %d times in a row: %s", healthFails, res.err)
+					c.logf("%s: %s; killing it", c.spec.Name, exitReason)
+					proc.Kill()
+					break
+				}
+				c.logf("%s: health check failed (%d of %d): %s", c.spec.Name, healthFails, c.spec.HealthFailures, res.err)
+			}
+			healthC = c.clock.After(c.spec.HealthInterval)
 
 		case <-killC:
 			killC = nil

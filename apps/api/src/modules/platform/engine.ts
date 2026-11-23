@@ -52,6 +52,9 @@ function parseStatus(body: unknown): PlatformEngineResponse | null {
       restarts: typeof c.restarts === 'number' && Number.isInteger(c.restarts) && c.restarts >= 0 ? c.restarts : 0,
       last_error: str(c.last_error),
       started_at: str(c.started_at, 64),
+      health: c.health === 'ok' || c.health === 'failing' ? c.health : null,
+      health_error: str(c.health_error),
+      waiting_for: str(c.waiting_for, 32),
     });
   }
   return { reachable: true, version, mode, started_at: startedAt, children };

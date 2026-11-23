@@ -104,6 +104,11 @@ export interface EngineChild {
   readonly restarts: number;
   readonly last_error: string | null;
   readonly started_at: string | null;
+  /** Latest health check of a running part: the database port answers, the API's /readyz, the web console. null before the first check. */
+  readonly health: 'ok' | 'failing' | null;
+  readonly health_error: string | null;
+  /** The part it waits for before it starts (start order: db → api → web, api → sensor). */
+  readonly waiting_for: string | null;
 }
 
 export type PlatformEngineResponse =

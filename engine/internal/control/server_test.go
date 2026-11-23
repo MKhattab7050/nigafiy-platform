@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -11,12 +12,27 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/nigafiy/engine/internal/update"
 )
 
 type fakeBackend struct {
 	mu       sync.Mutex
 	actions  []string
 	shutdown int
+	updates  []update.Request
+	applyErr error
+}
+
+func (f *fakeBackend) ApplyUpdate(req update.Request) (UpdateDoc, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.applyErr != nil {
+		return UpdateDoc{}, f.applyErr
+	}
+	f.updates = append(f.updates, req)
+	v := req.Version
+	return UpdateDoc{State: "applying", Version: &v}, nil
 }
 
 func (f *fakeBackend) Status() StatusDoc {
@@ -103,7 +119,7 @@ func TestStatusShape(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	if got := strings.Join(keys, ","); got != "children,data_dir,mode,stack,started_at,version" {
+	if got := strings.Join(keys, ","); got != "children,data_dir,mode,stack,started_at,update,version" {
 		t.Fatalf("top-level keys %s", got)
 	}
 	var children []map[string]json.RawMessage
@@ -116,7 +132,7 @@ func TestStatusShape(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	if got := strings.Join(keys, ","); got != "last_error,name,pid,restarts,started_at,state" {
+	if got := strings.Join(keys, ","); got != "depends_on,health,health_checked_at,health_error,last_error,name,pid,restarts,started_at,state,waiting_for" {
 		t.Fatalf("child keys %s", got)
 	}
 	if string(children[1]["pid"]) != "null" || string(children[1]["last_error"]) != `"not enrolled"` {
@@ -238,4 +254,46 @@ func TestWriteTokenRoundTrip(t *testing.T) {
 		t.Fatalf("ReadToken = %q, %v", got, err)
 	}
 	checkTokenACL(t, path)
+}
+
+func post(t *testing.T, url, auth, body string) (*http.Response, string) {
+	t.Helper()
+	req, _ := http.NewRequest("POST", url, strings.NewReader(body))
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, _ := io.ReadAll(res.Body)
+	return res, string(b)
+}
+
+func TestUpdateApplyNeedsTokenAndValidBody(t *testing.T) {
+	addr, b := startServer(t)
+	url := "http://" + addr + "/v1/update/apply"
+	good := `{"installer":"C:/data/updates/staged/Nigafiy-Setup-1.2.4.exe","sha256":"` + strings.Repeat("a", 64) + `","version":"1.2.4"}`
+	if res, _ := post(t, url, "", good); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token: %d", res.StatusCode)
+	}
+	if res, _ := post(t, url, "Bearer "+testToken, `{"installer":"x","extra":1}`); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown field: %d", res.StatusCode)
+	}
+	res, body := post(t, url, "Bearer "+testToken, good)
+	if res.StatusCode != http.StatusAccepted || !strings.Contains(body, `"state":"applying"`) {
+		t.Fatalf("apply: %d %s", res.StatusCode, body)
+	}
+	if len(b.updates) != 1 || b.updates[0].Version != "1.2.4" {
+		t.Fatalf("backend got %+v", b.updates)
+	}
+	b.applyErr = errors.Join(ErrUpdateRejected, errors.New("installer SHA-256 does not match"))
+	if res, body := post(t, url, "Bearer "+testToken, good); res.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "does not match") {
+		t.Fatalf("rejected: %d %s", res.StatusCode, body)
+	}
+	b.applyErr = errors.Join(ErrRefused, errors.New("source checkout"))
+	if res, _ := post(t, url, "Bearer "+testToken, good); res.StatusCode != http.StatusConflict {
+		t.Fatalf("refused: %d", res.StatusCode)
+	}
 }

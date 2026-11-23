@@ -1,8 +1,9 @@
 # Nigafiy Engine (`engine/`)
 
 `nigafiy-engine.exe` is a small Go supervisor for everything that runs on this computer: the
-**stack** (embedded PostgreSQL, API and web server, started through `scripts/local.mjs`) and the
-local **Sensor** (`lan-collector.exe`). It keeps them running, restarts them when they crash, writes
+**database** (embedded PostgreSQL), the **API** and the **web console** (three separate children,
+each started through `scripts/local.mjs --component=<name>`) and the local **Sensor**
+(`lan-collector.exe`). It keeps them running, restarts them when they crash, writes
 their logs, and answers a local control API that the Hub (desktop app) and the API use.
 
 It runs either in the foreground (`nigafiy-engine run`, used by the Hub when no service is
@@ -30,8 +31,8 @@ pnpm test:engine    # go test ./... in engine/
 On non-Windows systems the service commands answer "not supported on this OS"; `run` works.
 
 When started by the Service Control Manager (`svc.IsWindowsService()`), the binary runs the service
-handler instead of parsing a subcommand: Stop and Shutdown requests stop the Sensor, then the stack,
-then report the service stopped (StopPending with checkpoints every 5 s while children stop).
+handler instead of parsing a subcommand: Stop and Shutdown requests stop the Sensor, the web
+console, the API and the database, then report the service stopped (StopPending with checkpoints every 5 s while children stop).
 
 ### Flags of `run` / `install`
 
@@ -48,6 +49,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 | `--no-sensor` | — | off. With it the Sensor is not supervised at all (see below) |
 | `--control-addr` | `NIGAFIY_ENGINE_CONTROL_ADDR` | `127.0.0.1:47140`. Must be a loopback IP literal with a port; anything else is refused |
 | `--owner-sid` | — | none; a further SID allowed to read the control token (written by `install`) |
+| `--update-publisher` | `NIGAFIY_UPDATE_PUBLISHER_THUMBPRINT` | none; SHA-1 thumbprint every update installer must be Authenticode-signed with |
 
 Note for the installed app: the desktop app keeps the collector's files in
 `%APPDATA%\LAN Detective\collector\`, not under `data\`, so it must pass `--sensor-config` (or
@@ -55,22 +57,54 @@ Note for the installed app: the desktop app keeps the collector's files in
 
 ## What it supervises
 
-**stack** — `<node> <stack-script> --no-open --no-collector --engine-status-file=<data-dir>/engine/stack-status.json`,
-working directory = the script's folder, environment = the engine's plus `LD_DATA_DIR=<data-dir>`
+Since Milestone 5 the database, the API and the web console are **three separate children**, each
+with its own restart backoff, ready check, health check, log and Job Object, plus the Sensor:
+
+| Child | Command | Ready when | Health check (every 15 s, 3 failures in a row → killed and restarted) | Stop timeout |
+| --- | --- | --- | --- | --- |
+| `db` | `<node> <stack-script> --component=db --engine-status-file=<data-dir>/engine/db-status.json` | status file says `ready` with the port | TCP connect to `127.0.0.1:<port>` | 30 s |
+| `api` | `… --component=api …/api-status.json` | `ready` with `apiUrl` | `GET <apiUrl>/readyz` → 200 | 20 s |
+| `web` | `… --component=web …/web-status.json` | `ready` with `webUrl` | `GET <webUrl>` → < 500 | 15 s |
+| `sensor` | `<sensor-exe> -config <sensor-config>` | started | — | 5 s |
+
+Start order: `db` → `api` → `web`, and `sensor` once `api` runs. Each child starts only when every
+part it depends on is `running` (`waiting_for` in the status says what it waits for); a part whose
+dependency stopped or failed for good is not started and waits for a manual start. Stop order is
+the reverse: Sensor, web, API, database.
+
+- `POST /v1/children/{name}/stop` stops the parts that depend on it first (stopping `api` stops
+  `sensor` and `web`, then `api`).
+- `POST /v1/children/{name}/start` is refused with **409** while a dependency is not running
+  ("start db first").
+- `POST /v1/children/{name}/restart` stops the dependants, restarts the part, and starts again (in
+  order, once it runs) the dependants that were running.
+- Health checks run in their own goroutine, so a slow check never delays a stop. Addresses in the
+  ready reports must be on this computer (loopback or `localhost`); the engine refuses others.
+
+Working directory = the script's folder, environment = the engine's plus `LD_DATA_DIR=<data-dir>`
 (and `LD_BUNDLE_DIR` when given). `ELECTRON_RUN_AS_NODE=1` is added only when `--node` is not a
 `node`/`node.exe` (that is, the installed desktop app's own executable), exactly as
 `apps/desktop/src/local-stack.cjs` does it.
 
-- `local.mjs` writes the status file atomically (temporary file + rename):
-  `{"state":"ready","webUrl","apiUrl","pid"}` once database, API and web are up, or
-  `{"state":"error","message","pid"}` on a fatal error. The engine deletes any old file before each
-  start and counts the stack as `running` only when the file says `ready` **and** its `pid` is the
-  process it started. An `error` message becomes the stack's `last_error`
+- `local.mjs --component=<name>` runs that one part, using the same code as `pnpm local` (the
+  `runDatabase` / `runApi` / `runWeb` functions in the script), but it **never reuses** a part
+  already running on its port: a database, API or web app that answers there was started by
+  something else, so it says so and exits (the engine shows that as the part's `last_error`). A
+  database left behind by a hard kill that holds the port without answering is stopped and
+  restarted, as before.
+- It writes the status file atomically (temporary file + rename):
+  `{"state":"ready","component","port","apiUrl","webUrl","pid"}` once its part answers, or
+  `{"state":"error","message","component","pid"}` on a fatal error. The engine deletes any old file
+  before each start and counts the child as `running` only when the file says `ready` **and** its
+  `pid` is the process it started. An `error` message becomes the child's `last_error`
   (e.g. `Port 4100 is in use by another program. (exited with code 1)`).
-- If the stack is not ready within 10 minutes it is killed and counted as a crash.
-- Stop: the engine closes the stack's stdin; `local.mjs` started with `--engine-status-file` treats
-  that as "stop" and shuts down db/api/web itself. After 45 s the whole tree is killed.
-- The existing IPC behaviour of `local.mjs` (used by the desktop app today) is unchanged.
+- If a part is not ready within 5 minutes it is killed and counted as a crash.
+- Stop: the engine closes the child's stdin; `local.mjs` treats that as "stop" and stops its part
+  (the database through embedded-postgres' clean shutdown). After the stop timeout the tree is killed.
+- Its output goes to stdout, which the engine writes to `logs/<name>.log` (rotated, redacted); it
+  does not open the log file itself in this mode.
+- `pnpm local` (all parts in one process, reusing what already runs) and the IPC behaviour used by
+  the desktop app's direct launcher are unchanged.
 
 **sensor** — `<sensor-exe> -config <sensor-config>`, only when the config file exists. Otherwise
 the child stays `stopped` with `last_error: "not enrolled"`. Enrollment stays in the Hub (consent,
@@ -109,8 +143,9 @@ per child, killed with SIGKILL.)
 
 ## Graceful shutdown
 
-Ctrl+C / SIGTERM (foreground), service Stop/Shutdown, or `POST /v1/shutdown`: stop the Sensor, then
-the stack, close the control API, delete the control token and the stack status file, exit 0.
+Ctrl+C / SIGTERM (foreground), service Stop/Shutdown, or `POST /v1/shutdown`: stop the Sensor, the
+web console, the API and the database (in that order), close the control API, delete the control
+token and the status files, exit 0.
 
 ## Control API
 
@@ -128,14 +163,21 @@ bodies are capped at 4 KB.
   "data_dir": "D:\\network\\.data",
   "started_at": "2026-11-21T16:50:03.04Z",
   "children": [
-    {"name": "stack", "state": "running", "pid": 26436, "restarts": 0, "last_error": null, "started_at": "2026-11-21T16:50:03.05Z"},
-    {"name": "sensor", "state": "stopped", "pid": null, "restarts": 0, "last_error": "not enrolled", "started_at": null}
+    {"name": "db", "state": "running", "pid": 14836, "restarts": 0, "last_error": null, "started_at": "2026-11-23T00:54:40Z",
+     "health": "ok", "health_error": null, "health_checked_at": "2026-11-23T00:55:10Z", "depends_on": [], "waiting_for": null},
+    {"name": "api", "state": "running", "pid": 20192, "...": "..."},
+    {"name": "web", "state": "running", "pid": 7020, "...": "..."},
+    {"name": "sensor", "state": "stopped", "pid": null, "restarts": 0, "last_error": "not enrolled", "started_at": null,
+     "health": null, "health_error": null, "health_checked_at": null, "depends_on": ["api"], "waiting_for": null}
   ],
-  "stack": {"web_url": "http://localhost:3100", "api_url": "http://localhost:4100"}
+  "stack": {"web_url": "http://localhost:3100", "api_url": "http://localhost:4100"},
+  "update": {"state": "idle", "version": null, "last": null}
 }
 ```
 
-`mode` is `"service"` or `"foreground"`. `stack` is `null` until the stack child is `running`.
+`mode` is `"service"` or `"foreground"`. `stack` is `null` until both `api` and `web` are
+`running`. `health` is `"ok"` / `"failing"` for a running child once checked. `update` is described
+in `docs/operations/updates.md`.
 `pid`, `last_error` and `started_at` are `null` when there is none. `restarts` counts automatic
 restarts since the engine started.
 
@@ -143,12 +185,14 @@ Authenticated (`Authorization: Bearer <token>`, compared in constant time; missi
 
 | Request | Answer |
 | --- | --- |
-| `POST /v1/children/{stack\|sensor}/start` | 200 + the child's entry. A `failed` child gets a fresh restart budget. Returns once launched (not once ready) |
+| `POST /v1/children/{db\|api\|web\|sensor}/start` | 200 + the child's entry. A `failed` child gets a fresh restart budget. Returns once launched (not once ready) |
 | `POST /v1/children/{name}/stop` | 200 + entry, after the process tree is gone |
 | `POST /v1/children/{name}/restart` | 200 + entry, after stop and relaunch |
 | `POST /v1/shutdown` | 202 `{"ok":true}`, then the graceful shutdown above |
+| `POST /v1/update/apply` | 202 + the update state; see `docs/operations/updates.md` |
 
-Unknown child or action → 404; Sensor action under `--no-sensor` → 409; any action while the engine
+Unknown child or action → 404; Sensor action under `--no-sensor`, or a start while a dependency
+is not running → 409; any action while the engine
 is shutting down → 503. Errors are `{"error":{"code","message"}}`.
 
 ### Contract used by the desktop app (child engine)
@@ -160,7 +204,8 @@ nigafiy-engine run --data-dir=<dir> --node=<exe> --stack-script=<local.mjs> --no
 ```
 
 reads the stack URLs from `/v1/status` → `stack.web_url` / `stack.api_url` (null until ready) and
-the stack child's `state` / `last_error`, and on Quit sends `POST /v1/shutdown` with the token from
+the `db` / `api` / `web` children's `state` / `last_error` (an older engine's single `stack` child is
+still understood), and on Quit sends `POST /v1/shutdown` with the token from
 `<data-dir>/engine/control-token` (readable by the user who started the engine).
 
 ## Files
@@ -168,10 +213,10 @@ the stack child's `state` / `last_error`, and on Quit sends `POST /v1/shutdown` 
 | Path (under the data folder) | Contents |
 | --- | --- |
 | `engine/control-token` | 64 hex characters (32 random bytes), new on every start, deleted on clean exit. Written to a temporary file whose DACL is replaced first, then renamed into place. Windows: protected DACL (no inheritance) granting full control to `SYSTEM`, `BUILTIN\Administrators`, the user running the engine and `--owner-sid` if given — set with `SetNamedSecurityInfo` from `golang.org/x/sys/windows` (not `icacls`). Elsewhere: mode 0600 |
-| `engine/stack-status.json` | Written by `local.mjs` (see above); deleted on clean exit |
+| `engine/{db,api,web}-status.json` | Written by `local.mjs --component` (see above); deleted on clean exit |
 | `logs/engine.log` | The engine's own log (also printed to the console in foreground mode) |
-| `logs/stack.log`, `logs/sensor.log` | Each child's stdout + stderr, one timestamped line at a time, colour codes stripped |
-| `logs/db.log`, `logs/api.log`, `logs/web.log` | Still written by `local.mjs` itself, as before |
+| `logs/db.log`, `logs/api.log`, `logs/web.log`, `logs/sensor.log` | Each child's stdout + stderr, one timestamped line at a time, colour codes stripped |
+| `logs/update.log` | The update helper's log (`docs/operations/updates.md`) |
 
 All engine logs rotate at 5 MB, keeping three old files (`engine.log.1` … `engine.log.3`). Every
 line is redacted before it is written: anything matching the desktop app's pattern
@@ -206,6 +251,24 @@ Verified on the development machine (Windows 11, 2026-11-21):
   the real Sensor (this checkout has an enrolled `.data/collector/collector.yaml`) did not scan the
   network.
 
+Milestone 5 (2026-11-23, per-component supervision):
+
+- Go tests: health checks (pass → `ok`; failures counted; 3 in a row kill the child, which is then
+  restarted with the backoff; a recovering check resets the count; no check while stopping), the
+  group's ordering with fake children (start in order only once dependencies run, `waiting_for`,
+  a failed dependency stops the chain, stop takes dependants down first, restart brings running
+  dependants back, close in reverse order), and the engine with stand-in components (a test helper
+  that listens like a database, serves `/readyz` like the API and a page like the web server):
+  three separate processes, reverse stop order in the log, `stop api` stops `web`, `start web`
+  without the API → 409, `restart db` brings API and web back, an API error is reported while `web`
+  waits for it.
+- Real foreground run against this checkout with a scratch data folder and scratch ports (API
+  47600, web 47630, database 47633, control 47640; never the owner's 3100/4100/5433 or the
+  installed app's ports): `db`, `api`, `web` each ready as its own process, health `ok` for all
+  three after the first checks; `POST /v1/children/db/restart` stopped web, API and database in
+  that order and brought them back in order; `POST /v1/shutdown` stopped web → API → database in
+  under a second, every port free afterwards.
+
 Not verified:
 
 - `install` / `uninstall` / `start` / `stop` and service mode were **not run** on this machine (no
@@ -216,6 +279,8 @@ Not verified:
   rights, and `%APPDATA%` differs for LocalSystem. The service-mode data folder
   (`%ProgramData%\Nigafiy`) and its account belong to Milestone 5's installer.
 - The real Sensor under the engine (only a stand-in Sensor was supervised in tests).
+- The web console's health check against a development server under heavy first-compile load
+  (it has 3 s per check and three tries, 45 s in all; the production server answers in milliseconds).
 - The POSIX code paths are compiled and vetted, not run.
 - The embedded database is still stopped by `embedded-postgres` itself with `taskkill /f` on
   Windows (pre-existing behaviour of `apps/api/scripts/dev-db.ts`), so `postmaster.pid` is left

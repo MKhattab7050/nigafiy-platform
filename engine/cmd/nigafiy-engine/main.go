@@ -78,6 +78,8 @@ func realMain(args []string, stdout, stderr io.Writer) int {
 		return report(stderr, noArgs(rest, stopService), "stopped service "+serviceName, stdout)
 	case "status":
 		return cmdStatus(rest, stdout, stderr)
+	case "update-apply":
+		return cmdUpdateApply(rest, stdout, stderr)
 	case "version", "--version", "-v":
 		fmt.Fprintln(stdout, version)
 		return exitOK

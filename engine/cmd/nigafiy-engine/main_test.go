@@ -99,3 +99,17 @@ func TestServiceArgs(t *testing.T) {
 		t.Fatalf("--no-sensor dropped: %q", args)
 	}
 }
+
+func TestUpdateApplyRejectsBadArguments(t *testing.T) {
+	var out, errb strings.Builder
+	for _, args := range [][]string{
+		{"update-apply", "--data-dir=relative"},
+		{"update-apply", "--data-dir=" + t.TempDir(), "--service=Spooler"},
+		{"update-apply", "--data-dir=" + t.TempDir(), "--service=NigafiyEngine", "--restart-exe=x"},
+		{"update-apply", "--data-dir=" + t.TempDir(), "--publisher=nothex"},
+	} {
+		if code := realMain(args, &out, &errb); code != exitUsage {
+			t.Errorf("%v: exit %d, want %d (%s)", args, code, exitUsage, errb.String())
+		}
+	}
+}

@@ -11,6 +11,7 @@ const subscribe = (channel) => (handler) => {
 
 contextBridge.exposeInMainWorld('desktop', {
   getState: () => ipcRenderer.invoke('collector:state'),
+  getEngineState: () => ipcRenderer.invoke('engine:state'),
   saveSettings: (settings) => ipcRenderer.invoke('collector:save-settings', settings),
   start: (enrollmentToken) => ipcRenderer.invoke('collector:start', enrollmentToken),
   stop: () => ipcRenderer.invoke('collector:stop'),

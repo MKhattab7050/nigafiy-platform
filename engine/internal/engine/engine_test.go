@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,33 +29,66 @@ func TestMain(m *testing.M) {
 }
 
 func helperMain(mode string) int {
-	statusFile := ""
+	statusFile, component := "", ""
 	for _, a := range os.Args[1:] {
 		if v, ok := strings.CutPrefix(a, "--engine-status-file="); ok {
 			statusFile = v
 		}
+		if v, ok := strings.CutPrefix(a, "--component="); ok {
+			component = v
+		}
 	}
 	write := func(v map[string]any) {
 		v["pid"] = os.Getpid()
+		v["component"] = component
 		b, _ := json.Marshal(v)
 		tmp := statusFile + ".tmp"
 		os.WriteFile(tmp, b, 0o600)
 		os.Rename(tmp, statusFile)
 	}
-	switch mode {
-	case "stack":
-		fmt.Println("helper started with", strings.Join(os.Args[1:], " "))
-		if statusFile != "" {
-			write(map[string]any{"state": "ready", "webUrl": "http://localhost:13100", "apiUrl": "http://localhost:14100"})
-		}
-		io.Copy(io.Discard, os.Stdin)
-		fmt.Println("helper: stdin closed, stopping cleanly")
-		return 0
-	case "stack-error":
+	if mode == "stack-error" && component == "api" {
 		write(map[string]any{"state": "error", "message": "Port 4100 is in use by another program."})
 		return 1
 	}
-	return 2
+	if mode != "stack" && mode != "stack-error" {
+		return 2
+	}
+	fmt.Println("helper started with", strings.Join(os.Args[1:], " "))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 3
+	}
+	base := "http://" + l.Addr().String()
+	switch component {
+	case "db":
+		go func() {
+			for {
+				c, err := l.Accept()
+				if err != nil {
+					return
+				}
+				c.Close()
+			}
+		}()
+		write(map[string]any{"state": "ready", "port": l.Addr().(*net.TCPAddr).Port})
+	case "api":
+		go http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/readyz" {
+				w.Write([]byte("ok"))
+				return
+			}
+			http.NotFound(w, r)
+		}))
+		write(map[string]any{"state": "ready", "apiUrl": base})
+	case "web":
+		go http.Serve(l, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("<html>")) }))
+		write(map[string]any{"state": "ready", "webUrl": base, "apiUrl": "http://127.0.0.1:14100"})
+	default:
+		return 4
+	}
+	io.Copy(io.Discard, os.Stdin)
+	fmt.Println("helper: stdin closed, stopping cleanly")
+	return 0
 }
 
 type running struct {
@@ -174,22 +208,41 @@ func str(p *string) string {
 	return *p
 }
 
-func TestStackReadySensorNotEnrolledAndShutdown(t *testing.T) {
+func TestComponentsReadyInOrderSensorNotEnrolledAndShutdown(t *testing.T) {
 	r := startEngine(t, "stack", nil)
 	doc := r.waitStatus(t, "stack ready", func(d control.StatusDoc) bool { return d.Stack != nil })
-	if doc.Stack.WebURL != "http://localhost:13100" || doc.Stack.APIURL != "http://localhost:14100" {
+	if !strings.HasPrefix(doc.Stack.WebURL, "http://127.0.0.1:") || !strings.HasPrefix(doc.Stack.APIURL, "http://127.0.0.1:") {
 		t.Fatalf("stack %+v", doc.Stack)
 	}
 	if doc.Mode != "foreground" || doc.Version != "test" || doc.DataDir != r.cfg.DataDir {
 		t.Fatalf("doc %+v", doc)
 	}
-	st := child(doc, "stack")
-	if st.State != "running" || st.Pid == nil || st.StartedAt == nil {
-		t.Fatalf("stack child %+v", st)
+	var names []string
+	for _, c := range doc.Children {
+		names = append(names, c.Name)
+	}
+	if strings.Join(names, ",") != "db,api,web,sensor" {
+		t.Fatalf("children %v", names)
+	}
+	for _, name := range []string{"db", "api", "web"} {
+		c := child(doc, name)
+		if c.State != "running" || c.Pid == nil || c.StartedAt == nil {
+			t.Fatalf("%s child %+v", name, c)
+		}
+	}
+	if d := child(doc, "web").DependsOn; len(d) != 1 || d[0] != "api" {
+		t.Fatalf("web depends on %v", d)
+	}
+	// Each component is its own process.
+	if *child(doc, "db").Pid == *child(doc, "api").Pid || *child(doc, "api").Pid == *child(doc, "web").Pid {
+		t.Fatal("components share a process")
 	}
 	sensor := child(doc, "sensor")
 	if sensor.State != "stopped" || str(sensor.LastError) != "not enrolled" || sensor.Pid != nil {
 		t.Fatalf("sensor child %+v", sensor)
+	}
+	if doc.Update == nil || doc.Update.State != "idle" {
+		t.Fatalf("update %+v", doc.Update)
 	}
 
 	code, _ := r.post(t, "/v1/shutdown")
@@ -207,25 +260,67 @@ func TestStackReadySensorNotEnrolledAndShutdown(t *testing.T) {
 	if _, err := os.Stat(TokenPath(r.cfg.DataDir)); !os.IsNotExist(err) {
 		t.Fatalf("control token left behind (%v)", err)
 	}
-	stackLog, _ := os.ReadFile(logPath(r.cfg.DataDir, "stack"))
-	if !strings.Contains(string(stackLog), "--no-open --no-collector --engine-status-file=") {
-		t.Fatalf("stack not started with the engine arguments: %q", stackLog)
-	}
-	if !strings.Contains(string(stackLog), "stdin closed, stopping cleanly") {
-		t.Fatalf("stack was not stopped gracefully: %q", stackLog)
+	for _, name := range []string{"db", "api", "web"} {
+		out, _ := os.ReadFile(logPath(r.cfg.DataDir, name))
+		if !strings.Contains(string(out), "--component="+name+" --engine-status-file=") {
+			t.Fatalf("%s not started with the engine arguments: %q", name, out)
+		}
+		if !strings.Contains(string(out), "stdin closed, stopping cleanly") {
+			t.Fatalf("%s was not stopped gracefully: %q", name, out)
+		}
 	}
 	engineLog, _ := os.ReadFile(logPath(r.cfg.DataDir, "engine"))
 	if strings.Contains(string(engineLog), r.token) {
 		t.Fatal("engine log contains the control token")
 	}
-	if !strings.Contains(string(engineLog), "Nigafiy Engine stopped") {
-		t.Fatalf("engine log: %q", engineLog)
+	// Stopped in reverse order: web before api before db.
+	el := string(engineLog)
+	iw, ia, id := strings.Index(el, "web: stopped"), strings.Index(el, "api: stopped"), strings.Index(el, "db: stopped")
+	if iw < 0 || ia < 0 || id < 0 || !(iw < ia && ia < id) {
+		t.Fatalf("stop order in engine log: %q", el)
 	}
+	if !strings.Contains(el, "Nigafiy Engine stopped") {
+		t.Fatalf("engine log: %q", el)
+	}
+}
+
+func TestStopAPIStopsWebAndStartIsRefusedWithoutDatabase(t *testing.T) {
+	r := startEngine(t, "stack", func(c *Config) { c.NoSensor = true })
+	r.waitStatus(t, "stack ready", func(d control.StatusDoc) bool { return d.Stack != nil })
+	code, body := r.post(t, "/v1/children/api/stop")
+	if code != 200 || !strings.Contains(body, `"state":"stopped"`) {
+		t.Fatalf("stop api: %d %s", code, body)
+	}
+	doc := r.status(t)
+	if child(doc, "web").State != "stopped" || child(doc, "db").State != "running" || doc.Stack != nil {
+		t.Fatalf("after stopping the API: %+v", doc.Children)
+	}
+	code, body = r.post(t, "/v1/children/web/start")
+	if code != http.StatusConflict || !strings.Contains(body, "start api first") {
+		t.Fatalf("web start without api: %d %s", code, body)
+	}
+	if code, body = r.post(t, "/v1/children/api/start"); code != 200 {
+		t.Fatalf("start api: %d %s", code, body)
+	}
+	r.waitStatus(t, "api running", func(d control.StatusDoc) bool { return child(d, "api").State == "running" })
+	if code, body = r.post(t, "/v1/children/web/start"); code != 200 {
+		t.Fatalf("start web: %d %s", code, body)
+	}
+	r.waitStatus(t, "stack ready again", func(d control.StatusDoc) bool { return d.Stack != nil })
+
+	// Restarting the database brings the API and the web server back after it.
+	if code, body = r.post(t, "/v1/children/db/restart"); code != 200 {
+		t.Fatalf("restart db: %d %s", code, body)
+	}
+	r.waitStatus(t, "all back", func(d control.StatusDoc) bool {
+		return d.Stack != nil && child(d, "api").State == "running" && child(d, "web").State == "running" && child(d, "db").Restarts == 0
+	})
 }
 
 func TestSensorStartsOnceEnrolled(t *testing.T) {
 	r := startEngine(t, "stack", nil)
 	r.waitStatus(t, "sensor not enrolled", func(d control.StatusDoc) bool { return str(child(d, "sensor").LastError) == "not enrolled" })
+	r.waitStatus(t, "api running", func(d control.StatusDoc) bool { return child(d, "api").State == "running" })
 	code, body := r.post(t, "/v1/children/sensor/start")
 	if code != 200 || !strings.Contains(body, `"not enrolled"`) {
 		t.Fatalf("start before enrollment: %d %s", code, body)
@@ -270,20 +365,27 @@ func TestSecondInstanceIsRefused(t *testing.T) {
 		t.Fatal("the refused instance wrote a control token")
 	}
 	// The first one is untouched.
-	if doc := r.status(t); child(doc, "stack").Name != "stack" {
+	if doc := r.status(t); child(doc, "db").Name != "db" {
 		t.Fatalf("first engine status %+v", doc)
 	}
 }
 
-func TestStackErrorIsReported(t *testing.T) {
+func TestComponentErrorIsReportedAndDependentsWait(t *testing.T) {
 	r := startEngine(t, "stack-error", nil)
-	doc := r.waitStatus(t, "stack backoff", func(d control.StatusDoc) bool { return child(d, "stack").State == "backoff" })
-	got := str(child(doc, "stack").LastError)
+	doc := r.waitStatus(t, "api backoff", func(d control.StatusDoc) bool { return child(d, "api").State == "backoff" })
+	got := str(child(doc, "api").LastError)
 	if got != "Port 4100 is in use by another program. (exited with code 1)" {
 		t.Fatalf("last error %q", got)
 	}
 	if doc.Stack != nil {
-		t.Fatalf("stack URLs reported for a failed stack: %+v", doc.Stack)
+		t.Fatalf("stack URLs reported for a failed API: %+v", doc.Stack)
+	}
+	if child(doc, "db").State != "running" {
+		t.Fatalf("db %+v", child(doc, "db"))
+	}
+	web := child(doc, "web")
+	if web.State != "stopped" || str(web.WaitingFor) != "api" || web.Pid != nil {
+		t.Fatalf("web should wait for the API: %+v", web)
 	}
 }
 

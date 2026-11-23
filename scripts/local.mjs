@@ -4,6 +4,10 @@
 //   pnpm local --token <token>     same, and enroll this computer as a collector (first time only)
 //   pnpm local --prod              serve an optimized web build instead of the dev server
 //   pnpm local --no-open           do not open the browser
+// The Nigafiy Engine (engine/) runs each part as its own supervised child instead:
+//   local.mjs --component=db|api|web --engine-status-file=<path>
+// Each runs that one part only (never reusing one already running), writes its ready report to the
+// status file and stops when its stdin closes. Its output goes to stdout (the engine keeps the log).
 // First run (interactive): finds your home network, asks you to confirm it is yours, creates your
 // account and sets this computer up as the collector — no tokens to copy.
 // Ctrl+C stops everything it started. Services already running on their ports are reused, not restarted.
@@ -47,12 +51,16 @@ const engineStatusFile = (() => {
   const a = args.find((x) => x.startsWith('--engine-status-file='));
   return a ? path.resolve(a.slice('--engine-status-file='.length)) : null;
 })();
+const component = (() => {
+  const a = args.find((x) => x.startsWith('--component='));
+  return a ? a.slice('--component='.length) : null;
+})();
 function writeEngineStatus(status) {
   if (!engineStatusFile) return;
   try {
     mkdirSync(path.dirname(engineStatusFile), { recursive: true });
     const tmp = `${engineStatusFile}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify({ ...status, pid: process.pid }), { mode: 0o600 });
+    writeFileSync(tmp, JSON.stringify({ ...status, ...(component ? { component } : {}), pid: process.pid }), { mode: 0o600 });
     renameSync(tmp, engineStatusFile);
   } catch {
     /* the engine then times out waiting and says so */
@@ -79,9 +87,13 @@ if (bundleDir ? major < 22 || (major === 22 && minor < 18) : major < 24) {
   process.exit(1);
 }
 mkdirSync(logDir, { recursive: true });
+if (component && (!['db', 'api', 'web'].includes(component) || !engineStatusFile)) {
+  fail(`--component must be db, api or web, together with --engine-status-file (got ${component}).`);
+  process.exit(2);
+}
 
 // Windows Startup folder auto-start installer / uninstaller
-if (win && (flag('--install-autostart') || flag('--uninstall-autostart'))) {
+if (!component && win && (flag('--install-autostart') || flag('--uninstall-autostart'))) {
   const startupDir = path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
   const vbsPath = path.join(startupDir, 'LAN Detective.vbs');
   if (flag('--uninstall-autostart')) {
@@ -102,7 +114,7 @@ if (win && (flag('--install-autostart') || flag('--uninstall-autostart'))) {
   if (flag('--only-autostart')) process.exit(0);
 }
 
-if (!bundleDir && (!existsSync(path.join(root, 'node_modules')) || !existsSync(path.join(root, 'apps/web/node_modules/next')))) {
+if (!component && !bundleDir && (!existsSync(path.join(root, 'node_modules')) || !existsSync(path.join(root, 'apps/web/node_modules/next')))) {
   say('Installing dependencies (first run)…');
   const r = spawnSync('pnpm', ['install'], { cwd: root, stdio: 'inherit', shell: win });
   if (r.status !== 0) {
@@ -176,7 +188,8 @@ async function waitFor(label, check, child, timeoutMs) {
 }
 
 function start(name, command, commandArgs, opts = {}) {
-  const log = createWriteStream(path.join(logDir, `${name}.log`), { flags: 'a' });
+  // Under the engine (--component) the engine owns the log file: rotated and redacted.
+  const log = component ? { write: (chunk) => process.stdout.write(chunk), end: () => undefined } : createWriteStream(path.join(logDir, `${name}.log`), { flags: 'a' });
   log.write(`\n──── ${new Date().toISOString()} start ${name} ────\n`);
   const child = spawn(command, commandArgs, {
     cwd: opts.cwd ?? root,
@@ -283,29 +296,47 @@ async function stopStaleDatabase() {
   return !(await portOpen(dbPort));
 }
 
-say(`${c.bold}LAN Detective — local${c.off}`);
-let dbUp = (await portOpen(dbPort)) && (await dbHealthy());
-if (!dbUp && (await portOpen(dbPort)) && !(await stopStaleDatabase())) {
-  fail(`Port ${dbPort} is in use by a program that is not a working LAN Detective database. Stop it or change DATABASE_URL in .env.`);
-  process.exit(1);
-}
-if (dbUp) ok(`Database already running on port ${dbPort}`);
-else {
+// Each part below is shared by `pnpm local` (all of them, reusing what already runs) and the
+// engine's --component mode (one of them, never reusing: the engine supervises what it starts).
+const notOurs = (what, where) => `${what} is already running at ${where}, started by something other than the Nigafiy Engine. Stop it (for example a \`pnpm local\` in a terminal) and the engine starts its own.`;
+
+async function runDatabase(reuse) {
+  const healthy = (await portOpen(dbPort)) && (await dbHealthy());
+  if (healthy && reuse) {
+    ok(`Database already running on port ${dbPort}`);
+    return;
+  }
+  if (healthy) {
+    fail(notOurs('A database', `port ${dbPort}`));
+    process.exit(1);
+  }
+  if ((await portOpen(dbPort)) && !(await stopStaleDatabase())) {
+    fail(`Port ${dbPort} is in use by a program that is not a working LAN Detective database. Stop it or change DATABASE_URL in .env.`);
+    process.exit(1);
+  }
   say(`${c.dim}Starting database…${c.off}`);
   const db = start('db', process.execPath, [envArg, 'scripts/dev-db.ts'], { cwd: apiDir, env: { LD_PG_DIR: pgDir }, ipc: true, critical: true });
   if (!(await waitFor('database', () => dbHealthy(), db, 120_000))) {
-    fail(`The database did not start. See .data/logs/db.log`);
+    fail(`The database did not start. See ${component ? 'logs/db.log' : '.data/logs/db.log'}`);
     await shutdown(1);
   }
   ok(`Database ready on port ${dbPort} (data in ${path.relative(process.cwd(), pgDir) || pgDir})`);
 }
 
 // ── 2. API (runs migrations on start) ───────────────────────────────────────
-if (await httpOk(`${apiUrl}/readyz`)) ok(`API already running at ${apiUrl}`);
-else if (await portOpen(apiPort)) {
-  fail(`Port ${apiPort} is in use by another program. Stop it or change PORT in .env.`);
-  await shutdown(1);
-} else {
+async function runApi(reuse) {
+  if (await httpOk(`${apiUrl}/readyz`)) {
+    if (reuse) {
+      ok(`API already running at ${apiUrl}`);
+      return;
+    }
+    fail(notOurs('An API', apiUrl));
+    process.exit(1);
+  }
+  if (await portOpen(apiPort)) {
+    fail(`Port ${apiPort} is in use by another program. Stop it or change PORT in .env.`);
+    await shutdown(1);
+  }
   say(`${c.dim}Starting API…${c.off}`);
   const api = start('api', process.execPath, [envArg, 'src/main.ts'], {
     cwd: apiDir,
@@ -322,7 +353,7 @@ else if (await portOpen(apiPort)) {
     },
   });
   if (!(await waitFor('api', () => httpOk(`${apiUrl}/readyz`), api, 120_000))) {
-    fail('The API did not become ready. See .data/logs/api.log');
+    fail(`The API did not become ready. See ${component ? 'logs/api.log' : '.data/logs/api.log'}`);
     await shutdown(1);
   }
   ok(`API ready at ${apiUrl}`);
@@ -330,11 +361,19 @@ else if (await portOpen(apiPort)) {
 
 // ── 3. web ───────────────────────────────────────────────────────────────────
 const nextBin = path.join(root, 'apps/web/node_modules/next/dist/bin/next');
-if (await httpOk(webUrl)) ok(`Web app already running at ${webUrl}`);
-else if (await portOpen(webPort)) {
-  fail(`Port ${webPort} is in use by another program. Stop it first.`);
-  await shutdown(1);
-} else {
+async function runWeb(reuse) {
+  if (await httpOk(webUrl)) {
+    if (reuse) {
+      ok(`Web app already running at ${webUrl}`);
+      return;
+    }
+    fail(notOurs('A web app', webUrl));
+    process.exit(1);
+  }
+  if (await portOpen(webPort)) {
+    fail(`Port ${webPort} is in use by another program. Stop it first.`);
+    await shutdown(1);
+  }
   const webEnv = { API_INTERNAL_URL: env.API_INTERNAL_URL || apiUrl, NEXT_TELEMETRY_DISABLED: '1' };
   if (bundleDir) {
     say(`${c.dim}Starting web app…${c.off}`);
@@ -348,23 +387,39 @@ else if (await portOpen(webPort)) {
       fail('The web app did not start. See logs/web.log');
       await shutdown(1);
     }
-  } else if (prod) {
-    say(`${c.dim}Building the web app (about a minute)…${c.off}`);
-    const b = spawnSync(process.execPath, [nextBin, 'build'], { cwd: path.join(root, 'apps/web'), env: { ...process.env, ...webEnv }, stdio: 'inherit' });
-    if (b.status !== 0) {
-      fail('Web build failed.');
-      await shutdown(1);
-    }
-  } else say(`${c.dim}Starting web app…${c.off}`);
-  if (!bundleDir) {
+  } else {
+    if (prod) {
+      say(`${c.dim}Building the web app (about a minute)…${c.off}`);
+      const b = spawnSync(process.execPath, [nextBin, 'build'], { cwd: path.join(root, 'apps/web'), env: { ...process.env, ...webEnv }, stdio: 'inherit' });
+      if (b.status !== 0) {
+        fail('Web build failed.');
+        await shutdown(1);
+      }
+    } else say(`${c.dim}Starting web app…${c.off}`);
     const web = start('web', process.execPath, [nextBin, prod ? 'start' : 'dev', '-p', String(webPort), '-H', LOOPBACK], { cwd: path.join(root, 'apps/web'), env: webEnv, critical: true });
     if (!(await waitFor('web', () => httpOk(webUrl), web, 180_000))) {
-      fail('The web app did not start. See .data/logs/web.log');
+      fail(`The web app did not start. See ${component ? 'logs/web.log' : '.data/logs/web.log'}`);
       await shutdown(1);
     }
   }
   ok(`Web app ready at ${webUrl}`);
 }
+
+if (component) {
+  // ── engine component: one part, supervised by the Nigafiy Engine ─────────────
+  say(`${c.bold}Nigafiy Engine component: ${component}${c.off}`);
+  if (component === 'db') await runDatabase(false);
+  else if (component === 'api') await runApi(false);
+  else await runWeb(false);
+  writeEngineStatus({ state: 'ready', port: dbPort, apiUrl, webUrl });
+  // Runs until the engine closes stdin (graceful stop) or the part exits (the engine restarts it).
+  await new Promise(() => undefined);
+}
+
+say(`${c.bold}LAN Detective — local${c.off}`);
+await runDatabase(true);
+await runApi(true);
+await runWeb(true);
 
 // ── 4. collector on this computer ───────────────────────────────────────────
 const collectorDir = path.join(root, 'collectors/lan-collector');
