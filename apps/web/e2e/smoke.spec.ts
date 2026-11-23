@@ -1,34 +1,88 @@
 import { type Page, expect, test } from '@playwright/test';
+import type { ProgramId } from '../../../packages/shared-types/src/programs';
 import { countApi, localeCookie, paceApi } from './api-budget';
+import { type Seeded, seedRecords } from './seed';
 
 /**
- * One account walks the main screens in English and then in Arabic (RTL). For every screen:
- * the page heading renders, the screen did not fall into its error boundary, the shell shows the
- * page's program (html[data-program]), the browser reported no uncaught error and no
- * Content-Security-Policy violation.
+ * One account walks every page a signed-in user can open, in English (light theme) and then in
+ * Arabic (RTL, dark theme). The list is every page.tsx under app/(app): the static pages below plus
+ * one of each detail page, opened on records seed.ts creates through the real API. For every
+ * screen: the page heading renders, the screen did not fall into its error boundary, the shell
+ * shows the page's program (html[data-program]), html dir/lang/data-theme match the locale and
+ * theme, the old product name is not left in the visible text or the title, and the browser reported no
+ * uncaught error and no Content-Security-Policy violation.
  */
-const SCREENS = [
+type Screen = { path: string; name: string; program: ProgramId; sections?: readonly string[] };
+
+const SCREENS: readonly Screen[] = [
+  // Hub
   { path: '/', name: 'Dashboard', program: 'hub' },
   { path: '/programs', name: 'Hub, Programs', program: 'hub' },
   { path: '/sensors', name: 'Hub, Sensors', program: 'hub' },
+  { path: '/portfolio', name: 'Hub, Portfolio', program: 'hub' },
+  { path: '/system/modules', name: 'Hub, System modules', program: 'hub' },
+  { path: '/settings', name: 'Settings (system health, LAN TLS, SSO)', program: 'hub', sections: ['#system', '#tls', '#sso'] },
+  // Radar
   { path: '/radar/devices', name: 'Devices', program: 'radar' },
   { path: '/radar/discovery', name: 'Discovery', program: 'radar' },
+  { path: '/radar/ipam', name: 'Radar, IPAM and IPv6', program: 'radar' },
   { path: '/radar/ports', name: 'Switch ports', program: 'radar' },
-  { path: '/guard/routers', name: 'Routers', program: 'guard' },
-  { path: '/guard/port-control', name: 'Guard, Switch port control', program: 'guard' },
-  { path: '/watch/monitoring', name: 'Monitoring', program: 'watch' },
+  { path: '/radar/topology', name: 'Radar, Topology', program: 'radar' },
+  // Watch
+  { path: '/watch/monitoring', name: 'Monitoring (checks)', program: 'watch' },
+  { path: '/watch/events', name: 'Watch, Events', program: 'watch' },
   { path: '/watch/incidents', name: 'Incidents', program: 'watch' },
+  { path: '/watch/doctor', name: 'Watch, Network Doctor', program: 'watch' },
+  { path: '/watch/time-machine', name: 'Watch, Time machine', program: 'watch' },
+  { path: '/watch/impact', name: 'Watch, Impact', program: 'watch' },
   { path: '/watch/insights', name: 'Watch, Insights', program: 'watch' },
   { path: '/watch/reports', name: 'Watch, Reports', program: 'watch' },
   { path: '/watch/notifications', name: 'Watch, Notifications', program: 'watch' },
   { path: '/watch/maintenance', name: 'Watch, Maintenance windows', program: 'watch' },
+  // Guard
+  { path: '/guard/security', name: 'Guard, Security', program: 'guard' },
+  { path: '/guard/access', name: 'Guard, Access', program: 'guard' },
+  { path: '/guard/routers', name: 'Routers', program: 'guard' },
+  { path: '/guard/port-control', name: 'Guard, Switch port control', program: 'guard' },
+  { path: '/guard/config-backup', name: 'Guard, Config backup', program: 'guard' },
+  // Fleet
   { path: '/fleet/endpoints', name: 'Endpoints', program: 'fleet' },
+  { path: '/fleet/sessions', name: 'Fleet, Remote sessions', program: 'fleet' },
+  // Mind
   { path: '/mind/automation', name: 'Mind, Automation', program: 'mind' },
+  { path: '/mind/knowledge', name: 'Mind, Knowledge', program: 'mind' },
+  { path: '/mind/playbooks', name: 'Mind, Playbooks', program: 'mind' },
+  { path: '/mind/playbooks/runs', name: 'Mind, Playbook runs', program: 'mind' },
+  // Toolbox
+  { path: '/toolbox', name: 'Toolbox, Tools', program: 'toolbox' },
   { path: '/toolbox/subnet', name: 'Toolbox, Subnet calculator', program: 'toolbox' },
-  { path: '/settings', name: 'Settings', program: 'hub' },
-] as const;
+];
+
+/** One of each detail page, on the seeded records. */
+function detailScreens(s: Seeded): Screen[] {
+  return [
+    ...(['radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox'] as const).map((program) => ({
+      path: `/${program}/devices/${s.deviceId}`,
+      name: `Device card in ${program}`,
+      program,
+    })),
+    { path: `/watch/incidents/${s.incidentId}`, name: 'Incident detail', program: 'watch' },
+    { path: `/guard/routers/${s.routerId}`, name: 'Router detail', program: 'guard' },
+    { path: `/guard/config-backup/${s.configTargetId}`, name: 'Config backup target (backup and restore)', program: 'guard' },
+    { path: `/fleet/endpoints/${s.endpointId}`, name: 'Endpoint detail', program: 'fleet' },
+    { path: `/fleet/endpoints/${s.endpointId}?tab=security`, name: 'Endpoint, security and compliance', program: 'fleet' },
+    { path: `/fleet/endpoints/${s.endpointId}?tab=desktop`, name: 'Endpoint, remote desktop', program: 'fleet' },
+    { path: `/fleet/endpoints/${s.endpointId}?tab=files`, name: 'Endpoint, files', program: 'fleet' },
+    { path: `/mind/knowledge/${s.knowledgeId}`, name: 'Knowledge article', program: 'mind' },
+    { path: `/mind/playbooks/${s.playbookId}`, name: 'Playbook editor', program: 'mind' },
+    { path: `/mind/playbooks/new`, name: 'New playbook', program: 'mind' },
+    { path: `/mind/playbooks/runs/${s.runId}`, name: 'Playbook run', program: 'mind' },
+  ];
+}
 
 const ERROR_BOUNDARY = /This page could not be displayed|تعذّر عرض هذه الصفحة/;
+// The old product name, spelled out of pieces so the brand check (pnpm check:brand) does not flag this line.
+const OLD_NAME = new RegExp(['lan', 'detective'].join('[ -]'), 'i');
 
 function watchForProblems(page: Page): string[] {
   const problems: string[] = [];
@@ -40,19 +94,34 @@ function watchForProblems(page: Page): string[] {
   return problems;
 }
 
-async function visitAll(page: Page, problems: string[]) {
-  for (const screen of SCREENS) {
-    await test.step(screen.name, async () => {
+type Look = { locale: 'en' | 'ar'; theme: 'light' | 'dark' };
+
+async function visitAll(page: Page, problems: string[], screens: readonly Screen[], look: Look) {
+  for (const screen of screens) {
+    await test.step(`${screen.name} (${look.locale})`, async () => {
       await paceApi();
       await page.goto(screen.path);
+      const html = page.locator('html');
       const main = page.locator('main');
       await expect(main.getByRole('heading', { level: 1 }).first()).toBeVisible();
       await expect(main).not.toContainText(ERROR_BOUNDARY);
       // The shell paints the page in its program's accent.
-      await expect(page.locator('html')).toHaveAttribute('data-program', screen.program);
+      await expect(html).toHaveAttribute('data-program', screen.program);
+      await expect(html).toHaveAttribute('dir', look.locale === 'ar' ? 'rtl' : 'ltr');
+      await expect(html).toHaveAttribute('lang', look.locale);
+      await expect(html).toHaveAttribute('data-theme', look.theme);
+      for (const section of screen.sections ?? []) await expect(page.locator(section)).toBeVisible();
+      // Let the screen's data arrive before reading its text.
+      await page.waitForLoadState('networkidle').catch(() => undefined);
+      expect(await page.title(), `${screen.path} title`).not.toMatch(OLD_NAME);
+      await expect(page.locator('body'), `${screen.path} visible text`).not.toContainText(OLD_NAME, { useInnerText: true });
       expect(problems, `${screen.path} reported problems`).toEqual([]);
     });
   }
+}
+
+async function setTheme(page: Page, theme: Look['theme']) {
+  await page.evaluate((v) => localStorage.setItem('ld_theme', v), theme);
 }
 
 async function register(page: Page, prefix: string) {
@@ -64,12 +133,13 @@ async function register(page: Page, prefix: string) {
   await expect(page).not.toHaveURL(/\/register/);
 }
 
-test('sign up, walk every main screen in English and Arabic, sign out and back in', async ({ page }) => {
-  test.setTimeout(600_000);
+test('sign up, walk every screen in English and Arabic, sign out and back in', async ({ page }) => {
+  test.setTimeout(1_200_000);
   const problems = watchForProblems(page);
   countApi(page);
   const email = `e2e-${Date.now()}@example.test`;
   const password = `e2e-${crypto.randomUUID()}`;
+  let screens: Screen[] = [];
 
   await test.step('register', async () => {
     await paceApi();
@@ -81,18 +151,19 @@ test('sign up, walk every main screen in English and Arabic, sign out and back i
     await expect(page.locator('main')).toBeVisible();
   });
 
-  await test.step('English (LTR)', async () => {
-    await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
-    await visitAll(page, problems);
+  await test.step('seed one record of each kind', async () => {
+    screens = [...SCREENS, ...detailScreens(await seedRecords(page))];
   });
 
-  await test.step('switch to Arabic (RTL)', async () => {
+  await test.step('English (LTR, light)', async () => {
+    await setTheme(page, 'light');
+    await visitAll(page, problems, screens, { locale: 'en', theme: 'light' });
+  });
+
+  await test.step('Arabic (RTL, dark)', async () => {
     await page.context().addCookies([localeCookie(page, 'ar')]);
-    await paceApi();
-    await page.goto('/');
-    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
-    await visitAll(page, problems);
+    await setTheme(page, 'dark');
+    await visitAll(page, problems, screens, { locale: 'ar', theme: 'dark' });
     await page.context().addCookies([localeCookie(page, 'en')]);
   });
 
