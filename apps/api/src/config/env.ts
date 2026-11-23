@@ -1,6 +1,7 @@
 import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
+import { withNewNames } from './env-compat.ts';
 
 const bool = z
   .enum(['true', 'false'])
@@ -95,8 +96,8 @@ const schema = z.object({
   ),
   /** Largest update download accepted, in bytes (default 1.5 GiB). */
   NIGAFIY_UPDATE_MAX_BYTES: z.coerce.number().int().min(1024).max(8 * 1024 ** 3).default(1.5 * 1024 ** 3),
-  /** The data folder shared with the engine (set by the engine and the desktop app). Updates are staged in <LD_DATA_DIR>/updates. */
-  LD_DATA_DIR: optionalNonEmpty,
+  /** The data folder shared with the engine (set by the engine and the desktop app). Updates are staged in <NIGAFIY_DATA_DIR>/updates. The legacy LD_DATA_DIR is still read (env-compat.ts). */
+  NIGAFIY_DATA_DIR: optionalNonEmpty,
   /**
    * Which Nigafiy programs this install offers (GET /platform/programs): "all" (default: one desktop
    * install carries every program until Milestone 5 ships one installer per program) or a comma list
@@ -113,7 +114,8 @@ const schema = z.object({
 export type Env = z.infer<typeof schema>;
 
 function load(): Env {
-  const parsed = schema.safeParse(process.env);
+  // Legacy LD_* names fill their NIGAFIY_* twins (the new name wins).
+  const parsed = schema.safeParse(withNewNames(process.env));
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`);
     // Never print values: they may be secrets.

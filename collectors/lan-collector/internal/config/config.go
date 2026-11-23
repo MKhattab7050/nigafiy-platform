@@ -29,7 +29,7 @@ type Limits struct {
 type Config struct {
 	// ServerURL is the LAN Detective cloud API. The collector only ever makes outbound requests to it.
 	ServerURL string `yaml:"server_url"`
-	// EnrollmentToken is needed once, on first start. Prefer the LAN_COLLECTOR_ENROLLMENT_TOKEN env var.
+	// EnrollmentToken is needed once, on first start. Prefer the NIGAFIY_SENSOR_ENROLLMENT_TOKEN env var (legacy LAN_COLLECTOR_ENROLLMENT_TOKEN).
 	EnrollmentToken string `yaml:"enrollment_token"`
 	StateDir        string `yaml:"state_dir"`
 	// AllowedCIDRs is an optional local allow-list. When set, scopes delivered by the cloud are
@@ -80,22 +80,22 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	}
-	if v := os.Getenv("LAN_COLLECTOR_SERVER_URL"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_SERVER_URL"); v != "" {
 		cfg.ServerURL = v
 	}
-	if v := os.Getenv("LAN_COLLECTOR_ENROLLMENT_TOKEN"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_ENROLLMENT_TOKEN"); v != "" {
 		cfg.EnrollmentToken = v
 	}
-	if v := os.Getenv("LAN_COLLECTOR_DNS_LISTEN"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_DNS_LISTEN"); v != "" {
 		cfg.DNSListen = v
 	}
-	if v := os.Getenv("LAN_COLLECTOR_MNDP_LISTEN"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_MNDP_LISTEN"); v != "" {
 		cfg.MNDPListen = v
 	}
-	if v := os.Getenv("LAN_COLLECTOR_STATE_DIR"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_STATE_DIR"); v != "" {
 		cfg.StateDir = v
 	}
-	if v := os.Getenv("LAN_COLLECTOR_TLS_PIN_SHA256"); v != "" {
+	if v := Getenv("NIGAFIY_SENSOR_TLS_PIN_SHA256"); v != "" {
 		cfg.TLSPinSHA256 = v
 	}
 	if err := cfg.Validate(); err != nil {

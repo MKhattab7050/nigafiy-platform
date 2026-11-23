@@ -458,7 +458,7 @@ func TestResolve(t *testing.T) {
 	if cfg.SensorConfig != filepath.Join(dir, "collector", "collector.yaml") {
 		t.Fatalf("sensor config %s", cfg.SensorConfig)
 	}
-	// LD_DATA_DIR (what local.mjs uses) is honoured when nothing more specific is set.
+	// The legacy LD_DATA_DIR (what older launchers set) is honoured when nothing more specific is set.
 	cfg, err = Resolve(Config{StackScript: "x", SensorExe: "y"}, func(k string) string {
 		if k == "LD_DATA_DIR" {
 			return dir
@@ -489,7 +489,7 @@ func TestResolveFindsCheckout(t *testing.T) {
 	if cfg.StackScript != filepath.Join(repo, "scripts", "local.mjs") || cfg.DataDir != filepath.Join(repo, ".data") {
 		t.Fatalf("cfg %+v", cfg)
 	}
-	if !strings.HasSuffix(cfg.SensorExe, filepath.Join("collectors", "lan-collector", "bin", "lan-collector")+exeSuffix()) {
+	if !strings.HasSuffix(cfg.SensorExe, filepath.Join("collectors", "lan-collector", "bin", "nigafiy-sensor")+exeSuffix()) {
 		t.Fatalf("sensor exe %s", cfg.SensorExe)
 	}
 }
@@ -499,4 +499,37 @@ func exeSuffix() string {
 		return ".exe"
 	}
 	return ""
+}
+
+func TestProfileDirKeepsTheLegacyFolder(t *testing.T) {
+	base := t.TempDir()
+	if got := ProfileDir(base, pathExists); got != filepath.Join(base, "Nigafiy") {
+		t.Fatalf("neither: %s", got)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "LAN Detective"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProfileDir(base, pathExists); got != filepath.Join(base, "LAN Detective") {
+		t.Fatalf("only legacy: %s", got)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "Nigafiy"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := ProfileDir(base, pathExists); got != filepath.Join(base, "Nigafiy") {
+		t.Fatalf("both: %s", got)
+	}
+}
+
+func TestEnvCompatPrefersTheNewName(t *testing.T) {
+	env := map[string]string{"NIGAFIY_DATA_DIR": "new", "LD_DATA_DIR": "old", "LD_BUNDLE_DIR": "b"}
+	get := func(k string) string { return env[k] }
+	if v := envCompat(get, "NIGAFIY_DATA_DIR"); v != "new" {
+		t.Fatalf("data dir %q", v)
+	}
+	if v := envCompat(get, "NIGAFIY_BUNDLE_DIR"); v != "b" {
+		t.Fatalf("bundle dir %q", v)
+	}
+	if v := envCompat(get, "NIGAFIY_OTHER"); v != "" {
+		t.Fatalf("other %q", v)
+	}
 }

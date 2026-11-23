@@ -39,7 +39,7 @@ import (
 var Version = "0.1.0-dev"
 
 func main() {
-	configPath := flag.String("config", os.Getenv("LAN_COLLECTOR_CONFIG"), "path to collector.yaml (optional when LAN_COLLECTOR_* environment variables are set)")
+	configPath := flag.String("config", config.Getenv("NIGAFIY_SENSOR_CONFIG"), "path to collector.yaml (optional when NIGAFIY_SENSOR_* environment variables, or the legacy LAN_COLLECTOR_* ones, are set)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	checkOnly := flag.Bool("check-config", false, "validate the configuration and exit")
 	flag.Parse()

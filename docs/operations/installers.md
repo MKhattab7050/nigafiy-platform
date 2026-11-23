@@ -64,7 +64,7 @@ agent does not do itself. What it does:
 1. copies `endpoint-agent.exe` to `C:\Program Files\Nigafiy\Endpoint Agent`;
 2. runs, as administrator,
    `endpoint-agent.exe install -server <url> -service-name <name> -log-level <level> [-tls-pin <hex>] [-ca-file <pem>] [-no-start]`
-   with the one-time enrollment token in the `LAN_ENDPOINT_ENROLLMENT_TOKEN` environment variable
+   with the one-time enrollment token in the `NIGAFIY_AGENT_ENROLLMENT_TOKEN` environment variable
    (never on a command line, so it does not show in process lists or logs). The agent enrolls, stores
    its credential in `%ProgramData%\Nigafiy\EndpointAgent` and registers the service
    (`NigafiyEndpointAgent` by default) pointing at that exe;
@@ -133,7 +133,7 @@ code was not changed for this milestone):
   strips the prefix.
 - **No fleet-wide token.** Tokens are per endpoint (see Silent mode), so a mass rollout needs a
   token file per computer.
-- **No token-file flag.** The agent takes the token from `-token` or `LAN_ENDPOINT_ENROLLMENT_TOKEN`;
+- **No token-file flag.** The agent takes the token from `-token` or `NIGAFIY_AGENT_ENROLLMENT_TOKEN`;
   the installer reads `/TOKENFILE` and passes it in the environment.
 - **NSIS 3.0.4 cannot sign the uninstaller it writes at install time.** `uninstall.exe` of the agent
   is unsigned; the setup and `endpoint-agent.exe` are signed. (The desktop NSIS build signs its

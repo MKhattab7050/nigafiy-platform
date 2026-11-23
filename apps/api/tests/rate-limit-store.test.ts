@@ -1,5 +1,6 @@
 import type { ClientRateLimitInfo, Options, Store } from 'express-rate-limit';
 import { describe, expect, it } from 'vitest';
+import { readEnv } from '../src/config/env-compat.ts';
 import { createRateLimitStores, FallbackStore, redactRedisUrl } from '../src/infrastructure/rate-limit-store.ts';
 
 // No Redis server is available here: these tests cover store selection, the per-instance fallback
@@ -151,10 +152,10 @@ describe('REDIS_URL pointing at an unreachable server', () => {
 });
 
 // ── A real Redis server, when one is reachable ───────────────────────────────
-// LD_TEST_REDIS_URL (default redis://127.0.0.1:6379). Nothing is started for this test: when no
+// NIGAFIY_TEST_REDIS_URL (legacy LD_TEST_REDIS_URL) (default redis://127.0.0.1:6379). Nothing is started for this test: when no
 // Redis answers, the test is skipped and says so; every test above runs regardless.
 
-const REDIS_TEST_URL = process.env.LD_TEST_REDIS_URL || 'redis://127.0.0.1:6379';
+const REDIS_TEST_URL = readEnv('NIGAFIY_TEST_REDIS_URL') || 'redis://127.0.0.1:6379';
 
 async function redisReachable(url: string): Promise<boolean> {
   const { createConnection } = await import('node:net');
@@ -174,7 +175,7 @@ async function redisReachable(url: string): Promise<boolean> {
 describe('REDIS_URL pointing at a real Redis server', () => {
   it('shares one counter between two API instances (two clients)', async (ctx) => {
     if (!(await redisReachable(REDIS_TEST_URL))) {
-      console.warn(`[rate-limit-store.test] SKIPPING the real-Redis test: no Redis server answers at ${redactRedisUrl(REDIS_TEST_URL)} (set LD_TEST_REDIS_URL to run it).`);
+      console.warn(`[rate-limit-store.test] SKIPPING the real-Redis test: no Redis server answers at ${redactRedisUrl(REDIS_TEST_URL)} (set NIGAFIY_TEST_REDIS_URL to run it).`);
       return ctx.skip();
     }
     const prefix = `test-${Date.now()}-${Math.random().toString(36).slice(2)}`;

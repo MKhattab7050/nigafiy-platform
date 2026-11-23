@@ -124,7 +124,7 @@ pnpm build:collector
 ```
 
 ```bash
-cd collectors/lan-collector && LAN_COLLECTOR_ENROLLMENT_TOKEN=<token> ./bin/lan-collector -config configs/collector.example.yaml
+cd collectors/lan-collector && NIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token> ./bin/lan-collector -config configs/collector.example.yaml
 ```
 
 (For a local test against the dev API use `server_url: http://localhost:4100` with `allow_insecure_http: true`.)

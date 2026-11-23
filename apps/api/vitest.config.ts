@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
+import { readEnv } from './src/config/env-compat.ts';
 
-const port = Number(process.env.LD_TEST_PG_PORT ?? 5439);
+const port = Number(readEnv('NIGAFIY_TEST_PG_PORT') ?? 5439);
 
 // Integration tests run against a real, throw-away PostgreSQL server (see tests/global-setup.ts).
 // Nothing here is mocked: HTTP → Express → SQL → Row Level Security is exercised end to end.

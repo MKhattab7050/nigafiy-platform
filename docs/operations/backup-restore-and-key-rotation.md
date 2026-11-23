@@ -12,7 +12,7 @@ entry (`actor = 'system'`, `metadata.tool` names the tool, plus the operator's O
 
 All three read `DATABASE_URL` (owner connection) and `APP_DATABASE_URL` from the environment or the
 repository `.env`. For the installed desktop app the `.env` lives in the data folder
-(`%LOCALAPPDATA%\…\.env`, the folder `LD_DATA_DIR` points at): export its `DATABASE_URL`,
+(`%LOCALAPPDATA%\…\.env`, the folder `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) points at): export its `DATABASE_URL`,
 `APP_DATABASE_URL` and `APP_ENCRYPTION_KEY` into the shell first, or run the tools from a checkout
 whose `.env` holds those values.
 
@@ -61,7 +61,7 @@ pnpm --filter ./apps/api db:backup -- --out-dir D:\nigafiy-backups
 ```
 
 - Writes `<database>-<YYYYMMDD-HHMMSS>Z.dump` (pg_dump **custom format**; compressed; restorable
-  table by table). The data folder is `NIGAFIY_DATA_DIR`, then `LD_DATA_DIR`, else `<repo>\.data`.
+  table by table). The data folder is `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`), else `<repo>\.data`.
 - The archive is first written as `*.dump.partial`, read back with `pg_restore --list`, and only then
   renamed — a file without `.partial` is always a complete, readable archive.
 - Prints the size and SHA-256 of the archive; keep the hash with the file.

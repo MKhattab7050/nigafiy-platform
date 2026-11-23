@@ -60,9 +60,9 @@ addresses covered. Shown in **Hub → Sensors** and **Settings** ("Encrypted con
 AR) with ready-to-copy enrollment commands that include the pin:
 
 ```
-LAN_COLLECTOR_SERVER_URL=https://<server>:<port> \
-LAN_COLLECTOR_ENROLLMENT_TOKEN=<token> \
-LAN_COLLECTOR_TLS_PIN_SHA256=<CA fingerprint> \
+NIGAFIY_SENSOR_SERVER_URL=https://<server>:<port> \
+NIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token> \
+NIGAFIY_SENSOR_TLS_PIN_SHA256=<CA fingerprint> \
 ./lan-collector -config collector.yaml
 
 endpoint-agent install -server https://<server>:<port> -token <token> -tls-pin <CA fingerprint>

@@ -20,7 +20,7 @@ protocol it came from:
   authorized scope that covers their addresses.
   - The listener is on by default. It can be turned off per site (Port Detective → Neighbours, admin
     only), or per collector with `mndp_listen: off` in the collector config or the env variable
-    `LAN_COLLECTOR_MNDP_LISTEN=off`.
+    `NIGAFIY_SENSOR_MNDP_LISTEN=off`.
 - Roles: every role can read. Only owner and admin can change the site switch
   (`PUT /neighbors/settings`, audited as `site.mndp_listen` with before/after).
 

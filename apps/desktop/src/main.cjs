@@ -19,10 +19,11 @@ const { pathToFileURL } = require('node:url');
 const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
+const { readEnv } = require('./env-compat.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
 const SMOKE = process.argv.includes('--smoke');
-// Non-interactive check of local mode: consent comes from LD_DESKTOP_AUTO_CONSENT=1, then it reports and quits.
+// Non-interactive check of local mode: consent comes from NIGAFIY_DESKTOP_AUTO_CONSENT=1 (legacy LD_DESKTOP_AUTO_CONSENT), then it reports and quits.
 const LOCAL_SMOKE = process.argv.includes('--local-smoke');
 const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
 const PANEL_URL = pathToFileURL(PANEL_FILE).href;
@@ -67,8 +68,8 @@ function engineBinary() {
 function makeStack({ script, nodePath, env, dataDir }) {
   const engineExe = engineBinary();
   const onStatus = (m) => setSplash(m);
-  if (engineExe && !process.env.LD_DESKTOP_NO_ENGINE) {
-    return new EngineStack({ engineExe, dataDir, nodePath, script, env: { ...env, LD_DATA_DIR: dataDir }, onStatus });
+  if (engineExe && !readEnv('NIGAFIY_DESKTOP_NO_ENGINE')) {
+    return new EngineStack({ engineExe, dataDir, nodePath, script, env: { ...env, NIGAFIY_DATA_DIR: dataDir }, onStatus });
   }
   return new LocalStack({ script, nodePath, env, onStatus });
 }
@@ -400,7 +401,7 @@ async function exitLocalMode() {
 }
 
 async function askToScan(net, parentWindow = dashboard) {
-  if (LOCAL_SMOKE) return process.env.LD_DESKTOP_AUTO_CONSENT === '1';
+  if (LOCAL_SMOKE) return readEnv('NIGAFIY_DESKTOP_AUTO_CONSENT') === '1';
   const parent = parentWindow && !parentWindow.isDestroyed() && parentWindow.isVisible() ? parentWindow : undefined;
   const { response } = await dialog.showMessageBox(parent, {
     type: 'question',
@@ -434,7 +435,7 @@ async function startLocal() {
     localStack = makeStack({
       script: path.join(bundleDir, 'local.mjs'),
       nodePath: process.execPath,
-      env: { ELECTRON_RUN_AS_NODE: '1', LD_BUNDLE_DIR: bundleDir, LD_DATA_DIR: dataDir },
+      env: { ELECTRON_RUN_AS_NODE: '1', NIGAFIY_BUNDLE_DIR: bundleDir, NIGAFIY_DATA_DIR: dataDir },
       dataDir,
     });
   } else {

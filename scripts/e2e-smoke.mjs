@@ -67,7 +67,7 @@ writeFileSync(
 );
 
 step('starting collector binary');
-const collector = spawn(binary, ['-config', configPath], { env: { ...process.env, LAN_COLLECTOR_ENROLLMENT_TOKEN: created.enrollment_token }, stdio: ['ignore', 'inherit', 'pipe'] });
+const collector = spawn(binary, ['-config', configPath], { env: { ...process.env, NIGAFIY_SENSOR_ENROLLMENT_TOKEN: created.enrollment_token }, stdio: ['ignore', 'inherit', 'pipe'] });
 let leakedSecret = false;
 collector.stderr.on('data', (chunk) => {
   const text = chunk.toString();

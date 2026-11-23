@@ -23,9 +23,30 @@ import os from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-// Installed desktop app: LD_BUNDLE_DIR holds the packaged API and web server, LD_DATA_DIR the user's data.
-const bundleDir = process.env.LD_BUNDLE_DIR ? path.resolve(process.env.LD_BUNDLE_DIR) : null;
-const dataDir = process.env.LD_DATA_DIR ? path.resolve(process.env.LD_DATA_DIR) : path.join(root, '.data');
+// Environment variables after the rename (docs/architecture/naming.md): NIGAFIY_* wins, the legacy
+// LD_* / LAN_COLLECTOR_* name is still read and logs one deprecation line. This file is bundled on its
+// own into the desktop app, so it carries its own copy of the table in apps/api/src/config/env-compat.ts.
+const LEGACY_ENV = {
+  NIGAFIY_DATA_DIR: 'LD_DATA_DIR',
+  NIGAFIY_BUNDLE_DIR: 'LD_BUNDLE_DIR',
+  NIGAFIY_SETUP_EMAIL: 'LD_SETUP_EMAIL',
+  NIGAFIY_SETUP_PASSWORD: 'LD_SETUP_PASSWORD',
+  NIGAFIY_SENSOR_ENROLLMENT_TOKEN: 'LAN_COLLECTOR_ENROLLMENT_TOKEN',
+};
+const warnedEnv = new Set();
+function readEnv(name) {
+  if (process.env[name]) return process.env[name];
+  const legacy = LEGACY_ENV[name];
+  const old = legacy ? process.env[legacy] : undefined;
+  if (old && !warnedEnv.has(legacy)) {
+    warnedEnv.add(legacy);
+    console.warn(`[env] ${legacy} is deprecated, use ${name} (the old name still works)`);
+  }
+  return old || undefined;
+}
+// Installed desktop app: NIGAFIY_BUNDLE_DIR holds the packaged API and web server, NIGAFIY_DATA_DIR the user's data.
+const bundleDir = readEnv('NIGAFIY_BUNDLE_DIR') ? path.resolve(readEnv('NIGAFIY_BUNDLE_DIR')) : null;
+const dataDir = readEnv('NIGAFIY_DATA_DIR') ? path.resolve(readEnv('NIGAFIY_DATA_DIR')) : path.join(root, '.data');
 const apiDir = bundleDir ? path.join(bundleDir, 'api') : path.join(root, 'apps/api');
 const logDir = path.join(dataDir, 'logs');
 const win = process.platform === 'win32';
@@ -35,7 +56,7 @@ const option = (name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : undefined;
 };
-const token = option('--token') ?? process.env.LAN_COLLECTOR_ENROLLMENT_TOKEN;
+const token = option('--token') ?? readEnv('NIGAFIY_SENSOR_ENROLLMENT_TOKEN');
 const prod = flag('--prod');
 const noCollector = flag('--no-collector');
 const noOpen = flag('--no-open');
@@ -315,7 +336,7 @@ async function runDatabase(reuse) {
     process.exit(1);
   }
   say(`${c.dim}Starting database…${c.off}`);
-  const db = start('db', process.execPath, [envArg, 'scripts/dev-db.ts'], { cwd: apiDir, env: { LD_PG_DIR: pgDir }, ipc: true, critical: true });
+  const db = start('db', process.execPath, [envArg, 'scripts/dev-db.ts'], { cwd: apiDir, env: { NIGAFIY_PG_DIR: pgDir }, ipc: true, critical: true });
   if (!(await waitFor('database', () => dbHealthy(), db, 120_000))) {
     fail(`The database did not start. See ${component ? 'logs/db.log' : '.data/logs/db.log'}`);
     await shutdown(1);
@@ -670,7 +691,7 @@ async function homeSetup() {
   say('LAN Detective will discover and monitor the devices on this network from this computer.');
   say(`${c.yellow}Only continue if this is your own network or you are allowed to scan it.${c.off}`);
   say(`${c.dim}تابع فقط إذا كانت هذه شبكتك أو مسموح لك بفحصها.${c.off}`);
-  const preset = process.env.LD_SETUP_EMAIL && process.env.LD_SETUP_PASSWORD;
+  const preset = readEnv('NIGAFIY_SETUP_EMAIL') && readEnv('NIGAFIY_SETUP_PASSWORD');
   const yes = preset && flag('--yes') ? 'y' : await ask(`Scan ${net0.cidr}? [y/N] `);
   if (!/^(y|yes|نعم|ا?ي[وة]ه?)$/i.test(yes)) {
     say('Setup skipped. You can still use the web app; run `pnpm local` again to set up scanning.');
@@ -698,8 +719,8 @@ async function homeSetup() {
 
   say('');
   say('Your LAN Detective account (stored only on this computer):');
-  let email = process.env.LD_SETUP_EMAIL;
-  let password = process.env.LD_SETUP_PASSWORD;
+  let email = readEnv('NIGAFIY_SETUP_EMAIL');
+  let password = readEnv('NIGAFIY_SETUP_PASSWORD');
   for (let attempt = 0; attempt < 3; attempt++) {
     if (!preset) {
       email = await ask('  Email: ');
@@ -749,7 +770,7 @@ async function homeSetup() {
 let enrolled = await reconcileLocalCollector();
 let enrollToken = token;
 if (!noCollector && !enrolled && !enrollToken) {
-  if (process.stdin.isTTY || (process.env.LD_SETUP_EMAIL && process.env.LD_SETUP_PASSWORD)) enrollToken = await homeSetup();
+  if (process.stdin.isTTY || (readEnv('NIGAFIY_SETUP_EMAIL') && readEnv('NIGAFIY_SETUP_PASSWORD'))) enrollToken = await homeSetup();
   if (!enrollToken) showEnrollHelp();
 }
 
@@ -781,7 +802,7 @@ async function launchCollector(initial = false) {
   const quiet = new Set(['heartbeat', 'telemetry uploaded']);
   const startedAt = Date.now();
   const child = start('collector', binary, ['-config', configPath], {
-    env: enrollToken && !enrolled ? { LAN_COLLECTOR_ENROLLMENT_TOKEN: enrollToken } : {},
+    env: enrollToken && !enrolled ? { NIGAFIY_SENSOR_ENROLLMENT_TOKEN: enrollToken } : {},
     onLine: (line) => {
       let j;
       try {

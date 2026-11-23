@@ -51,11 +51,11 @@ func main() {
 }
 
 func bindConfig(fs *flag.FlagSet, cfg *config.Config) {
-	fs.StringVar(&cfg.ServerURL, "server", cfg.ServerURL, "LAN Detective server URL (or LAN_ENDPOINT_SERVER_URL)")
-	fs.StringVar(&cfg.EnrollmentToken, "token", cfg.EnrollmentToken, "single-use enrollment token (or LAN_ENDPOINT_ENROLLMENT_TOKEN)")
+	fs.StringVar(&cfg.ServerURL, "server", cfg.ServerURL, "Nigafiy server URL (or NIGAFIY_AGENT_SERVER_URL)")
+	fs.StringVar(&cfg.EnrollmentToken, "token", cfg.EnrollmentToken, "single-use enrollment token (or NIGAFIY_AGENT_ENROLLMENT_TOKEN)")
 	fs.StringVar(&cfg.StateDir, "state-dir", cfg.StateDir, "directory for endpoint credential state")
 	fs.StringVar(&cfg.CAFile, "ca-file", cfg.CAFile, "optional PEM CA bundle")
-	fs.StringVar(&cfg.TLSPinSHA256, "tls-pin", cfg.TLSPinSHA256, "optional SHA-256 pin of the server certificate or of its local CA (or LAN_ENDPOINT_TLS_PIN_SHA256)")
+	fs.StringVar(&cfg.TLSPinSHA256, "tls-pin", cfg.TLSPinSHA256, "optional SHA-256 pin of the server certificate or of its local CA (or NIGAFIY_AGENT_TLS_PIN_SHA256)")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug, info, warn, error")
 	fs.BoolVar(&cfg.AllowInsecureHTTP, "allow-insecure-http", cfg.AllowInsecureHTTP, "allow http:// server URL (local development only)")
 }
@@ -100,7 +100,7 @@ func cmdForeground(args []string) int {
 // serviceConfig: like the foreground flags, with the platform's state directory by default.
 func serviceConfig(name string, args []string, extra func(*flag.FlagSet)) (config.Config, string, error) {
 	cfg := config.FromEnv()
-	if os.Getenv("LAN_ENDPOINT_STATE_DIR") == "" {
+	if config.Getenv("NIGAFIY_AGENT_STATE_DIR") == "" {
 		cfg.StateDir = service.DefaultStateDir()
 	}
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)

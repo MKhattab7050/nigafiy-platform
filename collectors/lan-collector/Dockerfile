@@ -14,7 +14,7 @@ RUN apk add --no-cache ca-certificates iproute2 && adduser -D -H -u 10001 collec
     && mkdir -p /var/lib/lan-collector && chown collector /var/lib/lan-collector
 COPY --from=build /out/lan-collector /usr/local/bin/lan-collector
 USER collector
-ENV LAN_COLLECTOR_STATE_DIR=/var/lib/lan-collector
+ENV NIGAFIY_SENSOR_STATE_DIR=/var/lib/lan-collector
 VOLUME /var/lib/lan-collector
 # Run with:  --network host  (the collector must see the LAN's layer 2 to read MAC addresses)
 #            --cap-add NET_RAW (ICMP), or allow unprivileged ping via net.ipv4.ping_group_range

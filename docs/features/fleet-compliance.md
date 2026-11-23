@@ -107,7 +107,7 @@ id pattern. `upgrade` with apt uses `--only-upgrade`.
 - Go: `go vet` for windows, linux and darwin; unit and table tests for every parser (samples written
   from the documented formats, not captured from real machines), the collectors with fake commands,
   command construction for notices, lock, sign-out and packages, the evidence limits, the log tail.
-- Real run on this Windows 11 machine, not elevated (`LD_LIVE_COMPLIANCE=1 go test -run Live`): three
+- Real run on this Windows 11 machine, not elevated (`NIGAFIY_LIVE_COMPLIANCE=1 go test -run Live`): three
   firewall profiles pass, Security Center and Defender read, BitLocker on C: and D: `unknown` "needs
   administrator rights". The Windows Update search was not run live (it queries Microsoft's servers).
 - API: verdict tests for every path, heartbeat storage, strict evidence validation, overwrite flag rules

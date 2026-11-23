@@ -200,12 +200,14 @@ func Run(ctx context.Context, cfg Config) error {
 
 func (e *engine) componentSpec(name string, stopTimeout, readyTimeout time.Duration, out io.Writer) supervisor.Spec {
 	statusFile := ComponentStatusPath(e.cfg.DataDir, name)
-	env := withoutEnv(os.Environ(), "LD_DATA_DIR", "ELECTRON_RUN_AS_NODE", "LD_BUNDLE_DIR")
-	env = append(env, "LD_DATA_DIR="+e.cfg.DataDir)
+	// Children get the new names only (scripts/local.mjs also still reads the legacy LD_* ones).
+	bundle := envCompat(os.Getenv, "NIGAFIY_BUNDLE_DIR")
+	env := withoutEnv(os.Environ(), "NIGAFIY_DATA_DIR", "LD_DATA_DIR", "ELECTRON_RUN_AS_NODE", "NIGAFIY_BUNDLE_DIR", "LD_BUNDLE_DIR")
+	env = append(env, "NIGAFIY_DATA_DIR="+e.cfg.DataDir)
 	if e.cfg.BundleDir != "" {
-		env = append(env, "LD_BUNDLE_DIR="+e.cfg.BundleDir)
-	} else if v := os.Getenv("LD_BUNDLE_DIR"); v != "" {
-		env = append(env, "LD_BUNDLE_DIR="+v)
+		env = append(env, "NIGAFIY_BUNDLE_DIR="+e.cfg.BundleDir)
+	} else if bundle != "" {
+		env = append(env, "NIGAFIY_BUNDLE_DIR="+bundle)
 	}
 	if !isPlainNode(e.cfg.Node) {
 		// The installed desktop app's own executable runs local.mjs as Node.
@@ -309,7 +311,7 @@ func (e *engine) sensorSpec(out io.Writer) supervisor.Spec {
 		Name:   "sensor",
 		Path:   e.cfg.SensorExe,
 		Args:   []string{"-config", e.cfg.SensorConfig},
-		Env:    withoutEnv(os.Environ(), "LAN_COLLECTOR_ENROLLMENT_TOKEN"),
+		Env:    withoutEnv(os.Environ(), "NIGAFIY_SENSOR_ENROLLMENT_TOKEN", "LAN_COLLECTOR_ENROLLMENT_TOKEN"),
 		Dir:    filepath.Dir(e.cfg.SensorConfig),
 		Output: out,
 		// On Windows the Sensor has no stop request to honour; killing it is safe because every

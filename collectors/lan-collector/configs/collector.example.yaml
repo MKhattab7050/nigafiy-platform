@@ -5,7 +5,7 @@
 server_url: https://lan-detective.example.com
 
 # Needed once, on first start. Create it in LAN Detective → Collectors → Add collector.
-# Prefer the environment variable LAN_COLLECTOR_ENROLLMENT_TOKEN over writing it here.
+# Prefer the environment variable NIGAFIY_SENSOR_ENROLLMENT_TOKEN over writing it here.
 # enrollment_token: ""
 
 # Where the collector keeps its identity, cached configuration and offline buffer.

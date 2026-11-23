@@ -2,10 +2,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
+import { readEnv } from '../src/config/env-compat.ts';
 import { migrate } from '../src/database/migrate.ts';
 
-// LD_TEST_PG_PORT lets several test runs (for example parallel worktrees) use their own server.
-const PORT = Number(process.env.LD_TEST_PG_PORT ?? 5439);
+// NIGAFIY_TEST_PG_PORT (legacy LD_TEST_PG_PORT) lets several test runs (for example parallel worktrees) use their own server.
+const PORT = Number(readEnv('NIGAFIY_TEST_PG_PORT') ?? 5439);
 const OWNER_URL = `postgres://postgres:postgres@127.0.0.1:${PORT}/lan_detective_test`;
 const APP_URL = `postgres://lan_app:test-app-password@127.0.0.1:${PORT}/lan_detective_test`;
 

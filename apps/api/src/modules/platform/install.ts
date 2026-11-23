@@ -32,7 +32,7 @@ const MAX_REDIRECTS = 5;
 const IDLE_TIMEOUT_MS = 60_000;
 
 /** <data>/updates: the engine's data folder when the engine started the API, else <repo>/.data. */
-export function updatesDir(dataDir: string | undefined = env.LD_DATA_DIR): string {
+export function updatesDir(dataDir: string | undefined = env.NIGAFIY_DATA_DIR): string {
   const base = dataDir ? path.resolve(dataDir) : path.resolve(import.meta.dirname, '../../../../../.data');
   return path.join(base, 'updates');
 }
@@ -314,7 +314,7 @@ export interface EngineLink {
 }
 
 export function configuredEngine(): EngineLink {
-  const dataDir = env.LD_DATA_DIR ? path.resolve(env.LD_DATA_DIR) : path.dirname(updatesDir());
+  const dataDir = env.NIGAFIY_DATA_DIR ? path.resolve(env.NIGAFIY_DATA_DIR) : path.dirname(updatesDir());
   return { controlUrl: env.ENGINE_CONTROL_URL, tokenFile: path.join(dataDir, 'engine', 'control-token') };
 }
 

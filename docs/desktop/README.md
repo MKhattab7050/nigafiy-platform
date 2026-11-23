@@ -36,7 +36,7 @@ local mode goes through it instead of starting `local.mjs` itself (`src/engine-s
 - None answers: the app starts `nigafiy-engine run --no-sensor` as a child, waits until `/v1/status`
   reports the stack's web and API addresses, and shuts it down through `POST /v1/shutdown` (with the
   token in `<data>/engine/control-token`) on Quit. The app keeps running the Sensor itself, as before.
-- `LD_DESKTOP_NO_ENGINE=1` forces the old direct launcher. See `docs/desktop/engine.md`.
+- `NIGAFIY_DESKTOP_NO_ENGINE=1` forces the old direct launcher. See `docs/desktop/engine.md`.
 
 The Hub home (the dashboard) shows each program with an Open link, the engine's health and the
 update check (`GET /api/v1/platform/{programs,engine,updates}`).

@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lan-detective/endpoint-agent/internal/config"
 )
 
 // The samples below are written from each tool's documented output format; they are not captured
@@ -640,14 +641,14 @@ func TestEvidenceStaysWithinTheAPISchema(t *testing.T) {
 }
 
 // TestLiveComplianceOnThisMachine runs the real checks of the host OS and prints the evidence.
-// Opt-in (the update search can take minutes): LD_LIVE_COMPLIANCE=1 [LD_LIVE_UPDATES=1] go test -run Live -v
+// Opt-in (the update search can take minutes): NIGAFIY_LIVE_COMPLIANCE=1 [NIGAFIY_LIVE_UPDATES=1] go test (legacy LD_LIVE_* still work) -run Live -v
 func TestLiveComplianceOnThisMachine(t *testing.T) {
-	if os.Getenv("LD_LIVE_COMPLIANCE") != "1" {
-		t.Skip("set LD_LIVE_COMPLIANCE=1 to run the real compliance commands of this machine")
+	if config.Getenv("NIGAFIY_LIVE_COMPLIANCE") != "1" {
+		t.Skip("set NIGAFIY_LIVE_COMPLIANCE=1 to run the real compliance commands of this machine")
 	}
 	env := defaultComplianceEnv()
 	ev := collectFastChecks(context.Background(), env)
-	if os.Getenv("LD_LIVE_UPDATES") == "1" {
+	if config.Getenv("NIGAFIY_LIVE_UPDATES") == "1" {
 		ev = append(ev, collectUpdateChecks(context.Background(), env)...)
 	}
 	for _, e := range ev {

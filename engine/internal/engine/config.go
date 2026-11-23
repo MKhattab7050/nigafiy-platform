@@ -25,7 +25,7 @@ type Config struct {
 	DataDir      string
 	Node         string
 	StackScript  string
-	BundleDir    string // installed desktop app: the packaged API + web server (LD_BUNDLE_DIR)
+	BundleDir    string // installed desktop app: the packaged API + web server (NIGAFIY_BUNDLE_DIR)
 	SensorExe    string
 	SensorConfig string
 	NoSensor     bool // the desktop app runs the Sensor itself; the engine leaves it alone
@@ -58,11 +58,11 @@ const (
 // line). Both --name value and --name=value work.
 func FlagSet(name string, cfg *Config) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.StringVar(&cfg.DataDir, "data-dir", "", "data folder (default: <repo>/.data in a source checkout, else %APPDATA%\\LAN Detective\\data) [env "+EnvDataDir+"]")
+	fs.StringVar(&cfg.DataDir, "data-dir", "", "data folder (default: <repo>/.data in a source checkout, else %APPDATA%\\Nigafiy\\data, or the legacy %APPDATA%\\LAN Detective\\data while only that exists) [env "+EnvDataDir+"]")
 	fs.StringVar(&cfg.Node, "node", "", "Node.js 24 executable, or the desktop app's exe (run with ELECTRON_RUN_AS_NODE=1) [env "+EnvNode+"]")
 	fs.StringVar(&cfg.StackScript, "stack-script", "", "the stack launcher, local.mjs (default: <repo>/scripts/local.mjs) [env "+EnvStackScript+"]")
-	fs.StringVar(&cfg.BundleDir, "bundle-dir", "", "installed app only: folder with the packaged API and web server, passed on as LD_BUNDLE_DIR [env "+EnvBundleDir+"]")
-	fs.StringVar(&cfg.SensorExe, "sensor-exe", "", "the Sensor program (default: <repo>/collectors/lan-collector/bin/lan-collector.exe) [env "+EnvSensorExe+"]")
+	fs.StringVar(&cfg.BundleDir, "bundle-dir", "", "installed app only: folder with the packaged API and web server, passed on as NIGAFIY_BUNDLE_DIR [env "+EnvBundleDir+"]")
+	fs.StringVar(&cfg.SensorExe, "sensor-exe", "", "the Sensor program (default: <repo>/collectors/lan-collector/bin/nigafiy-sensor.exe) [env "+EnvSensorExe+"]")
 	fs.StringVar(&cfg.SensorConfig, "sensor-config", "", "the Sensor's configuration; the Sensor runs only once it exists (default: <data-dir>/collector/collector.yaml) [env "+EnvSensorConfig+"]")
 	fs.BoolVar(&cfg.NoSensor, "no-sensor", false, "do not supervise the Sensor (the desktop app runs it)")
 	fs.StringVar(&cfg.ControlAddr, "control-addr", "", "control API address, loopback only (default "+DefaultControlAddr+") [env "+EnvControlAddr+"]")
@@ -115,10 +115,10 @@ func Resolve(cfg Config, getenv func(string) string) (Config, error) {
 		cfg.StackScript = filepath.Join(repo, "scripts", "local.mjs")
 	}
 	if cfg.DataDir == "" {
-		// The same folder scripts/local.mjs uses: LD_DATA_DIR, else <repo>/.data.
+		// The same folder scripts/local.mjs uses: NIGAFIY_DATA_DIR (legacy LD_DATA_DIR), else <repo>/.data.
 		switch {
-		case getenv("LD_DATA_DIR") != "":
-			cfg.DataDir = getenv("LD_DATA_DIR")
+		case envCompat(getenv, "NIGAFIY_DATA_DIR") != "":
+			cfg.DataDir = envCompat(getenv, "NIGAFIY_DATA_DIR")
 		case repo != "":
 			cfg.DataDir = filepath.Join(repo, ".data")
 		default:
@@ -126,11 +126,11 @@ func Resolve(cfg Config, getenv func(string) string) (Config, error) {
 			if err != nil {
 				return cfg, fmt.Errorf("no data folder: pass --data-dir (%w)", err)
 			}
-			cfg.DataDir = filepath.Join(dir, "LAN Detective", "data")
+			cfg.DataDir = filepath.Join(ProfileDir(dir, pathExists), "data")
 		}
 	}
 	if cfg.SensorExe == "" && repo != "" {
-		name := "lan-collector"
+		name := "nigafiy-sensor"
 		if runtime.GOOS == "windows" {
 			name += ".exe"
 		}

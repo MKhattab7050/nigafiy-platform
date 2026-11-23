@@ -8,7 +8,7 @@ const HELP = `Usage:
   pnpm --filter ./apps/api db:restore --file <backup.dump> --confirm <database-name> [--force] [--pg-bin <folder>] [--maintenance-db <name>]
 
 backup   Writes <database>-<YYYYMMDD-HHMMSS>Z.dump (pg_dump custom format) to --out-dir
-         (default: <data folder>/backups, data folder = NIGAFIY_DATA_DIR, LD_DATA_DIR or <repo>/.data).
+         (default: <data folder>/backups, data folder = NIGAFIY_DATA_DIR (legacy LD_DATA_DIR) or <repo>/.data).
 restore  Restores the file into a NEW database, checks it, then swaps it in by renaming; the previous
          database is kept as <name>_before_restore_<time>. Refuses while anything is connected to the
          database (stop the API / engine stack first) unless --force, which ends those sessions.

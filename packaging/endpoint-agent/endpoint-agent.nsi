@@ -5,7 +5,7 @@
 ;
 ; It copies endpoint-agent.exe to "%ProgramFiles%\Nigafiy\Endpoint Agent" and runs the agent's own
 ;   endpoint-agent.exe install -server <url> [-tls-pin <sha256>] [-ca-file <pem>] [-service-name <n>] [-log-level <l>] [-no-start]
-; which enrolls with the one-time token (passed in the LAN_ENDPOINT_ENROLLMENT_TOKEN environment
+; which enrolls with the one-time token (passed in the NIGAFIY_AGENT_ENROLLMENT_TOKEN environment
 ; variable, never on the agent's command line) and registers the Windows service. The service, the
 ; consent prompt and the session banner are the agent's; this installer adds nothing hidden.
 ;
@@ -254,12 +254,12 @@ Section "Install"
   ${EndIf}
 
   ; The token goes to the agent in its environment only, then is cleared from this process.
-  System::Call 'Kernel32::SetEnvironmentVariable(t "LAN_ENDPOINT_ENROLLMENT_TOKEN", t "$Token") i'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", t "$Token") i'
   DetailPrint "Enrolling and installing the service"
   nsExec::ExecToStack '"$INSTDIR\endpoint-agent.exe" $2'
   Pop $0
   Pop $1
-  System::Call 'Kernel32::SetEnvironmentVariable(t "LAN_ENDPOINT_ENROLLMENT_TOKEN", i 0) i'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", i 0) i'
   StrCpy $Token ""
 
   FileOpen $3 "$INSTDIR\install.log" w

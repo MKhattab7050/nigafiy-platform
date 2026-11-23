@@ -7,6 +7,7 @@ import path from 'node:path';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
+import { readEnv } from '../src/config/env-compat.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { endpointsModule } from '../src/modules/endpoints/index.ts';
 import { StreamHub, frameMeta } from '../src/modules/endpoints/remote-desktop/stream-hub.ts';
@@ -125,7 +126,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go a
         expect(Number(row.frames_relayed)).toBeGreaterThan(0);
         expect(row.end_reason).toBe('operator');
       } finally {
-        if (process.env.LD_TEST_AGENT_LOGS) console.info(logs.join(''));
+        if (readEnv('NIGAFIY_TEST_AGENT_LOGS')) console.info(logs.join(''));
         child?.kill();
         await hub.stop();
         srv.closeAllConnections();

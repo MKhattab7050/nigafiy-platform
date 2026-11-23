@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -21,13 +20,13 @@ type Config struct {
 
 func FromEnv() Config {
 	cfg := Config{
-		ServerURL:         os.Getenv("LAN_ENDPOINT_SERVER_URL"),
-		EnrollmentToken:   os.Getenv("LAN_ENDPOINT_ENROLLMENT_TOKEN"),
-		StateDir:          os.Getenv("LAN_ENDPOINT_STATE_DIR"),
-		CAFile:            os.Getenv("LAN_ENDPOINT_CA_FILE"),
-		TLSPinSHA256:      os.Getenv("LAN_ENDPOINT_TLS_PIN_SHA256"),
-		LogLevel:          os.Getenv("LAN_ENDPOINT_LOG_LEVEL"),
-		AllowInsecureHTTP: os.Getenv("LAN_ENDPOINT_ALLOW_INSECURE_HTTP") == "true" || os.Getenv("LAN_ENDPOINT_ALLOW_INSECURE_HTTP") == "1",
+		ServerURL:         Getenv("NIGAFIY_AGENT_SERVER_URL"),
+		EnrollmentToken:   Getenv("NIGAFIY_AGENT_ENROLLMENT_TOKEN"),
+		StateDir:          Getenv("NIGAFIY_AGENT_STATE_DIR"),
+		CAFile:            Getenv("NIGAFIY_AGENT_CA_FILE"),
+		TLSPinSHA256:      Getenv("NIGAFIY_AGENT_TLS_PIN_SHA256"),
+		LogLevel:          Getenv("NIGAFIY_AGENT_LOG_LEVEL"),
+		AllowInsecureHTTP: Getenv("NIGAFIY_AGENT_ALLOW_INSECURE_HTTP") == "true" || Getenv("NIGAFIY_AGENT_ALLOW_INSECURE_HTTP") == "1",
 	}
 	if cfg.StateDir == "" {
 		cfg.StateDir = "./state-endpoint"

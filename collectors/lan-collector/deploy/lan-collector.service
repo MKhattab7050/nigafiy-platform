@@ -7,7 +7,7 @@ Wants=network-online.target
 
 [Service]
 ExecStart=/usr/local/bin/lan-collector -config /etc/lan-collector/collector.yaml
-# Put LAN_COLLECTOR_ENROLLMENT_TOKEN=... here for the first start, then remove it.
+# Put NIGAFIY_SENSOR_ENROLLMENT_TOKEN=... here for the first start, then remove it.
 EnvironmentFile=-/etc/lan-collector/collector.env
 User=lan-collector
 Group=lan-collector

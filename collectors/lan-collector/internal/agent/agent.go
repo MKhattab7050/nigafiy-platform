@@ -335,7 +335,7 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 		return fmt.Errorf("state file %s is corrupt; delete it and enroll again with a new token", a.credentialPath())
 	}
 	if a.cfg.EnrollmentToken == "" {
-		return errors.New("this collector is not enrolled: provide an enrollment token (LAN_COLLECTOR_ENROLLMENT_TOKEN) created in LAN Detective under Collectors")
+		return errors.New("this collector is not enrolled: provide an enrollment token (NIGAFIY_SENSOR_ENROLLMENT_TOKEN) created in Nigafiy under Collectors")
 	}
 	host, _ := os.Hostname()
 	bo := cloud.Backoff{Min: 2 * time.Second, Max: a.tuning.MaxBackoff}

@@ -185,8 +185,10 @@ class CollectorManager extends EventEmitter {
     this.pendingToken = token || null;
 
     const env = { ...process.env };
+    // The Sensor reads NIGAFIY_SENSOR_* and, for older setups, LAN_COLLECTOR_* (the new name wins).
+    delete env.NIGAFIY_SENSOR_ENROLLMENT_TOKEN;
     delete env.LAN_COLLECTOR_ENROLLMENT_TOKEN;
-    if (token) env.LAN_COLLECTOR_ENROLLMENT_TOKEN = token;
+    if (token) env.NIGAFIY_SENSOR_ENROLLMENT_TOKEN = token;
     const child = spawn(this.binaryPath, ['-config', this.configPath], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     this.child = child;
     const startedAt = Date.now();

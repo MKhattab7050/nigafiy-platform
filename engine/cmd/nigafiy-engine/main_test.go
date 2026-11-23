@@ -68,7 +68,7 @@ func TestServiceArgs(t *testing.T) {
 		DataDir:      `C:\Data Folder`,
 		Node:         `C:\Program Files\nodejs\node.exe`,
 		StackScript:  `D:\repo\scripts\local.mjs`,
-		SensorExe:    `D:\repo\collectors\lan-collector\bin\lan-collector.exe`,
+		SensorExe:    `D:\repo\collectors\lan-collector\bin\nigafiy-sensor.exe`,
 		SensorConfig: `C:\Data Folder\collector\collector.yaml`,
 		ControlAddr:  engine.DefaultControlAddr,
 	}
@@ -78,7 +78,7 @@ func TestServiceArgs(t *testing.T) {
 		`--data-dir=C:\Data Folder`,
 		`--node=C:\Program Files\nodejs\node.exe`,
 		`--stack-script=D:\repo\scripts\local.mjs`,
-		`--sensor-exe=D:\repo\collectors\lan-collector\bin\lan-collector.exe`,
+		`--sensor-exe=D:\repo\collectors\lan-collector\bin\nigafiy-sensor.exe`,
 		`--sensor-config=C:\Data Folder\collector\collector.yaml`,
 		"--control-addr=127.0.0.1:47140",
 		"--owner-sid=S-1-5-21-1-2-3-1001",

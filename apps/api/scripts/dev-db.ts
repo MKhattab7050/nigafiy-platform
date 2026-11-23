@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
+import { readEnv } from '../src/config/env-compat.ts';
 
 // embedded-postgres chmods its binaries to add the executable bit. Windows has no such bit, and in an
 // installed app the binaries live under C:\Program Files, which a normal user cannot modify — the call
@@ -20,8 +21,9 @@ if (process.platform === 'win32') {
 }
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5433/lan_detective');
-// LD_PG_DIR: set by the desktop app, which keeps its data in the user's profile.
-const databaseDir = process.env.LD_PG_DIR ? path.resolve(process.env.LD_PG_DIR) : path.resolve(import.meta.dirname, '../../../.data/pg');
+// NIGAFIY_PG_DIR (legacy LD_PG_DIR): set by the desktop app, which keeps its data in the user's profile.
+const pgDir = readEnv('NIGAFIY_PG_DIR');
+const databaseDir = pgDir ? path.resolve(pgDir) : path.resolve(import.meta.dirname, '../../../.data/pg');
 const database = url.pathname.slice(1) || 'lan_detective';
 
 const server = new EmbeddedPostgres({

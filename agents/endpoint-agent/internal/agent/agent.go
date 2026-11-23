@@ -219,7 +219,7 @@ func (a *Agent) ensureEnrolled(ctx context.Context) error {
 		return fmt.Errorf("state file %s is corrupt; delete it and enroll again with a new token", a.credentialPath())
 	}
 	if a.cfg.EnrollmentToken == "" {
-		return errors.New("this endpoint is not enrolled: provide an enrollment token (LAN_ENDPOINT_ENROLLMENT_TOKEN or -token)")
+		return errors.New("this endpoint is not enrolled: provide an enrollment token (NIGAFIY_AGENT_ENROLLMENT_TOKEN or -token)")
 	}
 	h := a.deps.CollectHealth(ctx, a.started)
 	payload := map[string]any{

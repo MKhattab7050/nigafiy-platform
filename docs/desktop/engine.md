@@ -40,10 +40,10 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `LD_DATA_DIR` if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\LAN Detective\data` |
+| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\Nigafiy\data` (or the legacy `%APPDATA%\LAN Detective\data` while only that one exists) |
 | `--node` | `NIGAFIY_ENGINE_NODE` | `node` from `PATH`, else `C:\Program Files\nodejs\node.exe` |
 | `--stack-script` | `NIGAFIY_ENGINE_STACK_SCRIPT` | `<repo>/scripts/local.mjs` (repo = first folder above the engine exe, then above the working directory, that has `scripts/local.mjs`) |
-| `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `LD_BUNDLE_DIR` (installed app) |
+| `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `NIGAFIY_BUNDLE_DIR` (installed app) |
 | `--sensor-exe` | `NIGAFIY_ENGINE_SENSOR_EXE` | `<repo>/collectors/lan-collector/bin/lan-collector.exe` |
 | `--sensor-config` | `NIGAFIY_ENGINE_SENSOR_CONFIG` | `<data-dir>/collector/collector.yaml` |
 | `--no-sensor` | — | off. With it the Sensor is not supervised at all (see below) |
@@ -81,8 +81,8 @@ the reverse: Sensor, web, API, database.
 - Health checks run in their own goroutine, so a slow check never delays a stop. Addresses in the
   ready reports must be on this computer (loopback or `localhost`); the engine refuses others.
 
-Working directory = the script's folder, environment = the engine's plus `LD_DATA_DIR=<data-dir>`
-(and `LD_BUNDLE_DIR` when given). `ELECTRON_RUN_AS_NODE=1` is added only when `--node` is not a
+Working directory = the script's folder, environment = the engine's plus `NIGAFIY_DATA_DIR=<data-dir>`
+(and `NIGAFIY_BUNDLE_DIR` when given). `ELECTRON_RUN_AS_NODE=1` is added only when `--node` is not a
 `node`/`node.exe` (that is, the installed desktop app's own executable), exactly as
 `apps/desktop/src/local-stack.cjs` does it.
 
@@ -108,7 +108,7 @@ Working directory = the script's folder, environment = the engine's plus `LD_DAT
 
 **sensor** — `<sensor-exe> -config <sensor-config>`, only when the config file exists. Otherwise
 the child stays `stopped` with `last_error: "not enrolled"`. Enrollment stays in the Hub (consent,
-account); afterwards the Hub calls `POST /v1/children/sensor/start`. `LAN_COLLECTOR_ENROLLMENT_TOKEN`
+account); afterwards the Hub calls `POST /v1/children/sensor/start`. `NIGAFIY_SENSOR_ENROLLMENT_TOKEN`
 is removed from its environment. On Windows the Sensor is stopped by killing it (as the desktop app
 does; every batch is already in its on-disk spool); elsewhere SIGTERM first, kill after 5 s.
 

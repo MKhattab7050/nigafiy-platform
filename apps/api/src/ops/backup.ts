@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+import { readEnv } from '../config/env-compat.ts';
 import { ensureAppRole, migrate } from '../database/migrate.ts';
 import { auditOperation, describeSessions, otherSessions, terminateSessions } from './db-activity.ts';
 
@@ -67,7 +68,7 @@ function versionedDirs(parent: string, pattern: RegExp, suffix: string[]): strin
 
 /** Where the tools are looked for, in order. An explicit folder (flag or env) is the only candidate. */
 export function candidateBinDirs(explicit?: string): { dirs: string[]; explicit: boolean } {
-  const fromEnv = process.env.NIGAFIY_PG_BIN_DIR || process.env.LD_PG_BIN_DIR;
+  const fromEnv = readEnv('NIGAFIY_PG_BIN_DIR');
   if (explicit || fromEnv) return { dirs: [path.resolve((explicit || fromEnv)!)], explicit: true };
   const dirs: string[] = [];
   const embedded = embeddedBinDir();
@@ -154,9 +155,9 @@ function stampUtc(d: Date): string {
   return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}Z`;
 }
 
-/** The data folder: NIGAFIY_DATA_DIR, then LD_DATA_DIR (what scripts/local.mjs and the engine set), else <repo>/.data. */
+/** The data folder: NIGAFIY_DATA_DIR (legacy LD_DATA_DIR; what scripts/local.mjs and the engine set), else <repo>/.data. */
 export function dataDir(): string {
-  const fromEnv = process.env.NIGAFIY_DATA_DIR || process.env.LD_DATA_DIR;
+  const fromEnv = readEnv('NIGAFIY_DATA_DIR');
   return fromEnv ? path.resolve(fromEnv) : path.resolve(import.meta.dirname, '../../../../.data');
 }
 
