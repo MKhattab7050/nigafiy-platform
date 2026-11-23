@@ -19,6 +19,7 @@
     "build": "pnpm --filter @nigafiy/brand build && pnpm --filter @nigafiy/web build",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome lint .",
+    "check:brand": "node scripts/check-brand.mjs && node --test scripts/check-brand.test.mjs",
     "test": "pnpm --filter @nigafiy/api test",
     "test:web": "pnpm --filter @nigafiy/web test:e2e",
     "test:collector": "cd collectors/lan-collector && go test ./...",

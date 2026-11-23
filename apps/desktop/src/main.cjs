@@ -24,7 +24,7 @@ const { resolveDataDir, DEV_PROFILE_NAME, LEGACY_DEV_PROFILE_NAME } = require('.
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
 // The profile folder, before anything reads userData (or takes the single-instance lock, which is
-// per profile): the legacy "Nigafiy" one while only that exists (src/data-dir.cjs). An explicit
+// per profile): the legacy one from before the rename while only that exists (src/data-dir.cjs). An explicit
 // --user-data-dir always wins.
 if (!app.commandLine.hasSwitch('user-data-dir')) {
   const profile = resolveDataDir({

@@ -40,7 +40,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\Nigafiy\data` (or the legacy `%APPDATA%\Nigafiy\data` while only that one exists) |
+| `--data-dir` | `NIGAFIY_ENGINE_DATA_DIR` | `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) if set (what `local.mjs` uses), else `<repo>/.data` in a source checkout, else `%APPDATA%\Nigafiy\data` (or the profile folder from before the rename while only that one exists, docs/architecture/naming.md) |
 | `--node` | `NIGAFIY_ENGINE_NODE` | `node` from `PATH`, else `C:\Program Files\nodejs\node.exe` |
 | `--stack-script` | `NIGAFIY_ENGINE_STACK_SCRIPT` | `<repo>/scripts/local.mjs` (repo = first folder above the engine exe, then above the working directory, that has `scripts/local.mjs`) |
 | `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `NIGAFIY_BUNDLE_DIR` (installed app) |

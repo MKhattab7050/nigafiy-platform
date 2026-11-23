@@ -11,7 +11,7 @@ the free Authenticode route in [code-signing.md](code-signing.md).
 
 `pnpm release` builds all three signed (see [updates.md](updates.md#building-a-release)).
 
-The product name in the desktop installers is still "Nigafiy": the rename is a separate step.
+The desktop installers are named "Nigafiy" (productName). The NSIS GUID stays the one the earlier builds had, so an update installs over an existing install instead of beside it (docs/architecture/naming.md).
 New installers (the endpoint agent) say Nigafiy.
 
 ## Desktop app: NSIS
