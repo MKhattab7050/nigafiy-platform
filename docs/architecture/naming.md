@@ -23,6 +23,7 @@ appears outside the allow-list below.
 | Collector and agent HTTP paths | `/v1/collectors/*`, `/v1/agent/*` … | Enrolled devices call them | Keep |
 | Sensor state files | `state/*.json`, `collector.yaml`, the desktop's `<profile>\collector` folder | Hold the Sensor's identity and credential | Keep |
 | Electron session partition | `persist:dashboard` | Holds the desktop app's signed-in session | Keep |
+| Browser preferences | cookie `ld_locale`; `localStorage` keys `ld_theme`, `ld_site`, `ld_sidebar` | Hold each person's language, theme, selected site and sidebar state; a rename would reset them | Keep |
 | Router rule label | `LAN Detective: <description>` (`router.ProductRulePrefix`, `PORT_FORWARD_PREFIX`) | Written on customers' routers; the Sensor recognises its own port forwards by it. A new label would turn existing rules into "administrator" rules | Decide with a dual-prefix read, then rename |
 | Router tags | `lan-detective:block:`, `lan-detective:limit:`, `lan-detective:schedule:` (MikroTik comments, OpenWrt names, pfSense alias details); alias `lan_detective_blocked` (pfSense, OPNsense) | Same: persisted on routers and used to find the product's own rules | Same as above |
 | Ownership value | `owner: "lan-detective"` in the collector protocol and the API (`routers.*.lan-detective` string keys follow it) | Wire value between Sensor and API; old Sensors keep sending it | Keep (internal) |
