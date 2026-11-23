@@ -268,6 +268,15 @@ Milestone 5 (2026-11-23, per-component supervision):
   three after the first checks; `POST /v1/children/db/restart` stopped web, API and database in
   that order and brought them back in order; `POST /v1/shutdown` stopped web → API → database in
   under a second, every port free afterwards.
+- Packaged app: `pnpm --filter @lan-detective/desktop run pack` into a scratch output folder
+  (unsigned: no certificate on the build computer), then the packaged
+  `resources\engine\nigafiy-engine.exe run` with a scratch data folder and `.env`, `--node` = the
+  packaged `LAN Detective.exe`, `--stack-script`/`--bundle-dir` = `resources\backend`, control
+  47641, `--no-sensor`: database, API and web started from the bundle as three processes (ready in
+  about 24 s, 54 s and 26 s on a first start), health `ok`, `/readyz` 200, web 200;
+  `restart api` stopped web then API and brought both back in order; `POST /v1/update/apply` with a
+  wrong SHA-256 → 422 and the engine kept running; shutdown web → API → database, every port free.
+  The desktop app itself (Electron window) was not started.
 
 Not verified:
 
