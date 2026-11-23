@@ -312,16 +312,26 @@ func TestPersistDebounceAndFinalSaveOnCancel(t *testing.T) {
 	table.Record(Request{MAC: "00:11:22:33:44:01", Lease: Lease{Hostname: "Host-1"}}, now)
 	table.Record(Request{MAC: "00:11:22:33:44:02", Lease: Lease{Hostname: "Host-2"}}, now)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if loaded, err := LoadTable(path, now); err == nil && loaded.Len() == 2 {
-			break
+	// Poll with a plain read, not LoadTable: LoadTable removes leftover "<file>.*.tmp" files (it is
+	// meant to run once at start-up, before Persist), so calling it while Persist runs can delete
+	// the temp file Persist is about to rename. That made this test fail about 1 run in 30.
+	savedEntries := func() int {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return -1
 		}
+		var ff fileFormat
+		if json.Unmarshal(raw, &ff) != nil {
+			return -1
+		}
+		return len(ff.Entries)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && savedEntries() != 2 {
 		time.Sleep(15 * time.Millisecond)
 	}
-	loaded, err := LoadTable(path, now)
-	if err != nil || loaded.Len() != 2 {
-		t.Fatalf("expected debounced write of 2 entries, got len=%d err=%v", loaded.Len(), err)
+	if n := savedEntries(); n != 2 {
+		t.Fatalf("expected debounced write of 2 entries, got %d", n)
 	}
 
 	// Now record a 3rd entry with a long debounce still pending, and immediately cancel ctx.
