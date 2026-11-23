@@ -43,7 +43,7 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 - Credentials are stored AES-256-GCM encrypted, never returned by the API, never written to the audit log or the collector's disk cache, and delivered only to the collector of that site over its authenticated channel.
 - API (`modules/ports`): switches CRUD + "read now", port table with the devices on each port, `GET /devices/:id/port` ("where is this device plugged in" with kind direct / shared / behind, confidence and evidence), `GET /ports/find`. Events: `device_port_changed`, `switch_unreadable`, `switch_readable`. Insight when ports collect new errors.
 - Verified: Go unit tests against the bundled simulator, 4 API tests, and the real collector binary reading `cmd/snmp-sim` (a **simulated** switch serving invented data) through the running stack.
-- Not verified: any real switch. No hardware with SNMP was available (the test router does not offer it). CDP is not read. Port actions (disable / enable / VLAN change) are not built: this module is read-only.
+- Not verified: any real switch. No hardware with SNMP was available (the test router does not offer it). *(Later: CDP and MikroTik neighbours were added in `039`, and port actions in `021`; see below.)*
 
 **IPAM — IP address management (added after Phase 2):** migration `007_ipam.sql` (`ipam_subnets`, `ipam_addresses`).
 - A subnet is an authorized scope. Observed facts (which device answers where, from discovery) and documented facts (the plan and the address records an administrator enters) are kept apart and compared; they are never merged.
@@ -53,7 +53,7 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 - Roles: viewers read, technicians document addresses, admins change the subnet plan. Every change is audited.
 - Verified: 6 tests (rules + API + roles + tenant isolation) and the page in a browser against the running stack with the simulated organization, in English and Arabic (plan saved, validation error shown, address documented, conflict listed, calculator).
 - Not verified: the CSV download button in a browser (the endpoint is tested), subnets larger than /24 in the UI, and the conflict rules that need an *online* device against real data (covered by tests only).
-- Limits: IPv4 only; DNS records and DHCP leases are not read from servers; a subnet that is documented but not authorized for discovery cannot be recorded.
+- Limits: IPv4 only at the time (IPv6 subnets were added in `038`, see below); DNS records and DHCP leases are not read from servers; a subnet that is documented but not authorized for discovery cannot be recorded.
 
 **Closing Phase 2 — interface history, IPAM conflict events, switch-level topology, email notifications & IT Toolbox:**
 - **Interface history (`008_interface_history.sql`):** derives traffic bit-rates (`in_bps`, `out_bps`) and error deltas from consecutive 64-bit SNMP octet/error counters (`switch_port_samples`), handling counter resets and gaps cleanly, with historical charts in the switch port table.
@@ -65,15 +65,15 @@ On the real test network (5 phones with randomized MACs) **no phone answered any
 **Phases 3 & 4 — endpoint agent and remote administration (`012_endpoints.sql`, `013`–`015`, `agents/endpoint-agent`, `modules/endpoints`):**
 - **Platforms:** company computers running the LAN Detective agent: **Windows**, **Linux** and **macOS**, from the fleet page (`/endpoints`) and a per-endpoint control page (`/endpoints/[id]`). **iOS and Android are not supported.** An earlier "MDM" for them was removed (`015_remove_mobile_mdm.sql`): it had no Apple MDM protocol (no APNs, no signed profiles, no check-in handling) and no Android device-policy app, so nothing it queued could ever run on a phone.
 - **Capability list (`modules/endpoints/capabilities.ts`):** per platform, what the agent can do and what it needs (for example X11 tools on Linux, Screen Recording / Full Disk Access permissions on macOS). macOS remote desktop is **view-only**: mouse and keyboard input are not implemented there and the API refuses them. Commands the agent cannot run on a platform (sign-out off Windows, `gpresult` off Windows) are refused by the API instead of being queued.
-- **Compliance (`evaluateCompliance`):** only from what the agent measured. The Windows agent reports the firewall (standard profile) and Microsoft Defender state when it can read them; disk encryption and pending updates are not measured on any platform, and nothing is reported for Linux or macOS. Unmeasured values are left out, so an endpoint with no evidence is "unknown", never "compliant". Each heartbeat replaces the reported posture, so a check that stops being reported disappears instead of keeping an old answer.
-- **Policy:** two settings, both enforced: allowed file-manager folders (`allowed_fs_roots`, checked by the agent) and the remote-desktop consent mode (a "prompt" policy refuses sessions because the agent cannot ask yet).
+- **Compliance (`evaluateCompliance`):** only from what the agent measured. The Windows agent reports the firewall (standard profile) and Microsoft Defender state when it can read them; disk encryption and pending updates are not measured on any platform, and nothing is reported for Linux or macOS. Unmeasured values are left out, so an endpoint with no evidence is "unknown", never "compliant". Each heartbeat replaces the reported posture, so a check that stops being reported disappears instead of keeping an old answer. *(Superseded 2026-11-22: disk encryption, pending updates, Linux and macOS are now measured; see "Fleet" below.)*
+- **Policy:** two settings, both enforced: allowed file-manager folders (`allowed_fs_roots`, checked by the agent) and the remote-desktop consent mode. *(Since 2026-11-22 a "prompt" policy shows a consent dialog on the endpoint instead of refusing.)*
 - **Remote File Manager (`agents/endpoint-agent/internal/filemgr`, `components/remote-file-manager.tsx`):**
   - Browse drives/volumes, search, sort/filter, optionally show hidden/system files; create folders and files, rename, copy, move, delete (explicit confirmation, admin only), upload (admin only) and download in base64 chunks with SHA-256 verification.
   - Never overwrites: creating, renaming, copying or moving onto an existing name is refused (copying a file into its own folder used to truncate it).
   - Path guards: no `..` segments, no UNC/network or `\\?\` / `\\.\` device paths, credential stores blocked (the registry hive folder `System32\config`, `/etc/shadow`, `/root/.ssh`, Keychains), OS folders protected from changes (wherever Windows is installed, `/boot`, `/proc`, `/sys`, `/usr/bin`, ...). Symlinks and Windows junctions are resolved, so a link inside an allowed folder cannot lead outside it.
 - **Live Remote Desktop (`agents/endpoint-agent/internal/remotedesktop`, `components/remote-desktop-console.tsx`):**
   - Captures frames with GDI on Windows, `scrot` / `gnome-screenshot` / ImageMagick `import` on Linux X11 and `screencapture` on macOS. When there is no interactive desktop (for example a Windows service in session 0) the capture fails with a clear error; no placeholder image is ever sent. Capture and input are accepted only inside a started session, and starting or ending a session shows a notice on the endpoint's screen naming the operator. A policy that requires the user's consent refuses to start.
-  - Input: `SetCursorPos` / `mouse_event` / `keybd_event` on Windows; `xdotool` on Linux X11 using the screen size it reports (no assumed resolution); none on macOS. Session recording is not implemented and the API refuses a request for it.
+  - Input: `SetCursorPos` / `mouse_event` / `keybd_event` on Windows; `xdotool` on Linux X11 using the screen size it reports (no assumed resolution); none on macOS at the time (macOS input added 2026-11-22, see "Fleet" below). Session recording is not implemented and the API refuses a request for it.
 - **Remote administration (`internal/control`, `endpoint_commands`):**
   - Fast command poll (`/api/v1/agent/poll`), immediate result upload (`/api/v1/agent/command-result`), `?wait_ms=` on the API. Commands are delivered at most once.
   - `kill_process` (never the agent itself), `service_action` (PowerShell / `systemctl` / `launchctl`), `power_action`, `notify_user`, `software_action` (`winget` / `apt-get` / `brew`, admin only), `fetch_logs` (`Get-WinEvent` / `journalctl` / `log show`), and allow-listed `diagnostic_command`. Service names, package ids and DNS targets must start with a letter or digit (checked by both API and agent) so they can never be read as program options, and `apt-get`, `brew` and `systemctl` get `--` before them.
@@ -111,6 +111,56 @@ Milestone 3 (2026-11-21, engine service + Hub; plan `docs/superpowers/plans/2026
 
 Milestone 4 (2026-11-22, programs; plan `docs/superpowers/plans/2026-11-21-nigafiy-m4-programs.md`, not committed): the web app is seven program scopes on one codebase. One route table (`packages/shared-types/src/routes.ts`) drives the redirects, the links, the API's links and the tests: every pre-Milestone-4 URL, program root and device-action URL answers 308 from `proxy.ts` with the query string kept (`/guard/devices/<id>/block` → `/guard/devices/<id>?action=block`). The shell shows only the current program's sections with its glyph, name and accent (`html[data-program]`; white on every fill and hover fill ≥ 4.5:1 in both themes, status colours untouched) and a program switcher; EN + AR, RTL mirrored. New pages render the existing components: Hub `/programs` (install state from `NIGAFIY_PROGRAMS`) and `/sensors`, `/watch/{insights,reports,notifications,maintenance}`, `/guard/port-control`, `/mind/automation`, `/toolbox/subnet`; Settings keeps a "Moved to programs" card (`#automation` anchor). The shared device card opens in every program (`/<program>/devices/<id>`) with an action bar grouped by program that jumps to the real control or the owning page (`?action=` focus and scroll), and a program that is not installed reads "Available in Nigafiy X: install" → `/programs`; Hub widgets and "Needs your attention" items carry their program, and widgets of a missing program are left out. New API filter `GET /incidents?device_id=`. Desktop: `src/programs.cjs` (strict `nigafiy://<program>/<path>` parser, one window per program, `Nigafiy.<Program>` AppUserModelID and icon), protocol registered only when `app.isPackaged`. Go launchers `engine/cmd/nigafiy-launcher` + `engine/internal/launcher` (`pnpm build:launchers`, one exe per program). **Verified (2026-11-22, final tree):** `pnpm typecheck` exit 0; `pnpm lint` 0 errors (235 warnings, none in a file this milestone created, none new in a file it edited); API suite (`LD_TEST_PG_PORT=5446`) 30 files, 215 passed, 6 skipped, 0 failed; desktop tests 23/23; `engine` `go vet` ok and `go test ./...` 7 packages, 47 tests pass; `pnpm build:launchers` built and checked 7 launchers; `pnpm test:web` (production build, Mind left out for real) 8/8: every old URL 308 → right Location, unmoved URLs not redirected, every target in EN and AR (RTL) with no error and no CSP report, 18 namespaced screens with the right program, the "not installed" path. **Not verified:** protocol registration and `nigafiy://` in a packaged build, per-program taskbar groups on a real taskbar, launchers against a real installed runtime, a desktop run with program windows, and the pages against the owner's running dev stack.
 
+**Spec gap work, rename and final check (2026-11-22 to 2026-11-24).** Seven builders closed the gaps found against the owner's full target spec, one at a time, each merged only after the lead re-ran the gate. Then the product was renamed (Milestone 2) and a final check ran.
+
+| Program | What was added | Migration | Doc |
+| --- | --- | --- | --- |
+| Hub | OIDC (PKCE, JWKS, nonce) and SAML 2.0 sign-in with an admin screen and login buttons; LAN HTTPS listener with a built-in CA and fingerprint pinning in the Sensor and Agent; `/system/modules` overdue jobs; search over switches, subnets and routers | `040` | `sso.md`, `lan-tls.md`, `system-self-check.md` |
+| Hub | Engine supervises the database, API, web and Sensor separately; signed (Ed25519) update manifest, then download, SHA-256 and Authenticode check, install on an admin's confirmation; release scripts; agent NSIS installer with a silent GPO mode; desktop MSI target; free code-signing route | — | `docs/operations/{installers,code-signing,updates}.md` |
+| Radar | IPv6 scopes (no sweep larger than /120), neighbour-table and `ff02::1` discovery, `device_addresses`, IPAM for IPv6, BigInt subnet calculator; CDP and MikroTik neighbours over SNMP, passive MNDP; router Wi-Fi clients as topology edges | `038`, `039` | `ipv6.md`, `neighbors-cdp-mndp.md` |
+| Watch | HTTP/HTTPS, TLS certificate expiry and SNMP OID checks | `039` | `watch-checks.md` |
+| Guard | Config backup secret sanitization with a sealed raw copy; config restore (Juniper Junos `commit confirmed` only, every other vendor says "not supported"); playbook actions for router Wi-Fi, reboot, port quarantine/disable and config backup | `041` | `config-backup.md`, `playbooks.md` |
+| Fleet | Compliance evidence on Windows (Security Center, Defender, BitLocker, Windows Update), Linux (ufw/firewalld/nft, cryptsetup, apt/dnf/yum/zypper) and macOS (socketfilterfw/pfctl, FileVault, SIP, Gatekeeper, softwareupdate); notices, lock and log-off; upload overwrite guard | `032` skipped | `fleet-compliance.md` |
+| Fleet | Agent long poll woken by `pg_notify`; WebSocket remote desktop (Go RFC 6455 client, HTTP fallback); consent dialog with a 60 s timeout and a session banner; Windows service plus a user-session helper; several monitors, text clipboard, Wayland portal, macOS input; `fleet_sessions` history | `033`, `034` | `fleet-pro.md` |
+| All | Rename LAN Detective → Nigafiy: product names, Go modules, binaries (`nigafiy-sensor`, `nigafiy-agent`), User-Agents, logo; wire and stored identifiers kept on purpose (`pnpm check:brand` guards the rest); the old desktop profile and installer identity are kept so an upgrade does not orphan data | — | `docs/architecture/naming.md` |
+| All | Browser walk of every signed-in page (34 pages plus 16 detail screens opened on records the test creates through the real API) in English (light) and Arabic (RTL, dark); DHCP persist test race fixed | — | `apps/web/e2e` |
+
+**Final gate (2026-11-24, branch `worktree-final-check` on top of `3c190b5`):** `pnpm typecheck` exit 0; `pnpm check:brand` exit 0; `go vet` and `go test ./...` pass in the Sensor, Agent and engine modules; API suite (`NIGAFIY_TEST_PG_PORT=5489`) 46 files, 337 passed, 9 skipped, 0 failed. The skips are 5 pg_dump tests (no PostgreSQL client tools here), 1 real-Redis test and 3 real-agent tests that need `pnpm build:agent` first. After building the agent, those 3 passed in 10 of 11 runs: the one failure was the remote-desktop stop call on the very first launch of the freshly built exe, and it did not come back in 10 more runs (cause not found). `pnpm build` passes. `pnpm test:web` 8/8 in 6 minutes: every old URL redirects, every signed-in page and detail screen opens in English (light) and Arabic (RTL, dark) with no page error, error boundary or CSP report, and the old product name appears nowhere on screen.
+
+## Real hardware versus tests only (2026-11-24)
+
+"Real" means it ran against real hardware or a real operating system here. "Tests" means unit or integration tests with protocol doubles, fixtures or loopback only. Nothing in the "tests" column has been seen working on a real network.
+
+| Feature | Real | Tests only |
+| --- | --- | --- |
+| Discovery (ICMP, neighbour table, OUI, passive DHCP names) | Swept 192.168.1.0/24 (7–8 devices) | — |
+| mDNS / SSDP / NetBIOS identification | Ran; no phone answered | Parsers and rules |
+| IPv6 discovery | — | Neighbour table parser; ICMPv6 only to `::1` |
+| ICMP / TCP / DNS checks | Gateway, internet, DNS on the real LAN | — |
+| HTTP, TLS-expiry, SNMP-OID checks | — | Local test servers |
+| Incidents, Doctor, Time Machine | — (no real outage happened) | Test telemetry |
+| SNMP switch reading, port control, CDP/MNDP | — (no SNMP hardware) | `snmp-sim`, byte fixtures |
+| Router control, Zyxel VMG3625-T50B | Block/unblock, rename, reserve, port forward, guest Wi-Fi via the UI | Reboot never run |
+| Router control, the other 15 drivers | — | Pinned-TLS fake servers per driver |
+| DNS access control | Collector answered on loopback | Real LAN clients never pointed at it |
+| Smart checks (rogue DHCP, UPnP, Wi-Fi, banners) | "Run now" on the real LAN returned ok | — |
+| Config backup, sanitization, Junos restore | — | Fake SSH and fixtures |
+| Playbooks | — | API tests |
+| SSO (OIDC, SAML) | — | In-test identity providers |
+| LAN TLS and pinning | Loopback | Second computer never used |
+| Endpoint agent on Windows (inventory, files, processes, commands, screen capture) | Real `endpoint-agent.exe` against the API | — |
+| Consent dialog | Real 60 s timeout on Windows | — |
+| Remote mouse, keyboard, clipboard, several monitors | — | Unit tests |
+| Agent as a LocalSystem service with the session helper | — (needs an elevated install) | Unit tests |
+| Agent on Linux and macOS, their compliance and remote desktop | — | Cross-compiled, parser tests |
+| Engine in local mode, packaged desktop app | Packaged run on scratch ports and profile | — |
+| Engine as a Windows service | — | Go tests |
+| Update download and install | — | Signed test manifests |
+| Agent installer, MSI build, upgrade over a real LAN Detective install | — | Never run |
+| Backup/restore with pg_dump, Redis rate limits | — | Skipped (no client tools, no Redis) |
+| Notifications to Telegram, Slack, Discord, ntfy | — | Local test servers |
+| GitHub CI workflow | — | Never pushed |
+
 ## Verified in the development environment
 
 **Baseline 2026-11-21 (before the Nigafiy restructuring):** `pnpm typecheck` clean; `pnpm test` 21 files / 161 tests passing; `pnpm test:collector`, `pnpm test:agent` and `go vet` clean; web production build; desktop unit tests (11); `pnpm run pack` in `apps/desktop`, and the unpacked app run with a scratch `--user-data-dir --local-smoke`: database, API and web started on 127.0.0.1, account created and signed in, collector enrolled and swept 192.168.1.0/24 (7 devices), clean quit. Fixed on the way: the packaged API could not start (`@lan-detective/shared-types` runtime values are now compiled into the bundle by `bundle-backend.mjs`), a knowledge candidate's detail page did not pick up later incident comments, and two stale test expectations.
@@ -147,7 +197,7 @@ feeds it invented telemetry through the real API. It is for looking at the UI on
 - Time Machine check state is the last recorded transition before the moment; switch/router config snapshots and diffs live separately in `/config-backup` (`022`).
 - Period comparison of periods older than ~25 days uses hourly roll-ups (coarser).
 - Device status granularity equals the discovery interval; devices on routed subnets are IP-identified.
-- Notifications: webhooks, SMTP email, Telegram, Slack, Discord, and ntfy Push, with scheduled maintenance windows (`019_maintenance.sql`) and alert escalation policies (`030_notifications_channels_and_escalation.sql`). No external SSO (SAML/OIDC) or billing.
+- Notifications: webhooks, SMTP email, Telegram, Slack, Discord, and ntfy Push, with scheduled maintenance windows (`019_maintenance.sql`) and alert escalation policies (`030_notifications_channels_and_escalation.sql`). External sign-in through OIDC and SAML 2.0 exists since `040` (tested only against in-test identity providers). No billing.
 - Endpoint management covers Windows, Linux and macOS computers with the agent. Phones and tablets are not managed (no iOS/Android support); they still appear as discovered network devices. On macOS, remote desktop is view-only and the agent's Linux/macOS builds have only been cross-compiled and unit-tested, not run on those systems.
 - AI is deliberately not used anywhere (the optional AI assistant added in `026` was removed in `027` per owner decision). All diagnoses, insights, knowledge suggestions, and playbooks are deterministic and evidence-backed.
 
@@ -177,14 +227,36 @@ six phases. Status against it:
 | 5 Infrastructure control & security | router / switch / firewall control, VLAN operations, quarantine, security intelligence, config backup, automation | **Built.** DNS-based access control (`005`), smart-default automation (`016`), multi-vendor router control (`017`: 16 drivers — Huawei VDSL/Fiber, Huawei 4G/5G CPE, ZTE ZXHN, TP-Link Archer, Tenda, D-Link, ASUS, Zyxel, MikroTik, UniFi, Omada, OpenWrt, OPNsense, pfSense, FortiGate, Cisco IOS XE), switch port write controls & VLAN/quarantine (`021`), SSH config backup & diff (`022`), smart security checks (`023`), and approval-gated playbooks (`024`) are built and tested |
 | 6 Intelligence | knowledge memory, incident replay, digital twin, reports, multi-site / MSP | **Built (AI removed per owner decision).** Incident replay, multi-tenant data model, trigram global search (`020`), printable summary reports (`/reports`), knowledge memory (`025`), digital twin impact analysis (`/impact`), and multi-site MSP portfolio (`/portfolio`) are built |
 
-**Next, in order:**
-1. **Desktop app first (owner, 2026-11-21):** Track C Milestones 2 (rename and brand), 3 (engine service + Hub) and 4 (programs).
-2. Then finish Track B hardening (B1 done except the `master` branch clean-up, which needs the owner's OK; B2 done except the DNS Access Control protection mode item and the pg_dump/Redis verification noted above).
-3. The remaining Nigafiy milestones (4b Fleet Pro, 5 installers, 6 parity audit; the website, 7, is on hold) — see `docs/superpowers/plans/2026-11-21-nigafiy-hardening-and-routers.md`.
+Milestones 2, 3 and 4, the spec gap work and the parity audit (2026-11-23) are done. The audit found no rule breach in the code (no AI, no simulated data in product paths, no button without a handler, no TODO); this file was the one place that contradicted the code, fixed here.
+
+**Open gaps, most important first (owner picks the order):**
+1. **Fleet Pro waves 1–3** (plan `docs/superpowers/plans/2026-11-22-nigafiy-m4b-fleet-pro.md`, migrations `035`–`037`): permission profiles and group access policy, unattended and approval flows, privacy screen, session recording, remote shell, scripts and jobs, patch install, Quick Support, tray app, address book, multi-operator, audio.
+2. **Router controls are uneven across the 16 drivers** (each missing control answers "not supported" honestly): rename missing on 8, Wi-Fi on 4, rate limit on 11, schedule on 12; Cisco IOS XE is read-only by design.
+
+   | Driver | Rename | Wi-Fi | Reserv. | Port fwd | Reboot | Rate limit | Schedule |
+   | --- | --- | --- | --- | --- | --- | --- | --- |
+   | asus, huawei, unifi | Y | Y | Y | Y | Y | – | – |
+   | mikrotik | Y | Y | Y | Y | Y | Y | Y |
+   | omada | Y | Y | Y | Y | Y | Y | – |
+   | openwrt | Y | Y | Y | Y | Y | – | Y |
+   | zyxel | Y | Y | Y | Y | Y | upload only | Y |
+   | tenda | – | Y | Y | Y | Y | Y | – |
+   | dlink, tplink, zte | – | Y | Y | Y | Y | – | – |
+   | huaweilte | – | Y | – | Y | Y | – | – |
+   | fortigate, pfsense | – | – | Y | Y | Y | – | – |
+   | opnsense | – | – | Y | – | Y | – | – |
+   | ciscoxe | – | – | – | – | – | – | – |
+3. **Config restore** covers Juniper Junos only.
+4. **Installers:** no installer step that finds and imports a `C:\Program Files\LAN Detective` install, no per-program packages or bundle installer, MSI never built (needs WiX), agent installer never run and has no in-place upgrade.
+5. Remote desktop sends JPEG only (no pure-Go WebP encoder).
+6. Older features (DNS access, IPAM, monitoring, Doctor) have no `docs/features` page; they are described here and in `docs/architecture`.
+7. Website (`apps/site`): on hold by the owner.
+
+Everything in the "Tests only" column above still needs a run on real hardware, which only the owner can do on their own network. Pushing to GitHub (CI never ran) and the `master` clean-up wait for the owner.
 
 **Decisions the brief forces** (to make when Phases 3–4 start):
 - `docs/security/model.md` states that remote command execution is deliberately absent and that the collector protocol cannot carry one. That stays true for the network collector. Remote administration goes through the separate endpoint agent, installed and enrolled per machine, with its own protocol, permissions and audit trail.
-- The API is currently something the collector dials out to; the desktop app runs it on loopback only. Serving agents on other machines means listening on the LAN interface with TLS, which does not exist yet.
+- The API is something the collector and agents dial out to. Serving them from other machines needs a LAN listener with TLS: built 2026-11-22 (`infrastructure/lan-tls.ts`, a built-in CA whose fingerprint the Sensor and Agent pin; `docs/features/lan-tls.md`), so far run on loopback only.
 - Repository layout: `collectors/lan-collector` stays; the endpoint agent goes to `agents/endpoint-agent`. Moving existing apps to match the brief's suggested tree would churn every import for no functional gain.
 
 Each module appears in the navigation only when it is implemented.
