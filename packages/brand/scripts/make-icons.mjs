@@ -47,6 +47,28 @@ export function programSvg(id, size = 256) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><title>${p.name}</title><rect width="100" height="100" rx="25" fill="${p.accent}"/><path d="${p.glyph}" transform="translate(${offset} ${offset}) scale(${scale.toFixed(4)})" fill="none" stroke="#fff" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round"/></svg>\n`;
 }
 
+/**
+ * SVG path data from opentype.js path commands. Not Path.toPathData: in opentype.js 1.3.x it writes
+ * "NaN" for some coordinates (73.00000000000001 in the first "i" of the wordmark), which made the
+ * browser drop everything after the "n".
+ */
+export function pathData(commands) {
+  const n = (v) => {
+    if (!Number.isFinite(v)) throw new Error(`wordmark outline: bad coordinate ${v}`);
+    const t = (Math.round(v * 100) / 100).toFixed(2).replace(/\.?0+$/, '');
+    return t === '-0' ? '0' : t;
+  };
+  return commands
+    .map((c) => {
+      if (c.type === 'M' || c.type === 'L') return `${c.type}${n(c.x)} ${n(c.y)}`;
+      if (c.type === 'Q') return `Q${n(c.x1)} ${n(c.y1)} ${n(c.x)} ${n(c.y)}`;
+      if (c.type === 'C') return `C${n(c.x1)} ${n(c.y1)} ${n(c.x2)} ${n(c.y2)} ${n(c.x)} ${n(c.y)}`;
+      if (c.type === 'Z') return 'Z';
+      throw new Error(`wordmark outline: unknown command ${c.type}`);
+    })
+    .join('');
+}
+
 function wordmarkOutline() {
   const fontFile = require.resolve('@fontsource/poppins/files/poppins-latin-600-normal.woff');
   const buf = readFileSync(fontFile);
@@ -54,7 +76,7 @@ function wordmarkOutline() {
   const fontSize = 100;
   const text = font.getPath('nigafiy', 0, 0, fontSize);
   const box = text.getBoundingBox();
-  return { d: text.toPathData(2), x: box.x1, y: box.y1, w: box.x2 - box.x1, h: box.y2 - box.y1, fontSize };
+  return { d: pathData(text.commands), x: box.x1, y: box.y1, w: box.x2 - box.x1, h: box.y2 - box.y1, fontSize };
 }
 
 export function wordmarkSvg(color = BRAND.wordmark) {

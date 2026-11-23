@@ -46,5 +46,13 @@ test('the SVGs carry no font dependency and no raster image', () => {
     const svg = readFileSync(path.join(root, 'svg', `${name}.svg`), 'utf8');
     assert.match(svg, /^<svg /, name);
     assert.doesNotMatch(svg, /<text|<image|font-family|@font-face/, name);
+    assert.doesNotMatch(svg, /NaN|Infinity/, `${name}: every coordinate is a number`);
   }
+});
+
+test('the generated wordmark data is complete (every coordinate a number)', () => {
+  const ts = readFileSync(path.join(root, 'src', 'wordmark.ts'), 'utf8');
+  assert.doesNotMatch(ts, /NaN|Infinity/);
+  // Seven letters: n, i (stem + dot), g (2), a (2), f, i (stem + dot), y -> at least 11 subpaths.
+  assert.ok((ts.match(/M/g) ?? []).length >= 11);
 });
