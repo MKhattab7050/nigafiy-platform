@@ -1,9 +1,10 @@
 'use client';
 
-import type { EngineChildState, PlatformEngineResponse, PlatformUpdatesResponse } from '@lan-detective/shared-types/programs';
+import type { EngineChildState, PlatformEngineResponse, PlatformUpdateInstallStatus, PlatformUpdatesResponse } from '@lan-detective/shared-types/programs';
 import { useState } from 'react';
-import { Async, Badge, Button, Card, SkeletonBlock, type Tone } from '@/components/ui';
-import { api } from '@/lib/api';
+import { Async, Badge, Button, Card, ErrorNote, Modal, SkeletonBlock, type Tone } from '@/components/ui';
+import { type ApiError, api } from '@/lib/api';
+import { ltr } from '@/lib/localize/bidi';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
@@ -97,6 +98,123 @@ function UpdateStatus({ data, onCheck, checking }: { data: PlatformUpdatesRespon
   );
 }
 
+const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * Download, verify and install a newer signed release. Download and install are separate steps,
+ * both by an admin; the install is confirmed in a dialog and never happens on its own.
+ */
+function UpdateInstall({ latest, canAdmin }: { latest: string | null; canAdmin: boolean }) {
+  const { t, locale } = useI18n();
+  const status = useQuery<PlatformUpdateInstallStatus>('/platform/updates/install', [], 5000);
+  const [busy, setBusy] = useState<'download' | 'install' | null>(null);
+  const [error, setError] = useState<ApiError | Error | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [requested, setRequested] = useState<string | null>(null);
+
+  const run = async (what: 'download' | 'install', fn: () => Promise<unknown>) => {
+    setBusy(what);
+    setError(null);
+    try {
+      await fn();
+      status.reload();
+      return true;
+    } catch (err) {
+      setError(err as ApiError);
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Async query={status} skeleton={<SkeletonBlock lines={2} />}>
+      {(s) => {
+        const dl = s.download;
+        const staged = s.staged;
+        const last = s.engine?.last ?? null;
+        return (
+          <div className="mt-3 space-y-2 rounded-[8px] border border-line p-3">
+            {dl.state === 'downloading' && (
+              <p className="text-[13px] text-fg">
+                {fill(t('platform.install.downloading'), { v: ltr(dl.version), got: ltr(mb(dl.received)), total: ltr(mb(dl.total)) })}
+              </p>
+            )}
+            {dl.state === 'failed' && (
+              <p className="break-words text-[13px] text-warn" dir="auto">
+                {fill(t('platform.install.downloadFailed'), { v: ltr(dl.version), e: dl.error })}
+              </p>
+            )}
+            {staged && (
+              <div className="space-y-1">
+                <p className="text-[13px] text-fg">{fill(t('platform.install.staged'), { v: ltr(staged.version), t: relativeTime(staged.staged_at, locale) })}</p>
+                <p className="break-all text-xs text-muted">
+                  SHA-256 <span dir="ltr">{staged.sha256}</span>
+                </p>
+                <p className="text-xs text-muted">
+                  {staged.signature.checked ? fill(t('platform.install.signerOk'), { tp: ltr(staged.signature.thumbprint ?? '') }) : t('platform.install.signerNotPinned')}
+                </p>
+              </div>
+            )}
+            {s.engine?.state === 'applying' && <p className="text-[13px] text-fg">{fill(t('platform.install.applying'), { v: ltr(s.engine.version ?? '') })}</p>}
+            {requested && s.engine?.state !== 'applying' && <p className="text-[13px] text-fg">{fill(t('platform.install.requested'), { v: ltr(requested) })}</p>}
+            {last && (
+              <p className={last.ok ? 'text-xs text-muted' : 'break-words text-xs text-warn'} dir="auto">
+                {last.ok
+                  ? fill(t('platform.install.lastOk'), { v: ltr(last.version), t: relativeTime(last.finished_at, locale) })
+                  : fill(t('platform.install.lastFailed'), { v: ltr(last.version), e: last.error ?? '' })}
+              </p>
+            )}
+            {!s.engine && staged && <p className="text-xs text-muted">{t('platform.install.noEngine')}</p>}
+            {error && !confirming && <ErrorNote error={error} />}
+            {canAdmin ? (
+              <div className="flex flex-wrap gap-2">
+                {latest && (!staged || staged.version !== latest) && (
+                  <Button size="sm" busy={busy === 'download'} disabled={dl.state === 'downloading'} onClick={() => void run('download', () => api('/platform/updates/download', { method: 'POST' }))}>
+                    {fill(t('platform.install.download'), { v: ltr(latest) })}
+                  </Button>
+                )}
+                {staged && (
+                  <Button size="sm" variant="primary" disabled={!s.engine || s.engine.state === 'applying'} onClick={() => setConfirming(true)}>
+                    {fill(t('platform.install.install'), { v: ltr(staged.version) })}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted">{t('platform.install.adminOnly')}</p>
+            )}
+            {confirming && staged && (
+              <Modal title={fill(t('platform.install.confirmTitle'), { v: ltr(staged.version) })} onClose={() => setConfirming(false)}>
+                <div className="space-y-4">
+                  <p className="text-[13px] leading-relaxed text-fg">{t('platform.install.confirmBody')}</p>
+                  {error && <ErrorNote error={error} />}
+                  <div className="flex justify-end gap-2">
+                    <Button onClick={() => setConfirming(false)}>{t('common.cancel')}</Button>
+                    <Button
+                      variant="primary"
+                      busy={busy === 'install'}
+                      onClick={() =>
+                        void run('install', () => api('/platform/updates/install', { method: 'POST', body: { version: staged.version, confirm: true } })).then((ok) => {
+                          if (ok) {
+                            setRequested(staged.version);
+                            setConfirming(false);
+                          }
+                        })
+                      }
+                    >
+                      {t('platform.install.confirm')}
+                    </Button>
+                  </div>
+                </div>
+              </Modal>
+            )}
+          </div>
+        );
+      }}
+    </Async>
+  );
+}
+
 /** Hub home: the engine's health (each supervised service) and the update check. */
 export function EngineCard() {
   const { t } = useI18n();
@@ -123,7 +241,12 @@ export function EngineCard() {
         </Async>
         <div className="border-t border-line pt-3">
           <Async query={updates} skeleton={<SkeletonBlock lines={2} />}>
-            {(data) => <UpdateStatus data={data} checking={checking} onCheck={can('admin') ? checkNow : undefined} />}
+            {(data) => (
+              <>
+                <UpdateStatus data={data} checking={checking} onCheck={can('admin') ? checkNow : undefined} />
+                {data.configured && data.ok && data.update_available && <UpdateInstall latest={data.latest_version} canAdmin={can('admin')} />}
+              </>
+            )}
           </Async>
         </div>
       </div>

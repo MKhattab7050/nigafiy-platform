@@ -8,10 +8,10 @@ import { logger } from '../../infrastructure/logger.ts';
  * Update check against a signed release manifest (spec §6.4).
  *
  * Wire format: `{ "payload": base64(JSON), "signature": base64(Ed25519 signature of the payload bytes) }`.
- * The payload names the release and its components with size and SHA-256 (the Hub's installer
- * verifies those on download). Nothing here downloads or installs: it only answers "is there a
- * newer signed release?". Without a source and a key the answer is "update checks are off", never
- * "you are up to date".
+ * The payload names the release and its components with size and SHA-256. This file answers "is
+ * there a newer signed release?"; `install.ts` downloads, verifies and stages a component of a
+ * verified manifest and hands it to the engine on an operator's confirmation. Without a source and a
+ * key the answer is "update checks are off", never "you are up to date".
  */
 const MAX_MANIFEST_BYTES = 256 * 1024;
 const CACHE_MS = 6 * 3600_000;
@@ -58,52 +58,59 @@ function publicKeyFrom(base64Raw: string) {
   return createPublicKey({ key: der, format: 'der', type: 'spki' });
 }
 
-export async function checkForUpdates(source: UpdateSource, now: Date = new Date()): Promise<PlatformUpdatesResponse> {
-  const current_version = source.currentVersion;
-  if (!source.manifestUrl) return { configured: false, reason: 'no_source', current_version };
-  if (!source.publicKey) return { configured: false, reason: 'no_key', current_version };
-  const checked_at = now.toISOString();
-  const fail = (error: 'unreachable' | 'bad_signature' | 'bad_manifest'): PlatformUpdatesResponse => ({ configured: true, current_version, checked_at, ok: false, error });
+export type ManifestPayload = z.infer<typeof manifestPayloadSchema>;
+export type ManifestError = 'unreachable' | 'bad_signature' | 'bad_manifest';
 
+/** Downloads the manifest and returns its payload only when the Ed25519 signature verifies. */
+export async function fetchVerifiedManifest(manifestUrl: string, publicKey: string): Promise<{ ok: true; payload: ManifestPayload } | { ok: false; error: ManifestError }> {
   let text: string;
   try {
-    const res = await fetch(source.manifestUrl, { signal: AbortSignal.timeout(10_000), redirect: 'follow' });
-    if (!res.ok) return fail('unreachable');
+    const res = await fetch(manifestUrl, { signal: AbortSignal.timeout(10_000), redirect: 'follow' });
+    if (!res.ok) return { ok: false, error: 'unreachable' };
     const declared = Number(res.headers.get('content-length') ?? 0);
-    if (declared > MAX_MANIFEST_BYTES) return fail('bad_manifest');
+    if (declared > MAX_MANIFEST_BYTES) return { ok: false, error: 'bad_manifest' };
     text = await res.text();
-    if (text.length > MAX_MANIFEST_BYTES) return fail('bad_manifest');
+    if (text.length > MAX_MANIFEST_BYTES) return { ok: false, error: 'bad_manifest' };
   } catch (err) {
     logger.warn({ err: (err as Error).message }, 'update manifest download failed');
-    return fail('unreachable');
+    return { ok: false, error: 'unreachable' };
   }
 
   let envelope: { payload?: unknown; signature?: unknown };
   try {
     envelope = JSON.parse(text);
   } catch {
-    return fail('bad_manifest');
+    return { ok: false, error: 'bad_manifest' };
   }
-  if (typeof envelope.payload !== 'string' || typeof envelope.signature !== 'string') return fail('bad_manifest');
+  if (typeof envelope.payload !== 'string' || typeof envelope.signature !== 'string') return { ok: false, error: 'bad_manifest' };
   const payloadBytes = Buffer.from(envelope.payload, 'base64');
   const signature = Buffer.from(envelope.signature, 'base64');
 
   let valid = false;
   try {
-    valid = verify(null, payloadBytes, publicKeyFrom(source.publicKey), signature);
+    valid = verify(null, payloadBytes, publicKeyFrom(publicKey), signature);
   } catch {
     valid = false;
   }
-  if (!valid) return fail('bad_signature');
+  if (!valid) return { ok: false, error: 'bad_signature' };
 
-  let payload: z.infer<typeof manifestPayloadSchema>;
   try {
     const parsed = manifestPayloadSchema.safeParse(JSON.parse(payloadBytes.toString('utf8')));
-    if (!parsed.success) return fail('bad_manifest');
-    payload = parsed.data;
+    if (!parsed.success) return { ok: false, error: 'bad_manifest' };
+    return { ok: true, payload: parsed.data };
   } catch {
-    return fail('bad_manifest');
+    return { ok: false, error: 'bad_manifest' };
   }
+}
+
+export async function checkForUpdates(source: UpdateSource, now: Date = new Date()): Promise<PlatformUpdatesResponse> {
+  const current_version = source.currentVersion;
+  if (!source.manifestUrl) return { configured: false, reason: 'no_source', current_version };
+  if (!source.publicKey) return { configured: false, reason: 'no_key', current_version };
+  const checked_at = now.toISOString();
+  const m = await fetchVerifiedManifest(source.manifestUrl, source.publicKey);
+  if (!m.ok) return { configured: true, current_version, checked_at, ok: false, error: m.error };
+  const payload = m.payload;
   return {
     configured: true,
     current_version,

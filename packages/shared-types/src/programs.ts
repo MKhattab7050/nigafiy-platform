@@ -145,3 +145,37 @@ export type PlatformUpdatesResponse =
       /** Download failed, the signature did not verify, or the manifest was malformed. Never shown as "up to date". */
       readonly error: 'unreachable' | 'bad_signature' | 'bad_manifest';
     };
+
+/** Authenticode result of a staged installer; `checked: false` when no publisher is pinned. */
+export interface PlatformUpdateSignature {
+  readonly status: string;
+  readonly thumbprint: string | null;
+  readonly checked: boolean;
+}
+
+/** GET /platform/updates/install: download progress, the staged update and the engine's last installation. */
+export interface PlatformUpdateInstallStatus {
+  readonly configured: boolean;
+  /** Manifest component this install updates from (NIGAFIY_UPDATE_COMPONENT). */
+  readonly component: string;
+  /** A publisher certificate thumbprint is configured, so the installer's Authenticode signer is checked. */
+  readonly publisher_pinned: boolean;
+  readonly download:
+    | { readonly state: 'idle' }
+    | { readonly state: 'downloading'; readonly version: string; readonly received: number; readonly total: number; readonly started_at: string }
+    | { readonly state: 'failed'; readonly version: string; readonly error: string; readonly at: string };
+  readonly staged: {
+    readonly version: string;
+    readonly size: number;
+    readonly sha256: string;
+    readonly signature: PlatformUpdateSignature;
+    readonly staged_at: string;
+    readonly staged_by: string;
+  } | null;
+  /** null: no engine answered (source checkout, or the engine is restarting). */
+  readonly engine: {
+    readonly state: 'idle' | 'applying';
+    readonly version: string | null;
+    readonly last: { readonly version: string; readonly ok: boolean; readonly error: string | null; readonly finished_at: string | null; readonly restarted: boolean } | null;
+  } | null;
+}

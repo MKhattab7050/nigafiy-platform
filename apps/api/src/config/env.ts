@@ -83,6 +83,20 @@ const schema = z.object({
   NIGAFIY_UPDATE_MANIFEST_URL: z.preprocess((v) => (v === '' ? undefined : v), z.url({ protocol: /^https?$/ }).optional()),
   /** Ed25519 public key (base64 of the 32 raw bytes) that release manifests must be signed with. */
   NIGAFIY_UPDATE_PUBLIC_KEY: optionalNonEmpty,
+  /** The manifest component this install updates itself from (the desktop app's NSIS installer). */
+  NIGAFIY_UPDATE_COMPONENT: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/).default('desktop-windows-x64'),
+  /**
+   * SHA-1 thumbprint of the certificate update installers must be Authenticode-signed with
+   * (docs/operations/updates.md). Unset: only the SHA-256 from the signed manifest is checked.
+   */
+  NIGAFIY_UPDATE_PUBLISHER_THUMBPRINT: z.preprocess(
+    (v) => (typeof v === 'string' ? v.replace(/[\s:]/g, '').toUpperCase() || undefined : v),
+    z.string().regex(/^[0-9A-F]{40}$/, 'must be a 40-character SHA-1 thumbprint').optional(),
+  ),
+  /** Largest update download accepted, in bytes (default 1.5 GiB). */
+  NIGAFIY_UPDATE_MAX_BYTES: z.coerce.number().int().min(1024).max(8 * 1024 ** 3).default(1.5 * 1024 ** 3),
+  /** The data folder shared with the engine (set by the engine and the desktop app). Updates are staged in <LD_DATA_DIR>/updates. */
+  LD_DATA_DIR: optionalNonEmpty,
   /**
    * Which Nigafiy programs this install offers (GET /platform/programs): "all" (default: one desktop
    * install carries every program until Milestone 5 ships one installer per program) or a comma list
