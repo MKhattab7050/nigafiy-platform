@@ -2,7 +2,7 @@
 
 import { History } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { NetworkEvent } from '@lan-detective/shared-types';
+import type { NetworkEvent } from '@nigafiy/shared-types';
 import { Async, Button, Card, EmptyState, ErrorNote, PageHeader, Segmented, Select } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

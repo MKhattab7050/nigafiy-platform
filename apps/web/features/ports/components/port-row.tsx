@@ -1,6 +1,6 @@
 'use client';
 
-import type { SwitchPort } from '@lan-detective/shared-types';
+import type { SwitchPort } from '@nigafiy/shared-types';
 import { ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui';

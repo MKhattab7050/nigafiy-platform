@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ToolRun } from '@lan-detective/shared-types';
+import type { ToolRun } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';

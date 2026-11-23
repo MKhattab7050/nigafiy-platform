@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CheckRole, CheckState, DeviceType, SummaryReport } from '@lan-detective/shared-types';
+import type { CheckRole, CheckState, DeviceType, SummaryReport } from '@nigafiy/shared-types';
 import { auth, notFound, parse } from '../../common/http.ts';
 import { systemPool, withTenant } from '../../infrastructure/db.ts';
 import { SCOPES, type ScopeRow, loadFacts, summarize } from '../ipam/facts.ts';

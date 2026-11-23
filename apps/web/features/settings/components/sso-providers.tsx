@@ -2,7 +2,7 @@
 
 import { KeyRound, Plus } from 'lucide-react';
 import { useState } from 'react';
-import type { IdentityProvider, IdentityProviderKind, IdentityProviderRoleMapping, SsoAssignableRole } from '@lan-detective/shared-types';
+import type { IdentityProvider, IdentityProviderKind, IdentityProviderRoleMapping, SsoAssignableRole } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Field, Input, Modal, Select, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';

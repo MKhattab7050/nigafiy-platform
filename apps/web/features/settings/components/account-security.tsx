@@ -2,7 +2,7 @@
 
 import { KeyRound, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import type { MfaConfirmResponse, MfaSetupResponse } from '@lan-detective/shared-types';
+import type { MfaConfirmResponse, MfaSetupResponse } from '@nigafiy/shared-types';
 import { Badge, Button, Card, CopyBlock, ErrorNote, Field, Input, Modal, Notice } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

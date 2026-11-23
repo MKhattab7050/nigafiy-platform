@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { LoginResponse, MfaConfirmResponse, MfaSetupResponse } from '@lan-detective/shared-types';
+import type { LoginResponse, MfaConfirmResponse, MfaSetupResponse } from '@nigafiy/shared-types';
 import { Button, CopyBlock, ErrorNote, Field, Input } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';

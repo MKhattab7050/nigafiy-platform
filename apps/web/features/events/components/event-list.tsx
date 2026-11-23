@@ -1,6 +1,6 @@
 'use client';
 
-import type { NetworkEvent } from '@lan-detective/shared-types';
+import type { NetworkEvent } from '@nigafiy/shared-types';
 import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
 import { DeviceLink } from '@/components/device-link';

@@ -3,7 +3,7 @@
 import { Gauge } from 'lucide-react';
 import clsx from 'clsx';
 import { Suspense } from 'react';
-import type { InsightsReport } from '@lan-detective/shared-types';
+import type { InsightsReport } from '@nigafiy/shared-types';
 import { FeatureBoundary } from '@/components/error-boundary';
 import { PageHeader, SkeletonBlock } from '@/components/ui';
 import { EngineCard, ProgramsStrip } from '@/features/platform';

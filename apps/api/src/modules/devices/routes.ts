@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { DEVICE_TRUSTS, type Device, type DeviceDetail, type DeviceMonitorBulk, type NetworkEvent, type Paginated } from '@lan-detective/shared-types';
+import { DEVICE_TRUSTS, type Device, type DeviceDetail, type DeviceMonitorBulk, type NetworkEvent, type Paginated } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';

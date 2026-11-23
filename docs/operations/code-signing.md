@@ -24,7 +24,7 @@ can be its own publisher:
 
    ```powershell
    $env:NIGAFIY_SIGN_THUMBPRINT = Get-Content .data\signing\thumbprint.txt
-   pnpm --filter @lan-detective/desktop dist
+   pnpm --filter @nigafiy/desktop dist
    ```
 
 3. **Trust it on each company computer**, as administrator:

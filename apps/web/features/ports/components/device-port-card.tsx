@@ -1,6 +1,6 @@
 'use client';
 
-import type { DevicePort } from '@lan-detective/shared-types';
+import type { DevicePort } from '@nigafiy/shared-types';
 import Link from 'next/link';
 import { Card, Spinner } from '@/components/ui';
 import { useQuery } from '@/lib/app';

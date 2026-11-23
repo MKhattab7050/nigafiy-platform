@@ -1,8 +1,8 @@
 'use client';
 
-import type { DeviceDetail, DeviceType, EndpointSummary } from '@lan-detective/shared-types';
-import type { ProgramId } from '@lan-detective/shared-types/programs';
-import type { DeviceAction } from '@lan-detective/shared-types/routes';
+import type { DeviceDetail, DeviceType, EndpointSummary } from '@nigafiy/shared-types';
+import type { ProgramId } from '@nigafiy/shared-types/programs';
+import type { DeviceAction } from '@nigafiy/shared-types/routes';
 import clsx from 'clsx';
 import {
   Activity,

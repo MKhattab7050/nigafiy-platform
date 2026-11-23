@@ -1,4 +1,4 @@
-import type { AutomationItem } from '@lan-detective/shared-types';
+import type { AutomationItem } from '@nigafiy/shared-types';
 import type { Key } from '@/lib/i18n';
 
 type T = (key: Key) => string;

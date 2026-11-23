@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Site } from '@lan-detective/shared-types';
+import type { Site } from '@nigafiy/shared-types';
 import { Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';

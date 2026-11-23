@@ -1,4 +1,4 @@
-import { PROGRAM_IDS, PROGRAMS } from '@lan-detective/shared-types/programs';
+import { PROGRAM_IDS, PROGRAMS } from '@nigafiy/shared-types/programs';
 import {
   currentHref,
   devicePath,
@@ -10,7 +10,7 @@ import {
   programForPath,
   ROUTE_PROGRAM_IDS,
   UNMOVED_ROUTES,
-} from '@lan-detective/shared-types/routes';
+} from '@nigafiy/shared-types/routes';
 import { describe, expect, it } from 'vitest';
 
 /** What the web proxy does with a request: path from the table, query kept, an action folded in. */

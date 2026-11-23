@@ -2,7 +2,7 @@
 
 import { Cable } from 'lucide-react';
 import Link from 'next/link';
-import type { SwitchSummary } from '@lan-detective/shared-types';
+import type { SwitchSummary } from '@nigafiy/shared-types';
 import { ProportionBar } from '@/components/charts';
 import { Async, Badge } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';

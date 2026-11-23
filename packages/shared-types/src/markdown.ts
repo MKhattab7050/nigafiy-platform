@@ -9,8 +9,8 @@
  * Supported: # / ## / ### headings, paragraphs, "- " / "* " bullet lists, "1. " numbered lists,
  * "> " quotes, ``` fenced code blocks, **bold**, *italic* / _italic_, `code`, [text](url).
  *
- * Lives in @lan-detective/shared-types (an ES module package) so both the web view and the API
- * test suite compile it: imported as "@lan-detective/shared-types/markdown". It has no imports.
+ * Lives in @nigafiy/shared-types (an ES module package) so both the web view and the API
+ * test suite compile it: imported as "@nigafiy/shared-types/markdown". It has no imports.
  */
 
 export type Inline =

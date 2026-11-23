@@ -1,6 +1,6 @@
 'use client';
 
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { AlertTriangle, Router, ShieldAlert, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { Badge, Card } from '@/components/ui';

@@ -1,6 +1,6 @@
 'use client';
 
-import type { NotificationChannel, NotificationEscalation } from '@lan-detective/shared-types';
+import type { NotificationChannel, NotificationEscalation } from '@nigafiy/shared-types';
 import { BellRing, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Async, Badge, Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';

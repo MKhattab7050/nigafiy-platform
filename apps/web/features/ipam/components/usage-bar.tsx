@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamAddress } from '@lan-detective/shared-types';
+import type { IpamAddress } from '@nigafiy/shared-types';
 import type { Tone } from '@/components/ui';
 
 export const STATE_TONE: Record<IpamAddress['state'], Tone> = { online: 'ok', offline: 'idle', unknown: 'idle', documented: 'info', infrastructure: 'idle' };

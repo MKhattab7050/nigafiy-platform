@@ -14,7 +14,7 @@ import {
   DEVICE_TYPES,
   type Topology,
   type TopologyNode,
-} from "@lan-detective/shared-types";
+} from "@nigafiy/shared-types";
 import { Button, Card, Dot, Input, Select, statusTone } from "@/components/ui";
 import { DEVICE_TYPE_LABEL } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";

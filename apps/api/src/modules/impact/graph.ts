@@ -18,7 +18,7 @@ import type {
   SpofEntry,
   SpofReport,
   Topology,
-} from '@lan-detective/shared-types';
+} from '@nigafiy/shared-types';
 import { cidrContains, isIPv4, isPublicAddress } from '../../common/net.ts';
 
 /**

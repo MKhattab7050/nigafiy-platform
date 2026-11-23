@@ -4,7 +4,7 @@ import { ArrowLeft, Pencil, ThumbsDown, ThumbsUp, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { KnowledgeDetail } from '@lan-detective/shared-types';
+import type { KnowledgeDetail } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, ConfidenceBadge, ErrorNote, Fact, Modal, PageHeader, SectionLabel, Tag } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

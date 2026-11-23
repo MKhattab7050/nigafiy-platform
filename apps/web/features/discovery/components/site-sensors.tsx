@@ -3,7 +3,7 @@
 import { ArrowRight, Plus, ScanSearch } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { Collector, CollectorCreated, Site } from '@lan-detective/shared-types';
+import type { Collector, CollectorCreated, Site } from '@nigafiy/shared-types';
 import { Badge, Button, ErrorNote, Field, Input } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

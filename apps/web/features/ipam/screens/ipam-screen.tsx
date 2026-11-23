@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamSubnetSummary } from '@lan-detective/shared-types';
+import type { IpamSubnetSummary } from '@nigafiy/shared-types';
 import { Hash, Network } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';

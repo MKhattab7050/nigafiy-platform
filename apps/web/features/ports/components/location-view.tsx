@@ -1,6 +1,6 @@
 'use client';
 
-import type { PortLocation } from '@lan-detective/shared-types';
+import type { PortLocation } from '@nigafiy/shared-types';
 import { Cable } from 'lucide-react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui';

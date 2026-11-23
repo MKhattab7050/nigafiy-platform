@@ -1,6 +1,6 @@
 'use client';
 
-import type { SwitchCandidate } from '@lan-detective/shared-types';
+import type { SwitchCandidate } from '@nigafiy/shared-types';
 import { Button, ErrorNote, InferredBadge, Tag } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';

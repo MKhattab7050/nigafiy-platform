@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { Play, RotateCcw, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { Collector, ToolKind, ToolRun } from '@lan-detective/shared-types';
+import type { Collector, ToolKind, ToolRun } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, EmptyState, ErrorNote, Field, Input, PageHeader, Segmented, Select } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

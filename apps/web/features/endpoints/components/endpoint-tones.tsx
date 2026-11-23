@@ -1,7 +1,7 @@
 'use client';
 
 import { Meter as KitMeter } from '@/components/charts';
-import type { EndpointComplianceStatus, EndpointSummary } from '@lan-detective/shared-types';
+import type { EndpointComplianceStatus, EndpointSummary } from '@nigafiy/shared-types';
 import type { Tone } from '@/components/ui';
 
 export function epTone(ep: EndpointSummary): Tone {

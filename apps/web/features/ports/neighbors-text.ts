@@ -1,4 +1,4 @@
-import type { NeighborProtocol } from '@lan-detective/shared-types';
+import type { NeighborProtocol } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 const en = {

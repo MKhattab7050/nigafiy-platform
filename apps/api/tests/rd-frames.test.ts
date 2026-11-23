@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { describe, expect, it } from 'vitest';
-import type { RemoteDesktopFrame } from '@lan-detective/shared-types';
+import type { RemoteDesktopFrame } from '@nigafiy/shared-types';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { RD_FRAME_CHANNEL, dropFrames, latestFrame, onFrameNotification, publishFrame, publishFramesCleared } from '../src/modules/endpoints/remote-desktop/frames.ts';
 

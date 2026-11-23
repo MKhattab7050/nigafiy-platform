@@ -1,5 +1,5 @@
 import type { Edge } from "@xyflow/react";
-import type { Topology, TopologyNode } from "@lan-detective/shared-types";
+import type { Topology, TopologyNode } from "@nigafiy/shared-types";
 import {
   CELL_W,
   CELL_H,

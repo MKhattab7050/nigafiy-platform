@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { Button, Card, ErrorNote, Field, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';

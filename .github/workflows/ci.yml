@@ -68,10 +68,10 @@ jobs:
         run: pnpm test
 
       - name: Desktop tests
-        run: pnpm --filter @lan-detective/desktop test
+        run: pnpm --filter @nigafiy/desktop test
 
       - name: Web production build
-        run: pnpm --filter @lan-detective/web build
+        run: pnpm --filter @nigafiy/web build
 
       - name: Web browser smoke tests (EN + AR/RTL, CSP)
         run: pnpm test:web

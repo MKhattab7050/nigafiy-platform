@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { systemPool, withTenant } from '../src/infrastructure/db.ts';
 import { captureCandidates } from '../src/modules/knowledge/capture.ts';
 import { type RankCandidate, type RankContext, rankEntries, scoreEntry, textQuery } from '../src/modules/knowledge/ranking.ts';
-import { markdownToText, parseMarkdown, safeHref } from '@lan-detective/shared-types/markdown';
+import { markdownToText, parseMarkdown, safeHref } from '@nigafiy/shared-types/markdown';
 import { app, CSRF, newAccount, setRole, type TestAccount } from './helpers.ts';
 
 // ── fixtures (real rows in the throw-away database; nothing is mocked) ──

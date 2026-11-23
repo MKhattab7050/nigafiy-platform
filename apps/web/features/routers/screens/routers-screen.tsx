@@ -4,7 +4,7 @@ import { Pencil, Plus, RefreshCw, Router, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { Collector } from '@lan-detective/shared-types';
+import type { Collector } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, DataTable, EmptyState, PageHeader, SkeletonBlock } from '@/components/ui';
 import { api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

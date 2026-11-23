@@ -1,6 +1,6 @@
 'use client';
 
-import type { ToolHop, ToolOpenPort, ToolRun } from '@lan-detective/shared-types';
+import type { ToolHop, ToolOpenPort, ToolRun } from '@nigafiy/shared-types';
 import { Badge, Fact, Spinner } from '@/components/ui';
 import { ms, pct } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';

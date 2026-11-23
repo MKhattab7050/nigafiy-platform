@@ -1,5 +1,5 @@
 {
-  "name": "@lan-detective/web",
+  "name": "@nigafiy/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,7 +11,7 @@
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts"
   },
   "dependencies": {
-    "@lan-detective/shared-types": "workspace:*",
+    "@nigafiy/shared-types": "workspace:*",
     "@nigafiy/brand": "workspace:*",
     "@xyflow/react": "^12.12.1",
     "clsx": "^2.1.1",

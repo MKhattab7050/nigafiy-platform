@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { FleetSession } from '@lan-detective/shared-types';
+import type { FleetSession } from '@nigafiy/shared-types';
 import { Async, Badge, Card, DataTable, type Tone } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useQuery } from '@/lib/app';

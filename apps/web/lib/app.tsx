@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { Me, Role, Site } from '@lan-detective/shared-types';
+import type { Me, Role, Site } from '@nigafiy/shared-types';
 import { ApiError, api } from './api';
 import { useI18n } from './i18n';
 

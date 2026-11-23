@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { AutomationItem, AutomationList, AutomationOverride } from '@lan-detective/shared-types';
+import type { AutomationItem, AutomationList, AutomationOverride } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';

@@ -8,7 +8,7 @@ const config: NextConfig = {
   ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' as const, outputFileTracingRoot: path.resolve(import.meta.dirname, '../..') } : {}),
   // NEXT_DIST_DIR: a second dev server for the same checkout (e.g. against an isolated API) needs its own build folder.
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
-  transpilePackages: ['@lan-detective/shared-types', '@nigafiy/brand'],
+  transpilePackages: ['@nigafiy/shared-types', '@nigafiy/brand'],
   poweredByHeader: false,
   turbopack: { root: path.resolve(import.meta.dirname, '../..') },
   // The browser only ever talks to this origin; /api is proxied to the API service.

@@ -1,4 +1,4 @@
-import type { Diagnosis, EvidenceItem } from '@lan-detective/shared-types';
+import type { Diagnosis, EvidenceItem } from '@nigafiy/shared-types';
 
 /**
  * Network Doctor — rules for the collector's smart checks (DHCP and Wi-Fi), same shape and the same

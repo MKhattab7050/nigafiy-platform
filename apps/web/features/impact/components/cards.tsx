@@ -2,7 +2,7 @@
 
 import { GitBranch } from 'lucide-react';
 import Link from 'next/link';
-import type { ImpactResult, SpofReport } from '@lan-detective/shared-types';
+import type { ImpactResult, SpofReport } from '@nigafiy/shared-types';
 import { Async, Card, SkeletonBlock } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useQuery } from '@/lib/app';

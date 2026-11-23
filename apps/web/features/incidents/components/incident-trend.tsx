@@ -1,6 +1,6 @@
 'use client';
 
-import type { Incident, Paginated } from '@lan-detective/shared-types';
+import type { Incident, Paginated } from '@nigafiy/shared-types';
 import { type Column, ColumnChart } from '@/components/charts';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

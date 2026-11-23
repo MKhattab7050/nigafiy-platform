@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Comparison, PeriodStats } from '@lan-detective/shared-types';
+import type { Comparison, PeriodStats } from '@nigafiy/shared-types';
 import { Async, Card, EmptyState, Field, Input, Segmented } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

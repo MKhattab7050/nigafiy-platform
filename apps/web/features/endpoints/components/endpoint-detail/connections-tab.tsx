@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { EndpointDetail } from '@lan-detective/shared-types';
+import type { EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Card, Input } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { endpointsText } from '../../text';

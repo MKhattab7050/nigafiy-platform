@@ -1,4 +1,4 @@
-import type { Severity } from '@lan-detective/shared-types';
+import type { Severity } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { correlateEvent } from '../correlation/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';

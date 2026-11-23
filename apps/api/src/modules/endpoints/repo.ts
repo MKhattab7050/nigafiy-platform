@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import type { RemoteDesktopFrame } from '@lan-detective/shared-types';
+import type { RemoteDesktopFrame } from '@nigafiy/shared-types';
 import type { z } from 'zod';
 import { randomToken, sha256 } from '../../common/crypto.ts';
 import { normalizeMac } from '../../common/net.ts';

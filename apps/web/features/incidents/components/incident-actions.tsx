@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { IncidentDetail, Member } from '@lan-detective/shared-types';
+import type { IncidentDetail, Member } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Modal, Select, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

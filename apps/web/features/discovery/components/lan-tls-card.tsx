@@ -1,6 +1,6 @@
 'use client';
 
-import type { TlsStatus } from '@lan-detective/shared-types';
+import type { TlsStatus } from '@nigafiy/shared-types';
 import { LockKeyhole } from 'lucide-react';
 import { Async, Badge, Card, CopyBlock } from '@/components/ui';
 import { useQuery } from '@/lib/app';

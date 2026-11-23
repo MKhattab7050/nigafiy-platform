@@ -1,4 +1,4 @@
-import type { Diagnosis, FaultDomain } from '@lan-detective/shared-types';
+import type { Diagnosis, FaultDomain } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { type CheckFacts, type NetworkFacts, diagnoseCollector, diagnoseDevice, diagnoseNetwork, diagnoseService, finalize } from './rules.ts';
 import { loadDhcpFacts } from './smart-facts.ts';

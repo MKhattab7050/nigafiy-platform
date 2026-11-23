@@ -2,7 +2,7 @@
 
 import { ArrowLeft, BellOff } from 'lucide-react';
 import Link from 'next/link';
-import type { DeviceDetail } from '@lan-detective/shared-types';
+import type { DeviceDetail } from '@nigafiy/shared-types';
 import { Async, Badge, Card, EmptyState, Fact, PageHeader, StatusBadge, Tag, ConfidenceBadge } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';

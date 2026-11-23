@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { NetworkScope, Site } from '@lan-detective/shared-types';
+import type { NetworkScope, Site } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { IPV6_SWEEP_MIN_PREFIX, validateScope } from '../../common/net.ts';

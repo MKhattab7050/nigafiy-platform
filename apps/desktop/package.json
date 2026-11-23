@@ -1,5 +1,5 @@
 {
-  "name": "@lan-detective/desktop",
+  "name": "@nigafiy/desktop",
   "version": "0.1.0",
   "private": true,
   "description": "LAN Detective desktop app: the dashboard plus a bundled, managed collector",

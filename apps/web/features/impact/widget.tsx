@@ -1,7 +1,7 @@
 'use client';
 
 import { GitBranch } from 'lucide-react';
-import type { SpofReport } from '@lan-detective/shared-types';
+import type { SpofReport } from '@nigafiy/shared-types';
 import { Async } from '@/components/ui';
 import { Metric, NextStep, Widget } from '@/components/widget';
 import { qs } from '@/lib/api';

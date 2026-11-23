@@ -1,4 +1,4 @@
-import type { Insight, InsightAction } from '@lan-detective/shared-types';
+import type { Insight, InsightAction } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 /**

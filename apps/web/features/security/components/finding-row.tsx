@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Confidence } from '@lan-detective/shared-types';
+import type { Confidence } from '@nigafiy/shared-types';
 import { Badge, Button, ConfidenceBadge, ErrorNote, Evidence, Field, InferredBadge, Modal, Textarea, severityTone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

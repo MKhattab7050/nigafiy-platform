@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { ImpactPathStep, ImpactResult } from '@lan-detective/shared-types';
+import type { ImpactPathStep, ImpactResult } from '@nigafiy/shared-types';
 import { Badge, ConfidenceBadge, SectionLabel, type Tone } from '@/components/ui';
 import { Metric } from '@/components/widget';
 import { type Key, useI18n } from '@/lib/i18n';

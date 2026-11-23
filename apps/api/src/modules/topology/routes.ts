@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { DeviceStatus, DeviceType, Topology, TopologyEdge, TopologyNode } from '@lan-detective/shared-types';
+import type { DeviceStatus, DeviceType, Topology, TopologyEdge, TopologyNode } from '@nigafiy/shared-types';
 import { auth, notFound, parse } from '../../common/http.ts';
 import { cidrContains } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';

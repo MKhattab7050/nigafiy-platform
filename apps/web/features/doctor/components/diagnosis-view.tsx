@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { Diagnosis, EvidenceItem } from '@lan-detective/shared-types';
+import type { Diagnosis, EvidenceItem } from '@nigafiy/shared-types';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { localizeDiagnosis, localizeIncidentTitle } from '@/lib/localize';

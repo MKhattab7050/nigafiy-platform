@@ -1,6 +1,6 @@
 'use client';
 
-import type { DeviceDetail } from '@lan-detective/shared-types';
+import type { DeviceDetail } from '@nigafiy/shared-types';
 import { Fact, Tag } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 

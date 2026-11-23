@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import type { DeviceDetail } from '@lan-detective/shared-types';
+import type { DeviceDetail } from '@nigafiy/shared-types';
 import { ChartTable } from '@/components/charts';
 import { EmptyState, statusTone } from '@/components/ui';
 import { absoluteTime, duration } from '@/lib/format';

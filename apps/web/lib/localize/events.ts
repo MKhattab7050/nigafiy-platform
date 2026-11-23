@@ -1,4 +1,4 @@
-import type { NetworkEvent } from '@lan-detective/shared-types';
+import type { NetworkEvent } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 import { ltr } from './bidi';
 

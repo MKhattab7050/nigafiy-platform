@@ -1,4 +1,4 @@
-import type { CheckKind, CheckRole } from '@lan-detective/shared-types';
+import type { CheckKind, CheckRole } from '@nigafiy/shared-types';
 
 export const AUTO_GATEWAY = 'auto:gateway';
 

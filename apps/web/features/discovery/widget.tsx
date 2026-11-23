@@ -2,7 +2,7 @@
 
 import { Radar, ScanSearch } from 'lucide-react';
 import { useState } from 'react';
-import type { Collector, NetworkScope } from '@lan-detective/shared-types';
+import type { Collector, NetworkScope } from '@nigafiy/shared-types';
 import { Async, Badge, Button, ErrorNote } from '@/components/ui';
 import { NextStep, Widget, attentionFrom } from '@/components/widget';
 import { type ApiError, api } from '@/lib/api';

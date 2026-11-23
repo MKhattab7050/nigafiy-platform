@@ -2,7 +2,7 @@
 
 import { Network } from 'lucide-react';
 import Link from 'next/link';
-import type { IpamSubnetSummary } from '@lan-detective/shared-types';
+import type { IpamSubnetSummary } from '@nigafiy/shared-types';
 import { Meter } from '@/components/charts';
 import { Async } from '@/components/ui';
 import { NextStep, Widget, attentionFrom } from '@/components/widget';

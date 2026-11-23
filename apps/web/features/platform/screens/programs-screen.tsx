@@ -1,6 +1,6 @@
 'use client';
 
-import type { PlatformProgramsResponse } from '@lan-detective/shared-types/programs';
+import type { PlatformProgramsResponse } from '@nigafiy/shared-types/programs';
 import clsx from 'clsx';
 import { ArrowRight, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';

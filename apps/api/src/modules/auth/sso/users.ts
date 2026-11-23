@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { IdentityProviderRoleMapping, Role, SsoAssignableRole } from '@lan-detective/shared-types';
+import type { IdentityProviderRoleMapping, Role, SsoAssignableRole } from '@nigafiy/shared-types';
 import { hashPassword, randomToken } from '../../../common/crypto.ts';
 import type { Db } from '../../../infrastructure/db.ts';
 import { SsoError, emailDomain } from './config.ts';

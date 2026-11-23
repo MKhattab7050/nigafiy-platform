@@ -1,4 +1,4 @@
-import type { Insight, InsightAction, InsightsReport, Severity } from '@lan-detective/shared-types';
+import type { Insight, InsightAction, InsightsReport, Severity } from '@nigafiy/shared-types';
 
 /**
  * Smart insights: deterministic rules over facts already stored by LAN Detective.

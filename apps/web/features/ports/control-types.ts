@@ -1,4 +1,4 @@
-import type { Confidence, PortRole } from '@lan-detective/shared-types';
+import type { Confidence, PortRole } from '@nigafiy/shared-types';
 
 // Response shapes of the port-control API (apps/api/src/modules/ports/control).
 

@@ -1,4 +1,4 @@
-import type { CheckKind, CheckRole, CheckState, Confidence, Diagnosis, EvidenceItem, FaultDomain } from '@lan-detective/shared-types';
+import type { CheckKind, CheckRole, CheckState, Confidence, Diagnosis, EvidenceItem, FaultDomain } from '@nigafiy/shared-types';
 import { WATCH_KIND_LABEL, diagnoseWatch } from './watch-rules.ts';
 
 /**

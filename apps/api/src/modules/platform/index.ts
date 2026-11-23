@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { PROGRAMS, type PlatformProgramsResponse } from '@lan-detective/shared-types/programs';
+import { PROGRAMS, type PlatformProgramsResponse } from '@nigafiy/shared-types/programs';
 import { Router } from 'express';
 import { z } from 'zod';
 import { audit, auditSystem } from '../../common/audit.ts';

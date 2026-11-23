@@ -1,6 +1,6 @@
 'use client';
 
-import { devicePath } from '@lan-detective/shared-types/routes';
+import { devicePath } from '@nigafiy/shared-types/routes';
 import Link from 'next/link';
 import type { ComponentProps } from 'react';
 import { useProgramId } from '@/lib/programs-context';

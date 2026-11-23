@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { AlertOctagon, AlertTriangle, CheckCircle2, CircleDashed, Info } from 'lucide-react';
-import type { CheckState, Confidence, DeviceStatus } from '@lan-detective/shared-types';
+import type { CheckState, Confidence, DeviceStatus } from '@nigafiy/shared-types';
 import { type Key, useI18n } from '@/lib/i18n';
 import { TONE, type Tone, stateTone, statusTone } from './tones';
 

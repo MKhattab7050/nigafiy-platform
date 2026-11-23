@@ -1,7 +1,7 @@
 'use client';
 
 import { ThumbsDown, ThumbsUp, Wrench } from 'lucide-react';
-import type { KnowledgeEntry, KnowledgeStatus } from '@lan-detective/shared-types';
+import type { KnowledgeEntry, KnowledgeStatus } from '@nigafiy/shared-types';
 import { Badge, type Tone } from '@/components/ui';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 

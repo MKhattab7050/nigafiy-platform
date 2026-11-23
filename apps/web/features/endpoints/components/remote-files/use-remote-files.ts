@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EndpointCommand, EndpointDetail, RemoteFileEntry, RemoteFileResponse, RemoteFileRoot } from '@lan-detective/shared-types';
+import type { EndpointCommand, EndpointDetail, RemoteFileEntry, RemoteFileResponse, RemoteFileRoot } from '@nigafiy/shared-types';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { formatBytes, arrayBufferToBase64, base64ToUint8Array } from './file-utils';

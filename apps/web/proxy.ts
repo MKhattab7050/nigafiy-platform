@@ -1,4 +1,4 @@
-import { legacyRedirect } from '@lan-detective/shared-types/routes';
+import { legacyRedirect } from '@nigafiy/shared-types/routes';
 import { type NextRequest, NextResponse } from 'next/server';
 import { buildContentSecurityPolicy } from './lib/csp';
 

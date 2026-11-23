@@ -1,5 +1,5 @@
 import { createPublicKey, verify } from 'node:crypto';
-import type { PlatformUpdatesResponse } from '@lan-detective/shared-types/programs';
+import type { PlatformUpdatesResponse } from '@nigafiy/shared-types/programs';
 import { z } from 'zod';
 import { env } from '../../config/env.ts';
 import { logger } from '../../infrastructure/logger.ts';

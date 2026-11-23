@@ -80,19 +80,19 @@ range outside it, whatever the server sends.
 ## Development
 
 ```bash
-pnpm --filter @lan-detective/desktop test
+pnpm --filter @nigafiy/desktop test
 ```
 
 Runs the unit and integration tests (including driving the real collector binary against a stand-in server).
 
 ```bash
-pnpm --filter @lan-detective/desktop start
+pnpm --filter @nigafiy/desktop start
 ```
 
 Starts the app from source, using `collectors/lan-collector/bin/lan-collector.exe`.
 
 ```bash
-pnpm --filter @lan-detective/desktop dist
+pnpm --filter @nigafiy/desktop dist
 ```
 
 Bundles the backend (`scripts/bundle-backend.mjs`) and builds the Windows installer into `apps/desktop/release/`.

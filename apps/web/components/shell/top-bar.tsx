@@ -3,7 +3,7 @@
 import { FileBarChart2, Menu, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { SearchHit, SearchHitKind, SearchResponse } from '@lan-detective/shared-types';
+import type { SearchHit, SearchHitKind, SearchResponse } from '@nigafiy/shared-types';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';

@@ -1,6 +1,6 @@
 'use client';
 
-import type { PortHistory } from '@lan-detective/shared-types';
+import type { PortHistory } from '@nigafiy/shared-types';
 import { useState } from 'react';
 import { TimeSeriesChart } from '@/components/charts';
 import { Async, Segmented, SkeletonBlock } from '@/components/ui';

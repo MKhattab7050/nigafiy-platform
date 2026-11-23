@@ -1,4 +1,4 @@
-import type { CheckState, DeviceStatus, Severity } from '@lan-detective/shared-types';
+import type { CheckState, DeviceStatus, Severity } from '@nigafiy/shared-types';
 
 /** State colours: the only place state → colour is decided. Every tone also has an icon (status.tsx). */
 export const TONE = {

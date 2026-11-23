@@ -1,6 +1,6 @@
 'use client';
 
-import type { SwitchDetail } from '@lan-detective/shared-types';
+import type { SwitchDetail } from '@nigafiy/shared-types';
 import { Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Async, Badge, Button, Card, ErrorNote, Field, Input, Modal, Switch } from '@/components/ui';

@@ -2,7 +2,7 @@
 
 import { Activity } from 'lucide-react';
 import Link from 'next/link';
-import type { MonitoringCheck, Overview } from '@lan-detective/shared-types';
+import type { MonitoringCheck, Overview } from '@nigafiy/shared-types';
 import { ProportionBar } from '@/components/charts';
 import { Async, StateBadge } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';

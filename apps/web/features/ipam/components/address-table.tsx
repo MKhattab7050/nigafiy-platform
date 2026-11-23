@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamAddress, IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamAddress, IpamSubnetDetail } from '@nigafiy/shared-types';
 import { useMemo, useState } from 'react';
 import { Badge, Card, Input, Segmented } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';

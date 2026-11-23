@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { InvitationPreview, LoginResponse } from '@lan-detective/shared-types';
+import type { InvitationPreview, LoginResponse } from '@nigafiy/shared-types';
 import { Logo } from '@/components/logo';
 import { Badge, Button, ErrorNote, Fact, Field, Input, SkeletonBlock } from '@/components/ui';
 import { MfaChallenge, type MfaStep, resolveMfaStep } from '@/features/auth';

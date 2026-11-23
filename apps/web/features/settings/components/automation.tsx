@@ -2,7 +2,7 @@
 
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import type { AutomationItem, AutomationList } from '@lan-detective/shared-types';
+import type { AutomationItem, AutomationList } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, ErrorNote, Field, Input, Select, Switch, Tag } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

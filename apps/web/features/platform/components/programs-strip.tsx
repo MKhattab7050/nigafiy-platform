@@ -1,6 +1,6 @@
 'use client';
 
-import type { PlatformProgramsResponse, ProgramId } from '@lan-detective/shared-types/programs';
+import type { PlatformProgramsResponse, ProgramId } from '@nigafiy/shared-types/programs';
 import { PROGRAMS_BRAND } from '@nigafiy/brand';
 import Link from 'next/link';
 import { Async, Card, SkeletonBlock } from '@/components/ui';

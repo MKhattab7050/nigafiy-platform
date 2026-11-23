@@ -1,6 +1,6 @@
 'use client';
 
-import type { SwitchSummary } from '@lan-detective/shared-types';
+import type { SwitchSummary } from '@nigafiy/shared-types';
 import { Cable, Plus } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';

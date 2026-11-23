@@ -1,7 +1,7 @@
 'use client';
 
 import { Plus, X } from 'lucide-react';
-import type { ScheduleWindow } from '@lan-detective/shared-types';
+import type { ScheduleWindow } from '@nigafiy/shared-types';
 import { Button, Input } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { accessText } from '../text';

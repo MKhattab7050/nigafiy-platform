@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { AuditEntry } from '@lan-detective/shared-types';
+import type { AuditEntry } from '@nigafiy/shared-types';
 import { Async, Card, EmptyState, Segmented } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';

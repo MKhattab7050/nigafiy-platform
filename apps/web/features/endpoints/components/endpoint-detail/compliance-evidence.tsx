@@ -1,6 +1,6 @@
 'use client';
 
-import type { EndpointComplianceItem, EndpointComplianceStatus, EndpointEvidenceState } from '@lan-detective/shared-types';
+import type { EndpointComplianceItem, EndpointComplianceStatus, EndpointEvidenceState } from '@nigafiy/shared-types';
 import { Badge, Card, type Tone } from '@/components/ui';
 import { absoluteTime } from '@/lib/format';
 import type { Locale } from '@/lib/i18n';

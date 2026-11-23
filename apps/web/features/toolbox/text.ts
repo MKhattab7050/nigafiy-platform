@@ -1,4 +1,4 @@
-import type { ToolKind, ToolRunStatus } from '@lan-detective/shared-types';
+import type { ToolKind, ToolRunStatus } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 const en = {

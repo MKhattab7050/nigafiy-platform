@@ -2,7 +2,7 @@
 
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { AccessPage, AccessProfile } from '@lan-detective/shared-types';
+import type { AccessPage, AccessProfile } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';

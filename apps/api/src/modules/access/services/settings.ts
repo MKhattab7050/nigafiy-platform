@@ -1,4 +1,4 @@
-import type { AccessEnforcementMode, DeviceEnforcementMode } from '@lan-detective/shared-types';
+import type { AccessEnforcementMode, DeviceEnforcementMode } from '@nigafiy/shared-types';
 import type { Request } from 'express';
 import { audit } from '../../../common/audit.ts';
 import { type AuthContext, notFound } from '../../../common/http.ts';

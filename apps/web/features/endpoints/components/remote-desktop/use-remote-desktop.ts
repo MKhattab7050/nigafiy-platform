@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EndpointCommand, EndpointDetail, FleetSession, FleetSessionStatus, RemoteDesktopDisplay, RemoteDesktopFrame } from '@lan-detective/shared-types';
+import type { EndpointCommand, EndpointDetail, FleetSession, FleetSessionStatus, RemoteDesktopDisplay, RemoteDesktopFrame } from '@nigafiy/shared-types';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';

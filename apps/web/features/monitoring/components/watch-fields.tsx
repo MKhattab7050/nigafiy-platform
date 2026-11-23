@@ -1,6 +1,6 @@
 'use client';
 
-import type { CheckKind, MonitoringCheck, SnmpCheckPreset, SnmpComparison, SnmpPresetEntry, SwitchSummary } from '@lan-detective/shared-types';
+import type { CheckKind, MonitoringCheck, SnmpCheckPreset, SnmpComparison, SnmpPresetEntry, SwitchSummary } from '@nigafiy/shared-types';
 import { Field, Input, Select } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useQuery } from '@/lib/app';

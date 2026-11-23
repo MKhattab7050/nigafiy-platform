@@ -9,7 +9,7 @@ import {
   type TeamInvitation,
   type TeamMember,
   type TeamOverview,
-} from '@lan-detective/shared-types';
+} from '@nigafiy/shared-types';
 import { randomToken, sha256 } from '../../common/crypto.ts';
 import { AppError, auth, forbidden, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { env } from '../../config/env.ts';

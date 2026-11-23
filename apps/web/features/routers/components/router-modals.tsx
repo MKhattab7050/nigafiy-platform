@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
-import type { Collector, Site } from '@lan-detective/shared-types';
+import type { Collector, Site } from '@nigafiy/shared-types';
 import { Badge, Button, Fact, Field, Input, Modal, Notice, Select, Switch } from '@/components/ui';
 import { api } from '@/lib/api';
 import { absoluteTime, relativeTime } from '@/lib/format';

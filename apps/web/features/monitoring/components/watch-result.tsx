@@ -1,6 +1,6 @@
 'use client';
 
-import type { MonitoringCheck } from '@lan-detective/shared-types';
+import type { MonitoringCheck } from '@nigafiy/shared-types';
 import { Evidence } from '@/components/ui';
 import { fill, useI18n } from '@/lib/i18n';
 

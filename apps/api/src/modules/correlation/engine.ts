@@ -1,4 +1,4 @@
-import type { Severity } from '@lan-detective/shared-types';
+import type { Severity } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { type IncidentRef, diagnoseIncident } from '../doctor/index.ts';

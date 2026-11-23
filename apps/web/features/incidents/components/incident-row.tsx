@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import Link from 'next/link';
-import type { Incident } from '@lan-detective/shared-types';
+import type { Incident } from '@nigafiy/shared-types';
 import { absoluteTime, duration, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
 import { localizeIncidentTitle } from '@/lib/localize';

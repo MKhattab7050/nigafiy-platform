@@ -1,7 +1,7 @@
 'use client';
 
 import { ShieldCheck } from 'lucide-react';
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { ProportionBar } from '@/components/charts';
 import { Async, Badge, SectionLabel } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';

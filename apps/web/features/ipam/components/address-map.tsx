@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamSubnetDetail } from '@nigafiy/shared-types';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import { Button, Field, Input, Select } from '@/components/ui';

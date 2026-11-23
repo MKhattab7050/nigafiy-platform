@@ -1,4 +1,4 @@
-import type { CapabilityState, EndpointCommand, EndpointCommandStatus } from '@lan-detective/shared-types';
+import type { CapabilityState, EndpointCommand, EndpointCommandStatus } from '@nigafiy/shared-types';
 import type { Tone } from '@/components/ui';
 
 export type Tab =

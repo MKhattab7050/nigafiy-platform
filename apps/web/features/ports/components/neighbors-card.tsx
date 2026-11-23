@@ -1,6 +1,6 @@
 'use client';
 
-import type { MndpListenerStatus, NeighborProtocol, NeighborsReport } from '@lan-detective/shared-types';
+import type { MndpListenerStatus, NeighborProtocol, NeighborsReport } from '@nigafiy/shared-types';
 import { useState } from 'react';
 import { DeviceLink } from '@/components/device-link';
 import { Badge, Card, ErrorNote, Notice, Switch, type Tone } from '@/components/ui';

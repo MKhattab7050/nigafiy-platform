@@ -1,7 +1,7 @@
 'use client';
 
 import { ShieldCheck } from 'lucide-react';
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { Async, PageHeader } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

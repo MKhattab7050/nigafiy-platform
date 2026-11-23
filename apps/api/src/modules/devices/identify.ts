@@ -1,4 +1,4 @@
-import type { Confidence } from '@lan-detective/shared-types';
+import type { Confidence } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { type Fingerprint, bestName, classify, mergeFingerprint } from './classify.ts';
 

@@ -5,8 +5,8 @@ the free Authenticode route in [code-signing.md](code-signing.md).
 
 | Installer | Built by | Use it for |
 | --- | --- | --- |
-| `LAN Detective Setup <v>.exe` (NSIS) | `pnpm --filter @lan-detective/desktop dist` | Interactive installs and the in-app updater. Per-user by default; an administrator can pick "all users". |
-| `LAN Detective <v>.msi` (WiX, per-machine) | `pnpm --filter @lan-detective/desktop dist:msi` | Group Policy software installation, Intune line-of-business apps, SCCM. |
+| `LAN Detective Setup <v>.exe` (NSIS) | `pnpm --filter @nigafiy/desktop dist` | Interactive installs and the in-app updater. Per-user by default; an administrator can pick "all users". |
+| `LAN Detective <v>.msi` (WiX, per-machine) | `pnpm --filter @nigafiy/desktop dist:msi` | Group Policy software installation, Intune line-of-business apps, SCCM. |
 | `Nigafiy-Endpoint-Agent-Setup-<v>.exe` (NSIS) | `pnpm build:agent-installer` | The endpoint agent on managed computers, interactive or silent (GPO, Intune Win32 app). |
 
 `pnpm release` builds all three signed (see [updates.md](updates.md#building-a-release)).

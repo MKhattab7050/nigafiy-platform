@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CheckRole, CheckState, Comparison, Incident, NetworkEvent, PeriodStats, Snapshot, SnapshotDevice } from '@lan-detective/shared-types';
+import type { CheckRole, CheckState, Comparison, Incident, NetworkEvent, PeriodStats, Snapshot, SnapshotDevice } from '@nigafiy/shared-types';
 import { AppError, auth, parse } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { EVENT_SELECT } from '../events/index.ts';

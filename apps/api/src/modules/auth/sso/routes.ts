@@ -1,7 +1,7 @@
 import express, { type Request, type Response, Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import type { MfaRequirement, SsoDiscoverResponse } from '@lan-detective/shared-types';
+import type { MfaRequirement, SsoDiscoverResponse } from '@nigafiy/shared-types';
 import { AppError, parse } from '../../../common/http.ts';
 import { decryptSecret, encryptSecret, randomToken, safeEqual, sha256 } from '../../../common/crypto.ts';
 import { env } from '../../../config/env.ts';

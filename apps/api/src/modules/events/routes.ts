@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { AuditEntry, NetworkEvent } from '@lan-detective/shared-types';
+import type { AuditEntry, NetworkEvent } from '@nigafiy/shared-types';
 import { auth, parse, requireRole } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { EVENT_SELECT } from './queries.ts';

@@ -1,7 +1,7 @@
 'use client';
 
 import { FileText, Terminal } from 'lucide-react';
-import type { EndpointDetail } from '@lan-detective/shared-types';
+import type { EndpointDetail } from '@nigafiy/shared-types';
 import { Button, Card, Input, Select } from '@/components/ui';
 import { useApp } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';

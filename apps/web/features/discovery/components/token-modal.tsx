@@ -1,6 +1,6 @@
 'use client';
 
-import type { CollectorCreated } from '@lan-detective/shared-types';
+import type { CollectorCreated } from '@nigafiy/shared-types';
 import { Button, CopyBlock, Modal } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 

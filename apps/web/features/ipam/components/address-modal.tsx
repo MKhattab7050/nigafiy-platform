@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamHistoryEntry, IpamRecordKind, IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamHistoryEntry, IpamRecordKind, IpamSubnetDetail } from '@nigafiy/shared-types';
 import { useState } from 'react';
 import { Badge, Button, ErrorNote, Fact, Field, Input, Modal, Select, Spinner, StatusBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';

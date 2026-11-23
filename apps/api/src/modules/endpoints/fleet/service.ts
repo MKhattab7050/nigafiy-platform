@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint, EndpointSummary, Role } from '@lan-detective/shared-types';
+import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint, EndpointSummary, Role } from '@nigafiy/shared-types';
 import { notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { buildCapabilities, evaluateComplianceItems } from '../capabilities.ts';

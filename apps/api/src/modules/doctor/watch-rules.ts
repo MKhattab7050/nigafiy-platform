@@ -1,4 +1,4 @@
-import type { Diagnosis, EvidenceItem } from '@lan-detective/shared-types';
+import type { Diagnosis, EvidenceItem } from '@nigafiy/shared-types';
 
 /**
  * Network Doctor rules for the watch checks (http / https / tls_expiry / snmp_oid). Pure functions

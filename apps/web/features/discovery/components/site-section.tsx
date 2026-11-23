@@ -2,7 +2,7 @@
 
 import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { Collector, CollectorCreated, NetworkScope, Site } from '@lan-detective/shared-types';
+import type { Collector, CollectorCreated, NetworkScope, Site } from '@nigafiy/shared-types';
 import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

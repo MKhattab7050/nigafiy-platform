@@ -1,4 +1,4 @@
-import type { ScheduleWindow } from '@lan-detective/shared-types';
+import type { ScheduleWindow } from '@nigafiy/shared-types';
 
 export type Draft = { id?: string; name: string; blocked_categories: string[]; blocked_domains: string; allowed_domains: string; schedule: ScheduleWindow[] };
 

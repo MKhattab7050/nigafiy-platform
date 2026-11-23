@@ -1,4 +1,4 @@
-import type { EndpointPlatform, EndpointSecurityPosture } from '@lan-detective/shared-types';
+import type { EndpointPlatform, EndpointSecurityPosture } from '@nigafiy/shared-types';
 import { randomToken, sha256 } from '../../../common/crypto.ts';
 import { normalizeMac } from '../../../common/net.ts';
 import { withSystem, withTenant } from '../../../infrastructure/db.ts';

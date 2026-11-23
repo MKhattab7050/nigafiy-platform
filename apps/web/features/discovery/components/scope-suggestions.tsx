@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ChevronDown, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { NetworkScope, ScopeSuggestion, ScopeSuggestions } from '@lan-detective/shared-types';
+import type { NetworkScope, ScopeSuggestion, ScopeSuggestions } from '@nigafiy/shared-types';
 import { Badge, Button, ConfidenceBadge, ErrorNote, InferredBadge, Notice } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { type Query, useQuery } from '@/lib/app';

@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ChevronDown, ExternalLink, Lightbulb } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { DeviceMonitorBulk, DeviceMonitorResult, Insight, InsightAction, InsightsReport } from '@lan-detective/shared-types';
+import type { DeviceMonitorBulk, DeviceMonitorResult, Insight, InsightAction, InsightsReport } from '@nigafiy/shared-types';
 import { AllClearArt } from '@/components/illustrations';
 import { BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, InferredBadge, Notice, SkeletonBlock, ToneIcon, severityTone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';

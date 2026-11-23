@@ -1,4 +1,4 @@
-import type { KnowledgeReason } from '@lan-detective/shared-types';
+import type { KnowledgeReason } from '@nigafiy/shared-types';
 
 /**
  * Deterministic similarity ranking of knowledge entries (no AI, no randomness).

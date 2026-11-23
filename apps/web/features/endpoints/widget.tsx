@@ -1,7 +1,7 @@
 'use client';
 
 import { Cpu } from 'lucide-react';
-import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@lan-detective/shared-types';
+import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { Async, SectionLabel } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';

@@ -1,5 +1,5 @@
 import ipaddr from 'ipaddr.js';
-import type { IpamAddress, IpamConflict, IpamRecord } from '@lan-detective/shared-types';
+import type { IpamAddress, IpamConflict, IpamRecord } from '@nigafiy/shared-types';
 
 // Pure address arithmetic (IPv4 and IPv6) and the allocation view of one subnet. No database
 // access here, so the rules (what counts as used, what is a conflict) are unit-testable.

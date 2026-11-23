@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { MndpListenerStatus, MndpNeighbor, NeighborsReport, SwitchNeighborRow } from '@lan-detective/shared-types';
+import type { MndpListenerStatus, MndpNeighbor, NeighborsReport, SwitchNeighborRow } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { type CollectorContext, ItemRejected, type MndpNeighborsItem } from '../../../common/collector-protocol.ts';
 import { type AuthContext, notFound } from '../../../common/http.ts';

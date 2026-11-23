@@ -2,7 +2,7 @@
 
 import { Plus, Radar } from 'lucide-react';
 import { useState } from 'react';
-import type { Collector, CollectorCreated, NetworkScope } from '@lan-detective/shared-types';
+import type { Collector, CollectorCreated, NetworkScope } from '@nigafiy/shared-types';
 import { Async, Button, Card, EmptyState, ErrorNote, Field, Input, Notice, PageHeader } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

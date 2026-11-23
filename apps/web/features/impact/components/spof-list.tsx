@@ -1,6 +1,6 @@
 'use client';
 
-import type { ImpactFailure, SpofEntry } from '@lan-detective/shared-types';
+import type { ImpactFailure, SpofEntry } from '@nigafiy/shared-types';
 import { Badge, Button, ConfidenceBadge } from '@/components/ui';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 

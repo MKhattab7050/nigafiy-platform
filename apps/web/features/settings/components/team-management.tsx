@@ -9,7 +9,7 @@ import {
   ROLES,
   type Role,
   type TeamOverview,
-} from '@lan-detective/shared-types';
+} from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, CopyBlock, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

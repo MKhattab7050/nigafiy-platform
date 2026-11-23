@@ -2,7 +2,7 @@
 
 import { Play, RotateCcw, Square } from 'lucide-react';
 import { useMemo } from 'react';
-import type { EndpointDetail } from '@lan-detective/shared-types';
+import type { EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Button, Card, Input, Segmented } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { endpointsText } from '../../text';

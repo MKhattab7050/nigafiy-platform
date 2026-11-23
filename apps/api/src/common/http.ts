@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
-import type { Role } from '@lan-detective/shared-types';
+import type { Role } from '@nigafiy/shared-types';
 import { env, tlsPinSha256 } from '../config/env.ts';
 import { tlsStatus } from '../infrastructure/lan-tls.ts';
 import { logger } from '../infrastructure/logger.ts';

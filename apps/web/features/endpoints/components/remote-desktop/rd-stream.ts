@@ -1,4 +1,4 @@
-import type { RemoteDesktopDisplay } from '@lan-detective/shared-types';
+import type { RemoteDesktopDisplay } from '@nigafiy/shared-types';
 
 // The live stream's wire format (agent: internal/remotedesktop/stream.go; relayed unchanged by the
 // API's stream hub): 'N', 1, uint32 big-endian header length, the JSON header, then the JPEG bytes

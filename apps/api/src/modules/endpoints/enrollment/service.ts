@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointCreated, EndpointSummary } from '@lan-detective/shared-types';
+import type { EndpointCreated, EndpointSummary } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound, publicServerUrl } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';

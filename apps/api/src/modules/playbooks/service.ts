@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Request } from 'express';
-import type { Role } from '@lan-detective/shared-types';
+import type { Role } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext, forbidden, notFound } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';

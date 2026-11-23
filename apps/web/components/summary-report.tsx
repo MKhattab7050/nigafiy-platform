@@ -2,7 +2,7 @@
 
 import { Download, FileBarChart2, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type { SummaryReport } from '@lan-detective/shared-types';
+import type { SummaryReport } from '@nigafiy/shared-types';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { ms, pct } from '@/lib/format';

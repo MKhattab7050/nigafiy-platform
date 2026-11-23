@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { ImpactFailure } from '@lan-detective/shared-types';
+import type { ImpactFailure } from '@nigafiy/shared-types';
 import { AppError, auth, idParams, notFound, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';

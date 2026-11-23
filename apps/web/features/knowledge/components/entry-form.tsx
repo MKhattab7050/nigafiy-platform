@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { KnowledgeDetail, KnowledgeEntry, KnowledgeKind } from '@lan-detective/shared-types';
+import type { KnowledgeDetail, KnowledgeEntry, KnowledgeKind } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Segmented, Switch, Textarea } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

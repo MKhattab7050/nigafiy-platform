@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { Site } from '@lan-detective/shared-types';
+import type { Site } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Modal } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { allTimeZones, browserTimeZone } from '@/lib/format';

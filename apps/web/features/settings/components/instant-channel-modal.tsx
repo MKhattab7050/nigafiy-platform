@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { NotificationChannel } from '@lan-detective/shared-types';
+import type { NotificationChannel } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { type Key, useI18n } from '@/lib/i18n';

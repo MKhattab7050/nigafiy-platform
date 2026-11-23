@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { Confidence, EndpointEnrollmentSuggestion, EndpointPlatform } from '@lan-detective/shared-types';
+import type { Confidence, EndpointEnrollmentSuggestion, EndpointPlatform } from '@nigafiy/shared-types';
 import { type AuthContext, notFound, publicServerUrl } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 

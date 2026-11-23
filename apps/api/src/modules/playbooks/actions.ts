@@ -1,4 +1,4 @@
-import type { ToolKind } from '@lan-detective/shared-types';
+import type { ToolKind } from '@nigafiy/shared-types';
 import { AppError } from '../../common/http.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { dnsFilterEnabled, setDeviceInternetPause } from '../access/index.ts';

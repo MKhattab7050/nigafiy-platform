@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { SearchHit, SearchResponse } from '@lan-detective/shared-types';
+import type { SearchHit, SearchResponse } from '@nigafiy/shared-types';
 import { auth, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 

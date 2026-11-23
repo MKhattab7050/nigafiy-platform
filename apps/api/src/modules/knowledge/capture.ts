@@ -1,4 +1,4 @@
-import type { Diagnosis } from '@lan-detective/shared-types';
+import type { Diagnosis } from '@nigafiy/shared-types';
 import { auditSystem } from '../../common/audit.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';

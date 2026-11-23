@@ -39,7 +39,7 @@ cloud platform.
 
 ## Use it on your home network: desktop app
 
-Install **LAN Detective** (`apps/desktop`, installer built with `pnpm --filter @lan-detective/desktop dist`) and
+Install **LAN Detective** (`apps/desktop`, installer built with `pnpm --filter @nigafiy/desktop dist`) and
 open it. Nothing else is needed — the installer carries the database, API, web app and collector, and runs
 them with the app's own built-in Node.js.
 
@@ -52,10 +52,10 @@ dashboard. Closing the window keeps monitoring in the tray; **Quit** from the tr
 Building the installer needs Node.js 24, pnpm, Go 1.24 and this repository:
 
 ```bash
-pnpm --filter @lan-detective/desktop dist
+pnpm --filter @nigafiy/desktop dist
 ```
 
-Running the desktop app from the repository (`pnpm --filter @lan-detective/desktop start`) does the same
+Running the desktop app from the repository (`pnpm --filter @nigafiy/desktop start`) does the same
 using the repository's code and your system Node.js 24, and shares `.data/` with `pnpm local`.
 
 ## Use it on your home network: one command (no desktop app)

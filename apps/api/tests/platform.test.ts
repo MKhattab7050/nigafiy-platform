@@ -3,7 +3,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import { PROGRAMS } from '@lan-detective/shared-types/programs';
+import { PROGRAMS } from '@nigafiy/shared-types/programs';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { engineStatus } from '../src/modules/platform/engine.ts';

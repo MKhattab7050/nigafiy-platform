@@ -2,7 +2,7 @@
 
 import { MousePointerClick } from "lucide-react";
 import Link from "next/link";
-import type { Topology, TopologyEdge } from "@lan-detective/shared-types";
+import type { Topology, TopologyEdge } from "@nigafiy/shared-types";
 import {
   Badge,
   Card,

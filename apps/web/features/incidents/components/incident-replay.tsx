@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { IncidentDetail } from '@lan-detective/shared-types';
+import type { IncidentDetail } from '@nigafiy/shared-types';
 import { Badge, EmptyState, Evidence, Tag, severityTone } from '@/components/ui';
 import { EVENT_TYPE_LABEL, absoluteTime, clockTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';

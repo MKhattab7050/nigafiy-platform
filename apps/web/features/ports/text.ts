@@ -1,4 +1,4 @@
-import type { PortLocation, PortRole } from '@lan-detective/shared-types';
+import type { PortLocation, PortRole } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 const en = {

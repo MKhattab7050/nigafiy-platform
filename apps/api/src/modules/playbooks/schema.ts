@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEVICE_TRUSTS, DEVICE_TYPES } from '@lan-detective/shared-types';
+import { DEVICE_TRUSTS, DEVICE_TYPES } from '@nigafiy/shared-types';
 import { timeZoneSchema } from '../../common/timezone.ts';
 import { TOOL_KINDS } from '../toolbox/index.ts';
 import { CONDITION_TESTS, INCIDENT_KINDS, TRIGGER_EVENT_TYPES } from './catalog.ts';

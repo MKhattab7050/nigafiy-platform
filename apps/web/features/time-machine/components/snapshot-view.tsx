@@ -2,7 +2,7 @@
 
 import { History } from 'lucide-react';
 import { useState } from 'react';
-import type { Snapshot, SnapshotDevice } from '@lan-detective/shared-types';
+import type { Snapshot, SnapshotDevice } from '@nigafiy/shared-types';
 import { Async, Button, Card, EmptyState, Field, Input, StateBadge, StatusBadge } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

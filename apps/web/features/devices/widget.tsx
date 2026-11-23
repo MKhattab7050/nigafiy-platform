@@ -1,7 +1,7 @@
 'use client';
 
 import { MonitorSmartphone } from 'lucide-react';
-import type { Device, Overview, Paginated } from '@lan-detective/shared-types';
+import type { Device, Overview, Paginated } from '@nigafiy/shared-types';
 import { BarList, Donut, Legend } from '@/components/charts';
 import { DeviceIcon } from '@/components/device-icon';
 import { SetupArt } from '@/components/illustrations';

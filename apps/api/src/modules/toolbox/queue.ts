@@ -1,4 +1,4 @@
-import type { ToolKind } from '@lan-detective/shared-types';
+import type { ToolKind } from '@nigafiy/shared-types';
 import { env } from '../../config/env.ts';
 import { AppError, notFound } from '../../common/http.ts';
 import { classifyTarget, isIP } from '../../common/net.ts';

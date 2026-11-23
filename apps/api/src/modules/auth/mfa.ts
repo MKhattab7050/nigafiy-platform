@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { type Request, Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import type { Role } from '@lan-detective/shared-types';
+import type { Role } from '@nigafiy/shared-types';
 import { decryptSecret, encryptSecret, sha256, verifyPassword } from '../../common/crypto.ts';
 import { AppError, parse } from '../../common/http.ts';
 import { env } from '../../config/env.ts';

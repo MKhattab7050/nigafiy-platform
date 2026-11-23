@@ -1,4 +1,4 @@
-import type { EndpointSecurityEvidence, EndpointSecurityPosture } from '@lan-detective/shared-types';
+import type { EndpointSecurityEvidence, EndpointSecurityPosture } from '@nigafiy/shared-types';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';

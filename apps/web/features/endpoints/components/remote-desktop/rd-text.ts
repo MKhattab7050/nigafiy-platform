@@ -1,4 +1,4 @@
-import type { FleetSessionEndReason } from '@lan-detective/shared-types';
+import type { FleetSessionEndReason } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 import { ltr } from '@/lib/localize/bidi';
 

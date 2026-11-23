@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink, RefreshCw, ShieldAlert, ShieldCheck } from 'lu
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
-import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint } from '@lan-detective/shared-types';
+import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint } from '@nigafiy/shared-types';
 import clsx from 'clsx';
 import { PlatformIcon } from '@/components/device-icon';
 import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, Notice, PageHeader, SkeletonBlock, Tabs, type Tone } from '@/components/ui';

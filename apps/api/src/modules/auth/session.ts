@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { Role } from '@lan-detective/shared-types';
+import type { Role } from '@nigafiy/shared-types';
 import { AppError } from '../../common/http.ts';
 import { randomToken, sha256 } from '../../common/crypto.ts';
 import { env } from '../../config/env.ts';

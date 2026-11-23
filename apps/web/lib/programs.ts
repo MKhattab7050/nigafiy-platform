@@ -1,5 +1,5 @@
-import { PROGRAMS, type ProgramId } from '@lan-detective/shared-types/programs';
-import { PROGRAM_HOME, PROGRAM_PREFIX } from '@lan-detective/shared-types/routes';
+import { PROGRAMS, type ProgramId } from '@nigafiy/shared-types/programs';
+import { PROGRAM_HOME, PROGRAM_PREFIX } from '@nigafiy/shared-types/routes';
 import { PROGRAMS_BRAND } from '@nigafiy/brand';
 import { FEATURES, type Feature } from '@/features/registry';
 

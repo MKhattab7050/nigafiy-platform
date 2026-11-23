@@ -1,4 +1,4 @@
-import type { PortLocation as PortLocationDto } from '@lan-detective/shared-types';
+import type { PortLocation as PortLocationDto } from '@nigafiy/shared-types';
 import { notFound } from '../../../common/http.ts';
 import { type Db, withTenant } from '../../../infrastructure/db.ts';
 import { type Sighting, locate } from '../locate.ts';

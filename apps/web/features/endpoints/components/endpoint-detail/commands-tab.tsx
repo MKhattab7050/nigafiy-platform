@@ -1,6 +1,6 @@
 'use client';
 
-import type { EndpointDetail } from '@lan-detective/shared-types';
+import type { EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Card } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';

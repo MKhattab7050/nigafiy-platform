@@ -2,7 +2,7 @@
 
 import { GitBranch, Play, Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { ImpactFailure, ImpactGraph, ImpactResult, SpofReport } from '@lan-detective/shared-types';
+import type { ImpactFailure, ImpactGraph, ImpactResult, SpofReport } from '@nigafiy/shared-types';
 import { Async, Button, Card, EmptyState, ErrorNote, PageHeader, Select, SkeletonBlock, Tabs } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

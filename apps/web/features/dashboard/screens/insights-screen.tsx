@@ -1,7 +1,7 @@
 'use client';
 
 import { Lightbulb } from 'lucide-react';
-import type { InsightsReport } from '@lan-detective/shared-types';
+import type { InsightsReport } from '@nigafiy/shared-types';
 import { FeatureBoundary } from '@/components/error-boundary';
 import { PageHeader } from '@/components/ui';
 import { qs } from '@/lib/api';

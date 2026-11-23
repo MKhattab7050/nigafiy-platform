@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { MonitoringCheck } from '@lan-detective/shared-types';
+import type { MonitoringCheck } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Modal } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { type Key, useI18n } from '@/lib/i18n';

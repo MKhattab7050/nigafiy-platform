@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { type Block, type Inline, parseMarkdown } from '@lan-detective/shared-types/markdown';
+import { type Block, type Inline, parseMarkdown } from '@nigafiy/shared-types/markdown';
 
 /**
  * Renders the safe markdown subset as React elements. The parser never produces HTML and React

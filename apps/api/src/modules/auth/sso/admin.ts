@@ -1,7 +1,7 @@
 import { X509Certificate } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
-import type { IdentityProvider } from '@lan-detective/shared-types';
+import type { IdentityProvider } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { encryptSecret } from '../../../common/crypto.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../../common/http.ts';

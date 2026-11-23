@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import type { z } from 'zod';
-import type { EndpointPolicy } from '@lan-detective/shared-types';
+import type { EndpointPolicy } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';

@@ -2,7 +2,7 @@
 
 import clsx from 'clsx';
 import { ArrowRight } from 'lucide-react';
-import { programForPath } from '@lan-detective/shared-types/routes';
+import { programForPath } from '@nigafiy/shared-types/routes';
 import Link from 'next/link';
 import { ProgramGlyph } from '@/features/platform';
 import type { ApiError } from '@/lib/api';

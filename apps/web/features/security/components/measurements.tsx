@@ -1,7 +1,7 @@
 'use client';
 
 import { Globe, Router, ShieldQuestion, Wifi } from 'lucide-react';
-import type { Confidence } from '@lan-detective/shared-types';
+import type { Confidence } from '@nigafiy/shared-types';
 import { Badge, DataTable, EmptyState, InferredBadge, severityTone } from '@/components/ui';
 import { absoluteTime, pct, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';

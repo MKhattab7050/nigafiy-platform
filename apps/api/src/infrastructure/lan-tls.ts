@@ -3,7 +3,7 @@ import { X509Certificate, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { TlsStatus } from '@lan-detective/shared-types';
+import type { TlsStatus } from '@nigafiy/shared-types';
 import forge from 'node-forge';
 
 /**

@@ -1,4 +1,4 @@
-import type { Confidence, DeviceType } from '@lan-detective/shared-types';
+import type { Confidence, DeviceType } from '@nigafiy/shared-types';
 
 /**
  * DHCP fingerprinting — deterministic rules, first match wins.

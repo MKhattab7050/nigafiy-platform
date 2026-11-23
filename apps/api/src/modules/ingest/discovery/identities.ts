@@ -1,4 +1,4 @@
-import type { DeviceStatus } from '@lan-detective/shared-types';
+import type { DeviceStatus } from '@nigafiy/shared-types';
 import type { DiscoveryRunItem } from '../../../common/collector-protocol.ts';
 import { addressScope, cidrContains, compareIp, normalizeMac } from '../../../common/net.ts';
 import type { Fingerprint } from '../../devices/index.ts';

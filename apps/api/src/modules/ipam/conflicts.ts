@@ -1,4 +1,4 @@
-import type { IpamConflict } from '@lan-detective/shared-types';
+import type { IpamConflict } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';

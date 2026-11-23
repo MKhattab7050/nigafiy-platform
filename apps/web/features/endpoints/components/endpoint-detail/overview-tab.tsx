@@ -2,7 +2,7 @@
 
 import { Lock, LogOut, MessageSquare, Power, RotateCcw } from 'lucide-react';
 import { Meter, TimeSeriesChart } from '@/components/charts';
-import type { EndpointDetail, EndpointSeriesPoint } from '@lan-detective/shared-types';
+import type { EndpointDetail, EndpointSeriesPoint } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, Fact, Field, Input, Segmented, SkeletonBlock, Textarea } from '@/components/ui';
 import { useApp, type Query } from '@/lib/app';
 import { pct, relativeTime } from '@/lib/format';

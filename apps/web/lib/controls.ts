@@ -1,4 +1,4 @@
-import type { Role } from '@lan-detective/shared-types';
+import type { Role } from '@nigafiy/shared-types';
 
 /**
  * One action as GET /devices/:id/controls describes it: whether it is possible now, and if not why;

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ProgramId } from '@lan-detective/shared-types/programs';
+import type { ProgramId } from '@nigafiy/shared-types/programs';
 import clsx from 'clsx';
 import { Download } from 'lucide-react';
 import Link from 'next/link';

@@ -6,7 +6,7 @@ import type {
   EndpointPlatform,
   EndpointSecurityEvidence,
   EndpointSecurityPosture,
-} from '@lan-detective/shared-types';
+} from '@nigafiy/shared-types';
 
 export function inferPlatformFromOs(osRaw?: string | null, current?: EndpointPlatform): EndpointPlatform {
   const s = (osRaw ?? '').toLowerCase();

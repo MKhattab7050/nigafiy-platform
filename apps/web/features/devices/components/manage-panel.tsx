@@ -2,7 +2,7 @@
 
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { DEVICE_TYPES, type DeviceDetail } from '@lan-detective/shared-types';
+import { DEVICE_TYPES, type DeviceDetail } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Notice, Select, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';

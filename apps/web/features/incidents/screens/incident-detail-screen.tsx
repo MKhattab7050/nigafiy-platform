@@ -1,6 +1,6 @@
 'use client';
 
-import type { IncidentDetail } from '@lan-detective/shared-types';
+import type { IncidentDetail } from '@nigafiy/shared-types';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { DeviceLink } from '@/components/device-link';

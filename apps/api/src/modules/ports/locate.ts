@@ -1,4 +1,4 @@
-import type { Confidence, PortRole } from '@lan-detective/shared-types';
+import type { Confidence, PortRole } from '@nigafiy/shared-types';
 
 export interface PortFacts {
   oper_up: boolean;

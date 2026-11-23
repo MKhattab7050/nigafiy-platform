@@ -1,7 +1,7 @@
 'use client';
 
 import { CheckCircle2, CircleAlert, ExternalLink } from 'lucide-react';
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { Badge, Card, CopyBlock } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { accessText } from '../text';

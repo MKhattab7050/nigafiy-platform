@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { CheckKind, CheckRole, Device, Paginated, SwitchSummary } from '@lan-detective/shared-types';
+import type { CheckKind, CheckRole, Device, Paginated, SwitchSummary } from '@nigafiy/shared-types';
 import { Badge, Button, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
 import { ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

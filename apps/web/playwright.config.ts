@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test';
  * Browser smoke tests against a real stack: a throw-away PostgreSQL, the real API, and a
  * production build of this app (so the production Content-Security-Policy is what gets tested).
  *
- *   pnpm --filter @lan-detective/web test:e2e
+ *   pnpm --filter @nigafiy/web test:e2e
  *
  * Ports are separate from the dev stack (3100/4100/5433) and the installed desktop app
  * (47100/47130/47133). Override with E2E_WEB_PORT / E2E_API_PORT / E2E_PG_PORT.

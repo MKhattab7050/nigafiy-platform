@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointCommand, EndpointPlatform, EndpointPolicy } from '@lan-detective/shared-types';
+import type { EndpointCommand, EndpointPlatform, EndpointPolicy } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';

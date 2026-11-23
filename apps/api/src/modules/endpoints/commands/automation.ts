@@ -1,4 +1,4 @@
-import type { EndpointPlatform } from '@lan-detective/shared-types';
+import type { EndpointPlatform } from '@nigafiy/shared-types';
 import { AppError, notFound } from '../../../common/http.ts';
 import type { Db } from '../../../infrastructure/db.ts';
 import { emitEvent } from '../../events/index.ts';

@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { IpamHistoryEntry, IpamRecord, IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamHistoryEntry, IpamRecord, IpamSubnetDetail } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../common/http.ts';
 import { cidrContains } from '../../common/net.ts';

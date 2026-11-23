@@ -1,4 +1,4 @@
-import type { Diagnosis, IncidentKind, KnowledgeSuggestResponse } from '@lan-detective/shared-types';
+import type { Diagnosis, IncidentKind, KnowledgeSuggestResponse } from '@nigafiy/shared-types';
 import { notFound } from '../../common/http.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { loadIncidentFacts } from './capture.ts';

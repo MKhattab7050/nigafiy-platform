@@ -5,7 +5,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { PlatformUpdateInstallStatus, PlatformUpdateSignature } from '@lan-detective/shared-types/programs';
+import type { PlatformUpdateInstallStatus, PlatformUpdateSignature } from '@nigafiy/shared-types/programs';
 import { z } from 'zod';
 import { AppError } from '../../common/http.ts';
 import { env } from '../../config/env.ts';

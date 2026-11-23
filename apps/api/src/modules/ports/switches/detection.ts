@@ -1,4 +1,4 @@
-import type { Confidence, DeviceType, SwitchCandidate, SwitchCandidateReason } from '@lan-detective/shared-types';
+import type { Confidence, DeviceType, SwitchCandidate, SwitchCandidateReason } from '@nigafiy/shared-types';
 import { auditSystem } from '../../../common/audit.ts';
 import type { CollectorContext } from '../../../common/collector-protocol.ts';
 import { notFound } from '../../../common/http.ts';

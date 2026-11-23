@@ -1,7 +1,7 @@
 "use client";
 
 import { Network } from "lucide-react";
-import type { Topology } from "@lan-detective/shared-types";
+import type { Topology } from "@nigafiy/shared-types";
 import { TopologyArt } from "@/components/illustrations";
 import {
   Async,

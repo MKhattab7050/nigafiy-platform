@@ -2,7 +2,7 @@
 
 import { Wrench } from 'lucide-react';
 import Link from 'next/link';
-import type { ToolRun } from '@lan-detective/shared-types';
+import type { ToolRun } from '@nigafiy/shared-types';
 import { Async, Badge } from '@/components/ui';
 import { NextStep, Widget } from '@/components/widget';
 import { qs } from '@/lib/api';

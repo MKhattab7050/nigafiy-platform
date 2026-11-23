@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { CheckRole, CheckSeriesPoint, MonitoringCheck, Overview } from '@lan-detective/shared-types';
+import type { CheckRole, CheckSeriesPoint, MonitoringCheck, Overview } from '@nigafiy/shared-types';
 import { Sparkline, UptimeLegend, UptimeStrip, toCells } from '@/components/charts';
 import { Skeleton, StateBadge, Tag } from '@/components/ui';
 import { qs } from '@/lib/api';

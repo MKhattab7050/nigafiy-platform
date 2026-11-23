@@ -4,7 +4,7 @@ import { Siren } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
-import type { Incident, Paginated } from '@lan-detective/shared-types';
+import type { Incident, Paginated } from '@nigafiy/shared-types';
 import { AllClearArt } from '@/components/illustrations';
 import { Async, Button, Card, EmptyState, Notice, PageHeader, Segmented, SkeletonBlock } from '@/components/ui';
 import { qs } from '@/lib/api';

@@ -1,4 +1,4 @@
-import type { Confidence, DeviceType } from '@lan-detective/shared-types';
+import type { Confidence, DeviceType } from '@nigafiy/shared-types';
 import { classifyBanner } from './banner-rules.ts';
 import { classifyDhcp } from './dhcp-fingerprint.ts';
 

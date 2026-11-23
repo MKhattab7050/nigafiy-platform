@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
-import type { InvitationPreview, Me, MfaRequirement, Role } from '@lan-detective/shared-types';
+import type { InvitationPreview, Me, MfaRequirement, Role } from '@nigafiy/shared-types';
 import { AppError, auth, parse } from '../../common/http.ts';
 import { timeZoneSchema } from '../../common/timezone.ts';
 import { DUMMY_PASSWORD_HASH, hashPassword, randomToken, sha256, verifyPassword } from '../../common/crypto.ts';

@@ -14,7 +14,7 @@
 
 const path = require('node:path');
 
-/** Same ids, prefixes and homes as `@lan-detective/shared-types/routes` (a test keeps them equal). */
+/** Same ids, prefixes and homes as `@nigafiy/shared-types/routes` (a test keeps them equal). */
 const PROGRAM_IDS = Object.freeze(['hub', 'radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox']);
 const PROGRAM_PREFIX = Object.freeze({ hub: '', radar: '/radar', watch: '/watch', guard: '/guard', fleet: '/fleet', mind: '/mind', toolbox: '/toolbox' });
 const PROGRAM_HOME = Object.freeze({

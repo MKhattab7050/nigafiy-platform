@@ -32,8 +32,8 @@ import {
   Wrench,
 } from 'lucide-react';
 import { type ComponentType, type LazyExoticComponent, lazy } from 'react';
-import type { Paginated, Role } from '@lan-detective/shared-types';
-import type { ProgramId } from '@lan-detective/shared-types/programs';
+import type { Paginated, Role } from '@nigafiy/shared-types';
+import type { ProgramId } from '@nigafiy/shared-types/programs';
 import { qs } from '@/lib/api';
 import type { Topic } from '@/lib/app';
 import type { Key } from '@/lib/i18n';
@@ -43,8 +43,8 @@ import type { Key } from '@/lib/i18n';
  * from it; nothing else hard-codes which features exist.
  *
  * Each feature belongs to exactly one program (spec §5) and its `route` lives in that program's URL
- * namespace (`@lan-detective/shared-types/routes`; old URLs redirect). The sidebar order is the
- * program's page order in `@lan-detective/shared-types/programs`; `lib/programs.ts` joins the two.
+ * namespace (`@nigafiy/shared-types/routes`; old URLs redirect). The sidebar order is the
+ * program's page order in `@nigafiy/shared-types/programs`; `lib/programs.ts` joins the two.
  *
  * Each feature lives in `features/<id>/` and exposes `index.ts` (its screens and the few components
  * other features may use). The dashboard widget is the one other public entry (`widget.tsx`): it is

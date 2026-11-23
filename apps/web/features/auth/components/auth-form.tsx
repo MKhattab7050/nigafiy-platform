@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { AuthOptions, LoginResponse, SsoDiscoverResponse } from "@lan-detective/shared-types";
+import type { AuthOptions, LoginResponse, SsoDiscoverResponse } from "@nigafiy/shared-types";
 import { type ApiError, api } from "@/lib/api";
 import { type Key, useI18n } from "@/lib/i18n";
 import { ChevronDown, Gauge, KeyRound, Layers, ShieldCheck } from "lucide-react";

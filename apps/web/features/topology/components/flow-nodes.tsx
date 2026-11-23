@@ -2,7 +2,7 @@
 
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { Cable, Globe, Network, Radar, Router } from "lucide-react";
-import type { TopologyNode } from "@lan-detective/shared-types";
+import type { TopologyNode } from "@nigafiy/shared-types";
 import clsx from "clsx";
 import { DeviceIcon } from "@/components/device-icon";
 import { Dot, statusTone } from "@/components/ui";

@@ -1,6 +1,6 @@
 'use client';
 
-import type { PortSearchHit } from '@lan-detective/shared-types';
+import type { PortSearchHit } from '@nigafiy/shared-types';
 import { Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Card, Input, StatusBadge } from '@/components/ui';

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import type { Diagnosis, IncidentDetail, Topology } from '@lan-detective/shared-types';
+import type { Diagnosis, IncidentDetail, Topology } from '@nigafiy/shared-types';
 import { closePools, systemPool } from '../src/infrastructure/db.ts';
 import { watchCollectors } from '../src/modules/collectors/index.ts';
 import { rollupCheckResults } from '../src/modules/monitoring/index.ts';

@@ -1,4 +1,4 @@
-import type { Diagnosis, EvidenceItem } from '@lan-detective/shared-types';
+import type { Diagnosis, EvidenceItem } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 import { ltr } from './bidi';
 

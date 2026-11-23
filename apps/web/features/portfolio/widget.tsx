@@ -1,7 +1,7 @@
 'use client';
 
 import { Building2 } from 'lucide-react';
-import type { PortfolioSites } from '@lan-detective/shared-types';
+import type { PortfolioSites } from '@nigafiy/shared-types';
 import { Async } from '@/components/ui';
 import { Metric, Widget } from '@/components/widget';
 import { useQuery } from '@/lib/app';

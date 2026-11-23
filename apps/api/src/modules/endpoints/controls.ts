@@ -1,4 +1,4 @@
-import type { EndpointPlatform } from '@lan-detective/shared-types';
+import type { EndpointPlatform } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { buildCapabilities } from './capabilities.ts';
 

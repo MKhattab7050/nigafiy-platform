@@ -3,7 +3,7 @@
 import { Stethoscope } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { DoctorReport } from '@lan-detective/shared-types';
+import type { DoctorReport } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, EmptyState, ErrorNote, PageHeader } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

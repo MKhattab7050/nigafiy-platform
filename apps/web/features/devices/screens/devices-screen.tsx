@@ -3,7 +3,7 @@
 import { BellOff, CheckCheck, MonitorSmartphone, Search, ShieldAlert } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import { DEVICE_TRUSTS, DEVICE_TYPES, type Device, type Paginated } from '@lan-detective/shared-types';
+import { DEVICE_TRUSTS, DEVICE_TYPES, type Device, type Paginated } from '@nigafiy/shared-types';
 import { DeviceIcon } from '@/components/device-icon';
 import { EmptyPortsArt, SearchArt } from '@/components/illustrations';
 import { Async, Badge, Button, Card, DataTable, EmptyState, ErrorNote, Input, PageHeader, Select, SkeletonBlock, StatusBadge, Tag } from '@/components/ui';

@@ -59,5 +59,5 @@ Write-Host "Public certificate: $cerPath"
 Write-Host "Thumbprint:         $($cert.Thumbprint)"
 Write-Host ''
 Write-Host 'Next:'
-Write-Host "  1. Build signed:  `$env:NIGAFIY_SIGN_THUMBPRINT='$($cert.Thumbprint)'; pnpm --filter @lan-detective/desktop dist"
+Write-Host "  1. Build signed:  `$env:NIGAFIY_SIGN_THUMBPRINT='$($cert.Thumbprint)'; pnpm --filter @nigafiy/desktop dist"
 Write-Host "  2. Trust it on each company PC (as administrator): scripts\signing\Install-NigafiyTrust.ps1 -CertPath <path to .cer>"

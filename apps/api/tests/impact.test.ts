@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import type { Topology, TopologyEdge, TopologyNode } from '@lan-detective/shared-types';
+import type { Topology, TopologyEdge, TopologyNode } from '@nigafiy/shared-types';
 import { ImpactInputError, articulation, buildTwin, findSpofs, simulate } from '../src/modules/impact/graph.ts';
 import { CSRF, app, newAccount, setRole } from './helpers.ts';
 

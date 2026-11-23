@@ -4,7 +4,7 @@ import type {
   EndpointCommandStatus,
   EndpointComplianceStatus,
   EndpointPlatform,
-} from '@lan-detective/shared-types';
+} from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 const en = {

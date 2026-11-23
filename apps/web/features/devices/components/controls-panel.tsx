@@ -3,7 +3,7 @@
 import { Activity, Ban, ExternalLink, Power } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import { type Collector, DEVICE_TRUSTS, type DeviceDetail, type DeviceTrust } from '@lan-detective/shared-types';
+import { type Collector, DEVICE_TRUSTS, type DeviceDetail, type DeviceTrust } from '@nigafiy/shared-types';
 import { Button, CopyBlock, ErrorNote, Segmented } from '@/components/ui';
 import { DeviceRouterCard, type DeviceRouterControls } from '@/features/routers';
 import { type ApiError, api } from '@/lib/api';

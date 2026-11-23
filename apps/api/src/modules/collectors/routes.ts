@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { Collector, CollectorCreated } from '@lan-detective/shared-types';
+import type { Collector, CollectorCreated } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, publicServerUrl, requireRole } from '../../common/http.ts';
 import { randomToken, sha256 } from '../../common/crypto.ts';

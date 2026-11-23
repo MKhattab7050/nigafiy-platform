@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { MaintenanceList, MaintenanceRun, MaintenanceWindow } from '@lan-detective/shared-types';
+import type { MaintenanceList, MaintenanceRun, MaintenanceWindow } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../common/http.ts';
 import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';

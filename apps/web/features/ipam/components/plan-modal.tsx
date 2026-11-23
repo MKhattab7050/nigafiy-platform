@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamSubnetDetail } from '@nigafiy/shared-types';
 import { useState } from 'react';
 import { Button, ErrorNote, Field, Input, Modal, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';

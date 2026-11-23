@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { CheckSeriesPoint, DefaultChecksRestored, MonitoringCheck } from '@lan-detective/shared-types';
+import type { CheckSeriesPoint, DefaultChecksRestored, MonitoringCheck } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { classifyTarget, isIP, isIPv6 } from '../../common/net.ts';

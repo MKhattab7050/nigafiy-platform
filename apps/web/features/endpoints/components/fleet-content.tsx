@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { Ban, KeyRound, Plus, ShieldAlert, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
-import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@lan-detective/shared-types';
+import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { PlatformIcon } from '@/components/device-icon';
 import { DeviceLink } from '@/components/device-link';

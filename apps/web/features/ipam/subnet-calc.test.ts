@@ -1,5 +1,5 @@
 // Unit tests of the subnet calculator arithmetic (IPv4 and IPv6). Run with `pnpm --filter
-// @lan-detective/web test:unit` (node --test with Node's built-in TypeScript support).
+// @nigafiy/web test:unit` (node --test with Node's built-in TypeScript support).
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { canonicalIp, compareIp, formatCount, formatIp, ipv6ToBig, parseIp, parseSubnet, splitSubnet } from './subnet-calc.ts';

@@ -1,6 +1,6 @@
 'use client';
 
-import type { CheckSeriesPoint, MonitoringCheck } from '@lan-detective/shared-types';
+import type { CheckSeriesPoint, MonitoringCheck } from '@nigafiy/shared-types';
 import { TimeSeriesChart, UptimeStrip, toCells } from '@/components/charts';
 import { Async, SkeletonBlock } from '@/components/ui';
 import { useQuery } from '@/lib/app';

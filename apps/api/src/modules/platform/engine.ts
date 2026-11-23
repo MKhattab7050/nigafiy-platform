@@ -1,4 +1,4 @@
-import type { EngineChild, EngineChildState, PlatformEngineResponse } from '@lan-detective/shared-types/programs';
+import type { EngineChild, EngineChildState, PlatformEngineResponse } from '@nigafiy/shared-types/programs';
 import { env } from '../../config/env.ts';
 
 const STATES: readonly EngineChildState[] = ['stopped', 'starting', 'running', 'backoff', 'failed'];

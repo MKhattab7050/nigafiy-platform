@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { EndpointPlatform } from '@lan-detective/shared-types';
+import type { EndpointPlatform } from '@nigafiy/shared-types';
 import { safeEqual, sha256 } from '../../../common/crypto.ts';
 import { AppError } from '../../../common/http.ts';
 import { systemPool } from '../../../infrastructure/db.ts';

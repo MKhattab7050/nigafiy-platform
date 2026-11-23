@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { STATUS_CODES, type IncomingMessage, type Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { EndpointPlatform, RemoteDesktopSession, Role } from '@lan-detective/shared-types';
+import type { EndpointPlatform, RemoteDesktopSession, Role } from '@nigafiy/shared-types';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';

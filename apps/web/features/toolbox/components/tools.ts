@@ -1,4 +1,4 @@
-import type { ToolKind, ToolRun } from '@lan-detective/shared-types';
+import type { ToolKind, ToolRun } from '@nigafiy/shared-types';
 import type { Tone } from '@/components/ui';
 
 export const TOOLS: ToolKind[] = ['ping', 'tcp', 'ports', 'dns', 'rdns', 'traceroute'];

@@ -1,6 +1,6 @@
 'use client';
 
-import type { IpamSubnetDetail } from '@lan-detective/shared-types';
+import type { IpamSubnetDetail } from '@nigafiy/shared-types';
 import { AlertTriangle, Download, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { Async, Button, Card, Fact } from '@/components/ui';

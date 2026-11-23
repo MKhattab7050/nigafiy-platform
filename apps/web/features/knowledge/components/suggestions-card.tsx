@@ -3,8 +3,8 @@
 import { BookOpen, Check } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { KnowledgeSuggestResponse } from '@lan-detective/shared-types';
-import { markdownToText } from '@lan-detective/shared-types/markdown';
+import type { KnowledgeSuggestResponse } from '@nigafiy/shared-types';
+import { markdownToText } from '@nigafiy/shared-types/markdown';
 import { Async, Badge, Button, Card, ErrorNote, SkeletonBlock } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

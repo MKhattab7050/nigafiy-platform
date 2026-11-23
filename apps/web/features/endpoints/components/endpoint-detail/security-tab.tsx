@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { EndpointDetail } from '@lan-detective/shared-types';
+import type { EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Fact, Field, Input, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { absoluteTime } from '@/lib/format';

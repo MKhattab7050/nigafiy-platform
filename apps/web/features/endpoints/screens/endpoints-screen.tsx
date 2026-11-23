@@ -3,7 +3,7 @@
 import { Cpu, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import type { EndpointComplianceStatus, EndpointCreated, EndpointEnrollmentSuggestion, EndpointPlatform, EndpointSummary } from '@lan-detective/shared-types';
+import type { EndpointComplianceStatus, EndpointCreated, EndpointEnrollmentSuggestion, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
 import { Async, Button, CopyBlock, ErrorNote, Field, InferredBadge, Input, Modal, Notice, PageHeader, Select, SkeletonBlock, SuggestedBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

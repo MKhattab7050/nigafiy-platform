@@ -1,4 +1,4 @@
-import type { FleetSession, FleetSessionEndReason, RemoteDesktopSession } from '@lan-detective/shared-types';
+import type { FleetSession, FleetSessionEndReason, RemoteDesktopSession } from '@nigafiy/shared-types';
 import type { Db } from '../../../infrastructure/db.ts';
 import { dropFrames, publishFramesCleared } from './frames.ts';
 

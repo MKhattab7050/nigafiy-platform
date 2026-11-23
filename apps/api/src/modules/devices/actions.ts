@@ -1,4 +1,4 @@
-import type { DeviceTrust } from '@lan-detective/shared-types';
+import type { DeviceTrust } from '@nigafiy/shared-types';
 import { AppError, notFound } from '../../common/http.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';

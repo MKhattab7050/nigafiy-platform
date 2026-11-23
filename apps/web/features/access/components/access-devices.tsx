@@ -1,6 +1,6 @@
 'use client';
 
-import type { AccessPage } from '@lan-detective/shared-types';
+import type { AccessPage } from '@nigafiy/shared-types';
 import { MonitorSmartphone } from 'lucide-react';
 import { useState } from 'react';
 import { ProportionBar } from '@/components/charts';

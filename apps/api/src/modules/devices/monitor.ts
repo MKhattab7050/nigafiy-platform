@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { DeviceMonitorResult } from '@lan-detective/shared-types';
+import type { DeviceMonitorResult } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, notFound } from '../../common/http.ts';
 import type { Db } from '../../infrastructure/db.ts';

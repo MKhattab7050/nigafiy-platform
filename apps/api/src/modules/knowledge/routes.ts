@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { KnowledgeDetail, KnowledgeList, KnowledgeRevision, KnowledgeUse, Role } from '@lan-detective/shared-types';
+import type { KnowledgeDetail, KnowledgeList, KnowledgeRevision, KnowledgeUse, Role } from '@nigafiy/shared-types';
 import { audit } from '../../common/audit.ts';
 import { AppError, type AuthContext, auth, forbidden, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';

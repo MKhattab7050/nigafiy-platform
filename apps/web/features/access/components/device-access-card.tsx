@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import type { AccessDevice, AccessPage } from '@lan-detective/shared-types';
+import type { AccessDevice, AccessPage } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Field, Select, Spinner, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

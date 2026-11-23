@@ -139,7 +139,7 @@ Evidence per address (`sources`):
   - exact counts, shown as 2^n when huge
   - the address class
 - The splitter gives the exact number of subnets and lists the first 64.
-- Unit tests: `pnpm --filter @lan-detective/web test:unit` (`node --test`).
+- Unit tests: `pnpm --filter @nigafiy/web test:unit` (`node --test`).
 
 ## Active operations on IPv6 targets (scope rule at API and collector)
 

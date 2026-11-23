@@ -1,7 +1,7 @@
 'use client';
 
-import type { PlatformProgram, PlatformProgramsResponse, ProgramId } from '@lan-detective/shared-types/programs';
-import { programForPath } from '@lan-detective/shared-types/routes';
+import type { PlatformProgram, PlatformProgramsResponse, ProgramId } from '@nigafiy/shared-types/programs';
+import { programForPath } from '@nigafiy/shared-types/routes';
 import { usePathname } from 'next/navigation';
 import { createContext, useContext, useMemo } from 'react';
 import { useQuery } from './app';

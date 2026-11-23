@@ -1,4 +1,4 @@
-import type { CheckRole, CheckState, Severity } from '@lan-detective/shared-types';
+import type { CheckRole, CheckState, Severity } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { type CheckResultItem, type CollectorContext, ItemRejected, MAX_FUTURE_SKEW_MS } from '../../common/collector-protocol.ts';
 import { emitEvent } from '../events/index.ts';

@@ -268,7 +268,7 @@ Milestone 5 (2026-11-23, per-component supervision):
   three after the first checks; `POST /v1/children/db/restart` stopped web, API and database in
   that order and brought them back in order; `POST /v1/shutdown` stopped web → API → database in
   under a second, every port free afterwards.
-- Packaged app: `pnpm --filter @lan-detective/desktop run pack` into a scratch output folder
+- Packaged app: `pnpm --filter @nigafiy/desktop run pack` into a scratch output folder
   (unsigned: no certificate on the build computer), then the packaged
   `resources\engine\nigafiy-engine.exe run` with a scratch data folder and `.env`, `--node` = the
   packaged `LAN Detective.exe`, `--stack-script`/`--bundle-dir` = `resources\backend`, control

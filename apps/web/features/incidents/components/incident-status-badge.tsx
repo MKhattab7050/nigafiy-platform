@@ -1,6 +1,6 @@
 'use client';
 
-import type { Incident } from '@lan-detective/shared-types';
+import type { Incident } from '@nigafiy/shared-types';
 import { type Key, useI18n } from '@/lib/i18n';
 import { Badge, type Tone, severityTone } from '@/components/ui';
 

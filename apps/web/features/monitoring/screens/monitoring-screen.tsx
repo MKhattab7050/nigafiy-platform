@@ -2,7 +2,7 @@
 
 import { Activity, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { DefaultChecksRestored, MonitoringCheck } from '@lan-detective/shared-types';
+import type { DefaultChecksRestored, MonitoringCheck } from '@nigafiy/shared-types';
 import { SetupArt } from '@/components/illustrations';
 import { Async, Button, Card, EmptyState, ErrorNote, Notice, PageHeader, Segmented, StateBadge, Tag } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';

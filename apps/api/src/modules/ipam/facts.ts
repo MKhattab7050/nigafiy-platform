@@ -1,4 +1,4 @@
-import type { IpamRecord, IpamSubnetDetail, IpamSubnetSummary } from '@lan-detective/shared-types';
+import type { IpamRecord, IpamSubnetDetail, IpamSubnetSummary } from '@nigafiy/shared-types';
 import { notFound } from '../../common/http.ts';
 import { addressScope, cidrContains, isIP } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';

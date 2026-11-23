@@ -1,4 +1,4 @@
-import type { RemoteDesktopFrame } from '@lan-detective/shared-types';
+import type { RemoteDesktopFrame } from '@nigafiy/shared-types';
 import type { Db } from '../../../infrastructure/db.ts';
 
 // Remote desktop frames are transient: never written to a table. The JPEG travels from the agent's

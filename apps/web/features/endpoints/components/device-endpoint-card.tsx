@@ -2,7 +2,7 @@
 
 import { Cpu } from 'lucide-react';
 import Link from 'next/link';
-import type { DeviceDetail, DeviceType, EndpointSummary } from '@lan-detective/shared-types';
+import type { DeviceDetail, DeviceType, EndpointSummary } from '@nigafiy/shared-types';
 import { Badge, Card } from '@/components/ui';
 import { useApp, useQuery } from '@/lib/app';
 import { pct } from '@/lib/format';

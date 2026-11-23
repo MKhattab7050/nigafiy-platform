@@ -1,6 +1,6 @@
 'use client';
 
-import type { NotificationChannel } from '@lan-detective/shared-types';
+import type { NotificationChannel } from '@nigafiy/shared-types';
 import { Bell, Mail, MessageSquare, Plus, Send, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Async, Badge, Button, Card, CopyBlock, ErrorNote, Input, Modal, Select } from '@/components/ui';

@@ -1,4 +1,4 @@
-import type { Diagnosis } from '@lan-detective/shared-types';
+import type { Diagnosis } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { finalize } from './rules.ts';
 import { type DhcpFacts, type WifiDoctorFacts, diagnoseDhcp, diagnoseWifi } from './smart-rules.ts';

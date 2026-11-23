@@ -1,4 +1,4 @@
-import type { EndpointPlatform } from '@lan-detective/shared-types';
+import type { EndpointPlatform } from '@nigafiy/shared-types';
 import { AppError } from '../../../common/http.ts';
 import { assertFileOperationAllowed } from '../file-manager/guards.ts';
 import type { CommandInput } from './schema.ts';

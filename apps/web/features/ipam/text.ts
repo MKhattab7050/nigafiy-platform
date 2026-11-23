@@ -1,4 +1,4 @@
-import type { IpamAddress, IpamConflictKind, IpamFlag, IpamRecordKind } from '@lan-detective/shared-types';
+import type { IpamAddress, IpamConflictKind, IpamFlag, IpamRecordKind } from '@nigafiy/shared-types';
 import type { Locale } from '@/lib/i18n';
 
 const en = {

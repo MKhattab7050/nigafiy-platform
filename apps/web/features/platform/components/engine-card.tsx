@@ -1,6 +1,6 @@
 'use client';
 
-import type { EngineChildState, PlatformEngineResponse, PlatformUpdateInstallStatus, PlatformUpdatesResponse } from '@lan-detective/shared-types/programs';
+import type { EngineChildState, PlatformEngineResponse, PlatformUpdateInstallStatus, PlatformUpdatesResponse } from '@nigafiy/shared-types/programs';
 import { useState } from 'react';
 import { Async, Badge, Button, Card, ErrorNote, Modal, SkeletonBlock, type Tone } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';

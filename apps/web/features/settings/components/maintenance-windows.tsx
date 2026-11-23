@@ -2,7 +2,7 @@
 
 import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { MaintenanceList } from '@lan-detective/shared-types';
+import type { MaintenanceList } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

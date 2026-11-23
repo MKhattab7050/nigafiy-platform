@@ -3,7 +3,7 @@
 import { Building2, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import type { PortfolioOrganizations, PortfolioSites } from '@lan-detective/shared-types';
+import type { PortfolioOrganizations, PortfolioSites } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, DataTable, EmptyState, ErrorNote, PageHeader, SkeletonBlock } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';

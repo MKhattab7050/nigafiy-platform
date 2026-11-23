@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import type { PortfolioOrganization, PortfolioSite } from '@lan-detective/shared-types';
+import type { PortfolioOrganization, PortfolioSite } from '@nigafiy/shared-types';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { CSRF, type TestAccount, app, newAccount } from './helpers.ts';
 

@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointPlatform, EndpointPolicy, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@lan-detective/shared-types';
+import type { EndpointPlatform, EndpointPolicy, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { randomToken } from '../../../common/crypto.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';

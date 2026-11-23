@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { PortfolioOrganizations, PortfolioSites } from '@lan-detective/shared-types';
+import type { PortfolioOrganizations, PortfolioSites } from '@nigafiy/shared-types';
 import { auth } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { organizationRollup, siteRollup } from './service.ts';

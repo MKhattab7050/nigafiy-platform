@@ -2,7 +2,7 @@
 
 import { ArrowRight, RadioTower } from 'lucide-react';
 import { useState } from 'react';
-import type { Collector, CollectorCreated } from '@lan-detective/shared-types';
+import type { Collector, CollectorCreated } from '@nigafiy/shared-types';
 import { Async, Card, EmptyState, PageHeader } from '@/components/ui';
 import { ProgramLink } from '@/features/platform';
 import { useApp, useQuery } from '@/lib/app';

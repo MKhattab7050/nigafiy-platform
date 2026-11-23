@@ -1,4 +1,4 @@
-import type { DeviceTrust } from '@lan-detective/shared-types';
+import type { DeviceTrust } from '@nigafiy/shared-types';
 import type { ControlAction } from '@/lib/controls';
 
 // Shapes of the routers API (apps/api/src/modules/routers). Kept here because they are owned by this feature.

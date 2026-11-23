@@ -1,7 +1,7 @@
 'use client';
 
 import { Siren } from 'lucide-react';
-import type { Incident, Paginated } from '@lan-detective/shared-types';
+import type { Incident, Paginated } from '@nigafiy/shared-types';
 import { AllClearArt } from '@/components/illustrations';
 import { Async, SkeletonBlock } from '@/components/ui';
 import { NextStep, Widget, attentionFrom } from '@/components/widget';

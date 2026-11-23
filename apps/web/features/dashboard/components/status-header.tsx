@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { EndpointSummary, InsightsReport, Overview, Paginated } from '@lan-detective/shared-types';
+import type { EndpointSummary, InsightsReport, Overview, Paginated } from '@nigafiy/shared-types';
 import { ProportionBar, RingGauge } from '@/components/charts';
 import { ErrorNote, Skeleton, ToneIcon, type Tone } from '@/components/ui';
 import { qs } from '@/lib/api';

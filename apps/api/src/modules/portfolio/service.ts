@@ -1,4 +1,4 @@
-import type { InsightsReport, MfaRequirement, PortfolioKpis, PortfolioOrganization, PortfolioSite, Role } from '@lan-detective/shared-types';
+import type { InsightsReport, MfaRequirement, PortfolioKpis, PortfolioOrganization, PortfolioSite, Role } from '@nigafiy/shared-types';
 import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';
 import { buildInsights, loadInsightFacts } from '../insights/index.ts';
 

@@ -1,4 +1,4 @@
-import type { NotificationChannel, NotificationEscalation } from '@lan-detective/shared-types';
+import type { NotificationChannel, NotificationEscalation } from '@nigafiy/shared-types';
 import { Router } from 'express';
 import { z } from 'zod';
 import { audit } from '../../common/audit.ts';

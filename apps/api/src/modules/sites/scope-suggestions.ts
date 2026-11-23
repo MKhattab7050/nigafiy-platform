@@ -1,5 +1,5 @@
 import ipaddr from 'ipaddr.js';
-import type { Confidence, ScopeSuggestion, ScopeSuggestionSource, ScopeSuggestions } from '@lan-detective/shared-types';
+import type { Confidence, ScopeSuggestion, ScopeSuggestionSource, ScopeSuggestions } from '@nigafiy/shared-types';
 import { notFound } from '../../common/http.ts';
 import { MAX_SCOPE_HOSTS_PREFIX, MAX_SCOPE_IPV6_PREFIX, ipv6Class, validateScope } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';

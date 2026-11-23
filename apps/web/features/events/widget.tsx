@@ -1,7 +1,7 @@
 'use client';
 
 import { ScrollText } from 'lucide-react';
-import type { NetworkEvent } from '@lan-detective/shared-types';
+import type { NetworkEvent } from '@nigafiy/shared-types';
 import { Async } from '@/components/ui';
 import { NextStep, Widget } from '@/components/widget';
 import { qs } from '@/lib/api';

@@ -1,6 +1,6 @@
 'use client';
 
-import type { PortfolioKpis } from '@lan-detective/shared-types';
+import type { PortfolioKpis } from '@nigafiy/shared-types';
 import { Badge, type Tone } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';

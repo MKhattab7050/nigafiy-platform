@@ -1,6 +1,6 @@
 'use client';
 
-import type { ProgramId } from '@lan-detective/shared-types/programs';
+import type { ProgramId } from '@nigafiy/shared-types/programs';
 import { ArrowRight } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Card } from '@/components/ui';

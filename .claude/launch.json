@@ -16,7 +16,7 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@lan-detective/web", "dev"],
+      "runtimeArgs": ["--filter", "@nigafiy/web", "dev"],
       "port": 3100
     }
   ]

@@ -1,4 +1,4 @@
-import type { KnowledgeEntry, KnowledgeRevision } from '@lan-detective/shared-types';
+import type { KnowledgeEntry, KnowledgeRevision } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 
 /**

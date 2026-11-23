@@ -1,4 +1,4 @@
-import type { DeviceStatus } from '@lan-detective/shared-types';
+import type { DeviceStatus } from '@nigafiy/shared-types';
 import type { Db } from '../../../infrastructure/db.ts';
 
 /** Close the devices' open availability intervals and open new ones with `status` at `at`. */

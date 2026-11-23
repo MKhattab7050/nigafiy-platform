@@ -1,7 +1,7 @@
 'use client';
 
 import { Bell } from 'lucide-react';
-import type { NotificationChannel } from '@lan-detective/shared-types';
+import type { NotificationChannel } from '@nigafiy/shared-types';
 import { Async } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';
 import { useQuery } from '@/lib/app';
