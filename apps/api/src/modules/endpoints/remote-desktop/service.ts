@@ -22,6 +22,8 @@ import {
   endOpenSession,
   signalSessionState,
 } from './sessions.ts';
+import { createRecording } from './recording.ts';
+import { markWakeConnected, recordingRule } from './session-tools.ts';
 import { isStreamConnected } from './stream-registry.ts';
 
 // Live Remote Desktop session management. A session is a fleet_sessions row (history) plus the
@@ -84,6 +86,28 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       requested,
       max,
     });
+    // Recording: the group's rule, then the profile ("record"). A group that requires recording
+    // refuses a session that cannot be recorded rather than running it unrecorded.
+    const rule = await recordingRule(db, id);
+    let recordingRefusal: { code: string; message: string } | null = null;
+    if (decision.ok) {
+      if (rule.mode === 'off' && body.recording_enabled) recordingRefusal = { code: 'recording_disabled_by_policy', message: 'The access policy of this computer does not allow recording sessions' };
+      else if (rule.mode === 'required' && !decision.permissions.record)
+        recordingRefusal = { code: 'recording_required_profile_cannot_record', message: 'The access policy of this computer requires recording, and the permission profile does not allow it' };
+      else if (body.recording_enabled && !decision.permissions.record) recordingRefusal = { code: 'profile_forbids_record', message: 'The permission profile of this session does not allow recording' };
+    }
+    if (decision.ok && recordingRefusal) {
+      return {
+        refused: true,
+        code: recordingRefusal.code,
+        status: 403,
+        message: recordingRefusal.message,
+        trail: [...decision.trail, { check: 'recording', result: 'fail', detail: `policy ${rule.mode}, profile record ${decision.permissions.record}` }],
+        policySource: eff.source,
+        group: eff.group?.name ?? null,
+      };
+    }
+    const record = decision.ok && (rule.mode === 'required' || (rule.mode === 'optional' && body.recording_enabled));
     if (!decision.ok) {
       return {
         refused: true,
@@ -145,6 +169,18 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
         ],
       )
     ).rows[0]!;
+    let recordingId: string | null = null;
+    if (record) {
+      recordingId = await createRecording(db, { orgId: ctx.organizationId, endpointId: id, fleetSessionId: fs.id, publicId, email: ctx.userEmail, retentionDays: rule.retentionDays });
+    }
+    await db.query(`UPDATE fleet_sessions SET recording_mode = $2, recording_id = $3, wake_request_id = $4 WHERE id = $1`, [fs.id, rule.mode, recordingId, body.wake_request_id ?? null]);
+    // The operator who starts the session holds it (several operators: session-tools.ts).
+    await db.query(
+      `INSERT INTO fleet_session_participants (organization_id, fleet_session_id, endpoint_id, user_id, email, role, state, permissions, joined_at, policy_trail, mfa_verified, request_ip)
+       VALUES ($1,$2,$3,$4,$5,'holder','joined',$6, now(), $7, $8, $9::inet)`,
+      [ctx.organizationId, fs.id, id, ctx.userId, ctx.userEmail, JSON.stringify(decision.permissions), JSON.stringify(decision.trail), decision.mfaVerified, requestIp],
+    );
+    if (body.wake_request_id) await markWakeConnected(db, id, body.wake_request_id, publicId);
 
     const session: RemoteDesktopSession = {
       id: publicId,
@@ -154,7 +190,9 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       quality: body.quality,
       scale: body.scale,
       consent_mode: consentMode,
-      recording_enabled: body.recording_enabled,
+      recording_enabled: recordingId !== null,
+      recording_id: recordingId,
+      operators: [ctx.userEmail],
       fleet_session_id: fs.id,
       state,
       reason,
@@ -177,6 +215,8 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       permissions: decision.permissions,
       clamped: decision.clamped,
       trail: decision.trail,
+      recording: recordingId ? { recording_id: recordingId, mode: rule.mode, retention_days: rule.retentionDays } : null,
+      wake_request_id: body.wake_request_id ?? null,
     });
     if (decision.approvalNeeded) {
       await signalSessionState(db, id, 'waiting_approval');
@@ -266,6 +306,9 @@ export async function openOnAgent(
         control: perms.control,
         permissions: perms,
         profile: session.profile_name ?? null,
+        // Everyone in the session and the recording mark: both on the banner, always.
+        operators: session.operators ?? [o.operator.email],
+        recording: Boolean(session.recording_id),
         stream: true,
         display_index: session.display_index,
         quality: session.quality,

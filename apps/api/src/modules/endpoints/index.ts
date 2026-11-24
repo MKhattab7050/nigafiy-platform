@@ -8,6 +8,7 @@ import { fleetRouter } from './fleet/routes.ts';
 import { fleetPolicyRouter } from './fleet-policy/routes.ts';
 import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
+import { runRecordingRetention } from './remote-desktop/recording.ts';
 import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
 import { RD_FRAME_CHANNEL, onFrameNotification } from './remote-desktop/frames.ts';
 import { AGENT_WAKE_CHANNEL, onAgentWakeNotification } from './agent/wake.ts';
@@ -37,6 +38,8 @@ export const endpointsModule = defineModule({
   name: 'endpoints',
   api: endpointsApi,
   gateway: { path: '/api/v1/agent', rateLimitPerMinute: 360, router: agentGatewayRouter },
+  // Session recordings past their group's retention: the file goes, the row stays (marked deleted).
+  jobs: [{ name: 'fleet-recording-retention', everyMs: 3_600_000, lockKey: 727170, run: async () => void (await runRecordingRetention()) }],
   lifecycle: {
     // Results uploaded to another API instance wake this instance's waiters (interactive commands).
     start: async () => {

@@ -16,8 +16,10 @@ import { validateCommandForPlatform } from '../commands/guards.ts';
 import { payloadForAudit } from '../repo.ts';
 import { PROFILE_REFUSAL_MESSAGES, type ProfileRefusalCode, refusalFlag } from '../fleet-policy/enforce.ts';
 import { sessionPermissions } from '../fleet-policy/profiles.ts';
+import { RecordingWriter } from './recording.ts';
 import { rdInputCommandSchema } from './schema.ts';
-import { RD_STREAM_CHANNEL } from './sessions.ts';
+import { participantAccess } from './session-tools.ts';
+import { RD_STREAM_CHANNEL, auditEndpointEvent } from './sessions.ts';
 import { clearStream, markStreamDown, markStreamUp, streamLocation } from './stream-registry.ts';
 
 /*
@@ -60,12 +62,34 @@ export const CLOSE_SUPERSEDED = 4001;
 const MAX_BUFFERED = 4 << 20;
 const RESUME_BUFFERED = 512 << 10;
 const MAX_FRAME_BYTES = 8 << 20;
-const MAX_TEXT_BYTES = 256 << 10;
+// A clipboard picture (4 MiB PNG as base64) is the largest text message.
+const MAX_TEXT_BYTES = 6 << 20;
 const MAX_HEADER_BYTES = 64 << 10;
 const FLUSH_MS = 5_000;
 const ROLE_RANK: Record<Role, number> = { viewer: 0, technician: 1, admin: 2, owner: 3 };
 
 // ── Messages ────────────────────────────────────────────────────────────────────────────────────
+
+const clipFormat = z.enum(['text', 'image', 'files']);
+const unit = z.number().min(0).max(1);
+const annotateOp = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('stroke'),
+    display: z.object({ x: z.number().int(), y: z.number().int(), w: z.number().int().min(1), h: z.number().int().min(1) }),
+    points: z.array(z.tuple([unit, unit])).min(2).max(2000),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    width: z.number().int().min(1).max(24).optional(),
+  }),
+  z.object({
+    op: z.literal('pointer'),
+    display: z.object({ x: z.number().int(), y: z.number().int(), w: z.number().int().min(1), h: z.number().int().min(1) }),
+    x: unit,
+    y: unit,
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  }),
+  z.object({ op: z.literal('pointer_hide') }),
+  z.object({ op: z.literal('clear') }),
+]);
 
 const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
   z.object({ t: z.literal('ack'), seq: z.number().int().min(0) }),
@@ -77,10 +101,37 @@ const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
     quality: z.number().int().min(25).max(95).optional(),
     scale: z.number().min(0.25).max(1).optional(),
     adaptive: z.boolean().optional(),
+    // Show the remote pointer in the picture; colour depth (8 = greyscale).
+    cursor: z.boolean().optional(),
+    depth: z.union([z.literal(8), z.literal(16), z.literal(24)]).optional(),
   }),
   z.object({ t: z.literal('input'), ev: z.record(z.string(), z.unknown()) }),
-  z.object({ t: z.literal('clipboard_get'), req: reqId }),
-  z.object({ t: z.literal('clipboard_set'), req: reqId, text: z.string().max(16_000) }),
+  z.object({ t: z.literal('clipboard_get'), req: reqId, format: clipFormat.optional() }),
+  z.object({
+    t: z.literal('clipboard_set'),
+    req: reqId,
+    format: clipFormat.optional(),
+    text: z.string().max(16_000).optional(),
+    // A PNG picture (base64, at most 4 MiB decoded) or file paths on the remote computer (files
+    // the operator uploaded there first, through the chunked SHA-256 file transfer).
+    data: z.string().max(5_600_000).optional(),
+    paths: z.array(z.string().min(1).max(1024)).min(1).max(50).optional(),
+  }),
+  // In-session tools (migration 036). `from` is set by the hub from the signed-in operator.
+  z.object({ t: z.literal('privacy'), on: z.boolean() }),
+  z.object({ t: z.literal('block_input'), on: z.boolean() }),
+  z.object({ t: z.literal('sas') }),
+  z.object({ t: z.literal('chat'), id: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/), text: z.string().trim().min(1).max(2000), from: z.string().max(320).optional() }),
+  z.object({
+    t: z.literal('ask'),
+    id: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+    text: z.string().trim().min(1).max(500),
+    kind: z.enum(['ok', 'yes_no', 'text']),
+    timeout_s: z.number().int().min(10).max(600).default(300),
+    from: z.string().max(320).optional(),
+  }),
+  z.object({ t: z.literal('annotate'), op: annotateOp }),
+  z.object({ t: z.literal('audio'), on: z.boolean(), mono: z.boolean().optional() }),
 ]);
 /** From an operator's browser. */
 const viewerMessage = messageSchema(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/));
@@ -88,7 +139,34 @@ const viewerMessage = messageSchema(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/));
 const peerMessage = messageSchema(z.string().regex(/^[A-Za-z0-9_-]{1,40}\.[A-Za-z0-9_-]{1,32}$/));
 type ViewerMessage = z.infer<typeof viewerMessage>;
 
-const AGENT_TEXT_TYPES = new Set(['hello', 'stats', 'displays', 'clipboard', 'clipboard_error', 'clipboard_set_ok', 'input_error', 'error']);
+const AGENT_TEXT_TYPES = new Set([
+  'hello',
+  'stats',
+  'displays',
+  'clipboard',
+  'clipboard_error',
+  'clipboard_set_ok',
+  'input_error',
+  'error',
+  // In-session tools: what is switched on (shown to every operator), refusals, Ctrl+Alt+Del,
+  // the person's chat replies and answers.
+  'tool_state',
+  'tool_error',
+  'sas_result',
+  'chat',
+  'chat_shown',
+  'answer',
+]);
+
+/** Close code for an operator removed from the session (or whose invitation ended). */
+export const CLOSE_PARTICIPANT_REMOVED = 4003;
+
+/** Audio packet from the agent: 'N', 2, uint32 header length, JSON header, IMA ADPCM bytes. */
+export function isAudioPacket(buf: Buffer): boolean {
+  if (buf.length < 6 || buf.length > 1 << 20 || buf[0] !== 0x4e || buf[1] !== 2) return false;
+  const n = buf.readUInt32BE(2);
+  return n > 0 && n <= 4096 && 6 + n <= buf.length;
+}
 
 interface FrameMeta {
   seq: number;
@@ -163,6 +241,10 @@ interface Sink {
   stale: boolean;
   fullAsked: boolean;
   user?: ViewerUser;
+  /** This operator's permissions: the session's, narrowed for an invited colleague. */
+  perms?: FleetPermissions;
+  /** The operator listens to the computer's sound. */
+  audio?: boolean;
 }
 
 interface Room {
@@ -186,6 +268,10 @@ interface Room {
   lastDisplay: number | null;
   /** The session's granted permission profile (rd_session.permissions), enforced on every operator message. */
   permissions: FleetPermissions;
+  /** The session recording written here (this instance holds the agent's socket). */
+  recorder: RecordingWriter | null;
+  recordingId: string | null;
+  audioOn: boolean;
 }
 
 export interface StreamHubOptions {
@@ -291,6 +377,9 @@ export class StreamHub {
         bytes: 0,
         lastDisplay: null,
         permissions: sessionPermissions(session),
+        recorder: null,
+        recordingId: null,
+        audioOn: false,
       };
       this.rooms.set(endpointId, r);
     }
@@ -334,17 +423,24 @@ export class StreamHub {
     ).catch((err: unknown) => logger.warn({ err }, 'fleet session stream update failed'));
     this.broadcastText(r, { t: 'path', path: 'direct', instance: this.instanceId }, false);
     this.sendViewerCount(r);
+    void this.syncRecording(r, cur.session.recording_id ?? null);
 
     ws.on('message', (data, isBinary) => {
       if (r.agent !== ws) return;
       const buf = toBuffer(data);
       if (isBinary) {
+        if (isAudioPacket(buf)) {
+          if (r.active) this.fanOutAudio(r, buf, true);
+          return;
+        }
         const meta = frameMeta(buf);
         if (!meta || !r.active) return;
         if (this.fanOutFrame(r, buf, meta, true) > 0) {
           // Counted when it reached at least one operator (or another instance).
           r.frames++;
           r.bytes += buf.length;
+          // The recording keeps exactly what the operators saw.
+          r.recorder?.frame(buf);
         }
         return;
       }
@@ -364,12 +460,19 @@ export class StreamHub {
           void withTenant(r.orgId, (db) => db.query(`UPDATE fleet_sessions SET desktop_mode = $3 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId, mode])).catch(() => undefined);
         }
       }
+      this.onAgentTool(r, m as Record<string, unknown>);
       this.routeAgentText(r, m, text, true);
     });
     const gone = () => {
       if (r.agent !== ws) return;
       r.agent = null;
       r.active = false;
+      r.audioOn = false;
+      // The recording continues in a new segment when the agent reconnects (here or elsewhere).
+      const rec = r.recorder;
+      r.recorder = null;
+      r.recordingId = null;
+      if (rec) void rec.close();
       markStreamDown(r.endpointId, this.instanceId);
       void this.announce(`down|${r.endpointId}|${r.sessionId}|${this.instanceId}`);
       this.broadcastText(r, { t: 'path', path: 'waiting', reason: 'agent_disconnected' }, true);
@@ -390,6 +493,13 @@ export class StreamHub {
         this.sendJson(v, out);
         if (m.t === 'clipboard' && typeof out.text === 'string') {
           void this.recordClipboard(r, v, 'from_remote', out.text.length).catch((err: unknown) => logger.warn({ err }, 'clipboard audit failed'));
+        } else if (m.t === 'clipboard' && (out.format === 'image' || out.format === 'files') && v.user) {
+          const detail = out.format === 'image' ? { bytes: typeof out.bytes === 'number' ? out.bytes : 0 } : { files: Array.isArray(out.paths) ? out.paths.length : 0 };
+          const u = v.user;
+          void withTenant(u.orgId, async (db) => {
+            await db.query(`UPDATE fleet_sessions SET clipboard_from_remote = clipboard_from_remote + 1 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId]);
+            await this.auditIn(db, r, u, 'fleet.session_clipboard', { direction: 'from_remote', format: out.format, ...detail });
+          }).catch((err: unknown) => logger.warn({ err }, 'clipboard audit failed'));
         }
         return;
       }
@@ -426,6 +536,63 @@ export class StreamHub {
     }
     if (askFull) this.toAgent(r, { t: 'full' });
     return delivered;
+  }
+
+  /** Audio goes only to operators who switched it on and whose permissions include audio. */
+  private fanOutAudio(r: Room, buf: Buffer, includePeers: boolean): void {
+    for (const v of r.viewers) {
+      if (v.audio && v.perms?.audio && v.ws.readyState === WebSocket.OPEN && v.ws.bufferedAmount < MAX_BUFFERED) v.ws.send(buf, { binary: true });
+    }
+    if (includePeers) for (const p of r.peers) if (p.audio && p.ws.readyState === WebSocket.OPEN && p.ws.bufferedAmount < MAX_BUFFERED) p.ws.send(buf, { binary: true });
+  }
+
+  /** What the agent reports about the tools: counted (chat) and marked in the recording; never the text. */
+  private onAgentTool(r: Room, m: Record<string, unknown>): void {
+    if (m.t === 'chat' && m.from === 'user') {
+      r.recorder?.event({ e: 'chat', from: 'user', chars: typeof m.text === 'string' ? m.text.length : 0 });
+      void withTenant(r.orgId, (db) => db.query(`UPDATE fleet_sessions SET chat_messages = chat_messages + 1 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId])).catch(
+        () => undefined,
+      );
+    } else if (m.t === 'answer') {
+      r.recorder?.event({ e: 'answer', id: m.id, answer: m.answer });
+      void withTenant(r.orgId, (db) =>
+        auditEndpointEvent(db, r.orgId, r.endpointId, 'fleet.session_answer', {
+          session_id: r.sessionId,
+          question_id: m.id,
+          answer: m.answer,
+          chars: typeof m.text === 'string' ? m.text.length : 0,
+        }),
+      ).catch(() => undefined);
+    } else if (m.t === 'tool_state') {
+      r.recorder?.event({ e: 'tool_state', privacy: m.privacy, input_blocked: m.input_blocked, audio: m.audio, recording: m.recording });
+    }
+  }
+
+  /** Opens or closes this instance's recording writer to match the session (rd_session.recording_id). */
+  private async syncRecording(r: Room, recordingId: string | null): Promise<void> {
+    if (!r.agent) return;
+    if (r.recordingId === recordingId && (recordingId === null || r.recorder?.active)) return;
+    const old = r.recorder;
+    r.recorder = null;
+    r.recordingId = recordingId;
+    if (old) await old.close();
+    if (!recordingId) return;
+    try {
+      const w = await RecordingWriter.open(r.orgId, recordingId);
+      if (!w || r.recordingId !== recordingId || !r.agent) {
+        await w?.close();
+        return;
+      }
+      w.onNeedFull = () => this.toAgent(r, { t: 'full' });
+      r.recorder = w;
+      w.event({ e: 'started', session_id: r.sessionId });
+      this.toAgent(r, { t: 'full' });
+    } catch (err) {
+      logger.error({ err }, 'session recording could not be opened');
+      await withTenant(r.orgId, (db) => db.query(`UPDATE fleet_recordings SET state = 'failed', error = $2 WHERE id = $1`, [recordingId, (err as Error).message.slice(0, 300)])).catch(
+        () => undefined,
+      );
+    }
   }
 
   private viewerCount(r: Room): number {
@@ -473,6 +640,10 @@ export class StreamHub {
     const cur = await this.currentSession(who.organizationId, endpointId);
     if (!cur) throw new AppError(404, 'not_found', 'Endpoint not found');
     if (!cur.session || cur.session.id !== sessionId) throw new AppError(409, 'no_remote_session', 'This remote desktop session is not open');
+    // Only the operator holding the session and colleagues who joined it (each with their own,
+    // possibly narrower, permissions) may watch.
+    const perms = await withTenant(who.organizationId, (db) => participantAccess(db, cur.session as never, who.userId));
+    if (!perms) throw new AppError(403, 'not_a_participant', 'You are not in this session: ask the operator holding it to invite you');
     const ws = await this.upgrade(req, socket, head);
     const r = this.room(endpointId, who.organizationId, sessionId, cur.platform, cur.session);
     if (!r.agent) r.active = (cur.session.state ?? 'active') === 'active';
@@ -484,9 +655,20 @@ export class StreamHub {
       stale: true,
       fullAsked: false,
       user: { userId: who.userId, email: who.userEmail, orgId: who.organizationId, role: who.role, ip: req.socket.remoteAddress ?? null },
+      perms,
+      audio: false,
     };
     r.viewers.add(sink);
-    this.sendJson(sink, { t: 'session', state: cur.session.state ?? 'active', session_id: sessionId, permissions: r.permissions });
+    this.sendJson(sink, {
+      t: 'session',
+      state: cur.session.state ?? 'active',
+      session_id: sessionId,
+      permissions: perms,
+      session_permissions: r.permissions,
+      operators: cur.session.operators ?? [cur.session.operator_email],
+      recording: Boolean(cur.session.recording_id),
+      holder: (cur.session as { operator_user_id?: string }).operator_user_id === who.userId,
+    });
     if (r.agent) {
       this.sendJson(sink, { t: 'path', path: 'direct', instance: this.instanceId });
       if (r.hello) this.sendRaw(sink, r.hello);
@@ -506,12 +688,13 @@ export class StreamHub {
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
       const buf = toBuffer(data);
-      if (buf.length > 80_000) return;
+      if (buf.length > MAX_TEXT_BYTES) return;
       chain = chain.then(() => this.onViewerMessage(r, sink, buf)).catch((err: unknown) => logger.warn({ err }, 'remote desktop viewer message failed'));
     });
     const gone = () => {
       if (!r.viewers.delete(sink)) return;
       this.sendViewerCount(r);
+      this.syncAudio(r);
       this.dropRoomIfEmpty(r);
     };
     ws.on('close', gone);
@@ -532,6 +715,7 @@ export class StreamHub {
     }
     const m: ViewerMessage = parsed.data;
     const user = sink.user!;
+    const perms = sink.perms ?? r.permissions;
     switch (m.t) {
       case 'ack':
       case 'displays':
@@ -564,7 +748,7 @@ export class StreamHub {
           return;
         }
         const { kind: _k, event_kind, ...rest } = parsedEv.data;
-        if (!r.permissions.control) {
+        if (!perms.control) {
           this.sendJson(sink, { t: 'input_error', code: 'profile_forbids_control', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_control });
           if (event_kind !== 'mouse_move') await this.refused(r, user, 'profile_forbids_control', { kind: event_kind });
           return;
@@ -574,30 +758,157 @@ export class StreamHub {
           this.sendJson(sink, { t: 'input_error', error: r.active ? 'The endpoint is not connected to the live stream' : 'The user has not accepted the session yet' });
           return;
         }
+        // Input timing (never keys or text) goes into the recording.
+        r.recorder?.input(out as { kind: string; display_index?: number; x?: number; y?: number });
         // Every action except pointer movement is in the audit trail (keys and text redacted).
         if (event_kind !== 'mouse_move') await this.auditViewer(r, user, 'endpoint.rd_input', { via: 'live_stream', ...payloadForAudit('rd_input', out) });
         return;
       }
       case 'clipboard_get':
-        if (!r.permissions.clipboard_out) {
+        if (m.format === 'image' || m.format === 'files') {
+          await this.richClipboard(r, sink, perms, m.req, m.format, 'from_remote', null);
+          return;
+        }
+        if (!perms.clipboard_out) {
           this.sendJson(sink, { t: 'clipboard_error', req: m.req, code: 'profile_forbids_clipboard_out', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_clipboard_out });
           await this.refused(r, user, 'profile_forbids_clipboard_out', { direction: 'from_remote' });
           return;
         }
         if (!this.toAgent(r, { t: 'clipboard_get', req: `${sink.id}.${m.req}` })) this.sendJson(sink, { t: 'clipboard_error', req: m.req, error: 'The endpoint is not connected to the live stream' });
         return;
-      case 'clipboard_set':
-        if (!r.permissions.clipboard_in) {
-          this.sendJson(sink, { t: 'clipboard_error', req: m.req, code: 'profile_forbids_clipboard_in', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_clipboard_in });
-          await this.refused(r, user, 'profile_forbids_clipboard_in', { direction: 'to_remote', chars: m.text.length });
+      case 'clipboard_set': {
+        if (m.format === 'image' || m.format === 'files') {
+          await this.richClipboard(r, sink, perms, m.req, m.format, 'to_remote', m);
           return;
         }
-        if (!this.toAgent(r, { t: 'clipboard_set', req: `${sink.id}.${m.req}`, text: m.text })) {
+        const text = m.text ?? '';
+        if (!perms.clipboard_in) {
+          this.sendJson(sink, { t: 'clipboard_error', req: m.req, code: 'profile_forbids_clipboard_in', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_clipboard_in });
+          await this.refused(r, user, 'profile_forbids_clipboard_in', { direction: 'to_remote', chars: text.length });
+          return;
+        }
+        if (!this.toAgent(r, { t: 'clipboard_set', req: `${sink.id}.${m.req}`, text })) {
           this.sendJson(sink, { t: 'clipboard_error', req: m.req, error: 'The endpoint is not connected to the live stream' });
           return;
         }
-        await this.recordClipboard(r, sink, 'to_remote', m.text.length);
+        await this.recordClipboard(r, sink, 'to_remote', text.length);
         return;
+      }
+      case 'privacy':
+      case 'block_input': {
+        const flag = m.t === 'privacy' ? 'privacy_screen' : 'block_input';
+        if (!perms[flag]) {
+          const code = m.t === 'privacy' ? 'profile_forbids_privacy_screen' : 'profile_forbids_block_input';
+          this.sendJson(sink, { t: 'tool_error', tool: m.t, code, error: PROFILE_REFUSAL_MESSAGES[code] });
+          await this.refused(r, user, code, { on: m.on });
+          return;
+        }
+        if (!this.toAgent(r, { t: m.t, on: m.on })) return this.notConnected(r, sink, m.t);
+        r.recorder?.event({ e: m.t, on: m.on, by: user.email });
+        await this.auditViewer(r, user, m.t === 'privacy' ? 'fleet.session_privacy_screen' : 'fleet.session_block_input', { on: m.on });
+        return;
+      }
+      case 'sas':
+        if (!perms.control) {
+          this.sendJson(sink, { t: 'tool_error', tool: 'sas', code: 'profile_forbids_control', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_control });
+          await this.refused(r, user, 'profile_forbids_control', { tool: 'sas' });
+          return;
+        }
+        if (!this.toAgent(r, { t: 'sas' })) return this.notConnected(r, sink, 'sas');
+        r.recorder?.event({ e: 'sas', by: user.email });
+        await this.auditViewer(r, user, 'fleet.session_sas', {});
+        return;
+      case 'chat': {
+        // Every operator in the session sees the message; the audit keeps its length only.
+        const out = { t: 'chat', id: m.id, from: user.email, text: m.text };
+        if (!this.toAgent(r, out)) return this.notConnected(r, sink, 'chat');
+        for (const v of r.viewers) if (v !== sink) this.sendJson(v, out);
+        r.recorder?.event({ e: 'chat', from: user.email, chars: m.text.length });
+        await withTenant(user.orgId, async (db) => {
+          await db.query(`UPDATE fleet_sessions SET chat_messages = chat_messages + 1 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId]);
+          await this.auditIn(db, r, user, 'fleet.session_chat', { chars: m.text.length });
+        });
+        return;
+      }
+      case 'ask':
+        if (!this.toAgent(r, { t: 'ask', id: m.id, text: m.text, kind: m.kind, timeout_s: m.timeout_s, from: user.email })) return this.notConnected(r, sink, 'ask');
+        r.recorder?.event({ e: 'ask', id: m.id, kind: m.kind, by: user.email });
+        await this.auditViewer(r, user, 'fleet.session_question', { question_id: m.id, kind: m.kind, chars: m.text.length });
+        return;
+      case 'annotate':
+        if (!this.toAgent(r, { t: 'annotate', op: m.op })) return this.notConnected(r, sink, 'annotate');
+        // Strokes and clearing are in the audit; the moving laser pointer is not (it is continuous).
+        if (m.op.op === 'stroke' || m.op.op === 'clear') {
+          r.recorder?.event({ e: 'annotate', op: m.op.op, by: user.email });
+          await this.auditViewer(r, user, 'fleet.session_annotation', { op: m.op.op, points: m.op.op === 'stroke' ? m.op.points.length : 0 });
+        }
+        return;
+      case 'audio':
+        if (m.on && !perms.audio) {
+          this.sendJson(sink, { t: 'tool_error', tool: 'audio', code: 'profile_forbids_audio', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_audio });
+          await this.refused(r, user, 'profile_forbids_audio', {});
+          return;
+        }
+        sink.audio = m.on;
+        this.syncAudio(r, m.mono === true);
+        await this.auditViewer(r, user, 'fleet.session_audio', { on: m.on });
+        return;
+    }
+  }
+
+  private notConnected(r: Room, sink: Sink, tool: string): void {
+    this.sendJson(sink, { t: 'tool_error', tool, error: r.active ? 'The endpoint is not connected to the live stream' : 'The user has not accepted the session yet' });
+  }
+
+  /** The agent captures sound while at least one operator listens. */
+  private syncAudio(r: Room, mono = false): void {
+    const want = [...r.viewers].some((v) => v.audio && v.perms?.audio);
+    if (want === r.audioOn) return;
+    if (this.toAgent(r, { t: 'audio', on: want, mono })) r.audioOn = want;
+    else if (!want) r.audioOn = false;
+  }
+
+  /** Pictures and file lists on the clipboard (both directions, per the operator's permissions). */
+  private async richClipboard(
+    r: Room,
+    sink: Sink,
+    perms: FleetPermissions,
+    req: string,
+    format: 'image' | 'files',
+    direction: 'to_remote' | 'from_remote',
+    m: { data?: string; paths?: string[] } | null,
+  ): Promise<void> {
+    const user = sink.user!;
+    const code: ProfileRefusalCode | null =
+      direction === 'to_remote' && !perms.clipboard_in
+        ? 'profile_forbids_clipboard_in'
+        : direction === 'from_remote' && !perms.clipboard_out
+          ? 'profile_forbids_clipboard_out'
+          : format === 'files' && !perms.files
+            ? 'profile_forbids_files'
+            : null;
+    if (code) {
+      this.sendJson(sink, { t: 'clipboard_error', req, format, code, error: PROFILE_REFUSAL_MESSAGES[code] });
+      await this.refused(r, user, code, { direction, format });
+      return;
+    }
+    const payload: Record<string, unknown> = { t: direction === 'to_remote' ? 'clipboard_set' : 'clipboard_get', req: `${sink.id}.${req}`, format };
+    if (direction === 'to_remote') {
+      if (format === 'image' && !m?.data) return this.sendJson(sink, { t: 'clipboard_error', req, format, error: 'No picture' });
+      if (format === 'files' && !m?.paths?.length) return this.sendJson(sink, { t: 'clipboard_error', req, format, error: 'No files' });
+      payload.data = m?.data;
+      payload.paths = m?.paths;
+    }
+    if (!this.toAgent(r, payload)) {
+      this.sendJson(sink, { t: 'clipboard_error', req, format, error: 'The endpoint is not connected to the live stream' });
+      return;
+    }
+    if (direction === 'to_remote') {
+      const detail = format === 'image' ? { bytes: Math.floor(((m?.data?.length ?? 0) * 3) / 4) } : { files: m?.paths?.length ?? 0 };
+      await withTenant(user.orgId, async (db) => {
+        await db.query(`UPDATE fleet_sessions SET clipboard_to_remote = clipboard_to_remote + 1 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId]);
+        await this.auditIn(db, r, user, 'fleet.session_clipboard', { direction, format, ...detail });
+      });
     }
   }
 
@@ -646,7 +957,7 @@ export class StreamHub {
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
       const buf = toBuffer(data);
-      if (buf.length > 80_000) return;
+      if (buf.length > MAX_TEXT_BYTES) return;
       let m: Record<string, unknown>;
       try {
         m = JSON.parse(buf.toString('utf8'));
@@ -666,6 +977,8 @@ export class StreamHub {
         sink.stale = true;
         sink.fullAsked = true;
       }
+      if (parsed.data.t === 'audio') sink.audio = parsed.data.on;
+      if (parsed.data.t === 'input') r.recorder?.input(parsed.data.ev as { kind: string });
       this.toAgent(r, parsed.data);
     });
     const gone = () => {
@@ -697,6 +1010,10 @@ export class StreamHub {
       if (r.upstream !== ws) return;
       const buf = toBuffer(data);
       if (isBinary) {
+        if (isAudioPacket(buf)) {
+          this.fanOutAudio(r, buf, false);
+          return;
+        }
         const meta = frameMeta(buf);
         if (meta) this.fanOutFrame(r, buf, meta, false);
         return;
@@ -778,7 +1095,49 @@ export class StreamHub {
         if (r?.agent && parts[2] !== this.instanceId) void this.announce(`up|${endpointId}|${r.sessionId}|${this.instanceId}|${this.peerUrl}`);
         return;
       }
+      case 'rec': {
+        // Recording switched on or off (session-tools.ts): the instance holding the agent writes it;
+        // every viewer is told so the recording mark shows in the console too.
+        if (!r) return;
+        const id = parts[2] && UUID.test(parts[2]) ? parts[2] : null;
+        this.broadcastText(r, { t: 'recording', on: id !== null }, false);
+        void this.syncRecording(r, id);
+        void this.refreshOperators(r);
+        return;
+      }
+      case 'part': {
+        // An operator left or was removed: their sockets close.
+        const userId = parts[2];
+        if (!r || !userId) return;
+        for (const v of [...r.viewers]) if (v.user?.userId === userId) v.ws.close(CLOSE_PARTICIPANT_REMOVED, 'removed from the session');
+        return;
+      }
     }
+  }
+
+  /** After a join, a hand-over or a removal: every viewer gets the new list and their own permissions. */
+  private async refreshOperators(r: Room): Promise<void> {
+    const cur = await this.currentSession(r.orgId, r.endpointId).catch(() => null);
+    const s = cur?.session;
+    if (!s || s.id !== r.sessionId) return;
+    r.permissions = sessionPermissions(s);
+    for (const v of r.viewers) {
+      if (!v.user) continue;
+      const perms = await withTenant(r.orgId, (db) => participantAccess(db, s as never, v.user!.userId)).catch(() => null);
+      if (!perms) {
+        v.ws.close(CLOSE_PARTICIPANT_REMOVED, 'removed from the session');
+        continue;
+      }
+      v.perms = perms;
+      this.sendJson(v, {
+        t: 'operators',
+        operators: s.operators ?? [s.operator_email],
+        permissions: perms,
+        holder: (s as { operator_user_id?: string }).operator_user_id === v.user.userId,
+        recording: Boolean(s.recording_id),
+      });
+    }
+    this.syncAudio(r);
   }
 
   private closeRoom(r: Room, code: number, reason: string, notifyViewers: boolean): void {
@@ -794,6 +1153,10 @@ export class StreamHub {
     r.agent = null;
     r.upstream?.close(1000);
     r.upstream = null;
+    const rec = r.recorder;
+    r.recorder = null;
+    r.recordingId = null;
+    if (rec) void rec.close();
     void this.flush(r);
   }
 
@@ -814,6 +1177,7 @@ export class StreamHub {
   }
 
   private async flush(r: Room): Promise<void> {
+    if (r.recorder) await r.recorder.flush();
     if (r.frames === 0 && r.bytes === 0) return;
     const [frames, bytes] = [r.frames, r.bytes];
     r.frames = 0;

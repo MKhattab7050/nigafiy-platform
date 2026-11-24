@@ -13,7 +13,11 @@ export type ProfileRefusalCode =
   | 'profile_forbids_clipboard_in'
   | 'profile_forbids_clipboard_out'
   | 'profile_forbids_files'
-  | 'profile_forbids_restart';
+  | 'profile_forbids_restart'
+  | 'profile_forbids_privacy_screen'
+  | 'profile_forbids_block_input'
+  | 'profile_forbids_audio'
+  | 'profile_forbids_record';
 
 export const PROFILE_REFUSAL_MESSAGES: Record<ProfileRefusalCode, string> = {
   profile_forbids_view: 'The permission profile of this session does not allow seeing the screen',
@@ -22,6 +26,10 @@ export const PROFILE_REFUSAL_MESSAGES: Record<ProfileRefusalCode, string> = {
   profile_forbids_clipboard_out: 'The permission profile of this session does not allow taking the clipboard from the computer',
   profile_forbids_files: 'The permission profile of your session on this computer does not allow file transfer',
   profile_forbids_restart: 'The permission profile of your session on this computer does not allow restart, shutdown or sign-out',
+  profile_forbids_privacy_screen: 'The permission profile of this session does not allow the privacy screen',
+  profile_forbids_block_input: 'The permission profile of this session does not allow blocking the local keyboard and mouse',
+  profile_forbids_audio: 'The permission profile of this session does not allow listening to the computer’s sound',
+  profile_forbids_record: 'The permission profile of this session does not allow recording',
 };
 
 const NEEDS: Record<ProfileRefusalCode, FleetPermissionKey> = {
@@ -31,6 +39,10 @@ const NEEDS: Record<ProfileRefusalCode, FleetPermissionKey> = {
   profile_forbids_clipboard_out: 'clipboard_out',
   profile_forbids_files: 'files',
   profile_forbids_restart: 'restart',
+  profile_forbids_privacy_screen: 'privacy_screen',
+  profile_forbids_block_input: 'block_input',
+  profile_forbids_audio: 'audio',
+  profile_forbids_record: 'record',
 };
 
 export const refusalFlag = (code: ProfileRefusalCode): FleetPermissionKey => NEEDS[code];

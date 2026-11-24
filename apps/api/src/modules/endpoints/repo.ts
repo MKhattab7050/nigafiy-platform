@@ -160,6 +160,9 @@ export function payloadForAudit(kind: string, payload: Record<string, unknown>):
   if (kind === 'rd_input') {
     if (typeof out.text === 'string') out.text = `[${out.text.length} characters redacted]`;
     if (typeof out.key === 'string') out.key = '[redacted]';
+    // Keys sent by position and shortcuts: which keys is as private as the text they type.
+    if (typeof out.code === 'string') out.code = '[redacted]';
+    if (Array.isArray(out.keys)) out.keys = `[${out.keys.length} keys redacted]`;
   }
   return out;
 }

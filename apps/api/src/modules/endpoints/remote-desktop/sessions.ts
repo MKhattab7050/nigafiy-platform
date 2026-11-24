@@ -16,7 +16,7 @@ export const FLEET_SESSION_COLUMNS = `id, endpoint_id, public_id, operator_email
   frames_relayed::float8 AS frames_relayed, bytes_relayed::float8 AS bytes_relayed, clipboard_to_remote, clipboard_from_remote,
   started_at, accepted_at, ended_at, end_reason, ended_by_email, source, fleet_group_id, group_name, profile_id, profile_name, permissions,
   consent_timeout_s, refuse_window_s, policy_trail, mfa_verified, request_ip, approval_state, approval_expires_at, approver_email,
-  approval_decided_at, approval_note`;
+  approval_decided_at, approval_note, recording_mode, recording_id, chat_messages, files_transferred, wake_request_id`;
 
 /** Records an action the endpoint (its agent or the person at it) took, in the caller's transaction. */
 export async function auditEndpointEvent(db: Db, orgId: string, endpointId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
@@ -87,6 +87,14 @@ export async function endOpenSession(
     [endpointId, reason, endedBy.email],
   );
   await db.query(`UPDATE endpoints SET rd_session = NULL WHERE id = $1`, [endpointId]);
+  // The session's recording stops with it (the hub writing it closes its file); invitations lapse
+  // and every operator leaves.
+  await db.query(`UPDATE fleet_recordings SET state = 'complete', ended_at = coalesce(ended_at, now()) WHERE endpoint_id = $1 AND state = 'recording'`, [endpointId]);
+  await db.query(
+    `UPDATE fleet_session_participants SET state = CASE WHEN state = 'invited' THEN 'expired' ELSE 'left' END, left_at = now()
+      WHERE endpoint_id = $1 AND state IN ('invited', 'joined')`,
+    [endpointId],
+  );
   dropFrames(endpointId);
   await publishFramesCleared(db, endpointId);
   await signalSessionState(db, endpointId, 'ended');

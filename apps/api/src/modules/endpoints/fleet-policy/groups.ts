@@ -12,7 +12,7 @@ import type { GroupCreate, GroupPatch } from './schema.ts';
 
 const GROUP_COLUMNS = `g.id, g.name, g.description, g.color, g.access_mode, g.consent_timeout_s, g.refuse_window_s, g.allowed_hours,
   g.allowed_roles, g.default_profile_id, g.max_profile_id, g.mfa_required, g.approval_required, g.approval_ttl_minutes,
-  g.ip_allowlist::text[] AS ip_allowlist, g.created_by_email, g.created_at, g.updated_at,
+  g.ip_allowlist::text[] AS ip_allowlist, g.recording_mode, g.recording_retention_days, g.user_may_view_recordings, g.created_by_email, g.created_at, g.updated_at,
   (SELECT count(*)::int FROM endpoints e WHERE e.organization_id = g.organization_id AND e.fleet_group_id = g.id) AS endpoint_count`;
 
 export async function groupById(db: Db, id: string): Promise<FleetGroup | null> {
@@ -53,6 +53,9 @@ function policySnapshot(g: Omit<FleetGroup, 'id' | 'endpoint_count' | 'created_b
     approval_required: g.approval_required,
     approval_ttl_minutes: g.approval_ttl_minutes,
     ip_allowlist: g.ip_allowlist,
+    recording_mode: g.recording_mode,
+    recording_retention_days: g.recording_retention_days,
+    user_may_view_recordings: g.user_may_view_recordings,
   };
 }
 
@@ -68,8 +71,8 @@ export async function createGroup(req: Request, ctx: AuthContext, body: GroupCre
         await db.query<{ id: string }>(
           `INSERT INTO fleet_groups (organization_id, name, description, color, access_mode, consent_timeout_s, refuse_window_s, allowed_hours,
                                      allowed_roles, default_profile_id, max_profile_id, mfa_required, approval_required, approval_ttl_minutes,
-                                     ip_allowlist, created_by_email)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::cidr[],$16) RETURNING id`,
+                                     ip_allowlist, created_by_email, recording_mode, recording_retention_days, user_may_view_recordings)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::cidr[],$16,$17,$18,$19) RETURNING id`,
           [
             ctx.organizationId,
             body.name,
@@ -87,6 +90,9 @@ export async function createGroup(req: Request, ctx: AuthContext, body: GroupCre
             body.approval_ttl_minutes,
             body.ip_allowlist,
             ctx.userEmail,
+            body.recording_mode,
+            body.recording_retention_days,
+            body.user_may_view_recordings,
           ],
         )
       ).rows[0]!.id;
@@ -110,7 +116,8 @@ export async function updateGroup(req: Request, ctx: AuthContext, id: string, bo
       await db.query(
         `UPDATE fleet_groups SET name = $2, description = $3, color = $4, access_mode = $5, consent_timeout_s = $6, refuse_window_s = $7,
                 allowed_hours = $8, allowed_roles = $9, default_profile_id = $10, max_profile_id = $11, mfa_required = $12,
-                approval_required = $13, approval_ttl_minutes = $14, ip_allowlist = $15::cidr[], updated_at = now()
+                approval_required = $13, approval_ttl_minutes = $14, ip_allowlist = $15::cidr[], recording_mode = $16,
+                recording_retention_days = $17, user_may_view_recordings = $18, updated_at = now()
           WHERE id = $1`,
         [
           id,
@@ -128,6 +135,9 @@ export async function updateGroup(req: Request, ctx: AuthContext, id: string, bo
           next.approval_required,
           next.approval_ttl_minutes,
           next.ip_allowlist,
+          next.recording_mode,
+          next.recording_retention_days,
+          next.user_may_view_recordings,
         ],
       );
     } catch (err) {

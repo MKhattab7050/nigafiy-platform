@@ -1214,6 +1214,10 @@ export interface RemoteDesktopSession {
   permissions?: FleetPermissions;
   profile_name?: string | null;
   group_name?: string | null;
+  /** Fleet Pro: the session's recording (fleet_recordings.id) while one runs. */
+  recording_id?: string | null;
+  /** Fleet Pro: everyone in the session (the holder first). */
+  operators?: string[];
 }
 
 export type FleetSessionState = 'waiting_approval' | 'waiting_consent' | 'active' | 'ended';
@@ -1288,8 +1292,16 @@ export interface FleetAccessPolicy {
   ip_allowlist: string[];
 }
 
+/** Session recording rules of a fleet group (migration 036). */
+export type FleetRecordingMode = 'off' | 'optional' | 'required';
+
 export interface FleetGroup extends FleetAccessPolicy {
   id: string;
+  /** off: sessions are never recorded; optional: the operator may record (profile `record`); required: every session is recorded. */
+  recording_mode: FleetRecordingMode;
+  recording_retention_days: number;
+  /** The person at the computer may see past recordings of their computer (tray app). */
+  user_may_view_recordings: boolean;
   name: string;
   description: string | null;
   color: string | null;
@@ -1371,6 +1383,82 @@ export interface FleetSession {
   approver_email: string | null;
   approval_decided_at: string | null;
   approval_note: string | null;
+  /** The group's recording rule when the session started. */
+  recording_mode: FleetRecordingMode;
+  recording_id: string | null;
+  chat_messages: number;
+  files_transferred: number;
+  wake_request_id: string | null;
+}
+
+/** A session recording (frames and input timing, AES-256-GCM, never typed characters). */
+export interface FleetRecording {
+  id: string;
+  endpoint_id: string;
+  endpoint_name?: string;
+  fleet_session_id: string;
+  session_public_id: string;
+  state: 'recording' | 'complete' | 'failed' | 'deleted';
+  started_by_email: string | null;
+  started_at: string;
+  ended_at: string | null;
+  frames: number;
+  input_events: number;
+  bytes: number;
+  segments: number;
+  retention_days: number;
+  retention_until: string;
+  error: string | null;
+  deleted_at: string | null;
+  delete_reason: 'retention' | 'admin' | null;
+  deleted_by_email: string | null;
+}
+
+/** The audit rows of a recorded session, for the playback timeline. */
+export interface FleetRecordingTimelineItem {
+  at: string;
+  action: string;
+  user_email: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export type FleetParticipantState = 'invited' | 'joined' | 'left' | 'declined' | 'removed' | 'expired';
+
+/** An operator in a session (multi-operator). */
+export interface FleetSessionParticipant {
+  user_id: string;
+  email: string;
+  role: 'holder' | 'colleague';
+  state: FleetParticipantState;
+  permissions: FleetPermissions;
+  invited_by_email: string | null;
+  invited_at: string;
+  invite_expires_at: string | null;
+  joined_at: string | null;
+  left_at: string | null;
+  mfa_verified: boolean;
+}
+
+/** Wake-on-LAN then connect: the endpoint is woken through its site's Sensor, then the console starts the session. */
+export interface FleetWakeRequest {
+  id: string;
+  endpoint_id: string;
+  device_id: string | null;
+  requested_by_email: string | null;
+  reason: string;
+  profile_id: string | null;
+  state: 'waking' | 'online' | 'connected' | 'timed_out' | 'cancelled' | 'failed';
+  collector_name: string | null;
+  wol_command_id: string | null;
+  broadcast: string | null;
+  mac: string | null;
+  timeout_s: number;
+  timeout_at: string;
+  online_at: string | null;
+  decided_at: string | null;
+  session_public_id: string | null;
+  error: string | null;
+  created_at: string;
 }
 
 /** GET /endpoints/:id/remote-desktop/session */

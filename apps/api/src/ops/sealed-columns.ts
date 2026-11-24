@@ -29,6 +29,7 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
   { table: 'config_backup_targets', column: 'secret_fp_key_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'per-device key of the secret fingerprints in sanitized configurations' },
   { table: 'identity_providers', column: 'oidc_client_secret_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'OIDC client secret of an SSO identity provider' },
   { table: 'sso_requests', column: 'code_verifier_enc', key: ['id'], organizationColumn: 'organization_id', holds: 'PKCE code verifier of an SSO sign-in in progress (10 minutes)' },
+  { table: 'fleet_recordings', column: 'key_sealed', key: ['id'], organizationColumn: 'organization_id', holds: 'AES-256-GCM key of a remote support session recording (the file in the data folder)' },
   { table: 'config_backup_raw', column: 'raw_enc', key: ['target_id', 'sha256'], organizationColumn: 'organization_id', holds: 'unsanitized device configuration kept only for administrator-confirmed restore' },
 ];
 

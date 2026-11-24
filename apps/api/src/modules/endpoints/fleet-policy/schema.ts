@@ -102,6 +102,10 @@ const policyFields = {
     .array(cidrSchema)
     .max(32)
     .transform((r) => [...new Set(r)]),
+  // Session recording (migration 036).
+  recording_mode: z.enum(['off', 'optional', 'required']),
+  recording_retention_days: z.number().int().min(1).max(3650),
+  user_may_view_recordings: z.boolean(),
 };
 
 const groupName = z.string().trim().min(1).max(80);
@@ -127,6 +131,9 @@ export const groupCreateSchema = z
     approval_required: policyFields.approval_required.default(false),
     approval_ttl_minutes: policyFields.approval_ttl_minutes.default(15),
     ip_allowlist: policyFields.ip_allowlist.default([]),
+    recording_mode: policyFields.recording_mode.default('optional'),
+    recording_retention_days: policyFields.recording_retention_days.default(30),
+    user_may_view_recordings: policyFields.user_may_view_recordings.default(false),
   })
   .strict();
 export type GroupCreate = z.infer<typeof groupCreateSchema>;
