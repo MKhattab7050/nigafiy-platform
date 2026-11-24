@@ -28,6 +28,7 @@ import (
 	"github.com/nigafiy/agent/internal/desktop"
 	"github.com/nigafiy/agent/internal/rdstream"
 	"github.com/nigafiy/agent/internal/reboot"
+	"github.com/nigafiy/agent/internal/scripts"
 	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
@@ -117,6 +118,7 @@ type Agent struct {
 
 	sessions *rdstream.Manager
 	reboot   *reboot.Manager
+	scripts  *scripts.Runner
 	// nigafiyID: this computer's Nigafiy ID (from the heartbeat), shown in the tray.
 	nigafiyID string
 	trayID    string
@@ -164,6 +166,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
 		cmdSem:        make(chan struct{}, 16),
+		scripts:       &scripts.Runner{},
 	}
 	if deps.Desktop != nil {
 		a.sessions = rdstream.NewManager(rdstream.Config{
@@ -535,7 +538,7 @@ func (a *Agent) dispatch(ctx context.Context, commands []control.Command) {
 }
 
 func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
-	if a.cmdSem != nil {
+	if a.cmdSem != nil && !unthrottled(cmd.Kind) {
 		select {
 		case a.cmdSem <- struct{}{}:
 			defer func() { <-a.cmdSem }()
@@ -545,6 +548,9 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	}
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
 	res, handled := a.sessionCommand(ctx, cmd)
+	if !handled {
+		res, handled = a.jobsCommand(ctx, cmd)
+	}
 	if !handled {
 		res, handled = a.reachCommand(ctx, cmd)
 	}
