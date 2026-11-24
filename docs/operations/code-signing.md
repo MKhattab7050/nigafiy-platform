@@ -72,5 +72,10 @@ With nothing configured the build still works and prints `building UNSIGNED`.
   PFX password never appears in arguments, one PowerShell run per file.
 - A real end-to-end run on Windows 11 (2026-11-22): a throwaway key signed a copy of
   `nigafiy-engine.exe` through `node apps/desktop/scripts/signing.cjs`, and Windows read back the
-  signer. Not yet run: a full `dist` build with the organisation's certificate, and the trust script
-  on a second computer.
+  signer.
+- 2026-11-25: full `dist`, `dist:msi` and `build:agent-installer` builds signed with a self-signed
+  test certificate created by `New-NigafiySigningCert.ps1` (no timestamp), every signature read back
+  with `Get-AuthenticodeSignature` (installers.md, "What ran for real here"). The script's default
+  `-OutDir` failed under Windows PowerShell 5.1 and was fixed then.
+- Not yet run: a build with an organisation's real certificate, and the trust script (it needs
+  administrator rights) on any computer.
