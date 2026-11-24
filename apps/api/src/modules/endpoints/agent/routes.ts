@@ -11,6 +11,18 @@ import { requireEndpointAgent } from './auth.ts';
 import { parsePollWaitMs } from './wake.ts';
 import { enrollAgent, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
 import { limiterStore } from '../../../infrastructure/rate-limit.ts';
+import { agentHelpRequestSchema, quickRegisterSchema } from '../fleet-reach/schema.ts';
+import { createHelpRequest } from '../fleet-reach/help-requests.ts';
+import { quickSupportClosedByUser, quickSupportStatus, registerQuickSupport } from '../fleet-reach/quick-support.ts';
+
+const quickRegisterLimiter = rateLimit({
+  store: limiterStore('agent:quick-support'),
+  windowMs: 60_000,
+  limit: env.NODE_ENV === 'test' ? 10_000 : 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: { code: 'rate_limited', message: 'Too many Quick Support registrations' } },
+});
 
 /** Agent-facing gateway, mounted at /api/v1/agent. Agents only ever make outbound HTTPS requests to it. */
 export const agentGatewayRouter: Router = Router();
@@ -79,4 +91,24 @@ agentGatewayRouter.post('/rd-session/end', requireEndpointAgent, async (req, res
   const ep = req.endpoint!;
   const body = parse(rdSessionEndSchema, req.body);
   res.json({ ok: true, ended: await endSessionByUser(ep, body.session_id) });
+});
+
+// "Request help" from the agent's tray: the person's note (fleet-reach/help-requests.ts).
+agentGatewayRouter.post('/help-request', requireEndpointAgent, async (req, res) => {
+  const body = parse(agentHelpRequestSchema, req.body);
+  res.status(201).json(await createHelpRequest(req.endpoint!, body.note, body.user));
+});
+
+// Quick Support (nigafiy-support.exe): register with the signed link, then poll the code's state.
+agentGatewayRouter.post('/quick-support/register', quickRegisterLimiter, async (req, res) => {
+  res.status(201).json(await registerQuickSupport(parse(quickRegisterSchema, req.body)));
+});
+
+agentGatewayRouter.get('/quick-support/status', requireEndpointAgent, async (req, res) => {
+  res.json(await quickSupportStatus(req.endpoint!));
+});
+
+agentGatewayRouter.post('/quick-support/close', requireEndpointAgent, async (req, res) => {
+  await quickSupportClosedByUser(req.endpoint!);
+  res.json({ ok: true });
 });

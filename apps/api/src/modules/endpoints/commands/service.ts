@@ -48,8 +48,9 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
         policy: EndpointPolicy;
         rd_active: boolean;
         rd_state: string | null;
+        kind: string;
       }>(
-        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy,
+        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, kind,
                 rd_session IS NOT NULL AS rd_active, rd_session->>'state' AS rd_state
            FROM endpoints WHERE id = $1`,
         [id],
@@ -58,6 +59,10 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     if (!ep) throw notFound('Endpoint');
 
     validateCommandForPlatform(ep.platform, body, ctx.role);
+    // Quick Support (attended, at most Support): the session's screen and files, nothing else.
+    if (ep.kind === 'quick_support' && !['rd_capture', 'rd_input', 'fs_op', 'notify_user'].includes(body.kind)) {
+      throw new AppError(409, 'quick_support_limited', 'A Quick Support computer allows the session and its files only');
+    }
 
     // Screen capture and input only inside a started session: that is where the user is told.
     if ((body.kind === 'rd_capture' || body.kind === 'rd_input') && !ep.rd_active) {

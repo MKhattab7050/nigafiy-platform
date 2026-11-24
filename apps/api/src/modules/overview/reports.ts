@@ -147,7 +147,7 @@ reportsRouter.get('/reports/summary', async (req, res) => {
               count(*) FILTER (WHERE compliance_status = 'attention')::int AS attention,
               count(*) FILTER (WHERE compliance_status = 'unknown' OR compliance_status IS NULL)::int AS unknown
          FROM endpoints
-        WHERE status <> 'revoked' AND ($1::uuid IS NULL OR site_id = $1)`,
+        WHERE status <> 'revoked' AND kind = 'agent' AND ($1::uuid IS NULL OR site_id = $1)`,
       [siteId],
     );
     const scopesRes = await db.query<ScopeRow>(`${SCOPES} WHERE ($1::uuid IS NULL OR s.site_id = $1) ORDER BY s.cidr`, [siteId]);

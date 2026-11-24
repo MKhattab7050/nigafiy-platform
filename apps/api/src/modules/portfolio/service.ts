@@ -62,7 +62,7 @@ export async function siteRollup(db: Db, organizationId: string): Promise<Portfo
             count(*) FILTER (WHERE compliance_status = 'non_compliant')::int AS non_compliant,
             count(*) FILTER (WHERE compliance_status = 'attention')::int AS attention,
             count(*) FILTER (WHERE compliance_status = 'unknown')::int AS unknown
-       FROM endpoints WHERE status = 'active' GROUP BY site_id`,
+       FROM endpoints WHERE status = 'active' AND kind = 'agent' GROUP BY site_id`,
   );
   for (const { site_id, ...r } of endpoints.rows) if (out.has(site_id)) out.get(site_id)!.endpoints = r;
 

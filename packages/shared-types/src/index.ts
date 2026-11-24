@@ -1218,6 +1218,12 @@ export interface RemoteDesktopSession {
   recording_id?: string | null;
   /** Fleet Pro: everyone in the session (the holder first). */
   operators?: string[];
+  /** Which Windows session the helper attaches to (null: the console's; 'winlogon': sign-in screen). */
+  user_session?: string | null;
+  /** Quick Support session (nigafiy-support.exe): attended only, at most Support. */
+  quick_support?: boolean;
+  /** Restart and reconnect in progress for this session. */
+  restart_id?: string | null;
 }
 
 export type FleetSessionState = 'waiting_approval' | 'waiting_consent' | 'active' | 'ended';
@@ -1232,7 +1238,9 @@ export type FleetSessionEndReason =
   | 'revoked'
   | 'expired'
   | 'approval_denied'
-  | 'approval_expired';
+  | 'approval_expired'
+  | 'restart'
+  | 'quick_support_closed';
 
 /** The flags of a permission profile, in display order. */
 export const FLEET_PERMISSION_KEYS = [
@@ -1392,6 +1400,11 @@ export interface FleetSession {
   chat_messages: number;
   files_transferred: number;
   wake_request_id: string | null;
+  user_session: string | null;
+  help_request_id: string | null;
+  restart_id: string | null;
+  quick_support_id: string | null;
+  resumed_from_id: string | null;
 }
 
 /** A session recording (frames and input timing, AES-256-GCM, never typed characters). */
@@ -1557,7 +1570,98 @@ export interface EndpointSummary {
   created_at: string;
   fleet_group_id: string | null;
   fleet_group_name: string | null;
+  /** Stable 9-digit Nigafiy ID (unique in the organization): "connect by ID". */
+  nigafiy_id: string;
+  /** Address-book tags. */
+  tags: string[];
+  /** Windows user sessions the agent reported (WTSEnumerateSessions). */
+  user_sessions: FleetUserSession[];
+  /** Safe mode and the safe-boot flag, as the agent reported them. */
+  boot_state: FleetBootState;
+  /** The signed-in operator marked this computer as a favourite. */
+  favourite?: boolean;
+  /** The signed-in operator's last session with this computer. */
+  my_last_session_at?: string | null;
+  /** Open "Request help" requests from this computer. */
+  open_help_requests?: number;
 }
+
+/** One Windows user session on a computer (WTSEnumerateSessions). */
+export interface FleetUserSession {
+  id: number;
+  user: string | null;
+  domain: string | null;
+  /** active | connected | disconnected | idle | listen | other */
+  state: string;
+  station: string | null;
+  console: boolean;
+}
+
+export interface FleetBootState {
+  safe_mode?: boolean;
+  safe_boot_flag?: boolean;
+  /** The agent runs as the LocalSystem service (needed for safe mode, other sessions, sign-in screen). */
+  service?: boolean;
+  reported_at?: string;
+}
+
+export interface FleetHelpRequest {
+  id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  nigafiy_id: string;
+  note: string;
+  requested_by: string | null;
+  state: 'open' | 'in_session' | 'closed';
+  created_at: string;
+  handled_by_email: string | null;
+  handled_at: string | null;
+  close_note: string | null;
+  fleet_session_id: string | null;
+  connection_state: 'never' | 'online' | 'offline';
+}
+
+export interface FleetRestart {
+  id: string;
+  endpoint_id: string;
+  fleet_session_id: string | null;
+  resumed_session_id: string | null;
+  mode: 'normal' | 'safe_mode';
+  state: 'queued' | 'restarting' | 'resumed' | 'failed' | 'timeout' | 'cancelled';
+  requested_by_email: string;
+  reason: string;
+  safe_boot_set: boolean;
+  safe_boot_cleared_at: string | null;
+  agent_back_at: string | null;
+  timeout_at: string;
+  error: string | null;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface FleetQuickSupport {
+  id: string;
+  site_id: string;
+  endpoint_id: string;
+  code: string;
+  state: 'waiting' | 'connected' | 'ended' | 'expired' | 'locked';
+  failed_attempts: number;
+  hostname: string | null;
+  os: string | null;
+  link_issued_by: string | null;
+  created_at: string;
+  expires_at: string;
+  connected_at: string | null;
+  operator_email: string | null;
+  fleet_session_id: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+}
+
+/** What "connect by name, ID or code" found. */
+export type FleetConnectTarget =
+  | { kind: 'endpoint'; endpoint: Pick<EndpointSummary, 'id' | 'name' | 'nigafiy_id' | 'hostname' | 'connection_state' | 'site_name' | 'platform'> }
+  | { kind: 'quick_support'; code: string; needs_pin: true };
 
 export interface EndpointCreated {
   endpoint: EndpointSummary;

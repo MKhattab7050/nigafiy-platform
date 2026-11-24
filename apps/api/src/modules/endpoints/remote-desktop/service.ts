@@ -9,7 +9,7 @@ import { buildCapabilities } from '../capabilities.ts';
 import type { EndpointContext } from '../schema.ts';
 import { ONLINE_WITHIN_MS, queueUserNotice } from '../repo.ts';
 import { effectivePolicy, evaluatePolicy, loadProfiles, normalizeIp } from '../fleet-policy/policy.ts';
-import { sessionPermissions } from '../fleet-policy/profiles.ts';
+import { builtinProfile, sessionPermissions } from '../fleet-policy/profiles.ts';
 import { checkStepUpToken, operatorHasMfa } from '../fleet-policy/step-up.ts';
 import { expireApprovalIfDue } from '../fleet-policy/approvals.ts';
 import { dropFrames, publishFramesCleared } from './frames.ts';
@@ -50,17 +50,41 @@ interface StartEndpointRow {
   rd_session: RemoteDesktopSession | null;
 }
 
+/**
+ * How a session was asked for, when not from the plain connect dialog (migration 037):
+ *   forceAttended   from a "Request help" request: the person accepts it whatever the policy says
+ *   quickSupportId  a Quick Support code + PIN: attended, at most the Support profile
+ *   resume          restart and reconnect: the session that was open before the restart comes back
+ *                   (same operator, reason, profile, Windows session); the policy is checked again
+ *                   for role, address and hours; the MFA step-up of the original session carries over.
+ */
+export interface StartOptions {
+  forceAttended?: boolean;
+  helpRequestId?: string;
+  quickSupportId?: string;
+  resume?: { fromSessionId: string; restartId: string; mfaVerified: boolean };
+}
+
 type Refusal = { refused: true; code: string; status: number; message: string; trail: FleetPolicyTrailItem[]; policySource: string; group: string | null };
 
-export async function startSession(req: Request, ctx: AuthContext, id: string, body: RdStart): Promise<{ session: RemoteDesktopSession; last_frame: RemoteDesktopFrame | null }> {
+export async function startSession(
+  req: Request,
+  ctx: AuthContext,
+  id: string,
+  body: RdStart,
+  opts: StartOptions = {},
+): Promise<{ session: RemoteDesktopSession; last_frame: RemoteDesktopFrame | null }> {
   const requestIp = normalizeIp(req.ip);
-  const stepUpState = checkStepUpToken(body.step_up_token, ctx);
+  const stepUpState = opts.resume?.mfaVerified ? 'valid' : checkStepUpToken(body.step_up_token, ctx);
   const hasMfa = await operatorHasMfa(ctx.userId);
   const outcome = await withTenant(ctx.organizationId, async (db): Promise<Refusal | { refused: false; session: RemoteDesktopSession }> => {
     const ep = (
-      await db.query<StartEndpointRow>(`SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, rd_session FROM endpoints WHERE id = $1`, [id])
+      await db.query<StartEndpointRow & { kind: string }>(`SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, rd_session, kind FROM endpoints WHERE id = $1`, [id])
     ).rows[0];
     if (!ep) throw notFound('Endpoint');
+    // A Quick Support computer is reached only with its code and PIN (fleet-reach/quick-support.ts).
+    if (ep.kind === 'quick_support' && !opts.quickSupportId) throw new AppError(409, 'quick_support_needs_code', 'Connect to a Quick Support computer with its code and PIN');
+    if (body.user_session) await assertUserSession(db, id, ep.platform, body.user_session);
 
     const caps = buildCapabilities(ep.platform);
     const rdCap = caps.find((c) => c.key === 'remote_desktop');
@@ -73,6 +97,15 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
 
     // The access policy decides before anything reaches the endpoint.
     const eff = (await effectivePolicy(db, ctx.organizationId, id))!;
+    if (opts.forceAttended || opts.quickSupportId) {
+      // The person asked for this session (or runs Quick Support): they accept it on their screen.
+      eff.policy = { ...eff.policy, access_mode: 'attended', approval_required: false };
+    }
+    if (opts.quickSupportId) {
+      // Quick Support is capped at the Support profile, whatever the operator picks.
+      const support = await builtinProfile(db, 'support');
+      eff.policy = { ...eff.policy, default_profile_id: support.id, max_profile_id: support.id };
+    }
     const { requested, max } = await loadProfiles(db, eff.policy, body.profile_id);
     if (!requested) throw new AppError(422, 'profile_not_found', 'The permission profile does not exist');
     const decision = evaluatePolicy({
@@ -173,7 +206,11 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
     if (record) {
       recordingId = await createRecording(db, { orgId: ctx.organizationId, endpointId: id, fleetSessionId: fs.id, publicId, email: ctx.userEmail, retentionDays: rule.retentionDays });
     }
-    await db.query(`UPDATE fleet_sessions SET recording_mode = $2, recording_id = $3, wake_request_id = $4 WHERE id = $1`, [fs.id, rule.mode, recordingId, body.wake_request_id ?? null]);
+    await db.query(
+      `UPDATE fleet_sessions SET recording_mode = $2, recording_id = $3, wake_request_id = $4, user_session = $5, help_request_id = $6, quick_support_id = $7,
+              resumed_from_id = $8, restart_id = $9 WHERE id = $1`,
+      [fs.id, rule.mode, recordingId, body.wake_request_id ?? null, body.user_session ?? null, opts.helpRequestId ?? null, opts.quickSupportId ?? null, opts.resume?.fromSessionId ?? null, opts.resume?.restartId ?? null],
+    );
     // The operator who starts the session holds it (several operators: session-tools.ts).
     await db.query(
       `INSERT INTO fleet_session_participants (organization_id, fleet_session_id, endpoint_id, user_id, email, role, state, permissions, joined_at, policy_trail, mfa_verified, request_ip)
@@ -199,6 +236,8 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       permissions: decision.permissions,
       profile_name: requested.name,
       group_name: eff.group?.name ?? null,
+      user_session: body.user_session ?? null,
+      quick_support: Boolean(opts.quickSupportId),
     };
     await db.query(`UPDATE endpoints SET rd_session = $2::jsonb WHERE id = $1`, [id, JSON.stringify({ ...session, operator_user_id: ctx.userId })]);
     // A new session never shows a frame of an earlier one.
@@ -217,6 +256,10 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
       trail: decision.trail,
       recording: recordingId ? { recording_id: recordingId, mode: rule.mode, retention_days: rule.retentionDays } : null,
       wake_request_id: body.wake_request_id ?? null,
+      user_session: body.user_session ?? null,
+      help_request_id: opts.helpRequestId ?? null,
+      quick_support_id: opts.quickSupportId ?? null,
+      resumed_from: opts.resume?.fromSessionId ?? null,
     });
     if (decision.approvalNeeded) {
       await signalSessionState(db, id, 'waiting_approval');
@@ -252,6 +295,26 @@ export async function startSession(req: Request, ctx: AuthContext, id: string, b
     throw new AppError(outcome.status, outcome.code, outcome.message);
   }
   return { session: outcome.session, last_frame: null };
+}
+
+/**
+ * A Windows session other than the console's (or the sign-in screen) needs the agent's LocalSystem
+ * service: only it can start a helper in another session or on the Winlogon desktop. The session
+ * must be one the agent listed in its last heartbeat.
+ */
+async function assertUserSession(db: Db, id: string, platform: EndpointPlatform, wanted: string): Promise<void> {
+  if (platform !== 'windows') throw new AppError(409, 'user_session_windows_only', 'Choosing the user session is available on Windows only');
+  const r = await db.query<{ user_sessions: Array<{ id: number; user: string | null }>; service: boolean | null }>(
+    `SELECT user_sessions, (boot_state->>'service')::boolean AS service FROM endpoints WHERE id = $1`,
+    [id],
+  );
+  const row = r.rows[0];
+  if (!row?.service) {
+    throw new AppError(409, 'user_session_needs_service', 'Another Windows session or the sign-in screen needs the Nigafiy agent installed as a service on that computer');
+  }
+  if (wanted !== 'winlogon' && !row.user_sessions.some((s) => String(s.id) === wanted)) {
+    throw new AppError(409, 'user_session_unknown', 'That Windows session is not on the computer any more: refresh the list');
+  }
 }
 
 /**
@@ -310,6 +373,8 @@ export async function openOnAgent(
         operators: session.operators ?? [o.operator.email],
         recording: Boolean(session.recording_id),
         stream: true,
+        // The Windows session the helper attaches to (absent: the console's; "winlogon": sign-in screen).
+        user_session: session.user_session ?? null,
         display_index: session.display_index,
         quality: session.quality,
         scale: session.scale,

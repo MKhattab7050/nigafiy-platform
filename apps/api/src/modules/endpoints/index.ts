@@ -6,6 +6,9 @@ import { commandsRouter } from './commands/routes.ts';
 import { enrollmentRouter } from './enrollment/routes.ts';
 import { fleetRouter } from './fleet/routes.ts';
 import { fleetPolicyRouter } from './fleet-policy/routes.ts';
+import { fleetReachRouter } from './fleet-reach/routes.ts';
+import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
+import { runRestartTimeouts } from './fleet-reach/restarts.ts';
 import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
 import { runRecordingRetention } from './remote-desktop/recording.ts';
@@ -22,13 +25,14 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   enrollment/      register endpoints, re-issue enrollment tokens, revoke
  *   policy/          per-endpoint policy (compliance is evaluated in capabilities.ts)
  *   fleet-policy/    Fleet permission profiles, groups, per-group access policy, MFA step-up, approvals
+ *   fleet-reach/     address book, connect by name/ID/code, Request help, restart and reconnect, Quick Support
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
  *                    WebSocket stream hub (stream-hub.ts) and the HTTP command fallback
  *   file-manager/    remote file operations (travel as fs_op commands)
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;
@@ -39,7 +43,20 @@ export const endpointsModule = defineModule({
   api: endpointsApi,
   gateway: { path: '/api/v1/agent', rateLimitPerMinute: 360, router: agentGatewayRouter },
   // Session recordings past their group's retention: the file goes, the row stays (marked deleted).
-  jobs: [{ name: 'fleet-recording-retention', everyMs: 3_600_000, lockKey: 727170, run: async () => void (await runRecordingRetention()) }],
+  jobs: [
+    { name: 'fleet-recording-retention', everyMs: 3_600_000, lockKey: 727170, run: async () => void (await runRecordingRetention()) },
+    // Restart and reconnect past its timeout (safe boot is then cleared when the agent returns);
+    // Quick Support codes that expired or whose session ended (their credential is revoked).
+    {
+      name: 'fleet-reach-sweep',
+      everyMs: 30_000,
+      lockKey: 727171,
+      run: async () => {
+        await runRestartTimeouts();
+        await runQuickSupportSweep();
+      },
+    },
+  ],
   lifecycle: {
     // Results uploaded to another API instance wake this instance's waiters (interactive commands).
     start: async () => {

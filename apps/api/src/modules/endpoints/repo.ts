@@ -6,6 +6,7 @@ import { normalizeMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { holdFrame, publishFrame } from './remote-desktop/frames.ts';
 import { applySessionOpenResult } from './remote-desktop/sessions.ts';
+import { applyRestartResult } from './fleet-reach/restarts.ts';
 import type { commandResultSchema } from './schema.ts';
 
 // Queries shared by several concerns of the endpoints module (fleet, enrollment, agent gateway,
@@ -43,7 +44,8 @@ export const ENDPOINT_SUMMARY_SELECT = `
          e.cpu_pct, e.ram_used_mb, e.ram_pct, e.disk_used_pct,
          e.last_heartbeat_at, e.inventory_updated_at,
          CASE WHEN e.status = 'pending' THEN e.enrollment_expires_at END AS enrollment_expires_at,
-         e.created_at, e.fleet_group_id, fg.name AS fleet_group_name
+         e.created_at, e.fleet_group_id, fg.name AS fleet_group_name,
+         e.nigafiy_id, e.tags, e.user_sessions, e.boot_state
     FROM endpoints e
     JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id
     LEFT JOIN fleet_groups fg ON fg.organization_id = e.organization_id AND fg.id = e.fleet_group_id`;
@@ -112,6 +114,10 @@ export async function applyCommandResults(
     if (row?.kind === 'rd_session_open') {
       // Consent answered (or impossible), banner shown or not: the session goes live or ends.
       await applySessionOpenResult(db, row.organization_id, endpointId, row.payload, resItem.ok, (resItem.data ?? null) as Parameters<typeof applySessionOpenResult>[5], resItem.error ?? null);
+    }
+    if (row?.kind === 'fleet_restart' || row?.kind === 'fleet_safe_boot_clear') {
+      // Restart and reconnect: the agent restarted (or refused), or cleared the safe-boot flag.
+      await applyRestartResult(db, row.organization_id, endpointId, row.kind, row.payload, resItem.ok, (resItem.data ?? null) as Record<string, unknown> | null, resItem.error ?? null);
     }
     if (updated.rowCount) {
       completedIds.push(resItem.id);

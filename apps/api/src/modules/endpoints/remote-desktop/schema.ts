@@ -17,6 +17,9 @@ export const rdStartSchema = z
     profile_id: z.uuid().optional(),
     // From POST /fleet/step-up when the policy requires MFA to connect.
     step_up_token: z.string().max(200).optional(),
+    // Windows: which user session the helper attaches to (a session id the agent listed, or
+    // "winlogon" for the sign-in screen when nobody is signed in). Absent: the console's session.
+    user_session: z.string().regex(/^([0-9]{1,5}|winlogon)$/).optional(),
   })
   .strict();
 export type RdStart = z.infer<typeof rdStartSchema>;

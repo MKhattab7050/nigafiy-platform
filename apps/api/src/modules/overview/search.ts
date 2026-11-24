@@ -37,6 +37,8 @@ searchRouter.get('/search', async (req, res) => {
   const pattern = `%${escapeLike(q)}%`;
   const macHex = /^[0-9a-f:.-]+$/i.test(q) ? q.toLowerCase().replace(/[^0-9a-f]/g, '') : '';
   const macPattern = macHex.length >= 2 ? `%${macHex}%` : null;
+  const nigafiyDigits = q.replace(/[ -]/g, '');
+  const nigafiyId = /^[1-9][0-9]{8}$/.test(nigafiyDigits) ? nigafiyDigits : null;
   const incNumMatch = /^#?(\d{1,9})$/.exec(q);
   const incNum = incNumMatch ? Number(incNumMatch[1]) : null;
   const vlanMatch = /^(?:vlan\s*)?(\d{1,4})$/i.exec(q);
@@ -79,19 +81,23 @@ searchRouter.get('/search', async (req, res) => {
       primary_ip: string | null;
       os: string | null;
       connection_state: string;
+      nigafiy_id: string;
     }>(
       `SELECT e.id, e.site_id, s.name AS site_name, e.name, e.hostname,
-              host(e.primary_ip) AS primary_ip, e.os, e.connection_state
+              host(e.primary_ip) AS primary_ip, e.os, e.connection_state, e.nigafiy_id
          FROM endpoints e
          JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id
         WHERE ($1::uuid IS NULL OR e.site_id = $1)
+          AND e.kind = 'agent'
           AND (
             ${ENDPOINT_SEARCH_EXPR} ILIKE $2
             OR ($3::text IS NOT NULL AND ${ENDPOINT_SEARCH_EXPR} ILIKE $3)
+            -- Connect by Nigafiy ID (9 digits, spaces allowed as it is read out).
+            OR ($4::text IS NOT NULL AND e.nigafiy_id = $4)
           )
         ORDER BY (e.connection_state = 'online') DESC, e.last_heartbeat_at DESC NULLS LAST
         LIMIT 6`,
-      [site, pattern, macPattern],
+      [site, pattern, macPattern, nigafiyId],
     );
     const incidents = await db.query<{
       id: string;
@@ -215,9 +221,10 @@ searchRouter.get('/search', async (req, res) => {
           kind: 'endpoint',
           id: e.id,
           title: e.name,
-          subtitle: [e.hostname, e.primary_ip, e.os].filter(Boolean).join(' · ') || null,
+          subtitle: [`ID ${e.nigafiy_id}`, e.hostname, e.primary_ip, e.os].filter(Boolean).join(' · ') || null,
           status: e.connection_state,
-          href: `/fleet/endpoints/${e.id}`,
+          // Found by its Nigafiy ID: open the endpoint with the connect dialog ("connect by ID").
+          href: e.nigafiy_id === nigafiyId ? `/fleet/endpoints/${e.id}?connect=1` : `/fleet/endpoints/${e.id}`,
           site_id: e.site_id,
           site_name: e.site_name,
         }),

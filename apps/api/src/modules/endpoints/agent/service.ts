@@ -1,3 +1,4 @@
+import { onHeartbeatRestarts } from '../fleet-reach/restarts.ts';
 import type { EndpointPlatform, EndpointSecurityPosture } from '@nigafiy/shared-types';
 import { randomToken, sha256 } from '../../../common/crypto.ts';
 import { normalizeMac } from '../../../common/net.ts';
@@ -208,6 +209,15 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       [ep.id, now, ep.organizationId, body.cpu_pct, body.ram_pct, body.ram_used_mb, topDiskPct],
     );
 
+    if (body.user_sessions || body.boot_state) {
+      await db.query(
+        `UPDATE endpoints SET user_sessions = coalesce($2::jsonb, user_sessions), boot_state = coalesce($3::jsonb, boot_state) WHERE id = $1`,
+        [ep.id, body.user_sessions ? JSON.stringify(body.user_sessions) : null, body.boot_state ? JSON.stringify({ ...body.boot_state, reported_at: now.toISOString() }) : null],
+      );
+    }
+    // Restart and reconnect: the agent is back; a safe-boot flag still set gets cleared.
+    await onHeartbeatRestarts(db, ep.organizationId, ep.id, body.boot_state, body.uptime_seconds);
+
     const completedIds = await applyCommandResults(db, ep.id, cmdResults, now);
 
     // Expire stale pending commands older than 10 minutes
@@ -229,6 +239,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     // agent restart would repeat it, and for "restart this computer" that is a reboot loop.
     // Undelivered results simply expire above.
     const commands = await deliverPendingCommands(db, ep.id, now);
+    const nigafiyId = (await db.query<{ nigafiy_id: string }>(`SELECT nigafiy_id FROM endpoints WHERE id = $1`, [ep.id])).rows[0]?.nigafiy_id ?? null;
 
     if (ep.connectionState !== 'online' || cmdResults.length > 0) {
       await notifyRealtime(db, ep.organizationId, 'devices');
@@ -239,6 +250,8 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       response: {
         server_time: now.toISOString(),
         heartbeat_interval_seconds: HEARTBEAT_INTERVAL_SECONDS,
+        // Shown in the agent's tray ("About") so the person can read it to IT.
+        nigafiy_id: nigafiyId,
         commands,
       },
     };

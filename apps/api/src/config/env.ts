@@ -29,6 +29,11 @@ const schema = z.object({
    */
   RD_PEER_URL: optionalNonEmpty,
   /**
+   * Fleet Quick Support: path of the built nigafiy-support.exe that Fleet hands out (with the signed
+   * server binding appended). Unset: agents/endpoint-agent/bin/nigafiy-support.exe in this checkout.
+   */
+  QUICK_SUPPORT_EXE: optionalNonEmpty,
+  /**
    * Address collectors and endpoint agents should use to reach this server (e.g. https://lan.example.com),
    * returned as `server_url` with enrollment tokens. Unset: the origin each request arrived at is used.
    */

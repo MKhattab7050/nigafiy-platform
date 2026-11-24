@@ -9,7 +9,7 @@ export const fleetRouter: Router = Router();
 fleetRouter.get('/endpoints', async (req, res) => {
   const ctx = auth(req);
   const q = parse(endpointListQuery, req.query);
-  res.json({ items: await listEndpoints(ctx.organizationId, q) });
+  res.json({ items: await listEndpoints(ctx.organizationId, q, ctx.userId) });
 });
 
 fleetRouter.get('/endpoints/:id', async (req, res) => {

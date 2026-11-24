@@ -9,17 +9,45 @@ import type { SeriesRange, endpointListQuery } from '../schema.ts';
 
 // Fleet & inventory: the read side of the endpoints module.
 
-export async function listEndpoints(organizationId: string, q: z.infer<typeof endpointListQuery>): Promise<EndpointSummary[]> {
+/** `%text%` for ILIKE with LIKE's wildcards escaped (backslash is the default escape character). */
+const contains = (text: string) => `%${text.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
+export async function listEndpoints(organizationId: string, q: z.infer<typeof endpointListQuery>, userId: string | null = null): Promise<EndpointSummary[]> {
+  const like = q.q ? contains(q.q) : null;
   const items = await withTenant(organizationId, (db) =>
     db.query<EndpointSummary>(
-      `${ENDPOINT_SUMMARY_SELECT}
-        WHERE ($1::uuid IS NULL OR e.site_id = $1)
+      `${ENDPOINT_SUMMARY_SELECT.replace(
+        'FROM endpoints e',
+        `, EXISTS (SELECT 1 FROM fleet_favourites f WHERE f.user_id = $6::uuid AND f.endpoint_id = e.id) AS favourite,
+           (SELECT max(fs.started_at) FROM fleet_sessions fs WHERE fs.endpoint_id = e.id AND fs.operator_user_id = $6::uuid) AS my_last_session_at,
+           (SELECT count(*)::int FROM fleet_help_requests h WHERE h.endpoint_id = e.id AND h.state = 'open') AS open_help_requests
+         FROM endpoints e`,
+      )}
+        WHERE e.kind = 'agent'
+          AND ($1::uuid IS NULL OR e.site_id = $1)
           AND ($2::uuid IS NULL OR e.device_id = $2)
           AND ($3::text IS NULL OR e.platform = $3)
           AND ($4::text IS NULL OR e.compliance_status = $4)
           AND ($5::text IS NULL OR ($5 = 'none' AND e.fleet_group_id IS NULL) OR e.fleet_group_id::text = $5)
+          AND ($7::text IS NULL OR e.name ILIKE $7 OR e.hostname ILIKE $7 OR e.nigafiy_id = replace(replace($8, ' ', ''), '-', '')
+               OR host(e.primary_ip) = $8 OR EXISTS (SELECT 1 FROM unnest(e.logged_in_users) u WHERE u ILIKE $7))
+          AND ($9::text IS NULL OR $9 = ANY (e.tags))
+          AND (NOT $10::boolean OR EXISTS (SELECT 1 FROM fleet_favourites f WHERE f.user_id = $6::uuid AND f.endpoint_id = e.id))
+          AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM unnest(e.logged_in_users) u WHERE u ILIKE $11))
         ORDER BY CASE e.connection_state WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, e.name`,
-      [q.site_id ?? null, q.device_id ?? null, q.platform ?? null, q.compliance_status ?? null, q.fleet_group ?? null],
+      [
+        q.site_id ?? null,
+        q.device_id ?? null,
+        q.platform ?? null,
+        q.compliance_status ?? null,
+        q.fleet_group ?? null,
+        userId,
+        like,
+        q.q ?? null,
+        q.tag ?? null,
+        Boolean(q.favourites),
+        q.user ? contains(q.user) : null,
+      ],
     ),
   );
   return items.rows;

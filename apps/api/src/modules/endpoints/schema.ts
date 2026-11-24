@@ -175,6 +175,24 @@ export const agentHeartbeatSchema = z
     security: securityPostureSchema.optional(),
     command_results: z.array(commandResultSchema).max(50).optional(),
     completed_commands: z.array(commandResultSchema).max(50).optional(),
+    // Fleet Pro (migration 037): Windows user sessions (WTSEnumerateSessions) and the boot state
+    // (safe mode, safe-boot flag, running as the service).
+    user_sessions: z
+      .array(
+        z
+          .object({
+            id: z.number().int().min(0).max(65_535),
+            user: cleanText(120).nullable(),
+            domain: cleanText(120).nullable(),
+            state: z.enum(['active', 'connected', 'disconnected', 'idle', 'listen', 'other']),
+            station: cleanText(64).nullable(),
+            console: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(64)
+      .optional(),
+    boot_state: z.object({ safe_mode: z.boolean().optional(), safe_boot_flag: z.boolean().optional(), service: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 
@@ -220,6 +238,12 @@ export const endpointListQuery = z.object({
   compliance_status: z.enum(['compliant', 'non_compliant', 'attention', 'unknown']).optional(),
   // A fleet group id, or "none" for endpoints in no group.
   fleet_group: z.union([z.uuid(), z.literal('none')]).optional(),
+  // Address book (migration 037): free text (name, host name, Nigafiy ID, IP, signed-in user), a tag,
+  // the operator's favourites only, a signed-in user name.
+  q: z.string().trim().min(1).max(120).optional(),
+  tag: z.string().trim().toLowerCase().min(1).max(32).optional(),
+  favourites: z.enum(['1', 'true']).optional(),
+  user: z.string().trim().min(1).max(120).optional(),
 });
 
 export const endpointCreateSchema = z
