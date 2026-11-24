@@ -27,6 +27,8 @@ The driver reports them with the existing ones (`capabilities[]` in a refresh, m
 | `reboot`       | restart the router                                                             |
 
 A capability that is missing or `supported: false` is not offered (the UI shows the note).
+A capability may also carry `requires: "reservation"` (the only value): the control acts on the
+device's DHCP reservation, so it is offered only for devices that have one.
 
 ## Refresh result: `settings`
 
@@ -76,6 +78,10 @@ device's MAC or `""` for router-wide changes (Wi-Fi, port forward without a devi
 
 - **rename**: the device must be in the router's client list. The name is trimmed; control
   characters are refused. The block switch and icon are sent back unchanged.
+  Routers that keep no client names of their own (pfSense, OPNsense, FortiGate) store the name on the
+  device's DHCP reservation and report the capability with `requires: "reservation"`: then the
+  device must have a reservation instead (API `409 needs_reservation`, device controls reason
+  `needs_reservation`), and the form says where the name goes.
 - **wifi**: refuses to turn off a network that the collector's own host is connected to (it would
   cut the product off from the router). The API also refuses to turn off the network the requesting
   operator's machine is on (`own_machine`). Turning on a guest network while its band's main network
@@ -147,7 +153,71 @@ Two driver fixes came out of these tests: the Cisco IOS XE settings read now rep
 a pin mismatch or an unreachable router as an error instead of an empty overview, and the UniFi
 reboot reports such a failure instead of "no UniFi gateway device found".
 
-OPNsense port forwards stay refused: the capability is `supported: false` with a note naming the
-detected firmware. Newer OPNsense releases expose a destination-NAT API (`/api/firewall/d_nat`), but
-its rule format differs between releases and has not been verified against a real firewall, so the
-driver does not write it; port forwards are managed under Firewall → NAT → Port Forward.
+OPNsense port forwards are offered from OPNsense 26.1 on (destination NAT API, see "Built: R1");
+on older firmware the capability is `supported: false` with a note naming the detected version.
+
+## Per-driver matrix (rename, Wi-Fi, reservations, port forwards)
+
+Y = offered, – = not offered (the capability note says why), "via reservation" = rename stored on the
+device's DHCP reservation. Every entry is exercised against a protocol test double only; apart from
+the Zyxel row, none of this has run on real hardware.
+
+| Driver | Firmware the driver targets | Rename | Wi-Fi | Reservations | Port forward | Source of the vendor interface |
+|---|---|---|---|---|---|---|
+| zyxel | VMG3625-T50B (ZCFG DAL) | Y | Y | Y | Y | router's own web UI JavaScript (handoff spec) |
+| asus, huawei, unifi, mikrotik, omada, openwrt | as in their headers | Y | Y | Y | Y | unchanged by R1 |
+| tenda | AC6/AC7/AC9/AC10/AC11/AC15/AC18, firmware **V15.03.x** | Y (V15.03.x only) | Y | Y | Y | `/goform/SetOnlineDevName` (`mac`, `devName`): CVE-2024-10662 (AC15 V15.03.05.19), CVE-2024-10698 (AC6 V15.03.05.19), CVE-2024-0533 (A15) |
+| tenda | F3 (V12.x), AC23 (V16.x) | – | Y | Y | Y | handler not confirmed on these families |
+| dlink | DIR-825/842/878/882, EXO, COVR (HNAP1) | – | Y | Y | Y | GetClientInfo returns NickName, but no documented SetClientInfo write; only SetClientInfoDemo on DIR-868L (audio settings, CVE-2018-19988) |
+| tplink | Archer C6/C80/AX10/AX23/AX53/AX73, VR400/600, VX230v | – | Y | Y | Y | no documented client-name form in the LuCI `stok` API; Tether names live in the TP-Link cloud |
+| zte | ZXHN H168N/H188A/H108N, F660/F670L/F680 | – | Y | Y | Y | `accessdev_landev_lua.lua` is a read-only host list; no documented rename page |
+| huaweilte | B315/B525/B535/B818/H122/H155 (HiLink) | – | Y | – | Y | huawei-lte-api: `lan/HostInfo`, `wlan/host-list` read-only; `dhcp/static-addr-info` GET only (B310s-22, "usage unknown"), no write format |
+| fortigate | FortiOS 6.4–7.4 REST API | via reservation (description) | Y (when SSIDs exist) | Y | Y | FortiOS CLI reference `system dhcp server` → `reserved-address` (`description`); `wireless-controller vap`; `system interface` `status up/down` (Fortinet Community tip on disabling an SSID); `/api/v2/monitor/wifi/client` |
+| pfsense | pfSense CE 2.7 / Plus 23.09+ with pfSense-pkg-RESTAPI v2 | via reservation (host name) | – | Y | Y | pfrest `Models/DHCPServerStaticMapping.inc` (`hostname` with HostnameValidator, `descr`), PATCH `/api/v2/services/dhcp_server/static_mapping`; the REST API has no wireless endpoints |
+| opnsense | 24.1+ (Kea) | via reservation (host name) | – | Y | Y on **26.1+**, – before | Kea `setReservation/{uuid}` (`reservation.hostname`); OPNsense 26.1 release notes (Port Forward → Destination NAT, MVC/API), `DNatController` and `OPNsense/Firewall/DNat.xml` (docs.opnsense.org development/api/core/firewall.html); no wireless API |
+| ciscoxe | IOS XE RESTCONF | – | – | – | – | read-only by design |
+
+## Built: R1 (2026-11-24)
+
+What was added, all **verified only against protocol test doubles** (pinned TLS, `httptest.NewTLSServer`),
+**never run on real hardware**:
+
+- **Rename via reservation** (pfSense, OPNsense, FortiGate). pfSense: PATCH the static mapping's
+  `hostname`, then `dhcp_server/apply`. OPNsense: `/api/kea/dhcpv4/setReservation/{uuid}` with
+  `{"reservation": {"hostname": ...}}`, then `/api/kea/service/reconfigure`. Both refuse a name
+  that is not a host name (letters, digits, hyphens; `router.CleanHostname`) before sending.
+  FortiGate: PUT the DHCP server's `reserved-address` list with the entry's `description` changed
+  (any printable name up to 63 characters). All three refuse a device without a reservation
+  (`not_found`), re-read the reservation after the change and fail if it does not show the new
+  name; the undo names the previous name.
+- **Tenda rename** on firmware V15.03.x: POST `/goform/SetOnlineDevName` with the normalised MAC and
+  the name (at most 32 bytes: the public advisories are about a stack overflow on a long `devName`),
+  `errCode` 0 required, then the online list is re-read. Other firmware families: `supported:
+  false` naming the detected version, and `ErrUnsupported` before anything is sent. Not known: which
+  online-list field a real V15.03 router uses for the new name (the driver reads `qosListRemark`,
+  `qosListDevName`, `devName`).
+- **FortiGate Wi-Fi**: lists `wireless-controller/vap` SSIDs that have a system interface (name,
+  SSID, hidden from `broadcast-ssid`, security; the passphrase is never read), their clients from
+  `/api/v2/monitor/wifi/client`, and turns one on/off with PUT `/api/v2/cmdb/system/interface/<vap>`
+  `{"status": "up"|"down"}`, then re-reads the status. FortiOS has no main/guest flag, so every SSID
+  is reported as a main network (turning one off asks for confirmation). Offered only when SSIDs
+  exist; a FortiGate without a wireless controller reports why.
+- **OPNsense port forwards** on 26.1 and newer (version parsed from `/api/core/firmware/info`):
+  `d_nat/search_rule` + `get_rule/{uuid}` (option fields read from the selection maps),
+  `add_rule` with interface `wan`, `inet`, protocol tcp / udp / `tcp/udp`, destination
+  `wanip` + port or `start-end`, `target`, `local-port`, description `LAN Detective: …`,
+  `pass: "pass"`; `del_rule/{uuid}`; `apply` after each change; the rule is re-read after adding
+  and after removing. Rules with aliases, IPv6 targets or no port are left out of the list rather
+  than guessed. Older firmware: `ErrUnsupported` and no `d_nat` request at all.
+- **Precise refusals** for the rest (see the matrix): D-Link, TP-Link, ZTE and Huawei LTE rename,
+  Huawei LTE reservations, pfSense and OPNsense Wi-Fi.
+- **API / UI**: capability field `requires` (Zod enum `reservation`), device controls rename reason
+  `needs_reservation` and `via: "reservation"`, `POST /routers/:id/rename` answers `409
+  needs_reservation` / `settings_unknown` for such routers; EN/AR strings
+  (`routers.rename.hintReservation`, `routers.err.needs_reservation`,
+  `control.reason.needs_reservation`); `tests/router-settings.test.ts` covers both.
+
+Not verified and needing a real device: every R1 control above; whether OPNsense 26.1's
+`get_rule` returns `target` and `destination.port` as plain strings (the driver accepts both
+strings and selection maps); whether taking a FortiWiFi SSID interface down stops the broadcast on
+every FortiAP model (documented only in a Fortinet Community tip).
