@@ -49,6 +49,7 @@ type Driver struct {
 	creds  router.CredentialSource
 	token  []byte
 	info   *router.Info
+	build  int // Asuswrt build number (386, 388, ...); 0 when unknown
 }
 
 // New builds an ASUS driver for t.
@@ -185,6 +186,7 @@ func (d *Driver) Identify(ctx context.Context) (router.Info, error) {
 	fw := strings.TrimSpace(str(m["firmver"]))
 	if b := str(m["buildno"]); b != "" {
 		fw = strings.TrimPrefix(fw+"."+b, ".")
+		d.build = leadingInt(b)
 	}
 	if e := str(m["extendno"]); e != "" {
 		fw += "_" + e
@@ -207,8 +209,8 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapClients, Supported: true, Mechanism: "Asuswrt appGet.cgi get_clientlist()"},
 		{Capability: router.CapDHCPLeases, Supported: false, Note: "get_clientlist reports active IPs without remaining lease seconds"},
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds a dedicated LD:-tagged entry to MULTIFILTER_MAC without altering administrator rules"},
-		{Capability: router.CapRateLimit, Supported: false, Note: "Asuswrt bandwidth limiter NVRAM format varies across firmware generations"},
-		{Capability: router.CapSchedule, Supported: false, Note: "Time-scheduling uses per-firmware bitmasks not uniformly exposed"},
+		{Capability: router.CapRateLimit, Supported: false, Note: rateNote},
+		d.scheduleCapability(),
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
@@ -223,13 +225,15 @@ type mfRow struct {
 	mac    string // normalized
 	name   string
 	day    string
+	dayV2  string // MULTIFILTER_MACFILTER_DAYTIME_V2 entry (Asuswrt 386+), written back unchanged
 }
 
 func (d *Driver) readMultifilter(ctx context.Context, op string) ([]mfRow, error) {
-	m, err := d.appGet(ctx, op, "nvram_get(MULTIFILTER_ENABLE);nvram_get(MULTIFILTER_MAC);nvram_get(MULTIFILTER_DEVICENAME);nvram_get(MULTIFILTER_MACFILTER_DAYTIME)")
+	m, err := d.appGet(ctx, op, "nvram_get(MULTIFILTER_ENABLE);nvram_get(MULTIFILTER_MAC);nvram_get(MULTIFILTER_DEVICENAME);nvram_get(MULTIFILTER_MACFILTER_DAYTIME);nvram_get(MULTIFILTER_MACFILTER_DAYTIME_V2)")
 	if err != nil {
 		return nil, err
 	}
+	daysV2 := strings.Split(str(m["MULTIFILTER_MACFILTER_DAYTIME_V2"]), ">")
 	en := splitNVRAM(str(m["MULTIFILTER_ENABLE"]))
 	macs := splitNVRAM(str(m["MULTIFILTER_MAC"]))
 	names := splitNVRAM(str(m["MULTIFILTER_DEVICENAME"]))
@@ -245,21 +249,30 @@ func (d *Driver) readMultifilter(ctx context.Context, op string) ([]mfRow, error
 			mac:    norm,
 			name:   at(names, i, ""),
 			day:    at(days, i, "<"),
+			dayV2:  atRaw(daysV2, i),
 		})
 	}
 	return rows, nil
 }
 
 func (d *Driver) writeMultifilter(ctx context.Context, op string, rows []mfRow) error {
+	if d.info == nil {
+		// The firmware build decides whether the V2 schedule list exists and must be kept aligned.
+		if _, err := d.Identify(ctx); err != nil {
+			return err
+		}
+	}
 	en := make([]string, len(rows))
 	macs := make([]string, len(rows))
 	names := make([]string, len(rows))
 	days := make([]string, len(rows))
+	daysV2 := make([]string, len(rows))
 	for i, r := range rows {
 		en[i] = r.enable
 		macs[i] = strings.ToUpper(r.mac)
 		names[i] = r.name
 		days[i] = r.day
+		daysV2[i] = r.dayV2
 	}
 	form := url.Values{
 		"action_mode":                   {"apply"},
@@ -269,6 +282,10 @@ func (d *Driver) writeMultifilter(ctx context.Context, op string, rows []mfRow) 
 		"MULTIFILTER_MAC":               {strings.Join(macs, ">")},
 		"MULTIFILTER_DEVICENAME":        {strings.Join(names, ">")},
 		"MULTIFILTER_MACFILTER_DAYTIME": {strings.Join(days, ">")},
+	}
+	if d.build >= v2Build {
+		// Asuswrt 386+ keeps the schedules in a parallel list: it must stay aligned with the others.
+		form.Set("MULTIFILTER_MACFILTER_DAYTIME_V2", strings.Join(daysV2, ">"))
 	}
 	st, _, err := d.rawDo(ctx, op, http.MethodPost, "/applyapp.cgi", form)
 	if err != nil {
@@ -371,7 +388,12 @@ func (d *Driver) Block(ctx context.Context, rawMAC string) (router.Change, error
 			return router.Change{Action: "block", MAC: mac, Mechanism: mechBlock, Applied: false, AlreadyInEffect: true, Detail: "device is already blocked in Asuswrt MULTIFILTER_MAC", Undo: undoBlock(mac)}, nil
 		}
 	}
-	rows = append(rows, mfRow{enable: "2", mac: mac, name: ldTagPrefix + mac, day: "<"})
+	for _, r := range rows {
+		if r.mac == mac && r.enable == "1" && strings.HasPrefix(r.name, ldTagPrefix) {
+			return router.Change{}, router.Errorf(router.ErrRejected, "block", "the device has a Nigafiy time schedule in Asuswrt Parental Controls; remove the schedule before blocking it outright")
+		}
+	}
+	rows = append(rows, mfRow{enable: "2", mac: mac, name: ldTagPrefix + mac, day: "<", dayV2: defaultDaytimeV2})
 	if err := d.writeMultifilter(ctx, "block", rows); err != nil {
 		return router.Change{}, err
 	}
@@ -430,6 +452,24 @@ func asusConn(isWL string) router.ConnectionType {
 	default:
 		return router.ConnUnknown
 	}
+}
+
+func atRaw(xs []string, i int) string {
+	if i < len(xs) {
+		return xs[i]
+	}
+	return ""
+}
+
+func leadingInt(s string) int {
+	n := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			break
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 func splitNVRAM(s string) []string {

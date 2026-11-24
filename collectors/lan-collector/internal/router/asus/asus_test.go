@@ -23,6 +23,7 @@ type fakeAsus struct {
 	mu      sync.Mutex
 	nvram   map[string]string
 	logouts int
+	applies int
 	srv     *httptest.Server
 }
 
@@ -30,14 +31,15 @@ func newFakeAsus(t *testing.T) *fakeAsus {
 	t.Helper()
 	f := &fakeAsus{
 		nvram: map[string]string{
-			"productid":                     "RT-AX88U",
-			"firmver":                       "3.0.0.4",
-			"buildno":                       "388",
-			"extendno":                      "24198",
-			"MULTIFILTER_ENABLE":            "2",
-			"MULTIFILTER_MAC":               "AA:BB:CC:00:00:03",
-			"MULTIFILTER_DEVICENAME":        "Kid-Tablet",
-			"MULTIFILTER_MACFILTER_DAYTIME": "<",
+			"productid":                        "RT-AX88U",
+			"firmver":                          "3.0.0.4",
+			"buildno":                          "388",
+			"extendno":                         "24198",
+			"MULTIFILTER_ENABLE":               "2",
+			"MULTIFILTER_MAC":                  "AA:BB:CC:00:00:03",
+			"MULTIFILTER_DEVICENAME":           "Kid-Tablet",
+			"MULTIFILTER_MACFILTER_DAYTIME":    "<",
+			"MULTIFILTER_MACFILTER_DAYTIME_V2": "W03E21000700<W04122000800",
 		},
 	}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(f.handle))
@@ -74,7 +76,7 @@ func (f *fakeAsus) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		hook := r.FormValue("hook")
 		out := map[string]any{}
-		for _, k := range []string{"productid", "firmver", "buildno", "extendno", "MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME"} {
+		for _, k := range []string{"productid", "firmver", "buildno", "extendno", "MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME", "MULTIFILTER_MACFILTER_DAYTIME_V2"} {
 			if strings.Contains(hook, "nvram_get("+k+")") {
 				out[k] = f.nvram[k]
 			}
@@ -92,8 +94,11 @@ func (f *fakeAsus) handle(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		for _, k := range []string{"MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME"} {
-			f.nvram[k] = r.FormValue(k)
+		f.applies++
+		for _, k := range []string{"MULTIFILTER_ENABLE", "MULTIFILTER_MAC", "MULTIFILTER_DEVICENAME", "MULTIFILTER_MACFILTER_DAYTIME", "MULTIFILTER_MACFILTER_DAYTIME_V2"} {
+			if _, ok := r.Form[k]; ok {
+				f.nvram[k] = r.FormValue(k)
+			}
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"modify": "1"})
 	default:
