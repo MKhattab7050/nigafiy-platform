@@ -276,12 +276,14 @@ describe('fleet: patches', () => {
     await report(cred);
     expect(await dispatchInstalls(a.organizationId)).toBe(1);
     const second = (await a.agent.get('/api/v1/fleet/patches/installs?open=1')).body.installs[0];
-    expect((await pollFor(cred)).some((c) => c.kind === 'patch_install')).toBe(true);
+    const taken = (await pollFor(cred)).find((c) => c.kind === 'patch_install');
+    expect(taken).toBeTruthy();
     expect((await a.agent.post(`/api/v1/fleet/patches/installs/${second.id}/cancel`).set(CSRF)).status).toBe(409);
     // Still running past the stale-command expiry (the heartbeat keeps a delivered install).
     await systemPool.query(`UPDATE endpoint_commands SET created_at = now() - interval '30 minutes' WHERE endpoint_id = $1 AND kind = 'patch_install'`, [epId]);
     await heartbeat(cred);
-    expect((await pending(epId, 'patch_install')).at(-1)!.status).toBe('delivered');
+    // Both commands now share created_at, so the taken one is looked up by id, not by order.
+    expect((await pending(epId, 'patch_install')).find((c) => c.id === taken!.id)!.status).toBe('delivered');
     // No answer for 4 hours: failed.
     await systemPool.query(`UPDATE fleet_patch_installs SET queued_at = now() - interval '5 hours' WHERE id = $1`, [second.id]);
     await runRebootTimers(a.organizationId);
