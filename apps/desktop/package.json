@@ -68,8 +68,15 @@
       "guid": "664f0038-fee2-574d-ae14-23d8a9c943e5",
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "installer/nigafiy.nsh",
+      "multiLanguageInstaller": true,
+      "installerLanguages": [
+        "en_US",
+        "ar_SA"
+      ]
     },
+    "msiProjectCreated": "./scripts/msi-programs.cjs",
     "msi": {
       "oneClick": true,
       "perMachine": true,

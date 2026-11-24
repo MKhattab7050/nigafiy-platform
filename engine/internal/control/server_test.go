@@ -119,7 +119,7 @@ func TestStatusShape(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	if got := strings.Join(keys, ","); got != "children,data_dir,mode,stack,started_at,update,version" {
+	if got := strings.Join(keys, ","); got != "children,data_dir,mode,programs,stack,started_at,update,version" {
 		t.Fatalf("top-level keys %s", got)
 	}
 	var children []map[string]json.RawMessage

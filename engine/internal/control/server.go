@@ -57,6 +57,15 @@ type StatusDoc struct {
 	Children  []ChildDoc `json:"children"`
 	Stack     *StackDoc  `json:"stack"`  // null until the API and the web server are ready
 	Update    *UpdateDoc `json:"update"` // null when the engine has no update support
+	// Programs is the programs choice the stack was given (NIGAFIY_PROGRAMS).
+	Programs *ProgramsDoc `json:"programs"`
+}
+
+// ProgramsDoc says which programs this installation was set up with and where that came from.
+type ProgramsDoc struct {
+	Value  string `json:"value"`  // "all", a comma list, or "" (nothing recorded: all)
+	Source string `json:"source"` // env | HKCU | HKLM | default | invalid
+	Error  string `json:"error,omitempty"`
 }
 
 // ErrRefused marks a child action the engine will not perform in its current configuration (for

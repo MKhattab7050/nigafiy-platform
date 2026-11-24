@@ -20,6 +20,7 @@ const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs'
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
 const { readEnv } = require('./env-compat.cjs');
+const { CHOICES, readInstallSettings, selectedIds, writePrograms } = require('./install-settings.cjs');
 const { resolveDataDir, DEV_PROFILE_NAME, LEGACY_DEV_PROFILE_NAME } = require('./data-dir.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
@@ -39,6 +40,10 @@ if (!app.commandLine.hasSwitch('user-data-dir')) {
 const SMOKE = process.argv.includes('--smoke');
 // Non-interactive check of local mode: consent comes from NIGAFIY_DESKTOP_AUTO_CONSENT=1 (legacy LD_DESKTOP_AUTO_CONSENT), then it reports and quits.
 const LOCAL_SMOKE = process.argv.includes('--local-smoke');
+// Apps & features "Modify" (the ModifyPath the installer writes): only the program chooser opens.
+const CHOOSE_PROGRAMS = process.argv.includes('--choose-programs');
+const CHOOSER_FILE = path.join(__dirname, 'chooser', 'index.html');
+const CHOOSER_URL = pathToFileURL(CHOOSER_FILE).href;
 const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
 const PANEL_URL = pathToFileURL(PANEL_FILE).href;
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
@@ -186,6 +191,60 @@ function openPending() {
   const next = pendingOpen;
   pendingOpen = null;
   openProgram(next.program, next.path);
+}
+
+// ── program chooser (docs/operations/installers.md, "Choose programs") ──────
+let chooser = null;
+let chooserIpc = false;
+function showProgramChooser() {
+  if (chooser) {
+    chooser.show();
+    chooser.focus();
+    return chooser;
+  }
+  if (!chooserIpc) {
+    chooserIpc = true;
+    const allow = (event) => {
+      if (event.senderFrame?.url !== CHOOSER_URL) throw new Error('not allowed');
+    };
+    const installDir = path.dirname(process.execPath);
+    ipcMain.handle('programs:load', async (event) => {
+      allow(event);
+      const s = app.isPackaged ? await readInstallSettings({ installDir }) : { scope: 'unknown', programs: 'all', writable: false };
+      return { ...s, selected: selectedIds(s.programs), choices: CHOICES, locale: app.getLocale().toLowerCase().startsWith('ar') ? 'ar' : 'en' };
+    });
+    ipcMain.handle('programs:save', async (event, ids) => {
+      allow(event);
+      if (!app.isPackaged) return { ok: false, error: 'unknown install' };
+      const s = await readInstallSettings({ installDir });
+      const r = await writePrograms({ scope: s.scope, ids: Array.isArray(ids) ? ids : [] });
+      // The value only (program ids), never anything typed: the choice goes to the app log.
+      console.info(r.ok ? `[programs] saved ${r.programs} (${s.scope})` : `[programs] not saved: ${r.error}`);
+      return r;
+    });
+    ipcMain.handle('programs:close', (event) => {
+      allow(event);
+      chooser?.close();
+    });
+  }
+  chooser = new BrowserWindow({
+    width: 560,
+    height: 560,
+    resizable: false,
+    title: 'Nigafiy',
+    backgroundColor: '#070d1a',
+    icon: ICON,
+    autoHideMenuBar: true,
+    webPreferences: { preload: path.join(__dirname, 'chooser-preload.cjs'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  chooser.webContents.on('will-navigate', (event) => event.preventDefault());
+  chooser.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  chooser.on('closed', () => {
+    chooser = null;
+    if (CHOOSE_PROGRAMS) void quit(); // opened from Apps & features only: nothing else was started
+  });
+  void chooser.loadFile(CHOOSER_FILE);
+  return chooser;
 }
 
 function showPanel() {
@@ -534,6 +593,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   // A second launch (a program launcher, a taskbar relaunch, a clicked nigafiy:// link) is handed here.
   app.on('second-instance', (_event, argv) => {
+    if (argv.includes('--choose-programs') || CHOOSE_PROGRAMS) return void showProgramChooser();
     const req = launchRequest(argv);
     if (req.rejected) return void showDashboard(); // a nigafiy:// link that is not one of ours opens nothing else
     const asked = req.link || argv.some((a) => typeof a === 'string' && a.startsWith('--program'));
@@ -557,6 +617,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     app.setAppUserModelId('com.nigafiy.hub');
+    if (CHOOSE_PROGRAMS) return void showProgramChooser();
     // nigafiy:// is registered by the installed app only; a source checkout or a test run never writes HKCU\Software\Classes\nigafiy.
     if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({

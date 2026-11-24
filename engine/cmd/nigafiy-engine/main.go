@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -44,6 +45,9 @@ Usage:
   nigafiy-engine start | stop       start or stop the Windows service (admin)
   nigafiy-engine status [--control-addr=127.0.0.1:47140]
                                     print the running engine's status
+  nigafiy-engine install-info [--bundle-dir=<install>\resources\backend]
+                                    how this copy was installed (MSI or NSIS) and the programs
+                                    chosen at install time, read from the registry (read-only)
   nigafiy-engine version
 
 Flags of run and install:
@@ -78,6 +82,8 @@ func realMain(args []string, stdout, stderr io.Writer) int {
 		return report(stderr, noArgs(rest, stopService), "stopped service "+serviceName, stdout)
 	case "status":
 		return cmdStatus(rest, stdout, stderr)
+	case "install-info":
+		return cmdInstallInfo(rest, stdout, stderr)
 	case "update-apply":
 		return cmdUpdateApply(rest, stdout, stderr)
 	case "version", "--version", "-v":
@@ -157,6 +163,26 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
+	return exitOK
+}
+
+// cmdInstallInfo prints what the engine would use at start: the install kind and the programs.
+func cmdInstallInfo(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("install-info", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	bundle := fs.String("bundle-dir", "", `the installed app's resources\backend folder (default: next to this program in an installed app)`)
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if *bundle == "" {
+		if exe, err := os.Executable(); err == nil {
+			// <install>\resources\engine\nigafiy-engine.exe: the bundle is <install>\resources\backend.
+			*bundle = filepath.Join(filepath.Dir(filepath.Dir(exe)), "backend")
+		}
+	}
+	info := engine.InstallInfo(*bundle, os.Getenv)
+	out, _ := json.MarshalIndent(info, "", "  ")
+	fmt.Fprintln(stdout, string(out))
 	return exitOK
 }
 

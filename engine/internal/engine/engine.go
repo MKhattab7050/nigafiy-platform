@@ -79,6 +79,8 @@ type engine struct {
 	ready map[string]*atomic.Pointer[stackStatus] // what each component reported when it became ready
 
 	updates *updater
+	// programs: the programs chosen at install time, passed to the stack as NIGAFIY_PROGRAMS.
+	programs ProgramsChoice
 
 	stopping     atomic.Bool
 	shutdownOnce sync.Once
@@ -138,6 +140,16 @@ func Run(ctx context.Context, cfg Config) error {
 	defer os.Remove(tokenPath)
 
 	e.log.Printf("Nigafiy Engine %s starting (%s mode, pid %d), data folder %s, control API http://%s", cfg.Version, cfg.Mode, os.Getpid(), cfg.DataDir, addr)
+
+	e.programs = ResolvePrograms(os.Getenv, cfg.BundleDir, installRegistry())
+	switch e.programs.Source {
+	case "invalid":
+		e.log.Printf("programs: ignoring the recorded choice (%s); every program is offered", e.programs.Error)
+	case "default":
+		e.log.Printf("programs: none recorded; every program is offered")
+	default:
+		e.log.Printf("programs: %s (from %s)", e.programs.Value, e.programs.Source)
+	}
 
 	var members []member
 	for _, comp := range Components {
@@ -212,6 +224,9 @@ func (e *engine) componentSpec(name string, stopTimeout, readyTimeout time.Durat
 	if !isPlainNode(e.cfg.Node) {
 		// The installed desktop app's own executable runs local.mjs as Node.
 		env = append(env, "ELECTRON_RUN_AS_NODE=1")
+	}
+	if p := programsEnv(e.programs); p != "" {
+		env = append(withoutEnv(env, "NIGAFIY_PROGRAMS"), p)
 	}
 	ready := e.ready[name]
 	return supervisor.Spec{
@@ -480,6 +495,7 @@ func (e *engine) Status() control.StatusDoc {
 	if e.updates != nil {
 		doc.Update = e.updates.doc()
 	}
+	doc.Programs = &control.ProgramsDoc{Value: e.programs.Value, Source: e.programs.Source, Error: e.programs.Error}
 	return doc
 }
 
