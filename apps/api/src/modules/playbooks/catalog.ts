@@ -26,6 +26,8 @@ export const TRIGGER_EVENT_TYPES = [
   // endpoints
   'endpoint_enrolled',
   'endpoint_command',
+  'endpoint_monitor_breach',
+  'endpoint_monitor_recovered',
   // IPAM
   'ip_conflict_detected',
   'ip_conflict_resolved',

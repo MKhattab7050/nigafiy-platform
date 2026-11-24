@@ -76,7 +76,7 @@ export async function diagnoseSiteNetwork(db: Db, organizationId: string, siteId
 
 export interface IncidentRef {
   id: string;
-  kind: 'network' | 'service' | 'collector' | 'device' | 'dhcp';
+  kind: 'network' | 'service' | 'collector' | 'device' | 'dhcp' | 'endpoint';
   site_id: string | null;
   check_id: string | null;
   device_id: string | null;
@@ -94,6 +94,8 @@ export async function diagnoseIncident(db: Db, organizationId: string, incident:
     finalize(core, affectedOf(facts), await relatedIncidents(db, organizationId, incident.site_id, core.fault_domain, incident.id), now);
 
   if (incident.kind === 'network') return done(network);
+  // Fleet monitoring rules: the rule's measurement is the diagnosis (title and evidence on the event).
+  if (incident.kind === 'endpoint') return null;
   // Rogue DHCP server / no DHCP offer (modules/security smart checks): smart-rules.ts.
   if (incident.kind === 'dhcp') return done(diagnoseDhcp(await loadDhcpFacts(db, organizationId, incident.site_id, now)));
 

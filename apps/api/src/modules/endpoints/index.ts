@@ -10,6 +10,7 @@ import { fleetReachRouter } from './fleet-reach/routes.ts';
 import { fleetJobsRouter } from './fleet-jobs/routes.ts';
 import { runJobScheduler } from './fleet-jobs/jobs.ts';
 import { fleetShellRouter } from './fleet-shell/routes.ts';
+import { fleetMonitoringRouter } from './fleet-monitoring/routes.ts';
 import { shellHub } from './fleet-shell/hub.ts';
 import { runShellSweep } from './fleet-shell/shells.ts';
 import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
@@ -33,13 +34,15 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   fleet-reach/     address book, connect by name/ID/code, Request help, restart and reconnect, Quick Support
  *   fleet-shell/     remote shell (admins; group switch): agent/operator sockets, encrypted transcript
  *   fleet-jobs/      scripts library (typed parameters, versions) and jobs (now, scheduled, per-computer results)
+ *   fleet-monitoring/ CPU, memory, disk, service and event-log rules evaluated on each heartbeat (Watch events)
+ *   fleet-inventory/ hardware and licence inventory reported by the agent
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
  *                    WebSocket stream hub (stream-hub.ts) and the HTTP command fallback
  *   file-manager/    remote file operations (travel as fs_op commands)
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, fleetMonitoringRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;

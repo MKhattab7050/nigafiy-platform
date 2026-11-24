@@ -10,6 +10,7 @@ import { HEARTBEAT_INTERVAL_SECONDS, applyCommandResults, deliverPendingCommands
 import type { AgentEnroll, AgentHeartbeat, AgentInventory, CommandResult, EndpointContext } from '../schema.ts';
 import { normalizeConnections } from './connections.ts';
 import { POLL_RECHECK_MS, armWake } from './wake.ts';
+import { evaluateMonitoring, monitorSpec } from '../fleet-monitoring/evaluate.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -220,6 +221,13 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     // Restart and reconnect: the agent is back; a safe-boot flag still set gets cleared.
     await onHeartbeatRestarts(db, ep.organizationId, ep.id, body.boot_state, body.uptime_seconds);
 
+    // Monitoring rules (fleet-monitoring): breaches that last their duration raise Watch events.
+    const storedDisks = body.disks
+      ? null
+      : ((await db.query<{ disks: { mount: string; free_gb?: number; total_gb?: number; used_pct: number }[] | null }>(`SELECT disks FROM endpoints WHERE id = $1`, [ep.id])).rows[0]?.disks ?? null);
+    await evaluateMonitoring(db, ep.id, { cpuPct: body.cpu_pct, ramPct: body.ram_pct, disks: body.disks ?? storedDisks, monitor: body.monitor }, now);
+    const monitor = await monitorSpec(db, ep.id);
+
     const completedIds = await applyCommandResults(db, ep.id, cmdResults, now);
 
     // Expire stale pending commands older than 10 minutes
@@ -254,6 +262,8 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         heartbeat_interval_seconds: HEARTBEAT_INTERVAL_SECONDS,
         // Shown in the agent's tray ("About") so the person can read it to IT.
         nigafiy_id: nigafiyId,
+        // What the agent measures for the monitoring rules (services, event-log queries).
+        monitor,
         commands,
       },
     };

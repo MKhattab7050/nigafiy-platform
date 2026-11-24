@@ -431,7 +431,7 @@ export type AuditActor = 'user' | 'system' | 'collector';
 
 // ───────────────────────── Phase 2 ─────────────────────────
 
-export type IncidentKind = 'network' | 'service' | 'collector' | 'device' | 'dhcp';
+export type IncidentKind = 'network' | 'service' | 'collector' | 'device' | 'dhcp' | 'endpoint';
 export type IncidentStatus = 'open' | 'acknowledged' | 'resolved';
 export type Confidence = 'high' | 'medium' | 'low';
 export type FaultDomain =
@@ -2732,4 +2732,139 @@ export interface FleetItActivityItem {
   reason: string | null;
   at: string;
   ended_at: string | null;
+}
+
+// ── Fleet Pro: monitoring rules (migration 043) ──
+export type FleetMonitorKind = 'cpu' | 'memory' | 'disk_free' | 'service' | 'event_log';
+export interface FleetMonitorRule {
+  id: string;
+  fleet_group_id: string | null;
+  fleet_group_name: string | null;
+  name: string;
+  kind: FleetMonitorKind;
+  threshold: number | null;
+  threshold_unit: 'pct' | 'gb' | 'count' | null;
+  mount: string | null;
+  service_name: string | null;
+  event_log: string | null;
+  event_source: string | null;
+  event_ids: number[] | null;
+  event_level: 'critical' | 'error' | 'warning' | 'any' | null;
+  match_text: string | null;
+  event_window_minutes: number | null;
+  duration_seconds: number;
+  severity: 'warning' | 'critical';
+  enabled: boolean;
+  created_by_email: string | null;
+  updated_at: string;
+  /** Computers whose current measurement breaches the rule, and how many of them raised an alert. */
+  breaching: number;
+  alerting: number;
+}
+export interface FleetMonitorState {
+  rule_id: string;
+  rule_name: string;
+  kind: FleetMonitorKind;
+  severity: 'warning' | 'critical';
+  endpoint_id: string;
+  endpoint_name: string;
+  breached_since: string | null;
+  alerted_at: string | null;
+  last_value: string | null;
+  last_checked_at: string;
+}
+
+// ── Fleet Pro: patches (migration 043) ──
+export type FleetPatchSource = 'wua' | 'apt' | 'dnf' | 'softwareupdate';
+export type FleetPatchClassification =
+  | 'critical'
+  | 'security'
+  | 'definition'
+  | 'update_rollup'
+  | 'service_pack'
+  | 'feature_pack'
+  | 'update'
+  | 'driver'
+  | 'tool'
+  | 'upgrade'
+  | 'other';
+export interface FleetPatchUpdate {
+  update_id: string;
+  title: string;
+  kb: string | null;
+  classification: FleetPatchClassification;
+  severity: string | null;
+  size_bytes: number | null;
+  reboot_required: boolean | null;
+  published_at: string | null;
+}
+export interface FleetPatchStatus {
+  endpoint_id: string;
+  source: FleetPatchSource | 'none';
+  install_supported: boolean;
+  scanned_at: string;
+  scan_error: string | null;
+  reboot_pending: boolean | null;
+  updates: (FleetPatchUpdate & { approval: 'approved' | 'auto_approved' | 'declined' | 'not_approved' })[];
+}
+export type FleetPatchInstallState = 'queued' | 'installing' | 'succeeded' | 'partial' | 'failed' | 'cancelled';
+export type FleetPatchRebootState = 'none' | 'pending' | 'asking' | 'postponed' | 'scheduled' | 'restarting' | 'done' | 'failed';
+export interface FleetPatchInstall {
+  id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  source: FleetPatchSource;
+  state: FleetPatchInstallState;
+  updates: { update_id: string; title: string; kb: string | null; classification: string }[];
+  results: { update_id: string; result: 'succeeded' | 'failed' | 'aborted' | 'not_started'; hresult: string | null; reboot_required: boolean }[] | null;
+  why: 'approved' | 'auto_approved';
+  window_label: string | null;
+  window_ends_at: string | null;
+  queued_at: string;
+  finished_at: string | null;
+  error: string | null;
+  reboot_required: boolean;
+  reboot_state: FleetPatchRebootState;
+  reboot_policy: 'never' | 'ask' | 'force' | null;
+  postponements: number;
+  max_postponements: number;
+  next_prompt_at: string | null;
+  reboot_deadline: string | null;
+  rebooted_at: string | null;
+}
+export interface FleetPatchPolicy {
+  id: string | null;
+  fleet_group_id: string | null;
+  fleet_group_name: string | null;
+  enabled: boolean;
+  auto_approve: FleetPatchClassification[];
+  window_kind: 'maintenance' | 'group';
+  window_weekdays: number[] | null;
+  window_start: string | null;
+  window_minutes: number | null;
+  window_timezone: string | null;
+  reboot_policy: 'never' | 'ask' | 'force';
+  max_postponements: number;
+  postpone_minutes: number;
+  reboot_deadline_hours: number;
+  updated_by_email: string | null;
+  updated_at: string | null;
+}
+export interface FleetPatchApproval {
+  id: string;
+  update_id: string;
+  fleet_group_id: string | null;
+  fleet_group_name: string | null;
+  decision: 'approved' | 'declined';
+  title: string;
+  kb: string | null;
+  classification: string | null;
+  decided_by_email: string;
+  decided_at: string;
+}
+/** One update across the fleet: how many computers miss it, and the decisions taken on it. */
+export interface FleetPatchCatalogItem extends FleetPatchUpdate {
+  source: FleetPatchSource;
+  missing_on: number;
+  approvals: FleetPatchApproval[];
 }

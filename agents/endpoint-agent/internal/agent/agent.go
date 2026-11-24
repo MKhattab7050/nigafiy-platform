@@ -26,6 +26,7 @@ import (
 	"github.com/nigafiy/agent/internal/config"
 	"github.com/nigafiy/agent/internal/control"
 	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/monitor"
 	"github.com/nigafiy/agent/internal/rdstream"
 	"github.com/nigafiy/agent/internal/reboot"
 	"github.com/nigafiy/agent/internal/scripts"
@@ -125,6 +126,8 @@ type Agent struct {
 	reboot   *reboot.Manager
 	scripts  *scripts.Runner
 	shells   *shell.Manager
+	// monitor measures services and event-log counts for the server's monitoring rules.
+	monitor *monitor.Prober
 	// nigafiyID: this computer's Nigafiy ID (from the heartbeat), shown in the tray.
 	nigafiyID string
 	trayID    string
@@ -174,6 +177,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		wakeHardware:  make(chan struct{}, 1),
 		cmdSem:        make(chan struct{}, 16),
 		scripts:       &scripts.Runner{},
+		monitor:       monitor.New(),
 	}
 	// One banner for the remote desktop session and the remote shells.
 	var mux *desktop.BannerMux
@@ -406,11 +410,15 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		}
 	}
 	body["boot_state"] = a.bootState()
+	if rep := a.monitor.Report(ctx); rep != nil {
+		body["monitor"] = rep
+	}
 
 	var resp struct {
 		HeartbeatIntervalSeconds int               `json:"heartbeat_interval_seconds"`
 		Commands                 []control.Command `json:"commands"`
 		NigafiyID                string            `json:"nigafiy_id"`
+		Monitor                  *monitor.Spec     `json:"monitor"`
 	}
 	if err := a.post(ctx, "/heartbeat", body, true, &resp); err != nil {
 		if ctx.Err() != nil {
@@ -422,6 +430,11 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 	}
 	*attempt = 0
 	a.showTray(ctx, resp.NigafiyID)
+	if resp.Monitor != nil {
+		a.monitor.SetSpec(*resp.Monitor)
+	} else {
+		a.monitor.SetSpec(monitor.Spec{})
+	}
 
 	// Drop acknowledged results
 	if len(results) > 0 {

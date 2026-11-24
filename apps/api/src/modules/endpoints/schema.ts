@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isIPv4 } from '../../common/net.ts';
+import { agentMonitorSchema } from './fleet-monitoring/schema.ts';
 
 // Endpoint agent protocol schema (Windows, Linux, macOS) — strict validation on every field.
 
@@ -194,6 +195,8 @@ export const agentHeartbeatSchema = z
       .max(64)
       .optional(),
     boot_state: z.object({ safe_mode: z.boolean().optional(), safe_boot_flag: z.boolean().optional(), service: z.boolean().optional() }).strict().optional(),
+    // Fleet Pro (migration 043): service states and event-log counts for the monitoring rules.
+    monitor: agentMonitorSchema.optional(),
   })
   .strict();
 

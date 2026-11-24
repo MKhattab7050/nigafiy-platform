@@ -15,6 +15,8 @@ export interface NewEvent {
   details: Record<string, unknown>;
   source: 'collector' | 'platform';
   occurredAt: Date;
+  /** Incident key for events whose subject is not a site, check, device or collector (Fleet monitoring rules). */
+  correlationKey?: string | null;
 }
 
 /**
@@ -103,6 +105,7 @@ export async function emitEvent(db: Db, organizationId: string, ev: NewEvent): P
     collectorId: ev.collectorId ?? null,
     occurredAt: ev.occurredAt,
     inMaintenance,
+    correlationKey: ev.correlationKey ?? null,
   });
   await notifyRealtime(db, organizationId, 'events');
   return eventId;

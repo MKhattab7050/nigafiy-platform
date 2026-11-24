@@ -267,6 +267,7 @@ export const FEATURES: Feature[] = [
   { id: 'fleet-approvals', program: 'fleet', route: '/fleet/approvals', label: 'endpoints.nav.approvals', icon: UserCheck, minRole: 'admin' },
   { id: 'fleet-scripts', program: 'fleet', route: '/fleet/scripts', label: 'endpoints.nav.scripts', icon: FileCode2, minRole: 'technician' },
   { id: 'fleet-jobs', program: 'fleet', route: '/fleet/jobs', label: 'endpoints.nav.jobs', icon: CalendarClock, minRole: 'technician' },
+  { id: 'fleet-monitoring', program: 'fleet', route: '/fleet/monitoring', label: 'endpoints.nav.monitoring', icon: Activity, minRole: 'viewer' },
 
   // ── Nigafiy Mind ──
   {

@@ -9,3 +9,4 @@ export { FleetRequestsScreen } from './screens/fleet-requests-screen';
 export { FleetScriptsScreen } from './screens/fleet-scripts-screen';
 export { FleetJobsScreen, FleetJobDetailScreen } from './screens/fleet-jobs-screen';
 export { ShellTranscriptScreen } from './screens/shell-transcript-screen';
+export { FleetMonitoringScreen } from './screens/fleet-monitoring-screen';

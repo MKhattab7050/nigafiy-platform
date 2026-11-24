@@ -210,6 +210,19 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
       return name ? `تم تسجيل الحاسوب المُدار: ${name}` : 'تم تسجيل حاسوب مُدار جديد';
     }
 
+    case 'endpoint_monitor_breach': {
+      const name = str(d.endpoint_name);
+      const rule = str(d.rule_name);
+      const value = str(d.value);
+      return `${name ? `الحاسوب ${ltr(name)}` : 'حاسوب مُدار'}: خُرقت قاعدة المراقبة ${rule ? `«${rule}»` : ''}${value ? ` (${ltr(value)})` : ''}`;
+    }
+
+    case 'endpoint_monitor_recovered': {
+      const name = str(d.endpoint_name);
+      const rule = str(d.rule_name);
+      return `${name ? `الحاسوب ${ltr(name)}` : 'حاسوب مُدار'}: عادت قاعدة المراقبة ${rule ? `«${rule}» ` : ''}إلى الوضع السليم`;
+    }
+
     case 'config_changed': {
       const target = str(d.target_name) ?? str(d.name);
       return target ? `تغيّرت إعدادات الجهاز ${target}` : 'تم رصد تغيير في إعدادات جهاز شبكي';

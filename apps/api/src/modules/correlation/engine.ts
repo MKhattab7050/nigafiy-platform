@@ -13,6 +13,7 @@ import { refreshMeasurementsOnOpen } from './refresh.ts';
  *  collector:<id>                  collector lost contact                      collector reconnects
  *  device:<id>                     a device marked critical goes offline       the device is seen again
  *  site:<id>:dhcp-rogue|dhcp-none  rogue DHCP server / no DHCP offer           security module: nothing left open
+ *  endpoint:<id>:rule:<id>         a Fleet monitoring rule breached (endpoint)  the rule's next healthy measurement
  *
  * Later events with the same key attach to the open incident instead of creating a new one, and
  * ordinary device drop-outs during a network incident are attached to it as "affected".
@@ -30,6 +31,8 @@ export interface CorrelatableEvent {
   collectorId: string | null;
   occurredAt: Date;
   inMaintenance?: boolean;
+  /** Set by the emitter for subjects outside site/check/device/collector (Fleet monitoring rules). */
+  correlationKey?: string | null;
 }
 
 const RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
@@ -178,6 +181,16 @@ async function correlate(db: Db, org: string, ev: CorrelatableEvent): Promise<vo
       const incident = ev.siteId ? await activeIncident(db, org, dhcpIncidentKey(ev.siteId, ev.type === 'rogue_dhcp_cleared' ? 'rogue' : 'none')) : undefined;
       if (incident) await link(db, org, incident.id, ev.id);
       return;
+    }
+    // Fleet monitoring rules on managed computers (endpoints/fleet-monitoring).
+    case 'endpoint_monitor_breach':
+      if (ev.inMaintenance || !ev.correlationKey) return;
+      return openOrAttach(db, org, ev, ev.correlationKey, 'endpoint');
+    case 'endpoint_monitor_recovered': {
+      const incident = ev.correlationKey ? await activeIncident(db, org, ev.correlationKey) : undefined;
+      if (!incident) return;
+      await link(db, org, incident.id, ev.id);
+      return resolve(db, org, incident, ev.occurredAt, 'the monitoring rule measured healthy again');
     }
     default:
   }

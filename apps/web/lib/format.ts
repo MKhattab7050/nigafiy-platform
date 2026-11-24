@@ -91,6 +91,8 @@ export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   unwanted_device_online: { en: 'Unwanted device online', ar: 'جهاز غير مرغوب متصل' },
   endpoint_enrolled: { en: 'Computer enrolled', ar: 'تسجيل حاسوب' },
   endpoint_command: { en: 'Computer command', ar: 'أمر على حاسوب' },
+  endpoint_monitor_breach: { en: 'Computer monitoring alert', ar: 'تنبيه مراقبة حاسوب' },
+  endpoint_monitor_recovered: { en: 'Computer monitoring recovered', ar: 'تعافي مراقبة حاسوب' },
   ip_conflict_detected: { en: 'IP conflict', ar: 'تعارض عناوين IP' },
   ip_conflict_resolved: { en: 'IP conflict resolved', ar: 'حل تعارض IP' },
   switch_unreadable: { en: 'Switch unreadable', ar: 'تعذّرت قراءة السويتش' },

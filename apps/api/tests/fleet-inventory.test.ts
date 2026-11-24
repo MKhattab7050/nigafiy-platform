@@ -1,3 +1,4 @@
+import type { EndpointEvidenceState, EndpointSecurityEvidence } from '@nigafiy/shared-types';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
@@ -22,7 +23,7 @@ const HW = {
   unmeasured: { battery_capacity: 'root/WMI battery classes: Generic failure' },
 };
 
-const ev = (subject: string, state = 'info', extra: Record<string, unknown> = {}) => ({
+const ev = (subject: string, state: EndpointEvidenceState = 'info', extra: Partial<EndpointSecurityEvidence> = {}): EndpointSecurityEvidence => ({
   check: 'local_admins',
   subject,
   state,
