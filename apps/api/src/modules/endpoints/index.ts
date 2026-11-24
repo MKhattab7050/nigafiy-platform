@@ -7,6 +7,11 @@ import { enrollmentRouter } from './enrollment/routes.ts';
 import { fleetRouter } from './fleet/routes.ts';
 import { fleetPolicyRouter } from './fleet-policy/routes.ts';
 import { fleetReachRouter } from './fleet-reach/routes.ts';
+import { fleetJobsRouter } from './fleet-jobs/routes.ts';
+import { runJobScheduler } from './fleet-jobs/jobs.ts';
+import { fleetShellRouter } from './fleet-shell/routes.ts';
+import { shellHub } from './fleet-shell/hub.ts';
+import { runShellSweep } from './fleet-shell/shells.ts';
 import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
 import { runRestartTimeouts } from './fleet-reach/restarts.ts';
 import { policyRouter } from './policy/routes.ts';
@@ -26,13 +31,15 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   policy/          per-endpoint policy (compliance is evaluated in capabilities.ts)
  *   fleet-policy/    Fleet permission profiles, groups, per-group access policy, MFA step-up, approvals
  *   fleet-reach/     address book, connect by name/ID/code, Request help, restart and reconnect, Quick Support
+ *   fleet-shell/     remote shell (admins; group switch): agent/operator sockets, encrypted transcript
+ *   fleet-jobs/      scripts library (typed parameters, versions) and jobs (now, scheduled, per-computer results)
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
  *                    WebSocket stream hub (stream-hub.ts) and the HTTP command fallback
  *   file-manager/    remote file operations (travel as fs_op commands)
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;
@@ -56,6 +63,17 @@ export const endpointsModule = defineModule({
         await runQuickSupportSweep();
       },
     },
+    // Jobs: due runs, then results handed to computers that are online (offline ones wait until the
+    // run expires); shells the agent never opened or that went idle on no instance's watch.
+    {
+      name: 'fleet-jobs-scheduler',
+      everyMs: 15_000,
+      lockKey: 727172,
+      run: async () => {
+        await runJobScheduler();
+        await runShellSweep();
+      },
+    },
   ],
   lifecycle: {
     // Results uploaded to another API instance wake this instance's waiters (interactive commands).
@@ -67,6 +85,8 @@ export const endpointsModule = defineModule({
       unsubscribeWake ??= onNotification(AGENT_WAKE_CHANNEL, onAgentWakeNotification);
       // Live remote desktop streams: session state and socket routing between instances.
       streamHub().start();
+      // Remote shells: sockets and transcripts (fleet-shell/hub.ts).
+      shellHub().start();
       await startListening();
     },
     stop: async () => {
@@ -77,6 +97,7 @@ export const endpointsModule = defineModule({
       unsubscribeWake?.();
       unsubscribeWake = null;
       await streamHub().stop();
+      await shellHub().stop();
       await stopListening();
     },
   },

@@ -21,6 +21,7 @@ import { rdInputCommandSchema } from './schema.ts';
 import { participantAccess } from './session-tools.ts';
 import { RD_STREAM_CHANNEL, auditEndpointEvent } from './sessions.ts';
 import { clearStream, markStreamDown, markStreamUp, streamLocation } from './stream-registry.ts';
+import { type ShellHub, shellHub } from '../fleet-shell/hub.ts';
 
 /*
  * Live Remote Desktop stream hub (Fleet Pro). Frames are binary WebSocket messages relayed from
@@ -278,6 +279,8 @@ export interface StreamHubOptions {
   /** Address other instances use to reach this one (RD_PEER_URL). */
   peerUrl: string;
   instanceId?: string;
+  /** Remote shell sockets on the same listener (default: this process's shell hub). */
+  shell?: ShellHub;
 }
 
 export class StreamHub {
@@ -289,7 +292,10 @@ export class StreamHub {
   private unsubscribe: (() => void) | null = null;
   private flushTimer: NodeJS.Timeout | null = null;
 
+  private readonly shell: ShellHub;
+
   constructor(opts: StreamHubOptions) {
+    this.shell = opts.shell ?? shellHub();
     this.instanceId = opts.instanceId ?? randomUUID();
     this.peerUrl = opts.peerUrl.replace(/\/+$/, '');
   }
@@ -326,6 +332,12 @@ export class StreamHub {
 
   private readonly onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    // Remote shell sockets (Fleet Pro, fleet-shell/hub.ts) share the listener.
+    if (this.shell.handles(url.pathname)) {
+      socket.on('error', () => undefined);
+      this.shell.handleUpgrade(req, socket, head, url, reject);
+      return;
+    }
     const viewer = VIEWER_PATH.exec(url.pathname);
     if (url.pathname !== AGENT_PATH && url.pathname !== PEER_PATH && !viewer) {
       reject(socket, 404, 'not_found', 'No WebSocket here');

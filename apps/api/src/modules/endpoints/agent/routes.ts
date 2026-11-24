@@ -14,6 +14,8 @@ import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 import { agentHelpRequestSchema, quickRegisterSchema } from '../fleet-reach/schema.ts';
 import { createHelpRequest } from '../fleet-reach/help-requests.ts';
 import { quickSupportClosedByUser, quickSupportStatus, registerQuickSupport } from '../fleet-reach/quick-support.ts';
+import { agentShellEndSchema } from '../fleet-shell/schema.ts';
+import { agentShellEnd, itActivity } from '../fleet-shell/shells.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -111,4 +113,15 @@ agentGatewayRouter.get('/quick-support/status', requireEndpointAgent, async (req
 agentGatewayRouter.post('/quick-support/close', requireEndpointAgent, async (req, res) => {
   await quickSupportClosedByUser(req.endpoint!);
   res.json({ ok: true });
+});
+
+// Fleet Pro remote shell: the shell ended on the computer (End on the session bar, exit, idle, limit).
+agentGatewayRouter.post('/shell-end', requireEndpointAgent, async (req, res) => {
+  const body = parse(agentShellEndSchema, req.body);
+  res.json({ ok: await agentShellEnd(req.endpoint!, body.shell_id, body.reason, body.exit_code ?? null) });
+});
+
+// The person's "IT activity" list in the tray: sessions, shells and jobs on this computer.
+agentGatewayRouter.post('/it-activity', requireEndpointAgent, async (req, res) => {
+  res.json({ items: await itActivity(req.endpoint!) });
 });

@@ -1310,6 +1310,9 @@ export interface FleetGroup extends FleetAccessPolicy {
   recording_retention_days: number;
   /** The person at the computer may see past recordings of their computer (tray app). */
   user_may_view_recordings: boolean;
+  /** Remote shell (migration 042): off unless an admin turns it on for the group. */
+  shell_enabled: boolean;
+  shell_idle_timeout_minutes: number;
   name: string;
   description: string | null;
   color: string | null;
@@ -2491,4 +2494,195 @@ export interface TlsStatus {
   dns_names: string[];
   ip_addresses: string[];
   last_renewed_at: string | null;
+}
+
+// ── Fleet Pro: remote shell, scripts library and jobs (migration 042) ─────────────────────────────
+
+export type FleetShellState = 'opening' | 'open' | 'closed';
+export type FleetShellEndReason = 'operator' | 'user' | 'idle' | 'limit' | 'exited' | 'open_failed' | 'agent_gone' | 'revoked';
+
+/** One remote shell (PowerShell on Windows, the account's shell on Linux/macOS). */
+export interface FleetShellSession {
+  id: string;
+  public_id: string;
+  endpoint_id: string;
+  endpoint_name?: string;
+  operator_id: string | null;
+  operator_email: string;
+  reason: string;
+  profile_name: string | null;
+  fleet_group_id: string | null;
+  mfa_verified: boolean;
+  state: FleetShellState;
+  shell: string | null;
+  /** conpty (Windows pseudo console), pty (Linux), pipes (no terminal). */
+  pty: 'conpty' | 'pty' | 'pipes' | null;
+  cols: number;
+  rows: number;
+  idle_timeout_s: number;
+  max_transcript_bytes: number;
+  transcript_chunks: number;
+  bytes_in: number;
+  bytes_out: number;
+  created_at: string;
+  opened_at: string | null;
+  last_activity_at: string;
+  ended_at: string | null;
+  end_reason: FleetShellEndReason | null;
+  ended_by: string | null;
+  exit_code: number | null;
+  error: string | null;
+}
+
+/** One transcript chunk (admins only; reading it is audited). */
+export interface FleetShellTranscriptChunk {
+  seq: number;
+  direction: 'i' | 'o' | 'e';
+  at: string;
+  /** UTF-8 text of the chunk (terminal bytes decoded leniently). */
+  text: string;
+}
+
+export type FleetScriptOs = 'windows' | 'linux' | 'macos';
+export type FleetScriptLanguage = 'powershell' | 'sh';
+export type FleetScriptParamType = 'string' | 'int' | 'bool' | 'choice';
+
+/** A typed script parameter. Values are validated on the server and handed to the agent as data. */
+export interface FleetScriptParam {
+  name: string;
+  type: FleetScriptParamType;
+  label: string | null;
+  required: boolean;
+  default: string | number | boolean | null;
+  /** choice: the allowed values. */
+  choices: string[] | null;
+  /** int: bounds. */
+  min: number | null;
+  max: number | null;
+  /** string: longest value. */
+  max_length: number | null;
+}
+
+export interface FleetScriptVersion {
+  version: number;
+  body: string;
+  body_sha256: string;
+  parameters: FleetScriptParam[];
+  timeout_s: number;
+  note: string | null;
+  created_by_email: string;
+  created_at: string;
+}
+
+export interface FleetScript {
+  id: string;
+  name: string;
+  description: string | null;
+  os: FleetScriptOs;
+  language: FleetScriptLanguage;
+  technician_runnable: boolean;
+  current_version: number;
+  archived_at: string | null;
+  created_by_email: string;
+  created_at: string;
+  updated_at: string;
+  /** The current version (body, parameters, timeout). */
+  current: FleetScriptVersion;
+}
+
+export type FleetJobScheduleKind = 'now' | 'once' | 'recurring';
+export type FleetJobRecurEvery = 'hourly' | 'daily' | 'weekly' | 'monthly';
+export type FleetJobState = 'active' | 'paused' | 'cancelled' | 'finished';
+export type FleetJobResultState = 'pending' | 'queued' | 'succeeded' | 'failed' | 'expired' | 'cancelled' | 'skipped';
+
+export interface FleetJobCounts {
+  total: number;
+  pending: number;
+  queued: number;
+  succeeded: number;
+  failed: number;
+  expired: number;
+  cancelled: number;
+  skipped: number;
+}
+
+export interface FleetJob {
+  id: string;
+  name: string;
+  script_id: string;
+  script_name: string;
+  script_version: number;
+  script_os: FleetScriptOs;
+  parameters: Record<string, string | number | boolean>;
+  target_kind: 'endpoints' | 'group';
+  endpoint_ids: string[];
+  fleet_group_id: string | null;
+  fleet_group_name: string | null;
+  schedule_kind: FleetJobScheduleKind;
+  run_at: string | null;
+  recur_every: FleetJobRecurEvery | null;
+  recur_time: string | null;
+  recur_weekdays: number[] | null;
+  recur_monthday: number | null;
+  timezone: string;
+  maintenance_only: boolean;
+  expiry_minutes: number;
+  next_run_at: string | null;
+  state: FleetJobState;
+  created_by_email: string;
+  created_at: string;
+  cancelled_at: string | null;
+  cancelled_by_email: string | null;
+  /** Results of the latest run. */
+  last_run: { id: string; kind: 'scheduled' | 'manual' | 'rerun'; created_at: string; counts: FleetJobCounts } | null;
+}
+
+export interface FleetJobResult {
+  id: string;
+  run_id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  state: FleetJobResultState;
+  waiting_for: 'online' | 'maintenance_window' | null;
+  skip_reason: string | null;
+  exit_code: number | null;
+  stdout_preview: string | null;
+  stderr_preview: string | null;
+  stdout_bytes: number | null;
+  stderr_bytes: number | null;
+  /** The preview is shorter than the output (download the full copy). */
+  truncated: boolean;
+  output_capped: boolean;
+  duration_ms: number | null;
+  error: string | null;
+  queued_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface FleetJobRun {
+  id: string;
+  kind: 'scheduled' | 'manual' | 'rerun';
+  rerun_of: string | null;
+  scheduled_for: string;
+  expires_at: string;
+  created_by_email: string | null;
+  created_at: string;
+  counts: FleetJobCounts;
+  results: FleetJobResult[];
+}
+
+export interface FleetJobDetail extends FleetJob {
+  runs: FleetJobRun[];
+  script_parameters: FleetScriptParam[];
+}
+
+/** One line of the person's "IT activity" list in the agent's tray. */
+export interface FleetItActivityItem {
+  kind: 'session' | 'shell' | 'job';
+  by: string;
+  what: string;
+  reason: string | null;
+  at: string;
+  ended_at: string | null;
 }

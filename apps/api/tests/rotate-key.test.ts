@@ -77,6 +77,15 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
       )
     ).rows[0]!.id;
     await c.query(`UPDATE fleet_recordings SET key_sealed = $2 WHERE id = $1`, [rec, seal('fleet_recordings', 'key_sealed', [rec], 'cd'.repeat(32))]);
+    // A remote shell transcript's key (Fleet Pro, migration 042).
+    const shell = (
+      await c.query<{ id: string }>(
+        `INSERT INTO fleet_shell_sessions (organization_id, endpoint_id, public_id, operator_email, reason, idle_timeout_s, max_transcript_bytes, transcript_key_sealed)
+         VALUES ($1, $2, $3, 'admin@example.test', 'disk cleanup', 900, 1048576, 'placeholder') RETURNING id`,
+        [org, ep, `shell-public-${label}-0001`],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE fleet_shell_sessions SET transcript_key_sealed = $2 WHERE id = $1`, [shell, seal('fleet_shell_sessions', 'transcript_key_sealed', [shell], 'ef'.repeat(32))]);
 
     const target = (await c.query<{ id: string }>(`INSERT INTO config_backup_targets (organization_id, site_id, name, address) VALUES ($1, $2, 'core-sw', '10.20.0.3') RETURNING id`, [org, site])).rows[0]!.id;
     await c.query(`UPDATE config_backup_targets SET secret_enc = $2, secret_fp_key_enc = $3 WHERE id = $1`, [
@@ -136,7 +145,7 @@ describe('sealed column list', () => {
     for (const sc of SEALED_COLUMNS) {
       expect([...expected.keys()].some((k) => k.startsWith(`${sc.table}.${sc.column}|`)), `${sc.table}.${sc.column}`).toBe(true);
     }
-    expect(SEALED_COLUMNS).toHaveLength(13);
+    expect(SEALED_COLUMNS).toHaveLength(14);
   });
 });
 

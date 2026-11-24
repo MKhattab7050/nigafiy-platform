@@ -106,6 +106,9 @@ const policyFields = {
   recording_mode: z.enum(['off', 'optional', 'required']),
   recording_retention_days: z.number().int().min(1).max(3650),
   user_may_view_recordings: z.boolean(),
+  // Remote shell (migration 042): off unless an admin turns it on.
+  shell_enabled: z.boolean(),
+  shell_idle_timeout_minutes: z.number().int().min(1).max(240),
 };
 
 const groupName = z.string().trim().min(1).max(80);
@@ -134,6 +137,8 @@ export const groupCreateSchema = z
     recording_mode: policyFields.recording_mode.default('optional'),
     recording_retention_days: policyFields.recording_retention_days.default(30),
     user_may_view_recordings: policyFields.user_may_view_recordings.default(false),
+    shell_enabled: policyFields.shell_enabled.default(false),
+    shell_idle_timeout_minutes: policyFields.shell_idle_timeout_minutes.default(15),
   })
   .strict();
 export type GroupCreate = z.infer<typeof groupCreateSchema>;

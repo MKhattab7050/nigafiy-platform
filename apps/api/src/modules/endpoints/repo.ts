@@ -7,6 +7,8 @@ import type { Db } from '../../infrastructure/db.ts';
 import { holdFrame, publishFrame } from './remote-desktop/frames.ts';
 import { applySessionOpenResult } from './remote-desktop/sessions.ts';
 import { applyRestartResult } from './fleet-reach/restarts.ts';
+import { applyScriptResult, type ScriptRunData } from './fleet-jobs/jobs.ts';
+import { applyShellOpenFailure } from './fleet-shell/shells.ts';
 import type { commandResultSchema } from './schema.ts';
 
 // Queries shared by several concerns of the endpoints module (fleet, enrollment, agent gateway,
@@ -85,7 +87,10 @@ export async function applyCommandResults(
               output = $4,
               error = $5,
               -- Remote desktop images are never stored: only the frame's metadata (remote-desktop/frames.ts).
-              result_data = coalesce(CASE WHEN kind = 'rd_capture' THEN $6::jsonb - 'jpeg_base64' ELSE $6::jsonb END, result_data),
+              -- A script's output is kept with its job result (fleet_job_outputs), not here.
+              result_data = coalesce(CASE WHEN kind = 'rd_capture' THEN $6::jsonb - 'jpeg_base64'
+                                          WHEN kind = 'script_run' THEN $6::jsonb - 'stdout' - 'stderr'
+                                          ELSE $6::jsonb END, result_data),
               payload = CASE WHEN kind = 'fs_op' AND payload->>'op' = 'upload' THEN payload - 'data_base64' ELSE payload END,
               completed_at = $7
         WHERE id = $1 AND endpoint_id = $2 AND status IN ('pending', 'delivered')
@@ -118,6 +123,14 @@ export async function applyCommandResults(
     if (row?.kind === 'fleet_restart' || row?.kind === 'fleet_safe_boot_clear') {
       // Restart and reconnect: the agent restarted (or refused), or cleared the safe-boot flag.
       await applyRestartResult(db, row.organization_id, endpointId, row.kind, row.payload, resItem.ok, (resItem.data ?? null) as Record<string, unknown> | null, resItem.error ?? null);
+    }
+    if (row?.kind === 'script_run') {
+      // A job's script finished (or failed, timed out, was cancelled) on this computer.
+      await applyScriptResult(db, row.organization_id, endpointId, row.payload, resItem.ok, (resItem.data ?? null) as ScriptRunData | null, resItem.error ?? null);
+    }
+    if (row?.kind === 'shell_open' && !resItem.ok) {
+      // The agent could not start the shell: the shell session ends here.
+      await applyShellOpenFailure(db, row.organization_id, endpointId, row.payload, resItem.error ?? null);
     }
     if (updated.rowCount) {
       completedIds.push(resItem.id);
