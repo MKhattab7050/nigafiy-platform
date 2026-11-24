@@ -21,7 +21,7 @@ import (
 
 // Evidence is one measured fact behind a compliance check.
 type Evidence struct {
-	Check      string `json:"check"`   // firewall | antivirus | disk_encryption | os_updates | sip | gatekeeper
+	Check      string `json:"check"`   // firewall | antivirus | disk_encryption | os_updates | sip | gatekeeper | local_admins
 	Subject    string `json:"subject"` // "Public profile", "C:", "ufw", "/home", "FileVault"
 	State      string `json:"state"`   // pass | fail | warn | unknown | info (context only, not judged)
 	Value      string `json:"value"`   // what the command reported
@@ -313,18 +313,19 @@ func summarize(ev []Evidence, check string, warnOK bool) *bool {
 // ── collectors ───────────────────────────────────────────────────────────────────────────────
 
 func collectFastChecks(ctx context.Context, env complianceEnv) []Evidence {
+	var ev []Evidence
 	switch env.goos {
 	case "windows":
-		return windowsFastChecks(ctx, env)
+		ev = windowsFastChecks(ctx, env)
 	case "linux":
-		var ev []Evidence
 		ev = append(ev, linuxFirewall(ctx, env)...)
 		ev = append(ev, linuxDiskEncryption(ctx, env)...)
-		return ev
 	case "darwin":
-		return darwinFastChecks(ctx, env)
+		ev = darwinFastChecks(ctx, env)
+	default:
+		return nil
 	}
-	return nil
+	return append(ev, localAdminsChecks(ctx, env)...)
 }
 
 func collectUpdateChecks(ctx context.Context, env complianceEnv) []Evidence {

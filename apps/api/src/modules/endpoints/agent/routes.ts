@@ -16,6 +16,7 @@ import { createHelpRequest } from '../fleet-reach/help-requests.ts';
 import { quickSupportClosedByUser, quickSupportStatus, registerQuickSupport } from '../fleet-reach/quick-support.ts';
 import { agentShellEndSchema } from '../fleet-shell/schema.ts';
 import { agentShellEnd, itActivity } from '../fleet-shell/shells.ts';
+import { agentHardwareSchema, recordHardware } from '../fleet-inventory/hardware.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -84,6 +85,12 @@ agentGatewayRouter.post('/inventory', requireEndpointAgent, async (req, res) => 
   const ep = req.endpoint!;
   const body = parse(agentInventorySchema, req.body);
   await recordInventory(ep, body);
+  res.json({ ok: true });
+});
+
+// Hardware and licence inventory (every 6 hours and on refresh): fleet-inventory/hardware.ts.
+agentGatewayRouter.post('/hardware', requireEndpointAgent, async (req, res) => {
+  await recordHardware(req.endpoint!, parse(agentHardwareSchema, req.body));
   res.json({ ok: true });
 });
 

@@ -1093,7 +1093,7 @@ export interface EndpointSecurityPosture {
   measured_at?: string;
 }
 
-export type EndpointComplianceCheck = 'firewall' | 'antivirus' | 'disk_encryption' | 'os_updates' | 'sip' | 'gatekeeper' | 'disk_space';
+export type EndpointComplianceCheck = 'firewall' | 'antivirus' | 'disk_encryption' | 'os_updates' | 'sip' | 'gatekeeper' | 'disk_space' | 'local_admins';
 /** pass / fail / warn judge one subject; unknown = could not be measured (reason given); info = context only. */
 export type EndpointEvidenceState = 'pass' | 'fail' | 'warn' | 'unknown' | 'info';
 
@@ -1118,11 +1118,55 @@ export interface EndpointComplianceItem {
   reason_en: string;
   reason_ar: string;
   evidence: EndpointSecurityEvidence[];
+  /** false: shown for information, not part of the endpoint's verdict (local administrators with no allowed list). */
+  judged?: boolean;
 }
 
 export interface EndpointPolicy {
   allowed_fs_roots?: string[];
   remote_desktop_consent?: 'unattended' | 'prompt';
+  /** Compliance: the only accounts allowed in the local administrators group (names, case-insensitive). */
+  allowed_local_admins?: string[];
+}
+
+// ── Hardware and licence inventory (Fleet Pro, migration 043) ──
+export interface EndpointHardware {
+  collected_at: string;
+  cpus: { name: string; manufacturer?: string; cores?: number; threads?: number; max_mhz?: number; socket?: string }[];
+  memory_modules: { slot?: string; capacity_mb: number; speed_mhz?: number; type?: string; manufacturer?: string; part_number?: string }[];
+  system: { manufacturer?: string; model?: string; serial?: string; sku?: string };
+  board: { manufacturer?: string; product?: string; version?: string; serial?: string };
+  bios: { vendor?: string; version?: string; release_date?: string };
+  licences: { kind: 'windows' | 'office'; product: string; status: 'licensed' | 'unlicensed' | 'grace' | 'notification' | 'not_genuine' | 'unknown'; detail?: string; source: string }[];
+  physical_disks: {
+    name: string;
+    model?: string;
+    serial?: string;
+    media_type?: string;
+    bus?: string;
+    size_gb?: number;
+    health?: 'healthy' | 'warning' | 'unhealthy' | 'unknown';
+    operational?: string;
+    temperature_c?: number;
+    wear_pct?: number;
+    power_on_hours?: number;
+    read_errors_uncorrected?: number;
+    write_errors_uncorrected?: number;
+    reliability_note?: string;
+    source: string;
+  }[];
+  batteries: {
+    name: string;
+    design_capacity_mwh?: number;
+    full_charge_capacity_mwh?: number;
+    health_pct?: number;
+    cycle_count?: number;
+    charge_pct?: number;
+    status?: string;
+    source: string;
+  }[];
+  /** Part → why the agent could not measure it. */
+  unmeasured: Record<string, string>;
 }
 
 export interface RemoteFileRoot {
@@ -1704,6 +1748,9 @@ export interface EndpointDetail extends EndpointSummary {
   software: EndpointSoftware[];
   connections: EndpointConnection[];
   commands: EndpointCommand[];
+  /** Hardware and licence inventory; null until the agent first reports it (older agents never do). */
+  hardware: EndpointHardware | null;
+  hardware_updated_at: string | null;
 }
 
 export interface EndpointSeriesPoint {

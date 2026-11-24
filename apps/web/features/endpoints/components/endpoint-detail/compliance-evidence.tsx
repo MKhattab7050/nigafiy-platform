@@ -48,7 +48,12 @@ export function ComplianceEvidence({ items, locale }: { items: EndpointComplianc
           <li key={item.key} className="px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[13px] font-medium text-fg">{isAr ? item.label_ar : item.label_en}</span>
-              <Badge tone={VERDICT_TONE[item.verdict]}>{VERDICT_LABEL[item.verdict][isAr ? 'ar' : 'en']}</Badge>
+              {item.judged === false && item.verdict !== 'unknown' ? (
+                // Local administrators with no allowed list: shown, not part of the verdict.
+                <Badge tone="info">{isAr ? 'للعرض فقط' : 'Shown only'}</Badge>
+              ) : (
+                <Badge tone={VERDICT_TONE[item.verdict]}>{VERDICT_LABEL[item.verdict][isAr ? 'ar' : 'en']}</Badge>
+              )}
             </div>
             <p className="mt-1 text-xs text-muted" dir="auto">
               {isAr ? arabicReason(item) : item.reason_en}

@@ -16,7 +16,7 @@ const evidenceText = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001
 /** One measured compliance fact from the agent: the command, what it printed (summarised) and when. */
 export const securityEvidenceSchema = z
   .object({
-    check: z.enum(['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper']),
+    check: z.enum(['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper', 'local_admins']),
     subject: cleanText(120),
     state: z.enum(['pass', 'fail', 'warn', 'unknown', 'info']),
     value: evidenceText(300),
@@ -44,6 +44,7 @@ export const endpointPolicySchema = z
   .object({
     allowed_fs_roots: z.array(cleanText(260)).max(20).optional(),
     remote_desktop_consent: z.enum(['unattended', 'prompt']).optional(),
+    allowed_local_admins: z.array(cleanText(256)).max(50).optional(),
   })
   .strict();
 

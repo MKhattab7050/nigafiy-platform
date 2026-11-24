@@ -37,6 +37,7 @@ export const COMPLIANCE_CHECKS: Record<EndpointComplianceCheck, CheckDef> = {
   sip: { label_en: 'System Integrity Protection', label_ar: 'حماية سلامة النظام (SIP)', failVerdict: 'non_compliant' },
   gatekeeper: { label_en: 'Gatekeeper', label_ar: 'التحقق من التطبيقات (Gatekeeper)', failVerdict: 'attention' },
   disk_space: { label_en: 'Free disk space', label_ar: 'المساحة الحرة على القرص', failVerdict: 'attention' },
+  local_admins: { label_en: 'Local administrators', label_ar: 'المسؤولون المحليون', failVerdict: 'attention' },
 };
 
 /** The items an endpoint of each platform must pass to be called compliant. */
@@ -169,30 +170,93 @@ function judgeItem(key: EndpointComplianceCheck, evidence: EndpointSecurityEvide
   return { ...base, verdict: 'compliant', reason_en: `${def.label_en} verified: ${s}`, reason_ar: `${def.label_ar}: تم التحقق (${iso(s)})` };
 }
 
+/** The account part of a member name ("PC\\alice" → "alice"), lower case. */
+const accountName = (s: string) => s.trim().toLowerCase().split('\\').pop()!;
+
+/**
+ * Local administrators (names only). With an allowed list in the endpoint policy, every member not
+ * on it is a warning; without one the members are shown and not judged (judged: false), so the
+ * endpoint's verdict never depends on a list nobody set. A list the agent could not read is
+ * "not measured", judged or not.
+ */
+function judgeLocalAdmins(evidence: EndpointSecurityEvidence[], allowed: string[] | undefined): EndpointComplianceItem {
+  const def = COMPLIANCE_CHECKS.local_admins;
+  const base = { key: 'local_admins' as const, label_en: def.label_en, label_ar: def.label_ar };
+  const judged = Boolean(allowed && allowed.length > 0);
+  const unknowns = evidence.filter((e) => e.state === 'unknown');
+  const members = evidence.filter((e) => e.state === 'info' && e.value !== 'no members');
+  if (evidence.length === 0 || (unknowns.length > 0 && members.length === 0)) {
+    const why = unknowns[0]?.reason?.trim() || 'not reported by the agent';
+    return { ...base, evidence, judged, verdict: 'unknown', reason_en: `${def.label_en} not measured: ${why}`, reason_ar: `لم يتم قياس ${def.label_ar}: ${iso(why)}` };
+  }
+  const names = members.map((e) => e.subject);
+  if (!judged) {
+    const list = names.join(', ') || 'none';
+    return {
+      ...base,
+      evidence,
+      judged: false,
+      verdict: unknowns.length > 0 ? 'unknown' : 'compliant',
+      reason_en: `${def.label_en}: ${list} (shown only: no allowed list is set in the policy)`,
+      reason_ar: `${def.label_ar}: ${iso(list)} (للعرض فقط: لم تُحدَّد قائمة مسموح بها في السياسة)`,
+    };
+  }
+  // "DOMAIN\\name" must match exactly; a bare "name" matches that account on any domain or computer.
+  const full = new Set(allowed!.map((a) => a.trim().toLowerCase()));
+  const bare = new Set(allowed!.filter((a) => !a.includes('\\')).map((a) => a.trim().toLowerCase()));
+  const allowedMember = (m: string) => full.has(m.trim().toLowerCase()) || bare.has(accountName(m));
+  const judgedEvidence = evidence.map((e) =>
+    e.state === 'info' && e.value !== 'no members'
+      ? allowedMember(e.subject)
+        ? { ...e, state: 'pass' as const }
+        : { ...e, state: 'warn' as const, reason: 'not on the allowed list of local administrators' }
+      : e,
+  );
+  const extra = judgedEvidence.filter((e) => e.state === 'warn').map((e) => e.subject);
+  if (extra.length > 0) {
+    const s = extra.join(', ');
+    return { ...base, evidence: judgedEvidence, judged: true, verdict: def.failVerdict, reason_en: `Unexpected local administrators: ${s}`, reason_ar: `مسؤولون محليون غير متوقَّعين: ${iso(s)}` };
+  }
+  if (unknowns.length > 0) {
+    const why = unknowns[0]!.reason ?? 'part of the list was not reported';
+    return { ...base, evidence: judgedEvidence, judged: true, verdict: 'unknown', reason_en: `${def.label_en} not fully measured: ${why}`, reason_ar: `لم يتم قياس ${def.label_ar} بالكامل: ${iso(why)}` };
+  }
+  const s = names.join(', ') || 'none';
+  return { ...base, evidence: judgedEvidence, judged: true, verdict: 'compliant', reason_en: `${def.label_en} verified: ${s}`, reason_ar: `${def.label_ar}: تم التحقق (${iso(s)})` };
+}
+
 /** Judges every compliance item of the platform (plus any extra item the agent measured). */
 export function evaluateComplianceItems(params: {
   platform: EndpointPlatform;
   diskUsedPct?: number | null;
   security?: EndpointSecurityPosture | null;
+  allowedLocalAdmins?: string[] | undefined;
 }): EndpointComplianceItem[] {
   const sec = params.security ?? {};
   const keys = new Set<EndpointComplianceCheck>(REQUIRED_CHECKS[params.platform] ?? []);
   for (const e of sec.checks ?? []) if (e.check in COMPLIANCE_CHECKS) keys.add(e.check);
-  return [...keys].map((key) => judgeItem(key, evidenceFor(key, sec, params.diskUsedPct)));
+  // An allowed list makes local administrators a required item ("not measured" when the agent cannot).
+  if (params.allowedLocalAdmins && params.allowedLocalAdmins.length > 0) keys.add('local_admins');
+  return [...keys].map((key) =>
+    key === 'local_admins'
+      ? judgeLocalAdmins((sec.checks ?? []).filter((e) => e.check === 'local_admins'), params.allowedLocalAdmins)
+      : judgeItem(key, evidenceFor(key, sec, params.diskUsedPct)),
+  );
 }
 
 export function evaluateCompliance(params: {
   platform: EndpointPlatform;
   diskUsedPct?: number | null;
   security?: EndpointSecurityPosture | null;
+  allowedLocalAdmins?: string[] | undefined;
 }): { status: EndpointComplianceStatus; reasons: string[]; items: EndpointComplianceItem[] } {
   const items = evaluateComplianceItems(params);
   let status: EndpointComplianceStatus = 'compliant';
-  for (const item of items) if (RANK[item.verdict] > RANK[status]) status = item.verdict;
+  for (const item of items) if (item.judged !== false && RANK[item.verdict] > RANK[status]) status = item.verdict;
   // Never "compliant" without a single measurement (e.g. a platform with no required items).
   if (items.length === 0) status = 'unknown';
   const reasons = items
-    .filter((i) => i.verdict !== 'compliant')
+    .filter((i) => i.verdict !== 'compliant' && i.judged !== false)
     .sort((a, b) => RANK[b.verdict] - RANK[a.verdict])
     .map((i) => i.reason_en);
   return { status, reasons, items };

@@ -547,12 +547,13 @@ func TestLinuxCollectorsWithFakeCommands(t *testing.T) {
 
 func TestMacOSCollectorsWithFakeCommands(t *testing.T) {
 	env, _ := fakeEnv("darwin", nil, map[string]string{
-		socketfilterfw + " --getglobalstate": "Firewall is enabled. (State = 1)\n",
-		"pfctl -s info":                      "pfctl: /dev/pf: Permission denied\n",
-		"fdesetup status":                    "FileVault is Off.\n",
-		"csrutil status":                     "System Integrity Protection status: enabled.\n",
-		"spctl --status":                     "assessments enabled\n",
-		"softwareupdate -l":                  "Software Update Tool\n\nFinding available software\nNo new software available.\n",
+		socketfilterfw + " --getglobalstate":         "Firewall is enabled. (State = 1)\n",
+		"pfctl -s info":                              "pfctl: /dev/pf: Permission denied\n",
+		"fdesetup status":                            "FileVault is Off.\n",
+		"csrutil status":                             "System Integrity Protection status: enabled.\n",
+		"spctl --status":                             "assessments enabled\n",
+		"softwareupdate -l":                          "Software Update Tool\n\nFinding available software\nNo new software available.\n",
+		"dscl . -read /Groups/admin GroupMembership": "GroupMembership: root alice\n",
 	}, map[string]bool{"pfctl -s info": true})
 	ev := collectFastChecks(context.Background(), env)
 	want := map[string]string{
@@ -561,6 +562,8 @@ func TestMacOSCollectorsWithFakeCommands(t *testing.T) {
 		"disk_encryption|FileVault":       "fail",
 		"sip|System Integrity Protection": "pass",
 		"gatekeeper|Gatekeeper":           "pass",
+		"local_admins|alice":              "info",
+		"local_admins|root":               "info",
 	}
 	for _, e := range ev {
 		k := e.Check + "|" + e.Subject

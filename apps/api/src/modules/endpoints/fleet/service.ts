@@ -66,7 +66,7 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
       await db.query<EndpointDetail>(
         `${ENDPOINT_SUMMARY_SELECT.replace(
           'FROM endpoints e',
-          ', e.security, e.policy, e.rd_session, e.disks, e.interfaces, e.processes, e.services, e.software, e.connections FROM endpoints e',
+          ', e.security, e.policy, e.rd_session, e.disks, e.interfaces, e.processes, e.services, e.software, e.connections, e.hardware, e.hardware_updated_at FROM endpoints e',
         )}
           WHERE e.id = $1`,
         [id],
@@ -91,7 +91,7 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
     ep.last_rd_frame = !isViewer && ep.rd_session ? (latestFrame(ep.id)?.frame ?? null) : null;
     ep.capabilities = buildCapabilities(ep.platform);
     // Per-item verdicts with their evidence (the stored status/reasons come from the same function).
-    ep.compliance_items = evaluateComplianceItems({ platform: ep.platform, diskUsedPct: ep.disk_used_pct, security: ep.security });
+    ep.compliance_items = evaluateComplianceItems({ platform: ep.platform, diskUsedPct: ep.disk_used_pct, security: ep.security, allowedLocalAdmins: ep.policy?.allowed_local_admins });
     return ep;
   });
 }

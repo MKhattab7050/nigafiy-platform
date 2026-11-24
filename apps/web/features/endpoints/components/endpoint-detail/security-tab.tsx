@@ -26,6 +26,7 @@ export function SecurityAndCapabilitiesTab({
 
   const [rootsText, setRootsText] = useState((ep.policy?.allowed_fs_roots ?? []).join(', '));
   const [rdConsent, setRdConsent] = useState<'unattended' | 'prompt'>(ep.policy?.remote_desktop_consent ?? 'unattended');
+  const [adminsText, setAdminsText] = useState((ep.policy?.allowed_local_admins ?? []).join(', '));
   const [busy, setBusy] = useState(false);
   const [savedNotice, setSavedNotice] = useState('');
   const [saveError, setSaveError] = useState<ApiError | null>(null);
@@ -40,11 +41,16 @@ export function SecurityAndCapabilitiesTab({
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
+      const allowed_local_admins = adminsText
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       await api(`/endpoints/${ep.id}/policy`, {
         method: 'PATCH',
         body: {
           allowed_fs_roots,
           remote_desktop_consent: rdConsent,
+          allowed_local_admins,
         },
       });
       setSavedNotice(isAr ? 'تم حفظ سياسة الجهاز.' : 'Endpoint policy saved.');
@@ -110,6 +116,18 @@ export function SecurityAndCapabilitiesTab({
                   onChange={(e) => setRootsText(e.target.value)}
                   placeholder="C:\Users\Public, D:\DepartmentShares"
                 />
+              )}
+            </Field>
+            <Field
+              label={isAr ? 'المسؤولون المحليون المسموح بهم (مفصولون بفاصلة)' : 'Allowed local administrators (comma-separated)'}
+              hint={
+                isAr
+                  ? 'فارغ: تُعرض العضوية دون حكم. "DOMAIN\\name" يجب أن يطابق تمامًا؛ "name" وحده يطابق هذا الحساب على أي نطاق.'
+                  : 'Empty: membership is shown, not judged. "DOMAIN\\name" must match exactly; a bare "name" matches that account on any domain.'
+              }
+            >
+              {(fid) => (
+                <Input id={fid} dir="ltr" className="mono" disabled={!canAdmin} value={adminsText} onChange={(e) => setAdminsText(e.target.value)} placeholder="Administrator, CONTOSO\\Domain Admins" />
               )}
             </Field>
             <Field label={isAr ? 'سياسة موافقة سطح المكتب البعيد' : 'Remote Desktop Access Policy'}>

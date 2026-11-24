@@ -41,7 +41,9 @@ var (
 type Deps struct {
 	CollectHealth    func(ctx context.Context, started time.Time) sysinfo.Health
 	CollectInventory func(ctx context.Context) sysinfo.Inventory
-	ExecuteCommand   func(ctx context.Context, cmd control.Command) control.Result
+	// CollectHardware: the slow hardware and licence inventory (nil: not reported).
+	CollectHardware func(ctx context.Context) sysinfo.Hardware
+	ExecuteCommand  func(ctx context.Context, cmd control.Command) control.Result
 	// Desktop does the remote-desktop work (capture, input, consent, banner, clipboard): in this
 	// process, or through the session helper when the agent runs as a service. Nil: commands of a
 	// remote desktop session go to ExecuteCommand (as before Fleet Pro).
@@ -64,6 +66,7 @@ func SystemDeps() Deps {
 	return Deps{
 		CollectHealth:    sysinfo.CollectHealth,
 		CollectInventory: sysinfo.CollectInventory,
+		CollectHardware:  sysinfo.CollectHardware,
 		ExecuteCommand:   runner.Execute,
 		Desktop:          desktop.NewLocal(),
 		RebootRun:        reboot.ExecRunner,
@@ -115,6 +118,7 @@ type Agent struct {
 
 	wakeHeartbeat chan struct{}
 	wakeInventory chan struct{}
+	wakeHardware  chan struct{}
 	cmdSem        chan struct{}
 
 	sessions *rdstream.Manager
@@ -167,6 +171,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		seenCmds:      map[string]bool{},
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
+		wakeHardware:  make(chan struct{}, 1),
 		cmdSem:        make(chan struct{}, 16),
 		scripts:       &scripts.Runner{},
 	}
@@ -235,7 +240,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in Nigafiy IT Operations (inventory, health, and authorized remote administration are active)")
 
 	var wg sync.WaitGroup
-	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop} {
+	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop, a.hardwareLoop} {
 		wg.Add(1)
 		go func(loop func(context.Context)) {
 			defer wg.Done()
@@ -589,6 +594,12 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" || cmd.Kind == "software_action" {
 		select {
 		case a.wakeInventory <- struct{}{}:
+		default:
+		}
+	}
+	if cmd.Kind == "refresh_inventory" {
+		select {
+		case a.wakeHardware <- struct{}{}:
 		default:
 		}
 	}

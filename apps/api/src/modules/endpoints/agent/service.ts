@@ -128,8 +128,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
 
   const { completedIds, response } = await withTenant(ep.organizationId, async (db) => {
     const currentRow = (
-      await db.query<{ security: EndpointSecurityPosture; disk_used_pct: number | null }>(
-        `SELECT security, disk_used_pct FROM endpoints WHERE id = $1`,
+      await db.query<{ security: EndpointSecurityPosture; disk_used_pct: number | null; allowed_local_admins: string[] | null }>(
+        `SELECT security, disk_used_pct, ARRAY(SELECT jsonb_array_elements_text(coalesce(policy -> 'allowed_local_admins', '[]'::jsonb))) AS allowed_local_admins
+           FROM endpoints WHERE id = $1`,
         [ep.id],
       )
     ).rows[0];
@@ -144,6 +145,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       platform,
       diskUsedPct: topDiskPct,
       security: mergedSecurity,
+      allowedLocalAdmins: currentRow?.allowed_local_admins ?? undefined,
     });
 
     const deviceId = ep.deviceId ?? (await resolveDeviceLink(db, ep.siteId, mac ?? undefined, body.primary_ip));
