@@ -408,4 +408,77 @@ describe('fleet: scripts and jobs', () => {
     const ep = await onlineEndpoint(a, 'ISO-A');
     expect((await createJob(a, { script_id: s.id, parameters: { Path: 'x' }, target: { kind: 'endpoints', endpoint_ids: [epB.epId, ep.epId] }, schedule: { kind: 'now' } })).status).toBe(404);
   });
+
+  it('viewers write nothing; technicians cannot edit scripts or change a job another technician created', async () => {
+    const a = await newAccount('job-roles');
+    const tech = await addMember(a, 'technician');
+    const other = await addMember(a, 'technician');
+    const viewer = await addMember(a, 'viewer');
+    const ep = await onlineEndpoint(a, 'ROLE-PC-01');
+    const s = await newScript(a, { technician_runnable: true });
+    const body = { script_id: s.id, parameters: { Path: 'C:\\Temp' }, target: { kind: 'endpoints', endpoint_ids: [ep.epId] }, schedule: { kind: 'recurring', every: 'daily', time: '02:00' } };
+    expect((await createJob(viewer, body)).status).toBe(403);
+    expect((await tech.agent.patch(`/api/v1/fleet/scripts/${s.id}`).set(CSRF).send({ body: 'Remove-Item C:\\ -Recurse' })).status).toBe(403);
+    expect((await tech.agent.post(`/api/v1/fleet/scripts/${s.id}/archive`).set(CSRF)).status).toBe(403);
+    const job = await createJob(tech, body);
+    expect(job.status, JSON.stringify(job.body)).toBe(201);
+    const id = job.body.id as string;
+    expect((await viewer.agent.get(`/api/v1/fleet/jobs/${id}`)).status).toBe(403);
+    expect((await viewer.agent.post(`/api/v1/fleet/jobs/${id}/cancel`).set(CSRF)).status).toBe(403);
+    for (const path of ['run-now', 'rerun', 'cancel']) {
+      expect((await other.agent.post(`/api/v1/fleet/jobs/${id}/${path}`).set(CSRF).send({})).body.error.code, path).toBe('job_not_yours');
+    }
+    expect((await other.agent.post(`/api/v1/fleet/jobs/${id}/pause`).set(CSRF).send({ paused: true })).body.error.code).toBe('job_not_yours');
+    // Once an admin takes the script away from technicians, its creator can no longer change the job; admins still can.
+    await a.agent.patch(`/api/v1/fleet/scripts/${s.id}`).set(CSRF).send({ technician_runnable: false });
+    expect((await tech.agent.post(`/api/v1/fleet/jobs/${id}/run-now`).set(CSRF)).body.error.code).toBe('job_not_yours');
+    expect((await a.agent.post(`/api/v1/fleet/jobs/${id}/pause`).set(CSRF).send({ paused: true })).body.state).toBe('paused');
+    // Refusals change nothing: no run, no cancel.
+    expect(await audits(a.organizationId, 'fleet.job_run_now')).toEqual([]);
+    expect(await audits(a.organizationId, 'fleet.job_cancelled')).toEqual([]);
+    expect(await pollFor(ep.cred)).toEqual([]);
+  });
+
+  it('a recurring job missed while the server was down runs once, then waits for its next time; rerun takes the expired computers', async () => {
+    const a = await newAccount('job-catchup');
+    const on = await onlineEndpoint(a, 'CU-PC-01');
+    const off = await onlineEndpoint(a, 'CU-PC-02');
+    await systemPool.query(`UPDATE endpoints SET last_heartbeat_at = now() - interval '1 hour' WHERE id = $1`, [off.epId]);
+    const s = await newScript(a);
+    const job = await createJob(a, {
+      script_id: s.id,
+      parameters: { Path: 'C:\\' },
+      target: { kind: 'endpoints', endpoint_ids: [on.epId, off.epId] },
+      schedule: { kind: 'recurring', every: 'hourly', time: '00:05' },
+      expiry_minutes: 30,
+    });
+    expect(job.status, JSON.stringify(job.body)).toBe(201);
+    const id = job.body.id as string;
+    // Three days of hourly occurrences were missed.
+    await systemPool.query(`UPDATE fleet_jobs SET next_run_at = now() - interval '3 days' WHERE id = $1`, [id]);
+    await runDueJobs(a.organizationId);
+    await runDueJobs(a.organizationId);
+    let d = (await a.agent.get(`/api/v1/fleet/jobs/${id}`)).body;
+    expect(d.runs).toHaveLength(1);
+    expect(d.runs[0].kind).toBe('scheduled');
+    const next = new Date(d.next_run_at).getTime();
+    expect(next).toBeGreaterThan(Date.now());
+    expect(next).toBeLessThanOrEqual(Date.now() + 3600_000);
+    expect(new Date(d.next_run_at).getUTCMinutes()).toBe(5);
+    expect((await pollFor(on.cred)).filter((c) => c.kind === 'script_run')).toHaveLength(1);
+    expect(await pollFor(off.cred)).toEqual([]);
+
+    // The offline one never returned within the expiry: expired, and "Rerun failed" takes it.
+    await systemPool.query(`UPDATE fleet_job_runs SET expires_at = now() - interval '1 second' WHERE job_id = $1`, [id]);
+    await runDueJobs(a.organizationId);
+    d = (await a.agent.get(`/api/v1/fleet/jobs/${id}`)).body;
+    expect(d.runs[0].results.find((r: { endpoint_id: string }) => r.endpoint_id === off.epId).state).toBe('expired');
+    await heartbeat(off.cred);
+    const rerun = await a.agent.post(`/api/v1/fleet/jobs/${id}/rerun`).set(CSRF).send({ run_id: d.runs[0].id });
+    expect(rerun.status, JSON.stringify(rerun.body)).toBe(201);
+    expect(rerun.body.computers).toBe(1);
+    expect((await pollFor(off.cred)).map((c) => c.kind)).toEqual(['script_run']);
+    expect(await pollFor(on.cred)).toEqual([]);
+    expect((await audits(a.organizationId, 'fleet.job_rerun'))[0]!.metadata).toMatchObject({ rerun_of: d.runs[0].id, computers: 1 });
+  });
 });

@@ -306,4 +306,28 @@ describe('fleet: remote shell', () => {
     expect(act.status).toBe(200);
     expect(act.body.items[0]).toMatchObject({ kind: 'shell', by: a.email, what: 'Remote shell', reason: 'Ticket 77: disk full' });
   });
+
+  it('only admins read transcripts, list shells or end one; a Quick Support computer never opens a shell', async () => {
+    const a = await newAccount('shell-roles');
+    const tech = await addMember(a, 'technician');
+    const viewer = await addMember(a, 'viewer');
+    const ep = await shellComputer(a, 'SH-ROLE');
+    const full = await profileId(a, 'full_admin');
+    const s = (await openShell(a, ep.epId, { profile_id: full })).body as { id: string };
+    for (const who of [tech, viewer]) {
+      expect((await who.agent.get(`/api/v1/endpoints/${ep.epId}/shell/${s.id}/transcript`)).status).toBe(403);
+      expect((await who.agent.get(`/api/v1/endpoints/${ep.epId}/shell/${s.id}`)).status).toBe(403);
+      expect((await who.agent.get(`/api/v1/fleet/shells?endpoint_id=${ep.epId}`)).status).toBe(403);
+      expect((await who.agent.post(`/api/v1/endpoints/${ep.epId}/shell/${s.id}/close`).set(CSRF)).status).toBe(403);
+    }
+    // Nothing was read and the shell is untouched.
+    expect(await audits(a.organizationId, 'fleet.shell_transcript_viewed')).toEqual([]);
+    expect((await a.agent.get(`/api/v1/endpoints/${ep.epId}/shell/${s.id}`)).body.state).toBe('opening');
+    // A Quick Support computer (one-off help) allows the session and its files only, whatever the group says.
+    await systemPool.query(`UPDATE endpoints SET kind = 'quick_support' WHERE id = $1`, [ep.epId]);
+    const qs = await openShell(a, ep.epId, { profile_id: full });
+    expect(qs.status).toBe(409);
+    expect(qs.body.error.code).toBe('quick_support_limited');
+    expect((await audits(a.organizationId, 'fleet.policy_refused')).at(-1)!.metadata).toMatchObject({ code: 'quick_support_limited', what: 'shell' });
+  });
 });
