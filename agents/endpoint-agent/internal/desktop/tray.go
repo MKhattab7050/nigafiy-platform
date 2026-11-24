@@ -27,7 +27,7 @@ func (l *Local) showTray(info TrayInfo) error {
 		if start == nil {
 			start = tray.Start
 		}
-		icon, err := start(tray.Options{OnRequestHelp: l.requestHelp})
+		icon, err := start(tray.Options{OnRequestHelp: l.requestHelp, OnITActivity: l.requestITActivity})
 		if err != nil {
 			return err
 		}
@@ -59,6 +59,12 @@ func (l *Local) requestHelp() {
 	if icon != nil {
 		icon.Notify("Nigafiy", "Your request was sent to IT. · تم إرسال طلبك إلى فريق تقنية المعلومات.")
 	}
+}
+
+// requestITActivity: "IT activity…" from the tray. The agent fetches the list from the server and
+// shows it (ToolEvent it_activity_request).
+func (l *Local) requestITActivity() {
+	l.tools.emit(ToolEvent{Kind: "it_activity_request", User: currentUser()}, nil)
 }
 
 func currentUser() string {

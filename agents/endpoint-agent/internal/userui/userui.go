@@ -98,7 +98,21 @@ type BannerInfo struct {
 	InputBlocked  bool `json:"input_blocked,omitempty"`
 	// EndHotkey: Ctrl+Alt+Shift+E ends the session here (set by the platform UI).
 	EndHotkey bool `json:"end_hotkey,omitempty"`
+	// Shells: remote shells open on this computer (Fleet Pro). Each is named on the banner with
+	// its operator and reason; End session ends them too. Nothing can hide these lines.
+	Shells []ShellLine `json:"shells,omitempty"`
+	// ShellOnly: no remote desktop session is open, the banner is there for the shells alone.
+	ShellOnly bool `json:"shell_only,omitempty"`
 }
+
+// ShellLine is one open remote shell on the banner.
+type ShellLine struct {
+	Operator string `json:"operator"`
+	Reason   string `json:"reason"`
+}
+
+// MaxShellLines: the banner names this many shells (the server allows three per computer).
+const MaxShellLines = 4
 
 // ErrUnavailable: there is no way to show a window here (no interactive desktop, no dialog tool).
 var ErrUnavailable = errors.New("no interactive desktop is available to show the window")
@@ -159,6 +173,21 @@ func (b BannerInfo) Normalize() BannerInfo {
 		}
 	}
 	b.Operators = ops
+	var shells []ShellLine
+	for _, sh := range b.Shells {
+		if len(shells) == MaxShellLines {
+			break
+		}
+		op := Clean(sh.Operator, 120)
+		if op == "" {
+			op = "An IT operator"
+		}
+		shells = append(shells, ShellLine{Operator: op, Reason: Clean(sh.Reason, maxField)})
+	}
+	b.Shells = shells
+	if len(shells) == 0 {
+		b.ShellOnly = false
+	}
 	if b.Permissions != nil {
 		// Mouse and keyboard only when both say so.
 		b.Control = b.Control && b.Permissions.Control
@@ -170,9 +199,11 @@ func (b BannerInfo) Normalize() BannerInfo {
 const (
 	ConsentTitle = "Nigafiy remote support request / طلب دعم عن بُعد"
 	BannerTitle  = "Nigafiy remote support session / جلسة دعم عن بُعد"
-	AllowLabel   = "Allow / سماح"
-	DeclineLabel = "Decline / رفض"
-	EndLabel     = "End session / إنهاء الجلسة"
+	// ShellBannerTitle: the banner when only remote shells are open.
+	ShellBannerTitle = "Nigafiy remote shell / سطر أوامر عن بُعد"
+	AllowLabel       = "Allow / سماح"
+	DeclineLabel     = "Decline / رفض"
+	EndLabel         = "End session / إنهاء الجلسة"
 	// The unattended refuse window.
 	RefuseTitle   = "Nigafiy remote support / دعم عن بُعد"
 	StartNowLabel = "Start now / ابدأ الآن"
@@ -255,6 +286,43 @@ func refuseText(r ConsentRequest, secondsLeft int) string {
 // It is shown for the whole session whatever the permissions are.
 func BannerText(i BannerInfo) string {
 	i = i.Normalize()
+	if i.ShellOnly {
+		return shellText(i)
+	}
+	return sessionText(i) + shellText(i)
+}
+
+// ShellText is the banner's line for one open remote shell (English, then Arabic).
+func ShellText(sh ShellLine) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Shell open by %s.", sh.Operator)
+	if sh.Reason != "" {
+		fmt.Fprintf(&b, " Reason: %s.", sh.Reason)
+	}
+	b.WriteString(" Commands and their output are recorded in a transcript.")
+	fmt.Fprintf(&b, "\nسطر أوامر مفتوح من %s.", sh.Operator)
+	if sh.Reason != "" {
+		fmt.Fprintf(&b, " السبب: %s.", sh.Reason)
+	}
+	b.WriteString(" تُسجَّل الأوامر ومخرجاتها في سجل.")
+	return b.String()
+}
+
+func shellText(i BannerInfo) string {
+	var b strings.Builder
+	for _, sh := range i.Shells {
+		if b.Len() > 0 || !i.ShellOnly {
+			b.WriteString("\n")
+		}
+		b.WriteString(ShellText(sh))
+	}
+	if i.ShellOnly && i.EndHotkey {
+		b.WriteString("\n" + EndHotkeyText + " ends the shell at any time. / " + EndHotkeyText + " ينهي سطر الأوامر في أي وقت.")
+	}
+	return b.String()
+}
+
+func sessionText(i BannerInfo) string {
 	mode, modeAr := "can see and control this screen", "يشاهد هذه الشاشة ويتحكم بها"
 	if !i.Control {
 		mode, modeAr = "can see this screen (view only)", "يشاهد هذه الشاشة (مشاهدة فقط)"
@@ -302,6 +370,9 @@ const RecordingMark = "● REC: this session is being recorded. / ● تسجيل
 
 // Title of the banner window (it carries the recording mark too).
 func (i BannerInfo) Title() string {
+	if i.ShellOnly && len(i.Shells) > 0 {
+		return ShellBannerTitle
+	}
 	if i.Recording {
 		return "● REC  " + BannerTitle
 	}

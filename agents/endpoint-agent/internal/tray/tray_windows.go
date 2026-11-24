@@ -254,6 +254,7 @@ func (t *Icon) showMenu() {
 		_, _, _ = pAppendMenuW.Call(menu, flags, uintptr(id), uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(labels[id]))))
 	}
 	add(mfString, ItemRequestHelp)
+	add(mfString, ItemITActivity)
 	_, _, _ = pAppendMenuW.Call(menu, mfSeparator, 0, 0)
 	add(mfString|mfGrayed, ItemID)
 	add(mfString, ItemAbout)
@@ -266,6 +267,10 @@ func (t *Icon) showMenu() {
 	case ItemRequestHelp:
 		if t.opts.OnRequestHelp != nil {
 			go t.opts.OnRequestHelp()
+		}
+	case ItemITActivity:
+		if t.opts.OnITActivity != nil {
+			go t.opts.OnITActivity()
 		}
 	case ItemAbout:
 		t.mu.Lock()

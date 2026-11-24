@@ -104,6 +104,8 @@ type Config struct {
 	SAS func(asService bool) error
 	// OnHelpRequest gets "Request help" from the tray (the person's note and account name).
 	OnHelpRequest func(note, user string)
+	// OnITActivity gets "IT activity…" from the tray (the agent shows the list).
+	OnITActivity func()
 }
 
 // Manager holds at most one live session (a new one replaces the old).

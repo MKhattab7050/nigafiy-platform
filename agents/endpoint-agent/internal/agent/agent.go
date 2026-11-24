@@ -29,6 +29,7 @@ import (
 	"github.com/nigafiy/agent/internal/rdstream"
 	"github.com/nigafiy/agent/internal/reboot"
 	"github.com/nigafiy/agent/internal/scripts"
+	"github.com/nigafiy/agent/internal/shell"
 	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
@@ -119,6 +120,7 @@ type Agent struct {
 	sessions *rdstream.Manager
 	reboot   *reboot.Manager
 	scripts  *scripts.Runner
+	shells   *shell.Manager
 	// nigafiyID: this computer's Nigafiy ID (from the heartbeat), shown in the tray.
 	nigafiyID string
 	trayID    string
@@ -168,18 +170,26 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		cmdSem:        make(chan struct{}, 16),
 		scripts:       &scripts.Runner{},
 	}
+	// One banner for the remote desktop session and the remote shells.
+	var mux *desktop.BannerMux
+	if deps.Desktop != nil {
+		mux = desktop.NewBannerMux(deps.Desktop)
+		a.deps.Desktop = mux
+	}
+	a.shells = a.newShellManager(mux)
 	if deps.Desktop != nil {
 		a.sessions = rdstream.NewManager(rdstream.Config{
 			ServerURL:  a.baseURL,
 			TLS:        tlsCfg,
 			Credential: a.currentCredential,
 			UserAgent:  "nigafiy-agent/" + version,
-			Desktop:    deps.Desktop,
+			Desktop:    a.deps.Desktop,
 			Log:        log,
 			NotifyEnded: func(ctx context.Context, sessionID string) error {
 				return a.post(ctx, "/rd-session/end", map[string]any{"session_id": sessionID}, true, nil)
 			},
 			OnHelpRequest: a.sendHelpRequest,
+			OnITActivity:  a.showITActivity,
 		})
 	}
 	a.reboot = &reboot.Manager{
@@ -233,7 +243,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		}(fn)
 	}
 	wg.Wait()
-	// Stopping the agent ends any open session here: its banner goes, its stream closes.
+	// Stopping the agent ends any open session and shell here: banner off, stream and shell closed.
+	a.shells.EndAll("agent_gone")
 	if a.sessions != nil {
 		a.sessions.Close("", "agent_stopped")
 	}
@@ -550,6 +561,9 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	res, handled := a.sessionCommand(ctx, cmd)
 	if !handled {
 		res, handled = a.jobsCommand(ctx, cmd)
+	}
+	if !handled {
+		res, handled = a.shellCommand(ctx, cmd)
 	}
 	if !handled {
 		res, handled = a.reachCommand(ctx, cmd)

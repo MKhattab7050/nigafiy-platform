@@ -68,15 +68,15 @@ func InterpretConsent(tool string, stdout string, exitCode int, killed bool) Con
 func BannerCommand(goos string, i BannerInfo, lookPath func(string) (string, error)) (string, []string, error) {
 	i = i.Normalize()
 	if goos == "darwin" {
-		script := "display dialog " + AppleScriptString(BannerText(i)) + " with title " + AppleScriptString(BannerTitle) +
+		script := "display dialog " + AppleScriptString(BannerText(i)) + " with title " + AppleScriptString(i.Title()) +
 			" buttons {" + AppleScriptString(EndLabel) + "} default button 1 with icon note"
 		return "/usr/bin/osascript", []string{"-e", script}, nil
 	}
 	if p, err := lookPath("zenity"); err == nil {
-		return p, []string{"--info", "--title=" + BannerTitle, "--text=" + BannerText(i), "--ok-label=" + EndLabel, "--no-markup", "--no-wrap"}, nil
+		return p, []string{"--info", "--title=" + i.Title(), "--text=" + BannerText(i), "--ok-label=" + EndLabel, "--no-markup", "--no-wrap"}, nil
 	}
 	if p, err := lookPath("kdialog"); err == nil {
-		return p, []string{"--title", BannerTitle, "--ok-label", EndLabel, "--msgbox", BannerText(i)}, nil
+		return p, []string{"--title", i.Title(), "--ok-label", EndLabel, "--msgbox", BannerText(i)}, nil
 	}
 	return "", nil, errors.New("no dialog tool to show the session banner: install zenity or kdialog")
 }

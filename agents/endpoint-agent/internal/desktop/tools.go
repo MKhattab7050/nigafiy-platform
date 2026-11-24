@@ -69,7 +69,7 @@ type ToolResult struct {
 // combination pressed while input is blocked, an audio packet (Data holds the ADPCM bytes).
 type ToolEvent struct {
 	Session string        `json:"session"`
-	Kind    string        `json:"kind"` // chat_reply | end_combo | audio | audio_error | help_request
+	Kind    string        `json:"kind"` // chat_reply | end_combo | audio | audio_error | help_request | it_activity_request
 	Text    string        `json:"text,omitempty"`
 	// User: the account that asked (help_request from the tray).
 	User string `json:"user,omitempty"`
