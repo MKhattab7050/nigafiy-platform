@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,12 +27,18 @@ type fakeTendaControls struct {
 	statics  []map[string]any
 	vss      []map[string]any
 	rebooted bool
+	firmware string
+	names    map[string]string // online clients: MAC → device name
+	renames  int
+	refuse   bool // SetOnlineDevName answers errCode 1
 	srv      *httptest.Server
 }
 
 func newFakeTendaControls(t *testing.T) *fakeTendaControls {
 	t.Helper()
 	f := &fakeTendaControls{
+		firmware: "V15.03.06.47_multi",
+		names:    map[string]string{"aa:bb:cc:00:00:10": "android-1f2e"},
 		wifi2gEn: "true",
 		wifi5gEn: "true",
 		statics: []map[string]any{
@@ -75,6 +83,23 @@ func (f *fakeTendaControls) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.URL.Path {
+	case "/goform/getSysTools":
+		_ = json.NewEncoder(w).Encode(map[string]any{"sysVersion": map[string]string{"product": "AC10", "softVersion": f.firmware}})
+	case "/goform/getQos":
+		online := []map[string]any{}
+		for mac, n := range f.names {
+			online = append(online, map[string]any{"qosListMac": mac, "qosListIP": "192.168.0.20", "qosListRemark": n, "qosListConnectType": "wifi_5g", "qosListAccess": "true"})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"onlineList": online, "blackList": []any{}})
+	case "/goform/SetOnlineDevName":
+		f.renames++
+		mac, name := r.FormValue("mac"), r.FormValue("devName")
+		if _, ok := f.names[mac]; !ok || f.refuse || len(name) > 32 {
+			_ = json.NewEncoder(w).Encode(map[string]any{"errCode": 1})
+			return
+		}
+		f.names[mac] = name
+		_ = json.NewEncoder(w).Encode(map[string]any{"errCode": 0})
 	case "/goform/getStatus":
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"lanStatus": map[string]any{"lanIP": "192.168.0.1"},
@@ -156,12 +181,17 @@ func (f *fakeTendaControls) handle(w http.ResponseWriter, r *http.Request) {
 
 func openTestTendaControls(t *testing.T, f *fakeTendaControls) router.Driver {
 	t.Helper()
+	return openTendaWith(t, f, f.pin(), "td-ctrl-pass")
+}
+
+func openTendaWith(t *testing.T, f *fakeTendaControls, pin, pass string) router.Driver {
+	t.Helper()
 	host, portStr, _ := net.SplitHostPort(strings.TrimPrefix(f.srv.URL, "https://"))
 	port, _ := strconv.Atoi(portStr)
 	addr := netip.MustParseAddr(host)
-	creds := func(context.Context) (string, []byte, error) { return "admin", []byte("td-ctrl-pass"), nil }
+	creds := func(context.Context) (string, []byte, error) { return "admin", []byte(pass), nil }
 	d, err := router.Open(
-		router.Target{ID: "td-ctrl", Vendor: Vendor, Address: addr, Port: port, Transport: router.TransportHTTPSPinned, PinSHA256: f.pin(), Timeout: 5 * time.Second},
+		router.Target{ID: "td-ctrl", Vendor: Vendor, Address: addr, Port: port, Transport: router.TransportHTTPSPinned, PinSHA256: pin, Timeout: 5 * time.Second},
 		creds,
 		router.Options{Authorized: []netip.Prefix{netip.PrefixFrom(addr, 32)}, AllowLoopback: true},
 	)
@@ -227,5 +257,74 @@ func TestTendaControls(t *testing.T) {
 	rb := d.(router.Rebooter)
 	if ch, err := rb.Reboot(ctx); err != nil || !ch.Applied || !f.rebooted {
 		t.Fatalf("Reboot: %+v %v rebooted=%v", ch, err, f.rebooted)
+	}
+}
+
+func TestTendaRename(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeTendaControls(t)
+	d := openTestTendaControls(t, f)
+	caps, err := d.Capabilities(ctx)
+	if err != nil || !caps.Supports(router.CapRename) {
+		t.Fatalf("V15.03 must offer rename: %v %+v", err, caps.Get(router.CapRename))
+	}
+	rn := d.(router.Renamer)
+	ch, err := rn.RenameClient(ctx, "AA:BB:CC:00:00:10", " Kitchen tablet ")
+	if err != nil || !ch.Applied || f.names["aa:bb:cc:00:00:10"] != "Kitchen tablet" || !strings.Contains(ch.Undo, `"android-1f2e"`) {
+		t.Fatalf("rename failed: %+v %v %v", ch, err, f.names)
+	}
+	if ch, err := rn.RenameClient(ctx, "aa:bb:cc:00:00:10", "Kitchen tablet"); err != nil || ch.Applied || !ch.AlreadyInEffect {
+		t.Fatalf("same name must be a no-op: %+v %v", ch, err)
+	}
+	if strings.Contains(fmt.Sprint(ch), "td-ctrl-pass") {
+		t.Fatal("the password leaked into a change")
+	}
+
+	// Refused before anything is sent: too long for the router, control characters, not a client, bad MAC.
+	sent := f.renames
+	for _, tc := range []struct{ mac, name string }{
+		{"aa:bb:cc:00:00:10", strings.Repeat("x", 33)},
+		{"aa:bb:cc:00:00:10", "a	b"},
+		{"aa:bb:cc:00:00:99", "Phone"},
+		{"ff:ff:ff:ff:ff:ff", "Phone"},
+	} {
+		if _, err := rn.RenameClient(ctx, tc.mac, tc.name); err == nil {
+			t.Fatalf("%+v must be refused", tc)
+		}
+	}
+	if f.renames != sent {
+		t.Fatal("refused input reached the router")
+	}
+
+	// The router refuses: ErrRejected, name unchanged.
+	f.refuse = true
+	if _, err := rn.RenameClient(ctx, "aa:bb:cc:00:00:10", "Other"); !errors.Is(err, router.ErrRejected) || f.names["aa:bb:cc:00:00:10"] != "Kitchen tablet" {
+		t.Fatalf("want ErrRejected and no change, got %v", err)
+	}
+}
+
+func TestTendaRenameGatesAndAuth(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeTendaControls(t)
+	f.firmware = "V16.03.05.11" // AC23 family: SetOnlineDevName not confirmed
+	d := openTestTendaControls(t, f)
+	caps, _ := d.Capabilities(ctx)
+	if c := caps.Get(router.CapRename); c.Supported || !strings.Contains(c.Note, "V16.03.05.11") {
+		t.Fatalf("rename must be unsupported with the firmware named: %+v", c)
+	}
+	if _, err := d.(router.Renamer).RenameClient(ctx, "aa:bb:cc:00:00:10", "X"); !errors.Is(err, router.ErrUnsupported) || f.renames != 0 {
+		t.Fatalf("want ErrUnsupported and nothing sent, got %v", err)
+	}
+
+	f2 := newFakeTendaControls(t)
+	_, err := openTendaWith(t, f2, f2.pin(), "wrong").(router.Renamer).RenameClient(ctx, "aa:bb:cc:00:00:10", "X")
+	if !errors.Is(err, router.ErrBadCredentials) || strings.Contains(err.Error(), "wrong") {
+		t.Fatalf("want ErrBadCredentials without the password, got %v", err)
+	}
+	if _, err := openTendaWith(t, f2, strings.Repeat("ab", 32), "td-ctrl-pass").(router.Renamer).RenameClient(ctx, "aa:bb:cc:00:00:10", "X"); !errors.Is(err, router.ErrCertificate) {
+		t.Fatalf("want ErrCertificate, got %v", err)
+	}
+	if f2.renames != 0 || f2.names["aa:bb:cc:00:00:10"] != "android-1f2e" {
+		t.Fatal("nothing may change with a wrong password or certificate")
 	}
 }

@@ -9,6 +9,7 @@
 //   - block:      POST /goform/setQos (sets qosListAccess="false" for the MAC; unblocks via
 //                 POST /goform/delBlackRule or /goform/setQos qosListAccess="true")
 //   - rate limit: POST /goform/setQos (per-MAC download/upload speed limit in KB/s)
+//   - rename:     POST /goform/SetOnlineDevName (V15.03 firmware family only; rename.go)
 //   - logout:     GET /goform/loginOut.
 package tenda
 
@@ -213,7 +214,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
-		{Capability: router.CapRename, Supported: false, Note: "Tenda client remarks are modified inline in QoS rather than a standalone rename API"},
+		renameCapability(d.info),
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
