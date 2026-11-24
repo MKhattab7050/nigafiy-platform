@@ -128,6 +128,27 @@ func InjectInput(ev InputEvent) error {
 			return exec.Command("xdotool", "mousemove", x, y, "click", btn).Run()
 		case "text":
 			return exec.Command("xdotool", "type", "--", ev.Text).Run()
+		case "key_down", "key_up":
+			k, ok := LookupCode(ev.Code)
+			if !ok {
+				return errors.New("unsupported key: " + ev.Code)
+			}
+			action := "keydown"
+			if ev.Kind == "key_up" {
+				action = "keyup"
+			}
+			return exec.Command("xdotool", action, "--", k.X11).Run()
+		case "key_combo":
+			codes, err := ComboCodes(ev.Keys)
+			if err != nil {
+				return err
+			}
+			names := make([]string, 0, len(codes))
+			for _, c := range codes {
+				k, _ := LookupCode(c)
+				names = append(names, k.X11)
+			}
+			return exec.Command("xdotool", "key", "--", strings.Join(names, "+")).Run()
 		case "key_press":
 			if ev.Key == "" || strings.HasPrefix(ev.Key, "-") {
 				return errors.New("invalid key name")

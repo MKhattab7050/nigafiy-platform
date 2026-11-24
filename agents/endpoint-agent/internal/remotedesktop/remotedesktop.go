@@ -57,7 +57,10 @@ type Frame struct {
 }
 
 type InputEvent struct {
-	Kind         string  `json:"kind"` // mouse_move | mouse_click | mouse_down | mouse_up | mouse_wheel | key_press | text
+	// mouse_move | mouse_click | mouse_down | mouse_up | mouse_wheel | key_press | text |
+	// key_down | key_up (a physical key by position: Code) | key_combo (Keys pressed in order,
+	// released in reverse: Win, Alt+Tab, Ctrl+Esc… that the operator's browser cannot capture)
+	Kind         string  `json:"kind"`
 	DisplayIndex int     `json:"display_index"`
 	NormalizedX  float64 `json:"x"`      // 0.0 .. 1.0 relative to selected display
 	NormalizedY  float64 `json:"y"`      // 0.0 .. 1.0 relative to selected display
@@ -69,6 +72,11 @@ type InputEvent struct {
 	Ctrl         bool    `json:"ctrl,omitempty"`
 	Alt          bool    `json:"alt,omitempty"`
 	Shift        bool    `json:"shift,omitempty"`
+	Meta         bool    `json:"meta,omitempty"`
+	// Code is KeyboardEvent.code (the physical key) for key_down / key_up.
+	Code string `json:"code,omitempty"`
+	// Keys of a key_combo (names such as "Ctrl", "Alt", "Tab", "Win", "R").
+	Keys []string `json:"keys,omitempty"`
 }
 
 // MaxUnchangedInterval: even an unchanged screen is sent again at least this often, so a viewer

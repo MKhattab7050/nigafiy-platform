@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -41,6 +42,8 @@ var (
 	pGetModuleHandleW    = kernel32.NewProc("GetModuleHandleW")
 	pGetStockObject      = gdi32.NewProc("GetStockObject")
 	pGetSysColorBrush    = user32.NewProc("GetSysColorBrush")
+	pRegisterHotKey      = user32.NewProc("RegisterHotKey")
+	pUnregisterHotKey    = user32.NewProc("UnregisterHotKey")
 )
 
 const (
@@ -49,7 +52,11 @@ const (
 	wmSetFont  = 0x0030
 	wmCommand  = 0x0111
 	wmTimer    = 0x0113
+	wmPaint    = 0x000F
+	wmEraseBkg = 0x0014
+	wmHotkey   = 0x0312
 	wmAppClose = 0x8001
+	wmAppWake  = 0x8002
 	bmClick    = 0x00F5
 
 	wsPopup        = 0x80000000
@@ -66,6 +73,7 @@ const (
 	wsExDlgFrame   = 0x00000001
 
 	swShow         = 5
+	swShowNoActive = 4
 	hwndTopmost    = ^uintptr(0) // (HWND)-1
 	swpNoMove      = 0x0002
 	swpNoSize      = 0x0001
@@ -115,6 +123,10 @@ type msg struct {
 type window struct {
 	onCommand func(id int)
 	onTimer   func()
+	// onPaint draws the client area (privacy screen, overlay); onHotkey: Ctrl+Alt+Shift+E.
+	onPaint  func(hwnd, hdc uintptr)
+	onHotkey func()
+	onWake   func()
 	// onClose returns true when the window may close (the banner refuses: only End closes it).
 	onClose func() bool
 }
@@ -141,6 +153,28 @@ func wndProc(hwnd uintptr, m uint32, wParam, lParam uintptr) uintptr {
 	case wmTimer:
 		if w != nil && w.onTimer != nil {
 			w.onTimer()
+		}
+		return 0
+	case wmPaint:
+		if w != nil && w.onPaint != nil {
+			var ps paintStruct
+			hdc, _, _ := pBeginPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
+			w.onPaint(hwnd, hdc)
+			_, _, _ = pEndPaint.Call(hwnd, uintptr(unsafe.Pointer(&ps)))
+			return 0
+		}
+	case wmEraseBkg:
+		if w != nil && w.onPaint != nil {
+			return 1 // the paint handler fills everything
+		}
+	case wmHotkey:
+		if w != nil && w.onHotkey != nil {
+			w.onHotkey()
+		}
+		return 0
+	case wmAppWake:
+		if w != nil && w.onWake != nil {
+			w.onWake()
 		}
 		return 0
 	case wmClose:
@@ -207,6 +241,12 @@ type spec struct {
 	style   uintptr
 	w, h    int
 	top     bool // top-centre (banner) instead of screen centre
+	// rect places the window exactly (x, y, w, h on the virtual screen): privacy screen, overlay.
+	rect *[4]int
+	// custom creates the children instead of the text + buttons layout.
+	custom func(hwnd uintptr)
+	// noActivate: never take the keyboard focus (privacy screen, overlay).
+	noActivate bool
 	buttons []struct {
 		id    int
 		label string
@@ -232,6 +272,9 @@ func runWindow(s spec, w *window, ready func(hwnd uintptr), failed func(error)) 
 	if s.top {
 		y = 12
 	}
+	if s.rect != nil {
+		x, y, s.w, s.h = s.rect[0], s.rect[1], s.rect[2], s.rect[3]
+	}
 	hInst, _, _ := pGetModuleHandleW.Call(0)
 	hwnd, _, err := pCreateWindowExW.Call(s.exStyle, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(utf16(s.title))),
 		s.style, uintptr(x), uintptr(y), uintptr(s.w), uintptr(s.h), 0, 0, hInst, 0)
@@ -243,20 +286,29 @@ func runWindow(s spec, w *window, ready func(hwnd uintptr), failed func(error)) 
 	windowsMap[hwnd] = w
 	windowsMu.Unlock()
 
-	btnW, btnH, gap := 150, 28, 10
-	textH := s.h - btnH - 70
-	createChild(hwnd, "STATIC", s.text, ssLeft, 14, 10, s.w-34, textH, idText)
-	bx := s.w - 24 - len(s.buttons)*(btnW+gap) + gap
-	for i, b := range s.buttons {
-		style := uintptr(wsTabStop | bsPushButton)
-		if b.def {
-			style = wsTabStop | bsDefPushBtn
+	if s.custom != nil {
+		s.custom(hwnd)
+	} else {
+		btnW, btnH, gap := 150, 28, 10
+		textH := s.h - btnH - 70
+		createChild(hwnd, "STATIC", s.text, ssLeft, 14, 10, s.w-34, textH, idText)
+		bx := s.w - 24 - len(s.buttons)*(btnW+gap) + gap
+		for i, b := range s.buttons {
+			style := uintptr(wsTabStop | bsPushButton)
+			if b.def {
+				style = wsTabStop | bsDefPushBtn
+			}
+			createChild(hwnd, "BUTTON", b.label, style, bx+i*(btnW+gap), textH+18, btnW, btnH, b.id)
 		}
-		createChild(hwnd, "BUTTON", b.label, style, bx+i*(btnW+gap), textH+18, btnW, btnH, b.id)
 	}
-	_, _, _ = pShowWindow.Call(hwnd, swShow)
-	_, _, _ = pSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
-	_, _, _ = pSetForegroundWindow.Call(hwnd)
+	if s.noActivate {
+		_, _, _ = pShowWindow.Call(hwnd, swShowNoActive)
+		_, _, _ = pSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpShowWindow)
+	} else {
+		_, _, _ = pShowWindow.Call(hwnd, swShow)
+		_, _, _ = pSetWindowPos.Call(hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpShowWindow)
+		_, _, _ = pSetForegroundWindow.Call(hwnd)
+	}
 	_, _, _ = pSetTimer.Call(hwnd, timerTick, 1000, 0)
 	ready(hwnd)
 
@@ -275,6 +327,9 @@ func runWindow(s spec, w *window, ready func(hwnd uintptr), failed func(error)) 
 type winUI struct {
 	mu     sync.Mutex
 	banner *bannerWin
+	// hotkey: the state of Ctrl+Alt+Shift+E on the current banner.
+	hotkey string
+	tools  winTools
 }
 
 type bannerWin struct {
@@ -361,36 +416,45 @@ func (u *winUI) Consent(ctx context.Context, req ConsentRequest) (ConsentAnswer,
 
 func (u *winUI) ShowBanner(info BannerInfo, onEnd func()) error {
 	info = info.Normalize()
+	info.EndHotkey = true
 	u.mu.Lock()
 	old := u.banner
 	u.banner = nil
 	u.mu.Unlock()
 	if old != nil {
 		_, _, _ = pPostMessageW.Call(old.hwnd, wmAppClose, 0, 0)
+		// The old banner releases Ctrl+Alt+Shift+E when its window goes; wait for it.
+		select {
+		case <-old.done:
+		case <-time.After(2 * time.Second):
+		}
 	}
 	b := &bannerWin{session: info.SessionID, done: make(chan struct{})}
 	var once sync.Once
 	w := &window{}
+	end := func() {
+		once.Do(func() {
+			if onEnd != nil {
+				go onEnd()
+			}
+		})
+		_, _, _ = pPostMessageW.Call(b.hwnd, wmAppClose, 0, 0)
+	}
 	w.onCommand = func(id int) {
 		if id == idEnd {
-			once.Do(func() {
-				if onEnd != nil {
-					go onEnd()
-				}
-			})
-			_, _, _ = pPostMessageW.Call(b.hwnd, wmAppClose, 0, 0)
+			end()
 		}
 	}
+	// Ctrl+Alt+Shift+E: the same as End session, from anywhere (also over the privacy screen).
+	w.onHotkey = end
 	w.onTimer = func() {
 		// Re-assert "always on top" every second: another topmost window must not cover it.
 		_, _, _ = pSetWindowPos.Call(b.hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpShowWindow)
 	}
 	w.onClose = func() bool { return false } // Alt+F4 does not hide it; End session ends the session
-	h := 150
-	if info.Permissions != nil {
-		h = 200 // two more lines: what is allowed, in English and Arabic
-	}
-	s := spec{title: BannerTitle, text: BannerText(info), exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: 620, h: h, top: true,
+	text := BannerText(info)
+	h := max(150, 100+17*(strings.Count(text, "\n")+1))
+	s := spec{title: info.Title(), text: text, exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: 660, h: h, top: true,
 		buttons: []struct {
 			id    int
 			label string
@@ -399,7 +463,19 @@ func (u *winUI) ShowBanner(info BannerInfo, onEnd func()) error {
 	ready := make(chan error, 1)
 	go func() {
 		defer close(b.done)
-		runWindow(s, w, func(hwnd uintptr) { b.hwnd = hwnd; ready <- nil }, func(err error) { ready <- err })
+		runWindow(s, w, func(hwnd uintptr) {
+			b.hwnd = hwnd
+			// On the window's own thread (RegisterHotKey binds to it); released when it is destroyed.
+			state := "registered"
+			if r, _, err := pRegisterHotKey.Call(hwnd, hotkeyEnd, modAlt|modControl|modShift|modNoRepeat, 'E'); r == 0 {
+				state = "unavailable: " + err.Error()
+			}
+			u.mu.Lock()
+			u.hotkey = state
+			u.mu.Unlock()
+			ready <- nil
+		}, func(err error) { ready <- err })
+		_, _, _ = pUnregisterHotKey.Call(b.hwnd, hotkeyEnd)
 	}()
 	if err := <-ready; err != nil {
 		return err
@@ -435,4 +511,22 @@ var testConsentShown func(hwnd uintptr)
 func pressButton(hwnd uintptr, id int) {
 	btn, _, _ := pGetDlgItem.Call(hwnd, uintptr(id))
 	_, _, _ = pPostMessageW.Call(btn, bmClick, 0, 0)
+}
+
+const (
+	hotkeyEnd   = 1
+	modAlt      = 0x0001
+	modControl  = 0x0002
+	modShift    = 0x0004
+	modNoRepeat = 0x4000
+)
+
+// EndHotkey reports whether Ctrl+Alt+Shift+E is registered for the current banner.
+func (u *winUI) EndHotkey() string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.hotkey == "" {
+		return "unavailable: no session banner"
+	}
+	return u.hotkey
 }

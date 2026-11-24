@@ -89,6 +89,15 @@ type BannerInfo struct {
 	Permissions *Permissions `json:"permissions,omitempty"`
 	// Profile is the profile's name (shown with the permissions).
 	Profile string `json:"profile,omitempty"`
+	// Operators: everyone connected to the session (several operators); each is named.
+	Operators []string `json:"operators,omitempty"`
+	// Recording: the session is being recorded (the banner then carries the recording mark).
+	Recording bool `json:"recording,omitempty"`
+	// PrivacyScreen / InputBlocked: shown on the banner while they are on.
+	PrivacyScreen bool `json:"privacy_screen,omitempty"`
+	InputBlocked  bool `json:"input_blocked,omitempty"`
+	// EndHotkey: Ctrl+Alt+Shift+E ends the session here (set by the platform UI).
+	EndHotkey bool `json:"end_hotkey,omitempty"`
 }
 
 // ErrUnavailable: there is no way to show a window here (no interactive desktop, no dialog tool).
@@ -143,6 +152,13 @@ func (b BannerInfo) Normalize() BannerInfo {
 	}
 	b.Reason = Clean(b.Reason, maxField)
 	b.Profile = Clean(b.Profile, 60)
+	var ops []string
+	for _, o := range b.Operators {
+		if c := Clean(o, 120); c != "" && len(ops) < 8 {
+			ops = append(ops, c)
+		}
+	}
+	b.Operators = ops
 	if b.Permissions != nil {
 		// Mouse and keyboard only when both say so.
 		b.Control = b.Control && b.Permissions.Control
@@ -262,7 +278,34 @@ func BannerText(i BannerInfo) string {
 	if i.Permissions != nil {
 		fmt.Fprintf(&b, "\nالمسموح%s: %s.", profileSuffix(i.Profile), strings.Join(ar, "، "))
 	}
+	if len(i.Operators) > 1 {
+		fmt.Fprintf(&b, "\nOperators connected: %s. / المشغّلون المتصلون: %s.", strings.Join(i.Operators, ", "), strings.Join(i.Operators, "، "))
+	}
+	if i.Recording {
+		b.WriteString("\n" + RecordingMark)
+	}
+	if i.PrivacyScreen {
+		b.WriteString("\nYour monitors show the privacy screen. / شاشاتك تعرض شاشة الخصوصية.")
+	}
+	if i.InputBlocked {
+		b.WriteString("\nYour mouse and keyboard are paused while the operator works. / الفأرة ولوحة المفاتيح متوقفتان أثناء عمل المشغّل.")
+	}
+	if i.EndHotkey {
+		b.WriteString("\n" + EndHotkeyText + " ends the session at any time. / " + EndHotkeyText + " ينهي الجلسة في أي وقت.")
+	}
 	return b.String()
+}
+
+// RecordingMark is the line the banner shows while the session is recorded (it cannot be hidden:
+// the banner cannot).
+const RecordingMark = "● REC: this session is being recorded. / ● تسجيل: هذه الجلسة تُسجَّل."
+
+// Title of the banner window (it carries the recording mark too).
+func (i BannerInfo) Title() string {
+	if i.Recording {
+		return "● REC  " + BannerTitle
+	}
+	return BannerTitle
 }
 
 func profileSuffix(profile string) string {

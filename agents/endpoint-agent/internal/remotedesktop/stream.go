@@ -40,6 +40,10 @@ type GrabRequest struct {
 	Scale   float64 `json:"scale"`
 	// Full asks for a full frame even if nothing changed (a viewer joined or lost a frame).
 	Full bool `json:"full,omitempty"`
+	// Cursor draws the remote pointer into the picture (CursorSupported platforms).
+	Cursor bool `json:"cursor,omitempty"`
+	// Depth: 24 (default), 16 or 8 (grey).
+	Depth int `json:"depth,omitempty"`
 }
 
 // Tile is one JPEG-encoded rectangle of a frame, in output pixels; N is its byte length.
@@ -71,6 +75,8 @@ type FrameHeader struct {
 	ChangedPct float64       `json:"changed_pct"`
 	Mode       string        `json:"mode"`
 	At         string        `json:"at"`
+	Depth      int           `json:"depth,omitempty"`
+	Cursor     bool          `json:"cursor,omitempty"`
 }
 
 type EncodedFrame struct {
@@ -167,7 +173,15 @@ func (e *Encoder) Grab(req GrabRequest) (*EncodedFrame, error) {
 		return nil, err
 	}
 	capMs := time.Since(start).Milliseconds()
-	return e.encode(img, req, displays, idx, mode, capMs, time.Now())
+	drawn := false
+	if req.Cursor && idx >= 0 && idx < len(displays) {
+		drawn = drawCursor(img, displays[idx])
+	}
+	f, err := e.encode(img, req, displays, idx, mode, capMs, time.Now())
+	if f != nil {
+		f.Header.Cursor = drawn
+	}
+	return f, err
 }
 
 func (e *Encoder) encode(raw *image.RGBA, req GrabRequest, displays []DisplayInfo, idx int, mode string, capMs int64, now time.Time) (*EncodedFrame, error) {
@@ -181,6 +195,15 @@ func (e *Encoder) encode(raw *image.RGBA, req GrabRequest, displays []DisplayInf
 		outH = int(float64(srcH) * opts.Scale)
 		img = resizeArea(raw, outW, outH)
 	}
+	depth := NormalizeDepth(req.Depth)
+	if depth != Depth24 {
+		if img == raw {
+			cp := *raw
+			cp.Pix = append([]byte(nil), raw.Pix...)
+			img = &cp
+		}
+		reduceDepth(img, depth)
+	}
 	cols := (outW + TileSize - 1) / TileSize
 	rows := (outH + TileSize - 1) / TileSize
 	hashes := make([]uint64, cols*rows)
@@ -193,7 +216,7 @@ func (e *Encoder) encode(raw *image.RGBA, req GrabRequest, displays []DisplayInf
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	key := keyOf(idx, outW, outH, opts.Quality)
+	key := keyOf(idx, outW, outH, opts.Quality*100+depth)
 	full := req.Full || e.key != key || len(e.hashes) != len(hashes) || now.Sub(e.lastSent) >= MaxUnchangedInterval
 	var changed []int
 	if !full {
@@ -210,11 +233,15 @@ func (e *Encoder) encode(raw *image.RGBA, req GrabRequest, displays []DisplayInf
 		}
 	}
 
-	hdr := FrameHeader{T: "frame", Display: idx, W: outW, H: outH, SW: srcW, SH: srcH, Q: opts.Quality, S: opts.Scale, Fmt: "jpeg", CapMs: capMs, Mode: mode}
+	hdr := FrameHeader{T: "frame", Display: idx, W: outW, H: outH, SW: srcW, SH: srcH, Q: opts.Quality, S: opts.Scale, Fmt: "jpeg", CapMs: capMs, Mode: mode, Depth: depth}
 	var buf bytes.Buffer
 	encodeRect := func(r image.Rectangle) error {
 		before := buf.Len()
-		if err := jpeg.Encode(&buf, img.SubImage(r), &jpeg.Options{Quality: opts.Quality}); err != nil {
+		var sub image.Image = img.SubImage(r)
+		if depth == Depth8 {
+			sub = toGray(img, r)
+		}
+		if err := jpeg.Encode(&buf, sub, &jpeg.Options{Quality: opts.Quality}); err != nil {
 			return err
 		}
 		hdr.Tiles = append(hdr.Tiles, Tile{X: r.Min.X, Y: r.Min.Y, W: r.Dx(), H: r.Dy(), N: buf.Len() - before})

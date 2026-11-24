@@ -312,10 +312,38 @@ func InjectInput(ev InputEvent) error {
 		procMouseEvent.Call(uintptr(mouseeventfWheel), 0, 0, uintptr(uint32(delta)), 0)
 		return nil
 
+	case "key_down", "key_up":
+		k, ok := LookupCode(ev.Code)
+		if !ok {
+			return fmt.Errorf("unsupported key: %s", ev.Code)
+		}
+		return sendScan(k, ev.Kind == "key_up")
+
+	case "key_combo":
+		codes, err := ComboCodes(ev.Keys)
+		if err != nil {
+			return err
+		}
+		for _, c := range codes {
+			k, _ := LookupCode(c)
+			if err := sendScan(k, false); err != nil {
+				return err
+			}
+		}
+		for i := len(codes) - 1; i >= 0; i-- {
+			k, _ := LookupCode(codes[i])
+			_ = sendScan(k, true)
+		}
+		return nil
+
 	case "key_press":
 		vk := mapKeyToVK(ev.Key)
 		if vk == 0 {
 			return fmt.Errorf("unsupported key: %s", ev.Key)
+		}
+		if ev.Meta {
+			procKeybdEvent.Call(0x5B, 0, 0, 0)
+			defer procKeybdEvent.Call(0x5B, 0, keyeventfKeyUp, 0)
 		}
 		if ev.Ctrl {
 			procKeybdEvent.Call(0x11, 0, 0, 0)
@@ -348,6 +376,28 @@ func InjectInput(ev InputEvent) error {
 	default:
 		return fmt.Errorf("unknown input event kind: %s", ev.Kind)
 	}
+}
+
+const (
+	keyeventfExtendedKey = 0x0001
+	keyeventfScanCode    = 0x0008
+)
+
+// sendScan presses or releases one physical key by its scan code: the remote keyboard layout
+// decides the character, as with a local keyboard.
+func sendScan(k PhysicalKey, up bool) error {
+	flags := uint32(keyeventfScanCode)
+	if k.Extended {
+		flags |= keyeventfExtendedKey
+	}
+	if up {
+		flags |= keyeventfKeyUp
+	}
+	in := []winInput{{typ: inputKeyboard, ki: keybdInput{wScan: k.Scan, dwFlags: flags}}}
+	if r, _, err := procSendInput.Call(1, uintptr(unsafe.Pointer(&in[0])), unsafe.Sizeof(in[0])); r == 0 {
+		return fmt.Errorf("SendInput: %v", err)
+	}
+	return nil
 }
 
 func mouseButtons(btn string) (uint32, uint32) {
