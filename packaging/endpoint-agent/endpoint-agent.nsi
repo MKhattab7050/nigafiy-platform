@@ -3,18 +3,23 @@
 ; Built by scripts/installers/build-agent-installer.mjs:
 ;   makensis /DVERSION=1.2.3 /DAGENT_EXE=<signed nigafiy-agent.exe> /DOUTFILE=<setup.exe> /DICON=<agent.ico> endpoint-agent.nsi
 ;
-; It copies nigafiy-agent.exe to "%ProgramFiles%\Nigafiy\Endpoint Agent" and runs the agent's own
-;   nigafiy-agent.exe install -server <url> [-tls-pin <sha256>] [-ca-file <pem>] [-service-name <n>] [-log-level <l>] [-no-start]
-; which enrolls with the one-time token (passed in the NIGAFIY_AGENT_ENROLLMENT_TOKEN environment
-; variable, never on the agent's command line) and registers the Windows service. The service, the
-; consent prompt and the session banner are the agent's; this installer adds nothing hidden.
+; It unpacks nigafiy-agent.exe into its temporary folder and runs the agent's own
+;   nigafiy-agent.exe install -install-dir "%ProgramFiles%\Nigafiy\Endpoint Agent" -server <url>
+;       [-token-file <path>] [-tls-pin <sha256>] [-ca-file <pem>] [-service-name <n>] [-log-level <l>] [-no-start]
+; which enrolls with the one-time token (a token file the agent reads itself, or a typed token in the
+; NIGAFIY_AGENT_ENROLLMENT_TOKEN environment variable, never on the agent's command line), copies
+; itself into the install folder and registers the Windows service on that copy. When the service is
+; already installed the same command upgrades it in place (stop, swap the exe keeping the previous
+; one, start, check it came up, roll back otherwise); the stored credential is kept and nothing
+; enrolls again. The service, the consent prompt and the session banner are the agent's; this
+; installer adds nothing hidden.
 ;
 ; Silent (GPO startup script, Intune Win32 app, SCCM):
 ;   Nigafiy-Endpoint-Agent-Setup.exe /S /SERVER=https://nigafiy.example.com [/TOKEN=lde_... | /TOKENFILE=C:\path\token.txt]
 ;       [/TLSPIN=sha256:AB:CD:...] [/CAFILE=C:\path\ca.pem] [/SERVICENAME=NigafiyEndpointAgent] [/LOGLEVEL=info] [/NOSTART]
 ;   Exit code 0 = installed; 1 = the agent's install step failed (see install.log); 2 = bad or missing parameters.
-; Upgrade: run the newer installer with /S (no token needed: the stored credential is kept and the
-; saved server, pin and service name are reused).
+; Upgrade: run the newer installer with /S (no token needed: the agent upgrades its service in place,
+; the stored credential is kept and the saved server, pin and service name are reused).
 ; Uninstall: "%ProgramFiles%\Nigafiy\Endpoint Agent\uninstall.exe" /S [/PURGE]  (/PURGE also deletes
 ; the endpoint credential in %ProgramData%\Nigafiy\EndpointAgent).
 
@@ -98,15 +103,6 @@ Page custom EnrollPage EnrollPageLeave
   ${EndIf}
 !macroend
 
-Function StripPinPrefix
-  ; Accept "sha256:AB:CD..." as well as the bare fingerprint the agent expects.
-  StrCpy $1 $Pin 7
-  ${If} $1 == "sha256:"
-  ${OrIf} $1 == "SHA256:"
-    StrCpy $Pin $Pin "" 7
-  ${EndIf}
-FunctionEnd
-
 Function .onInit
   ${IfNot} ${RunningX64}
     IfSilent +2
@@ -165,6 +161,8 @@ Function .onInit
     StrCpy $LogLevel "info"
   ${EndIf}
 
+  ; The agent reads the token file itself (-token-file: first line, trimmed, never logged); this
+  ; only checks that it can be opened, so a wrong path still ends with exit code 2.
   ${If} $TokenFile != ""
     ClearErrors
     FileOpen $1 $TokenFile r
@@ -174,12 +172,10 @@ Function .onInit
       SetErrorLevel 2
       Quit
     ${EndIf}
-    FileRead $1 $Token
     FileClose $1
+    StrCpy $Token ""
   ${EndIf}
-  ; Trim a trailing newline from a token file.
   ${TrimNewLines} $Token $Token
-  Call StripPinPrefix
 
   IfSilent 0 done
     ${If} $Server == ""
@@ -206,6 +202,10 @@ Function EnrollPage
   Pop $0
   ${NSD_CreatePassword} 0 45u 100% 12u "$Token"
   Pop $TokenField
+  ${If} $TokenFile != ""
+    ; A /TOKENFILE given on the command line is used; the field stays empty.
+    EnableWindow $TokenField 0
+  ${EndIf}
   ${NSD_CreateLabel} 0 64u 100% 12u "Server certificate pin, SHA-256 (optional; for the server's own local CA):"
   Pop $0
   ${NSD_CreateText} 0 77u 100% 12u "$Pin"
@@ -217,9 +217,10 @@ FunctionEnd
 
 Function EnrollPageLeave
   ${NSD_GetText} $ServerField $Server
-  ${NSD_GetText} $TokenField $Token
+  ${If} $TokenFile == ""
+    ${NSD_GetText} $TokenField $Token
+  ${EndIf}
   ${NSD_GetText} $PinField $Pin
-  Call StripPinPrefix
   StrCpy $1 $Server 8
   ${If} $1 != "https://"
     MessageBox MB_ICONEXCLAMATION "Enter the server address starting with https://"
@@ -231,24 +232,26 @@ Section "Install"
   SetRegView 64
   SetShellVarContext all
   SetOutPath "$INSTDIR"
+  InitPluginsDir
 
-  ; Upgrade: the agent's install step refuses an existing service, so the old one is removed first
-  ; (its credential in %ProgramData% stays and is used again).
+  ; An installed nigafiy-agent service is upgraded in place by the agent's install step below.
   ; An agent installed before the rename is endpoint-agent.exe (docs/architecture/naming.md): its
-  ; service (same name) is removed with that binary, which is deleted once the new one is installed.
-  ${If} ${FileExists} "$INSTDIR\nigafiy-agent.exe"
-    DetailPrint "Removing the existing $ServiceName service"
-    nsExec::ExecToLog '"$INSTDIR\nigafiy-agent.exe" uninstall -service-name "$ServiceName"'
-    Pop $0
-  ${ElseIf} ${FileExists} "$INSTDIR\endpoint-agent.exe"
+  ; service (same name) is removed with that binary first (its credential in %ProgramData% stays and
+  ; is used again), and the old file is deleted once the new one is installed.
+  ${IfNot} ${FileExists} "$INSTDIR\nigafiy-agent.exe"
+  ${AndIf} ${FileExists} "$INSTDIR\endpoint-agent.exe"
     DetailPrint "Removing the existing $ServiceName service (agent from before the rename)"
     nsExec::ExecToLog '"$INSTDIR\endpoint-agent.exe" uninstall -service-name "$ServiceName"'
     Pop $0
   ${EndIf}
 
-  File "/oname=nigafiy-agent.exe" "${AGENT_EXE}"
+  ; The agent copies itself into $INSTDIR (or swaps the installed copy on an upgrade).
+  File "/oname=$PLUGINSDIR\nigafiy-agent.exe" "${AGENT_EXE}"
 
-  StrCpy $2 'install -server "$Server" -service-name "$ServiceName" -log-level "$LogLevel"'
+  StrCpy $2 'install -install-dir "$INSTDIR" -server "$Server" -service-name "$ServiceName" -log-level "$LogLevel"'
+  ${If} $TokenFile != ""
+    StrCpy $2 '$2 -token-file "$TokenFile"'
+  ${EndIf}
   ${If} $Pin != ""
     StrCpy $2 '$2 -tls-pin "$Pin"'
   ${EndIf}
@@ -259,10 +262,14 @@ Section "Install"
     StrCpy $2 '$2 -no-start'
   ${EndIf}
 
-  ; The token goes to the agent in its environment only, then is cleared from this process.
+  ; A typed token goes to the agent in its environment only, then is cleared from this process.
   System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", t "$Token") i'
-  DetailPrint "Enrolling and installing the service"
-  nsExec::ExecToStack '"$INSTDIR\nigafiy-agent.exe" $2'
+  ${If} $Upgrade == "1"
+    DetailPrint "Upgrading the $ServiceName service in place"
+  ${Else}
+    DetailPrint "Enrolling and installing the service"
+  ${EndIf}
+  nsExec::ExecToStack '"$PLUGINSDIR\nigafiy-agent.exe" $2'
   Pop $0
   Pop $1
   System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_ENROLLMENT_TOKEN", i 0) i'
@@ -276,10 +283,9 @@ Section "Install"
     DetailPrint "The agent's install step failed (exit code $0): $1"
     IfSilent +2
       MessageBox MB_ICONSTOP "The agent could not be installed:$\r$\n$\r$\n$1$\r$\nDetails: $INSTDIR\install.log"
+    ; A failed first install leaves no agent behind (the agent removes the copy it made); a failed
+    ; upgrade has already put the previous version back and started it again.
     SetErrorLevel 1
-    ${If} $Upgrade != "1"
-      Delete "$INSTDIR\nigafiy-agent.exe"
-    ${EndIf}
     Abort
   ${EndIf}
   DetailPrint "$1"
@@ -327,6 +333,7 @@ Section "Uninstall"
   nsExec::ExecToLog '"$INSTDIR\nigafiy-agent.exe" uninstall -service-name "$ServiceName"'
   Pop $0
   Delete "$INSTDIR\nigafiy-agent.exe"
+  Delete "$INSTDIR\nigafiy-agent.previous.exe"
   Delete "$INSTDIR\endpoint-agent.exe"
   Delete "$INSTDIR\install.log"
   Delete "$INSTDIR\uninstall.exe"

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nigafiy/agent/internal/desktop"
 )
@@ -190,4 +191,69 @@ func HelperLauncher(exe string, log *slog.Logger) desktop.Launcher {
 		return &AsUserLauncher{Exe: exe, Args: HelperArgs(), Log: log}
 	}
 	return desktop.ExecLauncher{Path: exe, Args: HelperArgs(), Desc: "child process of this user"}
+}
+
+// DefaultInstallDir: /Library/Nigafiy/EndpointAgent (install copies the agent there).
+func DefaultInstallDir() string { return "/Library/Nigafiy/EndpointAgent" }
+
+// Exists reports whether the daemon's plist is installed.
+func Exists(name string) (bool, error) { return SystemController{}.Exists(name) }
+
+// SystemController is launchd (Controller for the in-place upgrade).
+type SystemController struct{}
+
+func (SystemController) Exists(name string) (bool, error) {
+	_, err := os.Stat(plistPath(name))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// BinaryPath is the first ProgramArguments string of the plist (as Plist writes it).
+func (SystemController) BinaryPath(name string) (string, error) {
+	raw, err := os.ReadFile(plistPath(name))
+	if err != nil {
+		return "", err
+	}
+	return PlistBinary(string(raw))
+}
+
+// Stop unloads the daemon (bootout waits for it to exit); Start loads it again.
+func (SystemController) Stop(name string, _ time.Duration) error {
+	if ok, _ := (SystemController{}).Running(name); !ok {
+		return nil
+	}
+	return runTool("launchctl", "bootout", "system/"+name)
+}
+
+func (SystemController) Start(name string) error {
+	return runTool("launchctl", "bootstrap", "system", plistPath(name))
+}
+
+func (SystemController) Running(name string) (bool, error) {
+	out, err := exec.Command("launchctl", "print", "system/"+name).Output()
+	if err != nil {
+		return false, nil // not loaded
+	}
+	return strings.Contains(string(out), "state = running"), nil
+}
+
+// PlistBinary reads the first string of ProgramArguments.
+func PlistBinary(plist string) (string, error) {
+	i := strings.Index(plist, "<key>ProgramArguments</key>")
+	if i < 0 {
+		return "", errors.New("the plist has no ProgramArguments")
+	}
+	rest := plist[i:]
+	a := strings.Index(rest, "<string>")
+	b := strings.Index(rest, "</string>")
+	if a < 0 || b < a {
+		return "", errors.New("the plist's ProgramArguments is empty")
+	}
+	var v string
+	if err := xml.Unmarshal([]byte(rest[a:b+len("</string>")]), &v); err != nil {
+		return "", err
+	}
+	return v, nil
 }

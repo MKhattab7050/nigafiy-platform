@@ -99,6 +99,20 @@ func TestEndpointAgentLifecycleAndCommands(t *testing.T) {
 			return control.Result{ID: cmd.ID, OK: true, Output: "killed 4444"}
 		},
 	}
+	// The health marker hook: once at start (no heartbeat yet), then after accepted heartbeats.
+	var healthStarts, healthBeats int
+	deps.Health = func(started, last time.Time) {
+		mu.Lock()
+		defer mu.Unlock()
+		if started.IsZero() {
+			t.Error("health marker without a start time")
+		}
+		if last.IsZero() {
+			healthStarts++
+		} else {
+			healthBeats++
+		}
+	}
 
 	ag, err := New(cfg, deps, slog.New(slog.NewTextHandler(io.Discard, nil)), "0.1.0-test", Tuning{
 		HeartbeatInterval: 50 * time.Millisecond,
@@ -130,6 +144,9 @@ func TestEndpointAgentLifecycleAndCommands(t *testing.T) {
 	defer mu.Unlock()
 	if enrolled != 1 || inventories < 1 || len(lastResults) != 1 || lastResults[0].ID != "cmd-1" || !lastResults[0].OK {
 		t.Fatalf("unexpected state: enrolled=%d inventories=%d results=%+v", enrolled, inventories, lastResults)
+	}
+	if healthStarts != 1 || healthBeats < 1 || healthBeats > heartbeats {
+		t.Fatalf("health marker: %d starts, %d heartbeats (server saw %d)", healthStarts, healthBeats, heartbeats)
 	}
 }
 

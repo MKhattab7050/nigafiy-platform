@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +23,15 @@ import (
 
 // DefaultName is the Windows service name.
 func DefaultName() string { return "NigafiyEndpointAgent" }
+
+// DefaultInstallDir: %ProgramFiles%\Nigafiy\Endpoint Agent (install copies the agent there).
+func DefaultInstallDir() string {
+	base := os.Getenv("ProgramFiles")
+	if base == "" {
+		base = `C:\Program Files`
+	}
+	return filepath.Join(base, "Nigafiy", "Endpoint Agent")
+}
 
 // DefaultStateDir: %ProgramData%\Nigafiy\EndpointAgent.
 func DefaultStateDir() string {
@@ -110,6 +120,127 @@ func Install(spec Spec, start bool) error {
 		}
 	}
 	return nil
+}
+
+// Exists reports whether a service of that name is installed.
+func Exists(name string) (bool, error) {
+	return SystemController{}.Exists(name)
+}
+
+// SystemController is the Service Control Manager (Controller for the in-place upgrade).
+type SystemController struct{}
+
+func (SystemController) open(name string) (*mgr.Mgr, *mgr.Service, error) {
+	m, err := mgr.Connect()
+	if err != nil {
+		return nil, nil, fmt.Errorf("open the service manager: %w", err)
+	}
+	s, err := m.OpenService(name)
+	if err != nil {
+		m.Disconnect()
+		return nil, nil, err
+	}
+	return m, s, nil
+}
+
+func (c SystemController) Exists(name string) (bool, error) {
+	m, s, err := c.open(name)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
+			return false, nil
+		}
+		return false, err
+	}
+	s.Close()
+	m.Disconnect()
+	return true, nil
+}
+
+func (c SystemController) BinaryPath(name string) (string, error) {
+	m, s, err := c.open(name)
+	if err != nil {
+		return "", err
+	}
+	defer m.Disconnect()
+	defer s.Close()
+	cfg, err := s.Config()
+	if err != nil {
+		return "", err
+	}
+	return ExeFromCommandLine(cfg.BinaryPathName)
+}
+
+func (c SystemController) Stop(name string, timeout time.Duration) error {
+	m, s, err := c.open(name)
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	defer s.Close()
+	st, err := s.Query()
+	if err != nil {
+		return err
+	}
+	if st.State == svc.Stopped {
+		return nil
+	}
+	if st.State != svc.StopPending {
+		if _, err := s.Control(svc.Stop); err != nil {
+			return err
+		}
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if st, err := s.Query(); err != nil || st.State == svc.Stopped {
+			return err
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+	return fmt.Errorf("the service did not stop within %s", timeout)
+}
+
+func (c SystemController) Start(name string) error {
+	m, s, err := c.open(name)
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	defer s.Close()
+	return s.Start()
+}
+
+func (c SystemController) Running(name string) (bool, error) {
+	m, s, err := c.open(name)
+	if err != nil {
+		return false, err
+	}
+	defer m.Disconnect()
+	defer s.Close()
+	st, err := s.Query()
+	if err != nil {
+		return false, err
+	}
+	return st.State == svc.Running, nil
+}
+
+// ExeFromCommandLine is the program of a service command line (BinaryPathName): the first
+// quoted word, or the text up to the first space when it is not quoted.
+func ExeFromCommandLine(cmd string) (string, error) {
+	cmd = strings.TrimSpace(cmd)
+	if strings.HasPrefix(cmd, `"`) {
+		end := strings.Index(cmd[1:], `"`)
+		if end < 0 {
+			return "", fmt.Errorf("unterminated quote in the service command line %q", cmd)
+		}
+		return cmd[1 : end+1], nil
+	}
+	if cmd == "" {
+		return "", errors.New("the service has no command line")
+	}
+	if i := strings.IndexByte(cmd, ' '); i >= 0 {
+		return cmd[:i], nil
+	}
+	return cmd, nil
 }
 
 // Uninstall stops the service (waiting up to 30 s) and removes it.

@@ -54,3 +54,16 @@ func TestSystemdUnitQuotesTheCommandLine(t *testing.T) {
 		t.Fatalf("unit:\n%s", u)
 	}
 }
+
+func TestExecStartBinaryReadsBackWhatUnitFileWrote(t *testing.T) {
+	for _, exe := range []string{"/opt/nigafiy-agent/nigafiy-agent", `/opt/odd "dir"/100%/$x/nigafiy-agent`} {
+		unit := UnitFile(Spec{Name: "nigafiy-endpoint-agent", Exe: exe, Args: []string{"run", "-server", "https://n.example"}})
+		got, err := ExecStartBinary(unit)
+		if err != nil || got != exe {
+			t.Fatalf("%q: %q %v", exe, got, err)
+		}
+	}
+	if _, err := ExecStartBinary("[Service]\nType=simple\n"); err == nil {
+		t.Fatal("a unit without ExecStart was accepted")
+	}
+}

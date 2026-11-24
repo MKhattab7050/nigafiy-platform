@@ -63,6 +63,10 @@ type Deps struct {
 	UserSessions func() []sysinfo.UserSession
 	// SafeMode reports whether Windows runs in safe mode.
 	SafeMode func() bool
+	// Health, when set, records the agent's health marker: once when Run has loaded the
+	// credential and starts working (lastHeartbeat zero), then after every heartbeat the server
+	// accepted. The in-place upgrade waits for the new version's marker (service.HealthFile).
+	Health func(started, lastHeartbeat time.Time)
 }
 
 func SystemDeps() Deps {
@@ -252,6 +256,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		} else if cleared {
 			a.log.Info("safe boot cleared after the restart")
 		}
+	}
+	if a.deps.Health != nil {
+		a.deps.Health(a.started, time.Time{})
 	}
 	// Notice for transparency on managed company machines.
 	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in Nigafiy IT Operations (inventory, health, and authorized remote administration are active)")
@@ -445,6 +452,9 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
 	}
 	*attempt = 0
+	if a.deps.Health != nil {
+		a.deps.Health(a.started, time.Now())
+	}
 	a.mu.Lock()
 	a.trayRecordings = resp.Tray.Recordings
 	a.mu.Unlock()

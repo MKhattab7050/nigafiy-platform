@@ -256,3 +256,21 @@ func TestInstallAndUninstallARealService(t *testing.T) {
 		t.Fatal("service still registered after uninstall")
 	}
 }
+
+func TestExeFromServiceCommandLine(t *testing.T) {
+	for in, want := range map[string]string{
+		`"C:\Program Files\Nigafiy\Endpoint Agent\nigafiy-agent.exe" run -service-name X`: `C:\Program Files\Nigafiy\Endpoint Agent\nigafiy-agent.exe`,
+		`C:\agent\nigafiy-agent.exe run`: `C:\agent\nigafiy-agent.exe`,
+		`C:\agent\nigafiy-agent.exe`:     `C:\agent\nigafiy-agent.exe`,
+	} {
+		got, err := ExeFromCommandLine(in)
+		if err != nil || got != want {
+			t.Errorf("%q: %q %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"", `"C:\unterminated`} {
+		if _, err := ExeFromCommandLine(bad); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+}

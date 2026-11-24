@@ -34,3 +34,11 @@ func TestLaunchdPlistEscapesArguments(t *testing.T) {
 		t.Fatalf("plist:\n%s", p)
 	}
 }
+
+func TestPlistBinaryReadsBackWhatPlistWrote(t *testing.T) {
+	exe := "/Library/Nigafiy/EndpointAgent/nigafiy-agent & <co>"
+	got, err := PlistBinary(Plist(Spec{Name: "com.nigafiy.endpoint-agent", Exe: exe, Args: []string{"run"}}))
+	if err != nil || got != exe {
+		t.Fatalf("%q %v", got, err)
+	}
+}
