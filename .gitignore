@@ -28,3 +28,6 @@ apps/desktop/build/
 # web browser smoke tests (apps/web/e2e)
 apps/web/test-results/
 apps/web/playwright-report/
+# a bare `go build ./cmd/nigafiy-agent` in the module folder (use `pnpm build:agent`, which writes bin/)
+agents/endpoint-agent/nigafiy-agent
+agents/endpoint-agent/nigafiy-agent.exe
