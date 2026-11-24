@@ -271,7 +271,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapDHCPLeases, Supported: false, Note: "Omada client API reports client IP without DHCP lease expiry"},
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Blocks the client MAC across the Omada site"},
 		{Capability: router.CapRateLimit, Supported: true, Mechanism: mechLimit, Note: "Configures per-client custom download/upload limits in kbit/s"},
-		{Capability: router.CapSchedule, Supported: false, Note: "Omada schedules are configured on WLANs/ACLs rather than individual clients"},
+		{Capability: router.CapSchedule, Supported: false, Note: "Not offered: Omada blocks on a schedule through a time-range profile attached to a gateway ACL with a MAC group; the formats of those objects are documented only for the Omada Open API (client-credentials apps), not for the controller web API this driver uses, so Nigafiy does not guess them. Nigafiy enforces a schedule itself with the router's block instead."},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},

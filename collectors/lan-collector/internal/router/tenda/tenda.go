@@ -209,7 +209,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapDHCPLeases, Supported: false, Note: "Tenda onlineList reports client IPs without lease expiry"},
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Blocks/unblocks the device MAC in Tenda's online/blacklist table"},
 		{Capability: router.CapRateLimit, Supported: true, Mechanism: mechLimit, Note: "Sets per-MAC download/upload speed limits in Tenda Bandwidth Control"},
-		{Capability: router.CapSchedule, Supported: false, Note: "Tenda parental-control schedules vary across models"},
+		{Capability: router.CapSchedule, Supported: false, Note: "Not offered: Tenda V15.03 firmware has /goform/saveParentControlInfo (CVE-2024-2850, CVE-2024-2852 on the AC15), but only its urls field is publicly documented; its device, day and time fields are not, so Nigafiy does not guess them. Nigafiy enforces a schedule itself with the router's block instead."},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
