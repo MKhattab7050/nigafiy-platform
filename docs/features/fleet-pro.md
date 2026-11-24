@@ -320,6 +320,163 @@ Typed text, clipboard text and codes are never logged.
   - an approval or a refuse window with a real agent on another computer
   - a real authenticator app
 
+## Built: in-session tools, recording, operators (2026-11-24)
+
+Builder F2, branch `worktree-fleet-pro`, migration `036_fleet_session_tools.sql`. This wires up the
+profile flags `audio`, `record`, `privacy_screen` and `block_input` that F1 only showed.
+
+### Gating
+Every tool is checked in two places:
+- **In the API.** The stream hub checks each socket message against the session's permissions,
+  intersected with the participant's own permissions. The REST routes check role and session holder.
+  The commands route refuses `rd_capture` and `rd_input` from anyone who is not a participant
+  (`not_a_participant`, audited).
+- **In the agent.** `rdstream/tools.go` checks against the profile the session was opened with.
+  Refusals come back as `tool_error` with `profile_forbids_<tool>` or `unsupported_here`.
+
+The agent's `hello` lists the tools it supports (`features`). The web UI only shows a button when the
+profile allows the tool and the agent supports it. Viewers get no write buttons.
+
+### Tools
+- **Picture modes.** Best is quality 85, scale 1, adaptive off. Balanced is 68, 0.75, adaptive.
+  Fast is 45, 0.5, adaptive.
+- **Colours.** Full colour, 16-bit, or 8-bit greyscale (`settings.depth`). Remote pointer on or off
+  (`settings.cursor`). Measured stats stay as before: frames, kb/s, round trip, changed %, viewers.
+- **One window per monitor.** The stream switches to "All displays" and each popup draws its own
+  crop of that one picture. It is not a separate stream per monitor.
+- **Keyboard.**
+  - "By position" sends `key_down` and `key_up` with the physical `KeyboardEvent.code`, so the remote
+    keyboard layout decides the character. "By character" keeps the old character mode.
+  - The special-keys menu sends key combinations (Alt+Tab, Win+R, Ctrl+Shift+Esc and others).
+  - Fullscreen asks for Keyboard Lock where the browser supports it.
+  - Typed keys are never written to the audit: `code` and `keys` are redacted.
+- **Ctrl+Alt+Del (SAS).** The agent service calls `SendSAS`. This needs the service and
+  `SoftwareSASGeneration` = 1 or 3 under
+  `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System`. Without them the agent replies
+  with the exact reason. Windows only.
+- **Pause their input.** Low-level keyboard and mouse hooks drop the person's own input and let the
+  agent's injected input through. Ctrl+Alt+Shift+E always passes and ends the session. Limits:
+  - hooks cannot block input to elevated windows or the secure desktop
+  - a helper restart loses the block
+- **Privacy screen.**
+  - One topmost window per monitor shows "IT support session in progress" with the operator and the
+    reason. It is never plain black.
+  - `WDA_EXCLUDEFROMCAPTURE` keeps it out of the capture, so the operator still sees the desktop.
+    This needs Windows 10 2004 or later. On older builds the UI says the operator would see it too.
+  - A helper restart drops the privacy screen until it is turned on again.
+  - Not available on Linux or macOS.
+- **Clipboard pictures and copied files.**
+  - Pictures are PNG, at most 4 MB.
+  - Copied files are a list of paths (`CF_HDROP`). Files are fetched through the chunked transfer
+    with SHA-256.
+  - Text is unchanged.
+- **Drag and drop.**
+  - Drop files on the screen or on the drop zone. They go to a destination folder (the user's home
+    by default) through `fs_op upload` in 256 KB chunks, checked with SHA-256.
+  - The agent refuses to overwrite an existing file.
+  - The transfer can also put the sent files on the person's clipboard.
+  - `POST …/transfer` audits the name, size and SHA-256, never the contents.
+- **Chat and questions.**
+  - Chat opens a chat window on the person's screen, and they can reply there.
+  - Questions are Yes/No, OK, or free text, with a 5-minute timeout. The answer comes back as
+    `answer`.
+  - Counts go in `fleet_sessions.chat_messages`. The text is not audited.
+  - On Linux and macOS, chat and questions use zenity, kdialog or osascript.
+- **Drawing and laser pointer.** Strokes and the pointer are sent in 0–1 coordinates of the shown
+  display. The agent draws them on a click-through layer, which is cleared when the session ends.
+  Windows only.
+- **Sound.**
+  - WASAPI loopback, encoded as IMA ADPCM. Each 40 ms packet carries its own decoder state.
+  - Bandwidth: 48 kHz stereo is 384 kbit/s, mono is 192 kbit/s. The viewer shows the measured kb/s.
+  - Opus is not used because there is no maintained pure-Go Opus encoder and cgo is not available.
+  - Windows only.
+- **Remote printing.**
+  - The file comes to the operator's browser through the file transfer, and the browser's print
+    dialog prints it on the operator's printer. Nothing is installed on the computer.
+  - Only PDF, PNG, JPEG, GIF, WebP and text files can be printed. Other types are refused with a
+    message.
+  - `POST …/print` audits the name, size, SHA-256 and type.
+
+### Recording
+- **Rule per group.** `fleet_groups.recording_mode` is `off`, `optional` (the operator chooses, and
+  the profile must allow `record`) or `required` (every session; profiles without `record` are
+  refused with `recording_required_profile_cannot_record`). It also sets the retention in days and
+  whether the person may see past recordings (stored; the tray app does not show them yet, Task 10).
+  Endpoints in no group default to `optional`,
+  kept 30 days.
+- **Turning it on.** The connect dialog shows the rule. The holder can switch recording on or off
+  during the session (`POST …/recording`).
+- **What is recorded.** Frames, plus input timing (`{k,d,x,y}`; keys only as "a key", never which one)
+  and tool events.
+- **Storage.**
+  - Files are AES-256-GCM, at `<data>/recordings/<org>/<id>/seg-<ms>.nrec`. Each record is
+    `[len][nonce][ciphertext+tag]` with AAD `"<id>|<segment>"`.
+  - The file key is sealed with `APP_ENCRYPTION_KEY` in `fleet_recordings.key_sealed` and covered by
+    `rotate-key`.
+  - The API instance that holds the agent's socket writes the file.
+- **Retention.** The job `fleet-recording-retention` deletes expired files and marks the rows
+  `deleted`.
+- **Playback.** Fleet → Remote sessions → "Play recording" opens `/fleet/recordings/:id`.
+  - The API decrypts one part at a time. Opening a recording is audited (`fleet.recording_viewed`).
+  - The page shows the session's audit timeline beside the picture.
+  - Admins can delete a recording (`fleet.recording_deleted`).
+  - Playback starts at the beginning of a part, so the picture may build up tile by tile until the
+    next full frame.
+- **Recording mark.** The person's session bar shows the recording mark for as long as recording
+  runs, and nothing can turn it off.
+
+### Several operators
+- **Inviting.** The holder invites a colleague, either with the session's permissions or as view only
+  (`fleet_session_participants`). The invitation lasts 15 minutes.
+- **Joining.** Joining re-runs the access policy for the colleague: role, address, hours, and MFA,
+  where the UI asks for the 6-digit code.
+- **Managing.** The holder can hand over the session or remove a colleague. A removed colleague's
+  socket is closed with code 4003. Colleagues can leave.
+- **Banner.** The person's banner names every operator (`rd_session_update`).
+- **Limit.** `fs_op` file commands from a joined colleague follow the colleague's role, not the
+  participant permissions. Only `rd_*` is limited per participant.
+
+### Wake-on-LAN, then connect
+For an offline computer, "Wake and connect" asks for a reason and a profile through the usual dialog.
+1. `POST …/wake` queues Wake-on-LAN through the site's Sensor, on the scope-checked path only.
+2. The console polls until the agent is online, then sends the normal session request with
+   `wake_request_id`, so the access policy decides again.
+3. It times out after 5 minutes.
+
+A step-up token from the dialog can expire during a long wake. In that case the request is refused
+and the operator connects again.
+
+### Transparency (cannot be turned off)
+The session bar, the recording mark, the privacy-screen text, Ctrl+Alt+Shift+E and the audit rows
+(`fleet.session_privacy_screen`, `…_block_input`, `…_sas`, `…_chat`, `…_question`, `…_annotation`,
+`…_audio`, `…_clipboard`, `fleet.recording_*`, `fleet.participant_*`, `fleet.wake_*`) have no off
+switch in any profile or policy. Pinned by `internal/userui/tools_test.go` (banner names every
+operator and shows the recording mark, privacy text never empty and says how to end) and
+`internal/rdstream/tools_test.go` (end of session turns every tool off).
+
+### What ran for real, and what did not
+- **Ran for real on this Windows desktop** (opt-in Go tests, `NIGAFIY_UI_TEST=1`):
+  - WASAPI loopback capture (48 kHz stereo float)
+  - the privacy-screen window excluded from capture
+  - the chat, question and drawing windows
+  - registering and releasing the end hotkey
+  - installing and releasing the low-level input hooks (input blocked for 1 s)
+- **Tests only:**
+  - API tests against embedded PostgreSQL: recording rule and toggle, sealed key, segment
+    encrypt/decrypt and playback, retention, participants (invite, join through the policy, handover,
+    remove), wake requests, print and transfer audits, tool messages through the hub
+  - Go tests for tool gating in the agent
+  - the browser ADPCM decoder against the agent's encoder (bit-exact)
+  - web type-check and build
+- **Never run here:**
+  - SAS (needs the service install and the policy value)
+  - any tool end to end from a real agent through a running API to a browser
+  - a recording made by a real agent
+  - the new web UI in a browser
+  - a real Wake-on-LAN through a Sensor
+  - Linux and macOS dialogs
+  - a second operator on another machine
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)

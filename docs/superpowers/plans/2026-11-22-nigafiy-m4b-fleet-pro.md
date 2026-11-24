@@ -132,3 +132,26 @@ The owner paused Fleet Pro while the Wave 1 builder was still reading the code. 
 - Session signalling can use `endpoint_commands` with new internal kinds that are not in `CommandInput`. Polling then still works with no extra code. The WebSocket would push the same pending commands, woken through `pg_notify` on the endpoint id.
 
 **Still left in Wave 1:** everything in Task 1 and Task 2 (all boxes above stay unticked). This includes the feature doc and the gate run.
+
+## Progress (2026-11-24: in-session tools, recording, operators)
+
+Builder F2, branch `worktree-fleet-pro`, migration `036`. What was built, the gating and exactly what
+ran for real are in `docs/features/fleet-pro.md` → "Built: in-session tools, recording, operators".
+
+- [x] Quality modes, colour depth, remote cursor, monitor pick and one window per monitor, measured stats
+- [x] View only / control / pause local input; SAS (service + `SoftwareSASGeneration`); special keys;
+  keyboard layout mapping (by position / by character); Keyboard Lock in fullscreen
+- [x] Privacy screen with the required text, hidden from capture (Windows 10 2004+)
+- [x] Clipboard pictures and copied files per profile; drag-and-drop transfer (SHA-256, audited)
+- [x] Chat and question box the user answers; drawing and laser pointer
+- [x] Encrypted recordings (group rule, retention job, sealed key in rotate-key), playback beside the
+  audit timeline, recording mark
+- [x] Multi-operator: invite (full or view only), join through the policy, hand over, remove, leave;
+  every operator named on the banner
+- [x] Remote audio: WASAPI loopback, IMA ADPCM (no pure-Go Opus encoder)
+- [x] Remote printing through the operator's browser (PDF, pictures, text)
+- [x] Wake-on-LAN through the site Sensor, then the normal session request
+- [ ] Not verified here: SAS with the service installed, any tool end to end with a real agent and a
+  browser, a recording from a real agent, a real Wake-on-LAN, Linux/macOS dialogs, a second operator.
+- Still open: user-side viewing of past recordings in the tray app (Task 10; the group flag
+  `user_may_view_recordings` is stored), printing of file types the browser cannot print.
