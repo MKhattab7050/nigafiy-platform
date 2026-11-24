@@ -221,3 +221,81 @@ Not verified and needing a real device: every R1 control above; whether OPNsense
 `get_rule` returns `target` and `destination.port` as plain strings (the driver accepts both
 strings and selection maps); whether taking a FortiWiFi SSID interface down stops the broadcast on
 every FortiAP model (documented only in a Fortinet Community tip).
+
+## Per-driver matrix (rate limit, schedule)
+
+Y = offered by the router itself, – = not offered (the capability note says why). Where the router
+cannot schedule but can block, Nigafiy enforces the schedule itself with the router's block
+(`router_product_schedules`, migration 029), so every driver with `block` can still schedule a device.
+Every R2 entry is exercised against a protocol test double only; none of it has run on real hardware.
+
+| Driver | Rate limit | Schedule | Mechanism and source |
+|---|---|---|---|
+| mikrotik | Y | Y | unchanged (simple queues; firewall filter `time`) |
+| zyxel | upload only | Y | unchanged (handoff spec) |
+| omada | Y | – | rate: unchanged. Schedule: time ranges + gateway ACLs are documented only for the Omada Open API (client-credentials apps), not the controller web API the driver uses |
+| tenda | Y | – | rate: unchanged. Schedule: `/goform/saveParentControlInfo` exists on V15.03 (CVE-2024-2850, CVE-2024-2852, AC15) but only its `urls` field is documented |
+| unifi | Y | Y (Network 7.x+) | rate: per-device user group `rest/usergroup` (`qos_rate_max_down/up`, kbit/s, -1 unlimited) + client `usergroup_id` (Art-of-WiFi UniFi-API-client). Schedule: v2 `trafficrules` BLOCK rules with `target_devices` and a weekly `schedule` (aiounifi `models/traffic_rule.py`); a controller without the v2 API reports why |
+| fortigate | Y | Y | rate: `firewall/shaping-policy` with `traffic-shaper` (upload) / `traffic-shaper-reverse` (download) and `firewall.shaper/traffic-shaper` (kbps, per-policy). Schedule: `firewall.schedule/recurring` + deny `firewall/policy`, moved to the top (`?action=move&before=`). FortiOS 6.4–7.4 Administration Guide and CLI reference |
+| opnsense | Y | – | rate: `/api/trafficshaper/settings` pipes (`bandwidth`, `bandwidthMetric` Kbit, mask none) and LAN rules (source/destination = the device). Schedule: rules accept `sched` (MVC `Filter.xml`) but schedules live only in the legacy config (`ScheduleField` reads `schedules/schedule`), with no API |
+| pfsense | – | Y | schedule: REST API v2 `firewall/schedule` (`timerange[].position` 1 Mon…7 Sun, `hour` HH:MM-HH:MM on the quarter hour, `FirewallScheduleTimeRange.inc`) + floating quick block `firewall/rule` with `sched` (`FirewallRule.inc`). Rate: limiters need pass or floating *match* rules; the API has no match type and no placement, and a floating pass rule would bypass the administrator's block rules |
+| openwrt | Y (with nft-qos) | Y | rate: nft-qos `config client` (`macaddr`, `drate`/`drunit`, `urate`/`urunit`, `limit_mac_enable`; openwrt/packages `net/nft-qos`, 23.05 branch); not offered when the package is absent. Schedule: unchanged |
+| asus | – | Y (firmware 386+) | schedule: Parental Controls `MULTIFILTER_MACFILTER_DAYTIME_V2` (`W` + enable + weekday hex mask Sun=bit 0 + HHMM + HHMM; asuswrt-merlin.ng `ParentalControl.asp`, `js/weekSchedule/weekSchedule.js`). Rate: Bandwidth Limiter rules (`qos_bw_rulelist`) have no label, and need QoS mode 2 (switching reboots) |
+| dlink | – | – | QoS engine is priority based; HNAP1 schedule actions are not publicly documented |
+| tplink | – | – | Archer QoS is priority based; Parental Controls are not in the documented stok API |
+| zte | – | – | no per-device speed page (ISP TR-069 QoS); time rules not documented |
+| huawei | – | – | no per-device speed limit in the web API; parental-control time rules differ per ISP build |
+| huaweilte | – | – | HiLink has no per-device speed limit or time rule |
+| ciscoxe | – | – | read-only by design |
+
+## Built: R2 (2026-11-24)
+
+Rate limits and blocking schedules on every driver whose router offers them, all **verified only
+against protocol test doubles** (pinned TLS, `httptest.NewTLSServer`), **never run on real hardware**.
+
+Shared rules (`internal/router/schedule.go`): `ValidateRateLimit` (0–10 000 000 kbit/s, at least
+one direction), `ValidateWindows` (1–8 windows, days 0–6, `HH:MM`), `SplitWindows` (a window whose
+end is not after its start crosses midnight; it becomes start→24:00 on its days and 00:00→end on the
+next days; start = end is 24 hours; segments with the same times are merged). Every new driver
+call: refuses bad input before sending anything; treats an empty schedule as "clear"; labels what
+it creates `LAN Detective: limit|schedule <mac>` (or the vendor's name field: `LD:<mac>`,
+`ld-lim-<hex>`, `LD_<hex>_<n>`); never changes or deletes anything without that label, and refuses
+when the administrator already set a limit or schedule for that device on the router; adds the new
+schedule before removing the old one and removes what it just added if the router refuses, so a
+refusal leaves the previous schedule in place; re-reads the router after the change and fails if
+the router does not show it; says how to undo it.
+
+- **UniFi**: rate limit through a per-device user group (the administrator's groups are never left;
+  clearing moves the client back to Default and deletes the group). Schedule through v2 traffic
+  rules (Network 7.x+), one BLOCK rule per segment; a window ending at midnight ends at 23:59 (the
+  API has no 24:00).
+- **FortiGate**: shaping policy + shapers for the limited directions only; deny policies with
+  recurring schedules (FortiOS ends a schedule whose end is not after its start on the next day, so
+  `22:00–00:00` and an all-day `00:00–00:00` are written as such). Both match the device's current
+  IPv4 through an address object and are moved to the top of their table.
+- **OPNsense**: traffic-shaper pipe + LAN rule per direction, then `service/reconfigure`.
+- **pfSense**: one schedule with one time range per segment (quarter-hour times only, refused
+  otherwise) and a floating quick block rule on LAN; list ids are re-read before every delete
+  because REST API v2 ids are positions.
+- **OpenWrt**: nft-qos client sections when the package is installed (kbit/s → whole kbytes/s,
+  rounded up). If MAC limits were off, Nigafiy turns them on, marks that (`nigafiy_enabled_mac`)
+  and turns them off again with its last limit; the change says so.
+- **ASUS**: Parental Controls time scheduling on firmware 386+, offline rules with `24:00` ends.
+  Fix found on the way: the driver now writes `MULTIFILTER_MACFILTER_DAYTIME_V2` with the other
+  lists on 386+ firmware, so adding or removing a block no longer misaligns the schedules of the
+  administrator's other devices; blocking a device that has a Nigafiy schedule is refused.
+- **Precise refusals** for the rest (see the matrix).
+- **UI**: on a router that schedules devices itself, the schedule form now shows the driver's note
+  (EN/AR label `routers.section.routerNote`, note text from the router driver in English inside a
+  `dir="ltr"` span, as the rate-limit form). API test `router-control.test.ts` covers router-side
+  schedules, the notes and the role refusals; the API itself needed no change.
+
+Not verified and needing a real device: every R2 control above. Specific unknowns: UniFi — whether
+`EVERY_WEEK` + `repeat_on_days` is the mode the UI writes and whether `23:59` includes that minute,
+and whether user-group limits reach wired clients on a given gateway; FortiGate — whether a
+shaping policy with `dstintf any` and no `srcintf` is accepted on every 6.4–7.4 build; OPNsense —
+whether `searchPipes` returns `bandwidth` as a plain string on every release; pfSense — that a
+floating quick block rule with a schedule is evaluated before the LAN rules on the installed
+release; OpenWrt — that `luci.setInitAction` / `rc.init` restart nft-qos under the router's rpcd
+ACL; ASUS — how firmware treats the `W1…` rules of a device whose ENABLE is 1 (the format is taken
+from the web UI JavaScript, not from the firewall C code).
