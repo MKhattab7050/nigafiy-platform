@@ -20,11 +20,13 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Organization,
-  [string]$OutDir = (Join-Path $PSScriptRoot '..\..\.data\signing'),
+  [string]$OutDir = '',
   [int]$Years = 5,
   [switch]$ExportPfx
 )
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in parameter defaults, so the default is set here.
+if (-not $OutDir) { $OutDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\..\.data\signing' }
 
 if ($Organization -match '[,=+<>#;"\\]') { throw 'Organization must not contain , = + < > # ; " or \' }
 $subject = "CN=$Organization Nigafiy Code Signing, O=$Organization"
