@@ -21,6 +21,7 @@ import { ServicesTab } from '../components/endpoint-detail/services-tab';
 import { ConnectionsTab } from '../components/endpoint-detail/connections-tab';
 import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { HardwareTab } from '../components/endpoint-detail/hardware-tab';
+import { PatchesTab } from '../components/endpoint-detail/patches-tab';
 import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
 import { ShellPanel } from '../components/fleet-shell/shell-panel';
 import { jobsText } from '../components/fleet-jobs/jobs-text';
@@ -116,6 +117,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               : []),
             { value: 'software', label: `${tx.tabs.software} (${ep.software.length})` },
             { value: 'hardware', label: tx.tabs.hardware },
+            { value: 'patches', label: tx.tabs.patches },
             ...(capEnabled('diagnostics_logs') ? [{ value: 'diagnostics' as Tab, label: tx.tabs.diagnostics }] : []),
             { value: 'security', label: tx.tabs.security },
             { value: 'commands', label: `${tx.tabs.commands} (${ep.commands.length})` },
@@ -266,6 +268,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               )}
 
               {shown === 'hardware' && <HardwareTab ep={ep} locale={locale} />}
+
+              {shown === 'patches' && <PatchesTab endpointId={ep.id} online={online} />}
 
               {shown === 'diagnostics' && (
                 <DiagnosticsTab

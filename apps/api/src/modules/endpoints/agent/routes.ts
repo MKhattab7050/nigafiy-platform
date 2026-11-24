@@ -17,6 +17,8 @@ import { quickSupportClosedByUser, quickSupportStatus, registerQuickSupport } fr
 import { agentShellEndSchema } from '../fleet-shell/schema.ts';
 import { agentShellEnd, itActivity } from '../fleet-shell/shells.ts';
 import { agentHardwareSchema, recordHardware } from '../fleet-inventory/hardware.ts';
+import { agentPatchStatusSchema } from '../fleet-patches/schema.ts';
+import { recordPatchStatus } from '../fleet-patches/service.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -91,6 +93,12 @@ agentGatewayRouter.post('/inventory', requireEndpointAgent, async (req, res) => 
 // Hardware and licence inventory (every 6 hours and on refresh): fleet-inventory/hardware.ts.
 agentGatewayRouter.post('/hardware', requireEndpointAgent, async (req, res) => {
   await recordHardware(req.endpoint!, parse(agentHardwareSchema, req.body));
+  res.json({ ok: true });
+});
+
+// Missing updates (every 6 hours, after an install, and on request): fleet-patches/service.ts.
+agentGatewayRouter.post('/patch-status', requireEndpointAgent, async (req, res) => {
+  await recordPatchStatus(req.endpoint!, parse(agentPatchStatusSchema, req.body));
   res.json({ ok: true });
 });
 

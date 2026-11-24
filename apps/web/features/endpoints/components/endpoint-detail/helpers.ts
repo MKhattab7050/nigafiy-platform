@@ -13,7 +13,8 @@ export type Tab =
   | 'security'
   | 'commands'
   | 'shell'
-  | 'hardware';
+  | 'hardware'
+  | 'patches';
 
 export function cmdTone(status: EndpointCommandStatus): Tone {
   if (status === 'completed') return 'ok';

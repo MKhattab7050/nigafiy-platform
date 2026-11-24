@@ -11,6 +11,8 @@ import { fleetJobsRouter } from './fleet-jobs/routes.ts';
 import { runJobScheduler } from './fleet-jobs/jobs.ts';
 import { fleetShellRouter } from './fleet-shell/routes.ts';
 import { fleetMonitoringRouter } from './fleet-monitoring/routes.ts';
+import { fleetPatchesRouter } from './fleet-patches/routes.ts';
+import { runPatchScheduler } from './fleet-patches/service.ts';
 import { shellHub } from './fleet-shell/hub.ts';
 import { runShellSweep } from './fleet-shell/shells.ts';
 import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
@@ -34,6 +36,7 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   fleet-reach/     address book, connect by name/ID/code, Request help, restart and reconnect, Quick Support
  *   fleet-shell/     remote shell (admins; group switch): agent/operator sockets, encrypted transcript
  *   fleet-jobs/      scripts library (typed parameters, versions) and jobs (now, scheduled, per-computer results)
+ *   fleet-patches/   missing updates per computer, approvals, patch policies, installs in windows, restarts
  *   fleet-monitoring/ CPU, memory, disk, service and event-log rules evaluated on each heartbeat (Watch events)
  *   fleet-inventory/ hardware and licence inventory reported by the agent
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
@@ -42,7 +45,7 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, fleetMonitoringRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, fleetMonitoringRouter, fleetPatchesRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;
@@ -77,6 +80,8 @@ export const endpointsModule = defineModule({
         await runShellSweep();
       },
     },
+    // Patches: approved updates installed in open windows, then restart questions and deadlines.
+    { name: 'fleet-patch-scheduler', everyMs: 30_000, lockKey: 727173, run: async () => void (await runPatchScheduler()) },
   ],
   lifecycle: {
     // Results uploaded to another API instance wake this instance's waiters (interactive commands).

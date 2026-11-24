@@ -11,6 +11,7 @@ import type { AgentEnroll, AgentHeartbeat, AgentInventory, CommandResult, Endpoi
 import { normalizeConnections } from './connections.ts';
 import { POLL_RECHECK_MS, armWake } from './wake.ts';
 import { evaluateMonitoring, monitorSpec } from '../fleet-monitoring/evaluate.ts';
+import { onHeartbeatPatches } from '../fleet-patches/service.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -227,14 +228,18 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       : ((await db.query<{ disks: { mount: string; free_gb?: number; total_gb?: number; used_pct: number }[] | null }>(`SELECT disks FROM endpoints WHERE id = $1`, [ep.id])).rows[0]?.disks ?? null);
     await evaluateMonitoring(db, ep.id, { cpuPct: body.cpu_pct, ramPct: body.ram_pct, disks: body.disks ?? storedDisks, monitor: body.monitor }, now);
     const monitor = await monitorSpec(db, ep.id);
+    // Patches: a computer that came back after its patch restart.
+    await onHeartbeatPatches(db, ep.organizationId, ep.id, body.uptime_seconds);
 
     const completedIds = await applyCommandResults(db, ep.id, cmdResults, now);
 
-    // Expire stale pending commands older than 10 minutes
+    // Expire stale pending commands older than 10 minutes. Scripts, update installs and restart
+    // questions the agent took run longer: their own jobs time them out (fleet-jobs, fleet-patches).
     await db.query(
       `UPDATE endpoint_commands
           SET status = 'expired', error = 'Command expired before the agent executed it', completed_at = $2
-        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered') AND created_at < $2::timestamptz - interval '10 minutes'`,
+        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered') AND created_at < $2::timestamptz - interval '10 minutes'
+          AND NOT (status = 'delivered' AND kind IN ('script_run', 'patch_install', 'patch_reboot_prompt'))`,
       [ep.id, now],
     );
 

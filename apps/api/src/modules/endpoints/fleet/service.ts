@@ -59,7 +59,8 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
     await db.query(
       `UPDATE endpoint_commands
           SET status = 'expired', error = 'Command expired before the agent executed it', completed_at = now()
-        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered') AND created_at < now() - interval '10 minutes'`,
+        WHERE endpoint_id = $1 AND status IN ('pending', 'delivered') AND created_at < now() - interval '10 minutes'
+          AND NOT (status = 'delivered' AND kind IN ('script_run', 'patch_install', 'patch_reboot_prompt'))`,
       [id],
     );
     const ep = (

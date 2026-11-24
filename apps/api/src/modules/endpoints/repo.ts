@@ -9,6 +9,7 @@ import { applySessionOpenResult } from './remote-desktop/sessions.ts';
 import { applyRestartResult } from './fleet-reach/restarts.ts';
 import { applyScriptResult, type ScriptRunData } from './fleet-jobs/jobs.ts';
 import { applyShellOpenFailure } from './fleet-shell/shells.ts';
+import { applyPatchResult } from './fleet-patches/service.ts';
 import type { commandResultSchema } from './schema.ts';
 
 // Queries shared by several concerns of the endpoints module (fleet, enrollment, agent gateway,
@@ -127,6 +128,10 @@ export async function applyCommandResults(
     if (row?.kind === 'script_run') {
       // A job's script finished (or failed, timed out, was cancelled) on this computer.
       await applyScriptResult(db, row.organization_id, endpointId, row.payload, resItem.ok, (resItem.data ?? null) as ScriptRunData | null, resItem.error ?? null);
+    }
+    if (row?.kind === 'patch_install' || row?.kind === 'patch_reboot_prompt' || row?.kind === 'patch_reboot') {
+      // Patches: install results, the person's answer to the restart question, the restart itself.
+      await applyPatchResult(db, row.organization_id, endpointId, row.kind, row.payload, resItem.ok, (resItem.data ?? null) as Record<string, unknown> | null, resItem.error ?? null);
     }
     if (row?.kind === 'shell_open' && !resItem.ok) {
       // The agent could not start the shell: the shell session ends here.

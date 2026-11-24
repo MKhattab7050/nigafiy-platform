@@ -27,6 +27,7 @@ import (
 	"github.com/nigafiy/agent/internal/control"
 	"github.com/nigafiy/agent/internal/desktop"
 	"github.com/nigafiy/agent/internal/monitor"
+	"github.com/nigafiy/agent/internal/patch"
 	"github.com/nigafiy/agent/internal/rdstream"
 	"github.com/nigafiy/agent/internal/reboot"
 	"github.com/nigafiy/agent/internal/scripts"
@@ -45,6 +46,8 @@ type Deps struct {
 	// CollectHardware: the slow hardware and licence inventory (nil: not reported).
 	CollectHardware func(ctx context.Context) sysinfo.Hardware
 	ExecuteCommand  func(ctx context.Context, cmd control.Command) control.Result
+	// Patch reads missing updates and installs approved ones (nil: patches not reported).
+	Patch patch.Scanner
 	// Desktop does the remote-desktop work (capture, input, consent, banner, clipboard): in this
 	// process, or through the session helper when the agent runs as a service. Nil: commands of a
 	// remote desktop session go to ExecuteCommand (as before Fleet Pro).
@@ -68,6 +71,7 @@ func SystemDeps() Deps {
 		CollectHealth:    sysinfo.CollectHealth,
 		CollectInventory: sysinfo.CollectInventory,
 		CollectHardware:  sysinfo.CollectHardware,
+		Patch:            patch.New(),
 		ExecuteCommand:   runner.Execute,
 		Desktop:          desktop.NewLocal(),
 		RebootRun:        reboot.ExecRunner,
@@ -120,7 +124,10 @@ type Agent struct {
 	wakeHeartbeat chan struct{}
 	wakeInventory chan struct{}
 	wakeHardware  chan struct{}
+	wakePatch     chan struct{}
 	cmdSem        chan struct{}
+	// patchBusy: one update install at a time.
+	patchBusy chan struct{}
 
 	sessions *rdstream.Manager
 	reboot   *reboot.Manager
@@ -175,7 +182,9 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
 		wakeHardware:  make(chan struct{}, 1),
+		wakePatch:     make(chan struct{}, 1),
 		cmdSem:        make(chan struct{}, 16),
+		patchBusy:     make(chan struct{}, 1),
 		scripts:       &scripts.Runner{},
 		monitor:       monitor.New(),
 	}
@@ -244,7 +253,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in Nigafiy IT Operations (inventory, health, and authorized remote administration are active)")
 
 	var wg sync.WaitGroup
-	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop, a.hardwareLoop} {
+	for _, fn := range []func(context.Context){a.heartbeatLoop, a.inventoryLoop, a.commandPollLoop, a.hardwareLoop, a.patchLoop} {
 		wg.Add(1)
 		go func(loop func(context.Context)) {
 			defer wg.Done()
@@ -579,6 +588,9 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	res, handled := a.sessionCommand(ctx, cmd)
 	if !handled {
 		res, handled = a.jobsCommand(ctx, cmd)
+	}
+	if !handled {
+		res, handled = a.patchCommand(ctx, cmd)
 	}
 	if !handled {
 		res, handled = a.shellCommand(ctx, cmd)
