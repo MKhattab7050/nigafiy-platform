@@ -36,6 +36,10 @@ type UpdateDoc struct {
 	State   string         `json:"state"`   // "idle" | "applying"
 	Version *string        `json:"version"` // the version being installed, while applying
 	Last    *update.Result `json:"last"`    // the outcome of the last installation, if any
+	// Install says how this installation was installed (null in a source checkout). An MSI-managed
+	// installation ("msi") is updated by its administrator through Group Policy or Intune: the
+	// engine refuses to run the NSIS update over it.
+	Install *update.InstallInfo `json:"install"`
 }
 
 // StackDoc carries the local stack's addresses once it is ready.

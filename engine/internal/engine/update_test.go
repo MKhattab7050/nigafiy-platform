@@ -168,3 +168,48 @@ func TestUpdateApplyChecksThePublisher(t *testing.T) {
 	}
 	<-r.done
 }
+
+func TestUpdateApplyIsRefusedOnAnMSIManagedInstall(t *testing.T) {
+	calls := fakeDetached(t)
+	install := filepath.Join(t.TempDir(), "Nigafiy")
+	bundle := filepath.Join(install, "resources", "backend")
+	os.MkdirAll(bundle, 0o700)
+	product := "{11111111-2222-3333-4444-555555555555}"
+	old := installRegistry
+	installRegistry = func() update.Registry {
+		return update.MapRegistry{
+			`HKLM\SOFTWARE\Classes\Installer\UpgradeCodes\` + update.PackGUID(update.MSIUpgradeCode): {update.PackGUID(product): ""},
+			`HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\` + product:                    {"WindowsInstaller": uint64(1), "InstallLocation": install},
+		}
+	}
+	t.Cleanup(func() { installRegistry = old })
+	r := startEngine(t, "stack", func(c *Config) { c.NoSensor = true; c.BundleDir = bundle })
+	doc := r.waitStatus(t, "install kind", func(d control.StatusDoc) bool { return d.Update != nil && d.Update.Install != nil })
+	if doc.Update.Install.Kind != update.KindMSI || doc.Update.Install.ProductCode != product {
+		t.Fatalf("status install %+v", doc.Update.Install)
+	}
+	p, sum := stage(t, r.cfg.DataDir, "Nigafiy-Setup-1.2.4.exe", []byte("installer"))
+	code, body := r.apply(t, update.Request{Installer: p, SHA256: sum, Version: "1.2.4"})
+	if code != http.StatusConflict || !strings.Contains(body, "Group Policy or Intune") {
+		t.Fatalf("apply on an MSI install: %d %s", code, body)
+	}
+	if len(*calls) != 0 {
+		t.Fatal("helper started on an MSI install")
+	}
+}
+
+func TestStatusSaysNSISForAnNSISInstall(t *testing.T) {
+	install := filepath.Join(t.TempDir(), "Nigafiy")
+	bundle := filepath.Join(install, "resources", "backend")
+	os.MkdirAll(bundle, 0o700)
+	old := installRegistry
+	installRegistry = func() update.Registry {
+		return update.MapRegistry{`HKCU\SOFTWARE\` + update.NSISGUID: {"InstallLocation": install}}
+	}
+	t.Cleanup(func() { installRegistry = old })
+	r := startEngine(t, "stack", func(c *Config) { c.NoSensor = true; c.BundleDir = bundle })
+	doc := r.waitStatus(t, "install kind", func(d control.StatusDoc) bool { return d.Update != nil && d.Update.Install != nil })
+	if doc.Update.Install.Kind != update.KindNSIS || doc.Update.Install.Scope != "user" {
+		t.Fatalf("status install %+v", doc.Update.Install)
+	}
+}

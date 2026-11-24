@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { PROGRAMS, type PlatformProgramsResponse } from '@nigafiy/shared-types/programs';
+import { PROGRAMS, type PlatformProgramsResponse, type PlatformUpdatesResponse } from '@nigafiy/shared-types/programs';
 import { Router } from 'express';
 import { z } from 'zod';
 import { audit, auditSystem } from '../../common/audit.ts';
@@ -10,7 +10,7 @@ import { defineModule } from '../../infrastructure/module.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { engineStatus } from './engine.ts';
-import { configuredEngine, configuredUpdate, installStatus, prepareDownload, requestInstall, startDownload } from './install.ts';
+import { configuredEngine, configuredUpdate, engineInstallKind, installStatus, prepareDownload, refuseIfMsiManaged, requestInstall, startDownload } from './install.ts';
 import { cachedUpdateCheck, configuredSource } from './updates.ts';
 
 /**
@@ -26,6 +26,9 @@ import { cachedUpdateCheck, configuredSource } from './updates.ts';
  *   POST /platform/updates/download admin (download, verify and stage the newer signed release)
  *   POST /platform/updates/install  admin, body { version, confirm: true } (hand the staged
  *                                   installer to the engine; never happens without this request)
+ *
+ * An installation the engine reports as MSI-managed (Windows Installer, deployed by GPO/Intune) is
+ * updated by its administrator: the check answers `msi_managed`, download and install are refused.
  */
 const VERSION = (() => {
   try {
@@ -62,13 +65,19 @@ router.get('/platform/engine', async (req, res) => {
   res.json(await engineStatus());
 });
 
+/** The update check, or `msi_managed` when the administrator updates this installation. */
+async function updateCheck(force: boolean): Promise<PlatformUpdatesResponse> {
+  if ((await engineInstallKind(configuredEngine())) === 'msi') return { configured: false, reason: 'msi_managed', current_version: VERSION };
+  return cachedUpdateCheck(configuredSource(VERSION), force);
+}
+
 router.get('/platform/updates', async (req, res) => {
   auth(req);
-  res.json(await cachedUpdateCheck(configuredSource(VERSION)));
+  res.json(await updateCheck(false));
 });
 
 router.post('/platform/updates/check', requireRole('admin'), async (_req, res) => {
-  res.json(await cachedUpdateCheck(configuredSource(VERSION), true));
+  res.json(await updateCheck(true));
 });
 
 router.get('/platform/updates/install', async (req, res) => {
@@ -79,6 +88,12 @@ router.get('/platform/updates/install', async (req, res) => {
 router.post('/platform/updates/download', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const cfg = configuredUpdate(VERSION);
+  try {
+    await refuseIfMsiManaged(configuredEngine());
+  } catch (err) {
+    await withTenant(ctx.organizationId, (db) => audit(db, req, 'platform.update.download_refused', { type: 'update', id: 'msi' }, { error: (err as Error).message.slice(0, 500) }));
+    throw err;
+  }
   const release = await prepareDownload(cfg);
   await withTenant(ctx.organizationId, (db) =>
     audit(db, req, 'platform.update.download_started', { type: 'update', id: release.payload.version }, { version: release.payload.version, component: release.component.id, size: release.component.size, sha256: release.component.sha256 }),

@@ -8,9 +8,11 @@ import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { ensureLanTls } from '../src/infrastructure/lan-tls.ts';
+import { env } from '../src/config/env.ts';
 import {
   checkPublisher,
   downloadVerified,
+  engineInstallKind,
   installStatus,
   prepareDownload,
   readStaged,
@@ -164,7 +166,7 @@ describe('update staging and hand-over to the engine', () => {
 
     const status = await installStatus(cfg, engine);
     expect(status.staged?.version).toBe('0.2.0');
-    expect(status.engine).toEqual({ state: 'idle', version: null, last: { version: '0.1.0', ok: true, error: null, finished_at: '2026-11-20T00:00:00Z', restarted: true } });
+    expect(status.engine).toEqual({ state: 'idle', version: null, install: null, last: { version: '0.1.0', ok: true, error: null, finished_at: '2026-11-20T00:00:00Z', restarted: true } });
 
     // A staged file changed after verification is deleted, never handed over.
     writeFileSync(path.join(dir, 'staged', 'Nigafiy-Update-0.2.0.exe'), Buffer.concat([INSTALLER.subarray(0, -1), Buffer.from([1])]));
@@ -256,6 +258,75 @@ describe('update routes', () => {
     expect((await acct.agent.post('/api/v1/platform/updates/install').set(CSRF).send({ version: '9.9.9', confirm: true })).status).toBe(403);
     expect((await acct.agent.get('/api/v1/platform/updates/install')).status).toBe(200);
     expect((await request(app).get('/api/v1/platform/updates/install')).status).toBe(401);
+  });
+});
+
+describe('MSI-managed installation: updates come from the administrator', () => {
+  const status = (install: unknown) => JSON.stringify({ version: '0.1.0', mode: 'service', started_at: '2026-11-24T00:00:00Z', children: [], update: { state: 'idle', version: null, last: null, install } });
+
+  it('reads the install kind from the engine and refuses to hand an update to an MSI install', async () => {
+    let install: unknown = { kind: 'msi', product_code: '{11111111-2222-3333-4444-555555555555}' };
+    let applyCalls = 0;
+    const url = await serveHttp((req, res) => {
+      if (req.url === '/v1/status') return void res.end(status(install));
+      applyCalls++;
+      res.writeHead(202);
+      res.end('{}');
+    });
+    const dir = tmp();
+    mkdirSync(path.join(dir, 'staged'), { recursive: true });
+    writeFileSync(path.join(dir, 'staged', 'Nigafiy-Update-0.2.0.exe'), INSTALLER);
+    writeFileSync(
+      path.join(dir, 'staged', 'staged.json'),
+      JSON.stringify({ version: '0.2.0', file: 'Nigafiy-Update-0.2.0.exe', size: INSTALLER.length, sha256: SHA, component: 'desktop-windows-x64', signature: { status: 'not_checked', thumbprint: null, checked: false }, staged_at: new Date().toISOString(), staged_by: 'a@b.c' }),
+    );
+    const tokenFile = path.join(dir, 'tok');
+    writeFileSync(tokenFile, 'x');
+    const engine = { controlUrl: url, tokenFile };
+    expect(await engineInstallKind(engine)).toBe('msi');
+    await expect(requestInstall('0.2.0', dir, engine)).rejects.toMatchObject({ status: 409, code: 'msi_managed' });
+    expect(applyCalls).toBe(0);
+    const s = await installStatus({ component: 'desktop-windows-x64', maxBytes: 1, currentVersion: '0.1.0', dir, checkSignature: async () => ({ status: 'NotSigned', thumbprint: null }) }, engine);
+    expect(s.engine?.install).toEqual({ kind: 'msi', product_code: '{11111111-2222-3333-4444-555555555555}' });
+
+    // An NSIS install (or an engine that does not say) is handed over as before; a bad product code is dropped.
+    resetInstallState();
+    install = { kind: 'nsis', scope: 'user', product_code: 'not-a-guid' };
+    expect(await engineInstallKind(engine)).toBe('nsis');
+    expect((await installStatus({ component: 'desktop-windows-x64', maxBytes: 1, currentVersion: '0.1.0', dir, checkSignature: async () => ({ status: 'NotSigned', thumbprint: null }) }, engine)).engine?.install).toEqual({ kind: 'nsis', product_code: null });
+    expect(await requestInstall('0.2.0', dir, engine)).toEqual({ version: '0.2.0' });
+    expect(applyCalls).toBe(1);
+    resetInstallState();
+    install = { kind: 'something-else' };
+    expect(await engineInstallKind(engine)).toBeNull();
+    expect(await engineInstallKind({ controlUrl: 'off', tokenFile })).toBeNull();
+  });
+
+  it('the update check says msi_managed and download/install are refused and audited', async () => {
+    const url = await serveHttp((_req, res) => res.end(status({ kind: 'msi', product_code: null })));
+    const saved = env.ENGINE_CONTROL_URL;
+    (env as { ENGINE_CONTROL_URL: string }).ENGINE_CONTROL_URL = url;
+    try {
+      const acct = await newAccount('updmsi');
+      const check = await acct.agent.get('/api/v1/platform/updates');
+      expect(check.status).toBe(200);
+      expect(check.body).toMatchObject({ configured: false, reason: 'msi_managed' });
+      const forced = await acct.agent.post('/api/v1/platform/updates/check').set(CSRF);
+      expect(forced.body).toMatchObject({ configured: false, reason: 'msi_managed' });
+      const dl = await acct.agent.post('/api/v1/platform/updates/download').set(CSRF);
+      expect(dl.status).toBe(409);
+      expect(dl.body.error.code).toBe('msi_managed');
+      const inst = await acct.agent.post('/api/v1/platform/updates/install').set(CSRF).send({ version: '9.9.9', confirm: true });
+      expect(inst.status).toBe(409);
+      expect(inst.body.error.code).toBe('msi_managed');
+      const rows = await systemPool.query(`SELECT action FROM audit_logs WHERE organization_id = $1 AND action LIKE 'platform.update.%' ORDER BY created_at`, [acct.organizationId]);
+      expect(rows.rows.map((r) => r.action)).toEqual(['platform.update.download_refused', 'platform.update.install_refused']);
+      await setRole(acct.email, acct.organizationId, 'viewer');
+      expect((await acct.agent.get('/api/v1/platform/updates')).body.reason).toBe('msi_managed');
+      expect((await acct.agent.post('/api/v1/platform/updates/download').set(CSRF)).status).toBe(403);
+    } finally {
+      (env as { ENGINE_CONTROL_URL: string }).ENGINE_CONTROL_URL = saved;
+    }
   });
 });
 

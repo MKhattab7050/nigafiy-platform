@@ -126,7 +126,12 @@ export type PlatformEngineResponse =
     };
 
 export type PlatformUpdatesResponse =
-  | { readonly configured: false; readonly reason: 'no_source' | 'no_key'; readonly current_version: string }
+  /**
+   * Off: no source, no key, or `msi_managed`: this installation was installed from the MSI (Windows
+   * Installer), so its administrator updates it through Group Policy or Intune and the in-app updater
+   * is not offered.
+   */
+  | { readonly configured: false; readonly reason: 'no_source' | 'no_key' | 'msi_managed'; readonly current_version: string }
   | {
       readonly configured: true;
       readonly current_version: string;
@@ -145,6 +150,9 @@ export type PlatformUpdatesResponse =
       /** Download failed, the signature did not verify, or the manifest was malformed. Never shown as "up to date". */
       readonly error: 'unreachable' | 'bad_signature' | 'bad_manifest';
     };
+
+/** `msi`: Windows Installer (GPO/Intune) manages it; `nsis`: the Nigafiy setup; `unknown`: neither registration names its folder. */
+export type PlatformInstallKind = 'msi' | 'nsis' | 'unknown';
 
 /** Authenticode result of a staged installer; `checked: false` when no publisher is pinned. */
 export interface PlatformUpdateSignature {
@@ -176,6 +184,8 @@ export interface PlatformUpdateInstallStatus {
   readonly engine: {
     readonly state: 'idle' | 'applying';
     readonly version: string | null;
+    /** How this installation was installed (the engine reads the registry); null when not reported. */
+    readonly install: { readonly kind: PlatformInstallKind; readonly product_code: string | null } | null;
     readonly last: { readonly version: string; readonly ok: boolean; readonly error: string | null; readonly finished_at: string | null; readonly restarted: boolean } | null;
   } | null;
 }

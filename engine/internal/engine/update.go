@@ -26,10 +26,14 @@ const shutdownDelay = 2 * time.Second
 
 // Replaced in tests.
 var (
-	startDetached = update.StartDetached
-	checkSig      = update.CheckAuthenticode
-	selfExe       = os.Executable
+	startDetached   = update.StartDetached
+	checkSig        = update.CheckAuthenticode
+	selfExe         = os.Executable
+	installRegistry = update.SystemRegistry
 )
+
+// msiManaged is the refusal for an MSI-managed installation.
+const msiManaged = "this installation is managed by Windows Installer (MSI): updates come from your administrator through Group Policy or Intune, not from the in-app updater"
 
 // updater hands a verified, staged installer to the update helper (`nigafiy-engine update-apply`,
 // a copy of this program in <data-dir>/updates/helper) and then shuts the engine down. The helper
@@ -40,6 +44,23 @@ type updater struct {
 
 	mu       sync.Mutex
 	applying string // version being handed over
+
+	kindOnce sync.Once
+	kind     *update.InstallInfo
+}
+
+// install is how this installation was installed, read once from the registry (nil in a source
+// checkout).
+func (u *updater) install() *update.InstallInfo {
+	u.kindOnce.Do(func() {
+		dir, err := u.installDir()
+		if err != nil {
+			return
+		}
+		info := update.DetectInstall(dir, installRegistry())
+		u.kind = &info
+	})
+	return u.kind
 }
 
 func newUpdater(e *engine) *updater { return &updater{e: e} }
@@ -56,6 +77,7 @@ func (u *updater) doc() *control.UpdateDoc {
 	if last, err := update.ReadResult(update.ResultPath(u.e.cfg.DataDir)); err == nil {
 		d.Last = last
 	}
+	d.Install = u.install()
 	return d
 }
 
@@ -93,6 +115,9 @@ func (u *updater) apply(req update.Request) (control.UpdateDoc, error) {
 	dir, err := u.installDir()
 	if err != nil {
 		return control.UpdateDoc{}, err
+	}
+	if k := u.install(); k != nil && k.Kind == update.KindMSI {
+		return control.UpdateDoc{}, fmt.Errorf("%w: %s", control.ErrRefused, msiManaged)
 	}
 	if err := req.Validate(e.cfg.DataDir); err != nil {
 		return control.UpdateDoc{}, errors.Join(control.ErrUpdateRejected, err)

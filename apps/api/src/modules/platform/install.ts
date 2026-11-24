@@ -5,7 +5,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { PlatformUpdateInstallStatus, PlatformUpdateSignature } from '@nigafiy/shared-types/programs';
+import type { PlatformInstallKind, PlatformUpdateInstallStatus, PlatformUpdateSignature } from '@nigafiy/shared-types/programs';
 import { z } from 'zod';
 import { AppError } from '../../common/http.ts';
 import { env } from '../../config/env.ts';
@@ -194,6 +194,7 @@ let download: DownloadState = { state: 'idle' };
 
 export function resetInstallState(): void {
   download = { state: 'idle' };
+  kindCache = null;
 }
 
 /** The staged update, if its record is valid and its file is still there with the right size. */
@@ -318,8 +319,38 @@ export function configuredEngine(): EngineLink {
   return { controlUrl: env.ENGINE_CONTROL_URL, tokenFile: path.join(dataDir, 'engine', 'control-token') };
 }
 
+const KINDS: readonly PlatformInstallKind[] = ['msi', 'nsis', 'unknown'];
+let kindCache: { url: string; at: number; kind: PlatformInstallKind | null } | null = null;
+
+/**
+ * How the engine says this installation was installed (`update.install.kind` of GET /v1/status),
+ * cached for a minute; null when no engine answers or it does not say.
+ */
+export async function engineInstallKind(engine: EngineLink): Promise<PlatformInstallKind | null> {
+  if (engine.controlUrl === 'off') return null;
+  if (kindCache && kindCache.url === engine.controlUrl && Date.now() - kindCache.at < 60_000) return kindCache.kind;
+  let kind: PlatformInstallKind | null = null;
+  try {
+    const res = await (engine.fetchImpl ?? fetch)(`${engine.controlUrl}/v1/status`, { signal: AbortSignal.timeout(3500), redirect: 'error' });
+    if (res.ok) kind = parseEngineUpdate(((await res.json()) as { update?: unknown }).update)?.install?.kind ?? null;
+  } catch {
+    kind = null;
+  }
+  kindCache = { url: engine.controlUrl, at: Date.now(), kind };
+  return kind;
+}
+
+export const MSI_MANAGED_MESSAGE =
+  'This installation was installed from the MSI (Windows Installer), so your administrator updates it through Group Policy or Intune; the in-app updater does not install over it.';
+
+/** Refuses (409 msi_managed) when the engine reports an MSI-managed installation. */
+export async function refuseIfMsiManaged(engine: EngineLink): Promise<void> {
+  if ((await engineInstallKind(engine)) === 'msi') throw new AppError(409, 'msi_managed', MSI_MANAGED_MESSAGE);
+}
+
 /** Re-hashes the staged installer and asks the engine to install it. */
 export async function requestInstall(version: string, dir: string, engine: EngineLink): Promise<{ version: string }> {
+  await refuseIfMsiManaged(engine);
   const rec = readStaged(dir);
   if (!rec) throw new AppError(409, 'nothing_staged', 'No downloaded update is waiting to be installed.');
   if (rec.version !== version) throw new AppError(409, 'version_mismatch', `The staged update is ${rec.version}, not ${version}.`);
@@ -392,9 +423,12 @@ function parseEngineUpdate(raw: unknown): PlatformUpdateInstallStatus['engine'] 
   if (!raw || typeof raw !== 'object') return null;
   const u = raw as Record<string, unknown>;
   const last = u.last && typeof u.last === 'object' ? (u.last as Record<string, unknown>) : null;
+  const inst = u.install && typeof u.install === 'object' ? (u.install as Record<string, unknown>) : null;
+  const kind = inst ? KINDS.find((k) => k === inst.kind) : undefined;
   return {
     state: u.state === 'applying' ? 'applying' : 'idle',
     version: str(u.version, 40),
+    install: kind ? { kind, product_code: typeof inst?.product_code === 'string' && /^\{[0-9A-F-]{36}\}$/i.test(inst.product_code) ? inst.product_code : null } : null,
     last: last
       ? {
           version: str(last.version, 40) ?? '',
