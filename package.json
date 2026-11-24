@@ -25,7 +25,7 @@
     "test:collector": "cd collectors/lan-collector && go test ./...",
     "build:collector": "cd collectors/lan-collector && go build -o bin/ ./cmd/nigafiy-sensor",
     "test:agent": "cd agents/endpoint-agent && go test ./...",
-    "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/nigafiy-agent",
+    "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/nigafiy-agent && go build -o bin/nigafiy-support.exe ./cmd/nigafiy-support",
     "test:engine": "cd engine && go test ./...",
     "build:engine": "cd engine && go build -o bin/ ./cmd/nigafiy-engine",
     "build:launchers": "node scripts/build-launchers.mjs",
