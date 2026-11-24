@@ -8,6 +8,8 @@
 //   - block:    manages host alias "lan_detective_blocked" via /api/firewall/alias_util/{list,add,delete}
 //               (creates the alias via /api/firewall/alias/addItem + /api/firewall/alias/reconfigure
 //               when absent). Administrators reference this alias in a LAN block rule.
+//   - rename:   the host name of the device's Kea DHCPv4 reservation (rename.go)
+//   - port forwards: destination NAT, OPNsense 26.1 and newer only (portforward.go)
 package opnsense
 
 import (
@@ -166,10 +168,10 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapRateLimit, Supported: false, Note: "OPNsense traffic shaping uses dummynet pipes/queues configured per policy"},
 		{Capability: router.CapSchedule, Supported: false, Note: "OPNsense schedules attach to firewall rules rather than individual MAC entries"},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
-		{Capability: router.CapWiFi, Supported: false, Note: "OPNsense is a dedicated firewall; manage Wi-Fi on your access points"},
+		{Capability: router.CapWiFi, Supported: false, Note: "OPNsense has no wireless API (Interfaces → Wireless is a legacy page in 24.x–26.x, and wireless cards are rare on firewalls), so manage Wi-Fi on your access points"},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
-		{Capability: router.CapPortForward, Supported: false, Note: portForwardNote(d.info.Firmware)},
-		{Capability: router.CapRename, Supported: false, Note: "OPNsense does not expose a separate client alias API"},
+		portForwardCapability(d.info.Firmware),
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename, Requires: router.RequiresReservation, Note: "OPNsense keeps no client alias table: the name is stored as the host name of the device's Kea DHCP reservation, so the device needs a reservation first; letters, digits and hyphens only"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
@@ -545,14 +547,23 @@ func first(vals ...string) string {
 	return ""
 }
 
-// portForwardNote explains the refusal of port-forward changes. Older releases manage destination NAT
-// only through legacy pages; newer ones add a destination-NAT API (/api/firewall/d_nat) whose rule
-// format changed between releases and has not been verified against a real firewall, so this driver
-// does not write it. The detected firmware is named so the administrator knows what was checked.
+// portForwardCapability: destination NAT has an API from OPNsense 26.1 on (portforward.go); older
+// firmware manages port forwards only on the legacy page, so the capability is refused there.
+func portForwardCapability(firmware string) router.CapabilityStatus {
+	if dnatSupported(firmware) {
+		return router.CapabilityStatus{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward,
+			Note: "Destination NAT on the WAN address; the rule passes traffic itself (no separate filter rule)"}
+	}
+	return router.CapabilityStatus{Capability: router.CapPortForward, Supported: false, Note: portForwardNote(firmware)}
+}
+
+// portForwardNote explains the refusal of port-forward changes on firmware older than 26.1, which has
+// no destination-NAT API (port forwards live only on the legacy Firewall → NAT → Port Forward page).
+// The detected firmware is named so the administrator knows what was checked.
 func portForwardNote(firmware string) string {
 	fw := strings.TrimSpace(firmware)
 	if fw == "" {
 		fw = "unknown version"
 	}
-	return "Port forwards are not changed on OPNsense (firmware " + fw + "): the destination-NAT API differs between releases and is not verified, so manage them under Firewall → NAT → Port Forward"
+	return "Port forwards are changed only on OPNsense 26.1 or newer, which has the destination-NAT API; this firewall runs " + fw + ", so manage them under Firewall → NAT → Port Forward"
 }

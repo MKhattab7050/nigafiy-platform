@@ -171,10 +171,14 @@ func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 	if err != nil {
 		return router.Settings{}, err
 	}
-	return router.Settings{
-		Overview:     ov,
-		Reservations: res,
-	}, nil
+	out := router.Settings{Overview: ov, Reservations: res}
+	if fw, err := d.firmware(ctx); err == nil && dnatSupported(fw) {
+		// Not readable now (e.g. the API user lacks the Destination NAT privilege): left out, not invented.
+		if pf, err := d.readPortForwards(ctx, "settings"); err == nil {
+			out.PortForwards = pf
+		}
+	}
+	return out, nil
 }
 
 func (d *Driver) AddReservation(ctx context.Context, rawMAC, rawIP string) (router.Change, error) {
