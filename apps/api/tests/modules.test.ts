@@ -18,6 +18,7 @@ describe('module registry', () => {
       [
         ['collector-watch', 15_000, 727101, 'collectors'],
         ['config-backup', 300_000, 727122, 'config-backup'],
+        ['fleet-reach-sweep', 30_000, 727171, 'endpoints'],
         ['fleet-recording-retention', 3_600_000, 727170, 'endpoints'],
         ['maintenance-watch', 30_000, 727105, 'maintenance'],
         ['notification-dispatch', 5_000, 727102, 'notifications'],
@@ -77,6 +78,7 @@ describe('GET /api/v1/system/modules', () => {
     expect(jobs.map((j) => j.name).sort()).toEqual([
       'collector-watch',
       'config-backup',
+      'fleet-reach-sweep',
       'fleet-recording-retention',
       'maintenance-watch',
       'notification-dispatch',
