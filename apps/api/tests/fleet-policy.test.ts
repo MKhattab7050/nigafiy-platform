@@ -379,8 +379,8 @@ describe('fleet permission profiles, groups and access policy (API)', () => {
     // Another admin (not the session holder) still uses the file manager under their role.
     const other = await addMember(a, 'admin');
     expect((await other.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'fs_op', op: 'list', path: 'C:\\Users' })).status).toBe(202);
-    // ... but frames and input of the session are limited for everyone.
-    expect((await other.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'x' })).body.error.code).toBe('profile_forbids_control');
+    // ... but frames and input of the session belong to its operators only (multi-operator, migration 036).
+    expect((await other.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_input', event_kind: 'text', text: 'x' })).body.error.code).toBe('not_a_participant');
   });
 
   it('attended: the user accepts within the group timeout; unattended refuse window: only a refusal stops it', async () => {
