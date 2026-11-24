@@ -245,21 +245,24 @@ Milestones 2, 3 and 4, the spec gap work and the parity audit (2026-11-23) are d
 
 **Open gaps, most important first (owner picks the order):**
 1. **Fleet Pro** waves 1–3 are built (`035`–`037`, `042`, `043`). Not built, by the owner's choice: WebRTC, H.264, the TURN relay and 60 fps / 4K streaming; the picture stays WebSocket + JPEG. Everything listed as "Never run" above needs the owner's own second computer, an elevated install or a real update cycle.
-2. **Router controls are uneven across the 16 drivers** (each missing control answers "not supported" honestly): rename missing on 8, Wi-Fi on 4, rate limit on 11, schedule on 12; Cisco IOS XE is read-only by design.
+2. **Router controls** were closed per driver on 2026-11-24 (R1, R2; `docs/features/router-controls.md` has the matrix with the vendor source of every control). What is still "not supported" is missing from that firmware's documented interface, or refused for safety, each with its note. Every new control is checked only against protocol test doubles; none ran on a real router. Where a router can block but not schedule, Nigafiy still applies the schedule itself by blocking and unblocking.
 
    | Driver | Rename | Wi-Fi | Reserv. | Port fwd | Reboot | Rate limit | Schedule |
    | --- | --- | --- | --- | --- | --- | --- | --- |
-   | asus, huawei, unifi | Y | Y | Y | Y | Y | – | – |
    | mikrotik | Y | Y | Y | Y | Y | Y | Y |
-   | omada | Y | Y | Y | Y | Y | Y | – |
-   | openwrt | Y | Y | Y | Y | Y | – | Y |
    | zyxel | Y | Y | Y | Y | Y | upload only | Y |
-   | tenda | – | Y | Y | Y | Y | Y | – |
+   | unifi | Y | Y | Y | Y | Y | Y | Y (Network 7.x+) |
+   | fortigate | via reservation | Y (with SSIDs) | Y | Y | Y | Y | Y |
+   | openwrt | Y | Y | Y | Y | Y | with nft-qos | Y |
+   | asus | Y | Y | Y | Y | Y | – (limiter rules carry no label) | Y (firmware 386+) |
+   | omada | Y | Y | Y | Y | Y | Y | – |
+   | tenda | V15.03 only | Y | Y | Y | Y | Y | – |
+   | opnsense | via reservation | – | Y | 26.1+ | Y | Y | – (no schedule API) |
+   | pfsense | via reservation | – | Y | Y | Y | – (no safe limiter placement) | Y |
+   | huawei | Y | Y | Y | Y | Y | – | – |
    | dlink, tplink, zte | – | Y | Y | Y | Y | – | – |
    | huaweilte | – | Y | – | Y | Y | – | – |
-   | fortigate, pfsense | – | – | Y | Y | Y | – | – |
-   | opnsense | – | – | Y | – | Y | – | – |
-   | ciscoxe | – | – | – | – | – | – | – |
+   | ciscoxe | – | – | – | – | – | – | – (read-only by design) |
 3. **Config restore** covers Juniper Junos only.
 4. **Installers:** no installer step that finds and imports a `C:\Program Files\LAN Detective` install, no per-program packages or bundle installer, MSI never built (needs WiX), agent installer never run and has no in-place upgrade.
 5. Remote desktop sends JPEG only (no pure-Go WebP encoder).
