@@ -2,9 +2,13 @@
 package config
 
 import (
+	"bufio"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -37,9 +41,14 @@ func FromEnv() Config {
 	return cfg
 }
 
-// ParsePin parses a SHA-256 certificate fingerprint given as 64 hex characters or colon-separated hex bytes.
+// ParsePin parses a SHA-256 certificate fingerprint given as 64 hex characters or colon-separated
+// hex bytes, with or without a "sha256:" prefix (any case), the form the console shows.
 func ParsePin(s string) ([]byte, error) {
-	clean := strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(strings.TrimSpace(s)))
+	s = strings.TrimSpace(s)
+	if len(s) >= 7 && strings.EqualFold(s[:7], "sha256:") {
+		s = s[7:]
+	}
+	clean := strings.ToLower(strings.NewReplacer(":", "", " ", "").Replace(s))
 	b, err := hex.DecodeString(clean)
 	if err != nil || len(b) != 32 {
 		return nil, errors.New("tls_pin_sha256 must be a SHA-256 fingerprint (64 hex digits, optionally colon-separated)")
@@ -81,3 +90,34 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// maxTokenFile bounds what ReadTokenFile reads: an enrollment token is one short line.
+const maxTokenFile = 4096
+
+// ReadTokenFile returns the first line of path, trimmed: the enrollment token for -token-file. The
+// file's content never appears in an error (only its path), so it cannot reach a log.
+func ReadTokenFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the token file %s: %w", path, errors.Unwrap(err))
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("cannot read the token file %s", path)
+	}
+	if st.IsDir() {
+		return "", fmt.Errorf("the token file %s is a folder", path)
+	}
+	if st.Size() > maxTokenFile {
+		return "", fmt.Errorf("the token file %s is larger than %d bytes; it must hold the token on its first line", path, maxTokenFile)
+	}
+	line, err := bufio.NewReader(io.LimitReader(f, maxTokenFile)).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("cannot read the token file %s", path)
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(line, "\xef\xbb\xbf"))
+	if token == "" {
+		return "", fmt.Errorf("the token file %s has no token on its first line", path)
+	}
+	return token, nil
+}
