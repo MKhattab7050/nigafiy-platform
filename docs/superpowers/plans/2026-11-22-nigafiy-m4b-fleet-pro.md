@@ -64,9 +64,9 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 ### Wave 3 — Close (lead)
 
 **Task 11: Gate and parity**
-- [ ] Walk every bullet of `docs/features/fleet-pro.md` in the running Fleet program (EN + AR) and record the result in `status.md`.
-- [ ] Full gate: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:agent`, `pnpm test:collector`, `pnpm test:engine`, desktop tests, `pnpm test:web`.
-- [ ] Not-verified list: anything that needs a second physical computer, another site through the relay, LocalSystem service install, or a real Windows Update cycle.
+- [x] Walk every bullet of `docs/features/fleet-pro.md` in the running Fleet program (EN + AR) and record the result in `status.md`.
+- [x] Full gate: `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm test:agent`, `pnpm test:collector`, `pnpm test:engine`, desktop tests, `pnpm test:web`.
+- [x] Not-verified list: anything that needs a second physical computer, another site through the relay, LocalSystem service install, or a real Windows Update cycle.
 
 ## Results
 
