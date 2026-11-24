@@ -138,9 +138,14 @@ export async function deliverPendingCommands(db: Db, endpointId: string, now: Da
       RETURNING id, kind, payload, created_at`,
     [endpointId, now],
   );
-  // Commands queued in one transaction share created_at; a notice then goes first.
-  const rank = (c: { kind: string; created_at: Date }) => c.created_at.getTime() * 2 + (c.kind === 'notify_user' ? 0 : 1);
-  return rows.sort((a, b) => rank(a) - rank(b)).map(({ id, kind, payload }) => ({ id, kind, payload }));
+  // Commands queued in one transaction share created_at (and the table has no insert order), so
+  // ties are broken by kind: the notice first, then the session open (banner + stream), then the
+  // rest, e.g. the first rd_capture. Without this the frame request could reach the agent before
+  // the session it belongs to.
+  const tieOrder = (kind: string) => (kind === 'notify_user' ? 0 : kind === 'rd_session_open' ? 1 : 2);
+  return rows
+    .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || tieOrder(a.kind) - tieOrder(b.kind))
+    .map(({ id, kind, payload }) => ({ id, kind, payload }));
 }
 
 /** Shows a message on the endpoint's screen (agent `notify_user`). */
