@@ -106,6 +106,11 @@ type Config struct {
 	OnHelpRequest func(note, user string)
 	// OnITActivity gets "IT activity…" from the tray (the agent shows the list).
 	OnITActivity func()
+	// OnRecordings gets "Past recordings…" from the tray.
+	OnRecordings func(user string)
+	// OnEndSession gets "End current session" from the tray (after the remote session, if any,
+	// was ended here as from the banner): the agent ends the remote shells.
+	OnEndSession func()
 }
 
 // Manager holds at most one live session (a new one replaces the old).

@@ -1,8 +1,10 @@
 // Package tray is the Nigafiy icon in the notification area of the signed-in user's desktop:
 // "Request help…" (the person writes a note for IT), the computer's Nigafiy ID, and "About
-// Nigafiy" with what IT can and cannot do here, and "IT activity…" (the sessions, shells and
-// scripts of the last 30 days). It runs where the desktop work runs: in the agent itself, or in
-// the session helper when the agent is the Windows service.
+// Nigafiy" with what IT can and cannot do here, "IT activity…" (the sessions, shells, scripts,
+// file transfers and update installs of the last 30 days), "End current session" (the remote
+// session and every remote shell, as the banner's End button) and, when the computer's group
+// allows it, "Past recordings…". It runs where the desktop work runs: in the agent itself, or in
+// the session helper when the agent is the Windows service. No policy can hide it.
 package tray
 
 import (
@@ -20,6 +22,10 @@ type Options struct {
 	OnRequestHelp func()
 	// OnITActivity runs when the person picks "IT activity…" (what IT did on this computer).
 	OnITActivity func()
+	// OnRecordings runs on "Past recordings…" (shown only when the group allows it).
+	OnRecordings func()
+	// OnEndSession runs on "End current session" (enabled while a session or shell is open).
+	OnEndSession func()
 }
 
 // Menu item ids.
@@ -28,7 +34,30 @@ const (
 	ItemID
 	ItemAbout
 	ItemITActivity
+	ItemRecordings
+	ItemEndSession
 )
+
+// MenuEntry is one line of the tray menu.
+type MenuEntry struct {
+	ID     int
+	Grayed bool
+	// Separator before this entry.
+	Separator bool
+}
+
+// MenuEntries is the tray menu. Request help, IT activity, End current session, the Nigafiy ID and
+// About are always there (End current session is grayed when nothing is open); Past recordings
+// only when the computer's group lets the person watch them.
+func MenuEntries(recordings, sessionOpen bool) []MenuEntry {
+	m := []MenuEntry{{ID: ItemRequestHelp}, {ID: ItemITActivity}}
+	if recordings {
+		m = append(m, MenuEntry{ID: ItemRecordings})
+	}
+	m = append(m, MenuEntry{ID: ItemEndSession, Grayed: !sessionOpen, Separator: true})
+	m = append(m, MenuEntry{ID: ItemID, Grayed: true, Separator: true}, MenuEntry{ID: ItemAbout})
+	return m
+}
 
 // MenuLabels: the tray menu, English then Arabic on each line (the user's language is unknown here).
 func MenuLabels(nigafiyID string) map[int]string {
@@ -37,6 +66,8 @@ func MenuLabels(nigafiyID string) map[int]string {
 		ItemID:          "Nigafiy ID: " + FormatID(nigafiyID),
 		ItemAbout:       "About Nigafiy · حول Nigafiy",
 		ItemITActivity:  "IT activity… · نشاط تقنية المعلومات…",
+		ItemRecordings:  "Past recordings… · التسجيلات السابقة…",
+		ItemEndSession:  "End current session · إنهاء الجلسة الحالية",
 	}
 }
 
@@ -81,7 +112,7 @@ const HelpPrompt = "Describe what you need help with. Your IT team sees this not
 
 // ActivityItem is one row of the "IT activity" list (POST /agent/it-activity).
 type ActivityItem struct {
-	Kind    string  `json:"kind"` // session | shell | job
+	Kind    string  `json:"kind"` // session | shell | job | file_transfer | patch
 	By      string  `json:"by"`
 	What    string  `json:"what"`
 	Reason  *string `json:"reason"`
@@ -103,18 +134,24 @@ func ActivityText(items []ActivityItem, loc *time.Location) string {
 		if t, err := time.Parse(time.RFC3339Nano, it.At); err == nil {
 			when = t.In(loc).Format("2006-01-02 15:04")
 		}
-		kind := map[string]string{"session": "Remote support session / جلسة دعم عن بُعد", "shell": "Remote shell / سطر أوامر عن بُعد", "job": "Script / برنامج نصي"}[it.Kind]
+		kind := map[string]string{
+			"session":       "Remote support session / جلسة دعم عن بُعد",
+			"shell":         "Remote shell / سطر أوامر عن بُعد",
+			"job":           "Script / برنامج نصي",
+			"file_transfer": "File transfer / نقل ملف",
+			"patch":         "Updates installed / تثبيت تحديثات",
+		}[it.Kind]
 		if kind == "" {
 			kind = it.Kind
 		}
 		fmt.Fprintf(&b, "\n%s · %s · %s", when, kind, it.By)
-		if it.Kind == "job" && it.What != "" {
+		if (it.Kind == "job" || it.Kind == "file_transfer" || it.Kind == "patch") && it.What != "" {
 			fmt.Fprintf(&b, " · %s", strings.TrimPrefix(it.What, "Script: "))
 		}
 		if it.Reason != nil && *it.Reason != "" {
 			fmt.Fprintf(&b, " · %s", *it.Reason)
 		}
-		if it.EndedAt == nil && it.Kind != "job" {
+		if it.EndedAt == nil && (it.Kind == "session" || it.Kind == "shell") {
 			b.WriteString(" · open now / مفتوح الآن")
 		}
 	}

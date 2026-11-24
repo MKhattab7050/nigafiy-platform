@@ -138,6 +138,8 @@ type Agent struct {
 	// nigafiyID: this computer's Nigafiy ID (from the heartbeat), shown in the tray.
 	nigafiyID string
 	trayID    string
+	// trayRecordings: the group lets the person watch past recordings (heartbeat answer).
+	trayRecordings bool
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -208,6 +210,8 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			},
 			OnHelpRequest: a.sendHelpRequest,
 			OnITActivity:  a.showITActivity,
+			OnRecordings:  a.showRecordings,
+			OnEndSession:  a.endShellsFromTray,
 		})
 	}
 	a.reboot = &reboot.Manager{
@@ -428,6 +432,9 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		Commands                 []control.Command `json:"commands"`
 		NigafiyID                string            `json:"nigafiy_id"`
 		Monitor                  *monitor.Spec     `json:"monitor"`
+		Tray                     struct {
+			Recordings bool `json:"recordings"`
+		} `json:"tray"`
 	}
 	if err := a.post(ctx, "/heartbeat", body, true, &resp); err != nil {
 		if ctx.Err() != nil {
@@ -438,6 +445,9 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
 	}
 	*attempt = 0
+	a.mu.Lock()
+	a.trayRecordings = resp.Tray.Recordings
+	a.mu.Unlock()
 	a.showTray(ctx, resp.NigafiyID)
 	if resp.Monitor != nil {
 		a.monitor.SetSpec(*resp.Monitor)

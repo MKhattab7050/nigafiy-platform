@@ -20,14 +20,14 @@ interface Detail {
   segments: Array<{ name: string; bytes: number; started_at: string }>;
   timeline: FleetRecordingTimelineItem[];
 }
-interface RecordItem {
+export interface RecordItem {
   type: number;
   ms: number;
   payload: Uint8Array;
 }
 
 /** A decrypted segment from the API: [u32 BE length][u8 type][u64 BE ms][payload] repeated. */
-function parseSegment(buf: ArrayBuffer): RecordItem[] {
+export function parseSegment(buf: ArrayBuffer): RecordItem[] {
   const v = new DataView(buf);
   const out: RecordItem[] = [];
   let off = 0;

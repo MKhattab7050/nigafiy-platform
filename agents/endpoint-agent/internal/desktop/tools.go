@@ -38,6 +38,9 @@ const (
 	ToolEndAllForSess = "end_all"
 	// ToolTray shows (or updates) the Nigafiy tray icon: Request help, About with the Nigafiy ID.
 	ToolTray = "tray"
+	// ToolOpenURL opens a page of the Nigafiy server in the person's browser (a "Past recordings"
+	// link). The agent builds the URL from its own server address; http(s) only.
+	ToolOpenURL = "open_url"
 )
 
 type ToolRequest struct {
@@ -50,12 +53,17 @@ type ToolRequest struct {
 	Paths   []string           `json:"paths,omitempty"`
 	Mono    bool               `json:"mono,omitempty"`
 	Tray    *TrayInfo          `json:"tray,omitempty"`
+	URL     string             `json:"url,omitempty"`
 }
 
 // TrayInfo is what the tray shows in "About".
 type TrayInfo struct {
 	NigafiyID string `json:"nigafiy_id"`
 	Server    string `json:"server"`
+	// Recordings: show "Past recordings…" (the group allows it). SessionOpen: enable "End current
+	// session" (a remote session or shell is open).
+	Recordings  bool `json:"recordings,omitempty"`
+	SessionOpen bool `json:"session_open,omitempty"`
 }
 
 type ToolResult struct {
@@ -68,12 +76,12 @@ type ToolResult struct {
 // ToolEvent comes from the desktop on its own: a chat reply typed by the person, the end
 // combination pressed while input is blocked, an audio packet (Data holds the ADPCM bytes).
 type ToolEvent struct {
-	Session string        `json:"session"`
-	Kind    string        `json:"kind"` // chat_reply | end_combo | audio | audio_error | help_request | it_activity_request
-	Text    string        `json:"text,omitempty"`
+	Session string `json:"session"`
+	Kind    string `json:"kind"` // chat_reply | end_combo | audio | audio_error | help_request | it_activity_request
+	Text    string `json:"text,omitempty"`
 	// User: the account that asked (help_request from the tray).
-	User string `json:"user,omitempty"`
-	Audio   *audio.Header `json:"audio,omitempty"`
+	User  string        `json:"user,omitempty"`
+	Audio *audio.Header `json:"audio,omitempty"`
 }
 
 // ErrToolUnsupported: the tool cannot run on this desktop (the error says why).
@@ -237,6 +245,8 @@ func (l *Local) Tool(ctx context.Context, req ToolRequest, data []byte) (ToolRes
 	case ToolEndAllForSess:
 		l.endTools(req.Session)
 		return ToolResult{}, nil, nil
+	case ToolOpenURL:
+		return ToolResult{}, nil, openURL(req.URL)
 	}
 	return ToolResult{}, nil, fmt.Errorf("unknown session tool %q", req.Op)
 }

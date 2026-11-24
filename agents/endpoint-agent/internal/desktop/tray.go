@@ -27,14 +27,25 @@ func (l *Local) showTray(info TrayInfo) error {
 		if start == nil {
 			start = tray.Start
 		}
-		icon, err := start(tray.Options{OnRequestHelp: l.requestHelp, OnITActivity: l.requestITActivity})
+		icon, err := start(tray.Options{OnRequestHelp: l.requestHelp, OnITActivity: l.requestITActivity, OnRecordings: l.requestRecordings, OnEndSession: l.requestEndSession})
 		if err != nil {
 			return err
 		}
 		l.tray.icon = icon
 	}
 	l.tray.icon.SetInfo(info.NigafiyID, info.Server)
+	l.tray.icon.SetMenuState(info.Recordings, info.SessionOpen)
 	return nil
+}
+
+// requestRecordings: "Past recordings…" (the agent lists them and opens the chosen link).
+func (l *Local) requestRecordings() {
+	l.tools.emit(ToolEvent{Kind: "recordings_request", User: currentUser()}, nil)
+}
+
+// requestEndSession: "End current session" ends the remote session and every remote shell.
+func (l *Local) requestEndSession() {
+	l.tools.emit(ToolEvent{Kind: "end_session_request", User: currentUser()}, nil)
 }
 
 // requestHelp asks the person for a note and hands it to the agent (ToolEvent help_request),

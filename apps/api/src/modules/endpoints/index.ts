@@ -13,6 +13,7 @@ import { fleetShellRouter } from './fleet-shell/routes.ts';
 import { fleetMonitoringRouter } from './fleet-monitoring/routes.ts';
 import { fleetPatchesRouter } from './fleet-patches/routes.ts';
 import { runPatchScheduler } from './fleet-patches/service.ts';
+import { recordingLinksRouter } from './fleet-user/recordings.ts';
 import { shellHub } from './fleet-shell/hub.ts';
 import { runShellSweep } from './fleet-shell/shells.ts';
 import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
@@ -37,6 +38,7 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   fleet-shell/     remote shell (admins; group switch): agent/operator sockets, encrypted transcript
  *   fleet-jobs/      scripts library (typed parameters, versions) and jobs (now, scheduled, per-computer results)
  *   fleet-patches/   missing updates per computer, approvals, patch policies, installs in windows, restarts
+ *   fleet-user/      the person's side: past recordings from the tray (token links, public player API)
  *   fleet-monitoring/ CPU, memory, disk, service and event-log rules evaluated on each heartbeat (Watch events)
  *   fleet-inventory/ hardware and licence inventory reported by the agent
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
@@ -55,6 +57,8 @@ export const endpointsModule = defineModule({
   name: 'endpoints',
   api: endpointsApi,
   gateway: { path: '/api/v1/agent', rateLimitPerMinute: 360, router: agentGatewayRouter },
+  // The player page of a "Past recordings…" link from the tray (token only, no session).
+  publicApi: { path: '/recording-links', router: recordingLinksRouter },
   // Session recordings past their group's retention: the file goes, the row stays (marked deleted).
   jobs: [
     { name: 'fleet-recording-retention', everyMs: 3_600_000, lockKey: 727170, run: async () => void (await runRecordingRetention()) },

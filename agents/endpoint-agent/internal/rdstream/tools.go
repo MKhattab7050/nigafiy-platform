@@ -120,6 +120,22 @@ func (m *Manager) toolEvent(ev desktop.ToolEvent, data []byte) {
 		}
 		return
 	}
+	if ev.Kind == "recordings_request" {
+		if m.cfg.OnRecordings != nil {
+			go m.cfg.OnRecordings(ev.User)
+		}
+		return
+	}
+	if ev.Kind == "end_session_request" {
+		// "End current session" in the tray: as the banner's End button, then the shells.
+		if active := m.Active(); active != "" {
+			m.endedByUser(active)
+		}
+		if m.cfg.OnEndSession != nil {
+			m.cfg.OnEndSession()
+		}
+		return
+	}
 	if ev.Kind == "help_request" {
 		// From the tray, with or without a session.
 		if m.cfg.OnHelpRequest != nil && ev.Text != "" {

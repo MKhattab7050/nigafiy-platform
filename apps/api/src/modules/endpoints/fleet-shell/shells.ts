@@ -353,7 +353,29 @@ export async function itActivity(ep: EndpointContext): Promise<FleetItActivityIt
        (SELECT 'job', j.created_by_email, 'Script: ' || s.name, j.name, coalesce(r.queued_at, r.created_at), r.finished_at
           FROM fleet_job_results r JOIN fleet_jobs j ON j.id = r.job_id JOIN fleet_scripts s ON s.id = j.script_id
          WHERE r.endpoint_id = $1 AND r.queued_at IS NOT NULL AND r.created_at > now() - interval '30 days')
-       ORDER BY at DESC LIMIT 30`,
+       UNION ALL
+       -- File manager transfers (one row per file and hour; the audit has one row per chunk).
+       (SELECT 'file_transfer', coalesce(user_email, 'IT'),
+               CASE WHEN metadata->>'op' = 'upload' THEN 'File sent to this computer: ' ELSE 'File copied from this computer: ' END || coalesce(metadata->>'path', ''),
+               NULL, min(created_at), max(created_at)
+          FROM audit_logs
+         WHERE target_type = 'endpoint' AND target_id = $1::text AND action = 'endpoint.fs_op' AND metadata->>'op' IN ('upload', 'download')
+           AND created_at > now() - interval '30 days'
+         GROUP BY metadata->>'op', metadata->>'path', user_email, date_trunc('hour', created_at))
+       UNION ALL
+       -- Files sent or received in a remote support session.
+       (SELECT 'file_transfer', coalesce(user_email, 'IT'),
+               CASE WHEN metadata->>'direction' = 'to_remote' THEN 'File sent to this computer: ' ELSE 'File copied from this computer: ' END || coalesce(metadata->>'name', ''),
+               NULL, created_at, created_at
+          FROM audit_logs
+         WHERE target_type = 'endpoint' AND target_id = $1::text AND action = 'fleet.session_file_transfer' AND created_at > now() - interval '30 days')
+       UNION ALL
+       -- Update installs (patch policy): when, which updates, and the window.
+       (SELECT 'patch', 'Nigafiy patching',
+               'Updates: ' || (SELECT string_agg(coalesce(u->>'kb', u->>'title'), ', ') FROM jsonb_array_elements(i.updates) u),
+               i.window_label, i.queued_at, i.finished_at
+          FROM fleet_patch_installs i WHERE i.endpoint_id = $1 AND i.queued_at > now() - interval '30 days')
+       ORDER BY at DESC LIMIT 40`,
       [ep.id],
     );
     return r.rows.map((x) => ({ ...x, at: x.at.toISOString(), ended_at: x.ended_at ? x.ended_at.toISOString() : null }));

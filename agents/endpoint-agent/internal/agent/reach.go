@@ -35,9 +35,11 @@ func (a *Agent) showTray(ctx context.Context, nigafiyID string) {
 	a.nigafiyID = nigafiyID
 	first := a.trayID != nigafiyID
 	a.trayID = nigafiyID
+	info := desktop.TrayInfo{NigafiyID: nigafiyID, Server: a.baseURL, Recordings: a.trayRecordings}
 	a.mu.Unlock()
+	info.SessionOpen = a.sessionOrShellOpen()
 	go func() {
-		_, _, err := a.deps.Desktop.Tool(ctx, desktop.ToolRequest{Op: desktop.ToolTray, Tray: &desktop.TrayInfo{NigafiyID: nigafiyID, Server: a.baseURL}}, nil)
+		_, _, err := a.deps.Desktop.Tool(ctx, desktop.ToolRequest{Op: desktop.ToolTray, Tray: &info}, nil)
 		if err != nil && first {
 			a.log.Info("tray icon not shown", "reason", err.Error())
 		}

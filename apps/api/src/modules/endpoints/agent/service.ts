@@ -12,6 +12,7 @@ import { normalizeConnections } from './connections.ts';
 import { POLL_RECHECK_MS, armWake } from './wake.ts';
 import { evaluateMonitoring, monitorSpec } from '../fleet-monitoring/evaluate.ts';
 import { onHeartbeatPatches } from '../fleet-patches/service.ts';
+import { trayFlags } from '../fleet-user/recordings.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -230,6 +231,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     const monitor = await monitorSpec(db, ep.id);
     // Patches: a computer that came back after its patch restart.
     await onHeartbeatPatches(db, ep.organizationId, ep.id, body.uptime_seconds);
+    // The tray: "Past recordings…" only when the group allows it (Request help, IT activity and
+    // End current session are always there; no policy hides the tray).
+    const tray = await trayFlags(db, ep.id);
 
     const completedIds = await applyCommandResults(db, ep.id, cmdResults, now);
 
@@ -269,6 +273,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         nigafiy_id: nigafiyId,
         // What the agent measures for the monitoring rules (services, event-log queries).
         monitor,
+        tray,
         commands,
       },
     };

@@ -121,6 +121,8 @@ type Icon struct {
 	taskbarCreated uint32
 	mu             sync.Mutex
 	id, server     string
+	recordings     bool
+	sessionOpen    bool
 	balloon        [2]string
 	done           chan struct{}
 }
@@ -227,6 +229,13 @@ func (t *Icon) SetInfo(nigafiyID, server string) {
 	}
 }
 
+// SetMenuState: whether "Past recordings…" is shown and "End current session" is enabled.
+func (t *Icon) SetMenuState(recordings, sessionOpen bool) {
+	t.mu.Lock()
+	t.recordings, t.sessionOpen = recordings, sessionOpen
+	t.mu.Unlock()
+}
+
 // Notify shows a balloon next to the icon.
 func (t *Icon) Notify(title, text string) {
 	t.mu.Lock()
@@ -244,6 +253,7 @@ func (t *Icon) Close() {
 func (t *Icon) showMenu() {
 	t.mu.Lock()
 	labels := MenuLabels(t.id)
+	entries := MenuEntries(t.recordings, t.sessionOpen)
 	t.mu.Unlock()
 	menu, _, _ := pCreatePopupMenu.Call()
 	if menu == 0 {
@@ -253,11 +263,16 @@ func (t *Icon) showMenu() {
 	add := func(flags uintptr, id int) {
 		_, _, _ = pAppendMenuW.Call(menu, flags, uintptr(id), uintptr(unsafe.Pointer(windows.StringToUTF16Ptr(labels[id]))))
 	}
-	add(mfString, ItemRequestHelp)
-	add(mfString, ItemITActivity)
-	_, _, _ = pAppendMenuW.Call(menu, mfSeparator, 0, 0)
-	add(mfString|mfGrayed, ItemID)
-	add(mfString, ItemAbout)
+	for _, e := range entries {
+		if e.Separator {
+			_, _, _ = pAppendMenuW.Call(menu, mfSeparator, 0, 0)
+		}
+		flags := uintptr(mfString)
+		if e.Grayed {
+			flags |= mfGrayed
+		}
+		add(flags, e.ID)
+	}
 	var pt struct{ X, Y int32 }
 	_, _, _ = pGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 	// The menu closes when the person clicks elsewhere only if our window is in the foreground.
@@ -271,6 +286,14 @@ func (t *Icon) showMenu() {
 	case ItemITActivity:
 		if t.opts.OnITActivity != nil {
 			go t.opts.OnITActivity()
+		}
+	case ItemRecordings:
+		if t.opts.OnRecordings != nil {
+			go t.opts.OnRecordings()
+		}
+	case ItemEndSession:
+		if t.opts.OnEndSession != nil {
+			go t.opts.OnEndSession()
 		}
 	case ItemAbout:
 		t.mu.Lock()

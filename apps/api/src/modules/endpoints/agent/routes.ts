@@ -19,6 +19,7 @@ import { agentShellEnd, itActivity } from '../fleet-shell/shells.ts';
 import { agentHardwareSchema, recordHardware } from '../fleet-inventory/hardware.ts';
 import { agentPatchStatusSchema } from '../fleet-patches/schema.ts';
 import { recordPatchStatus } from '../fleet-patches/service.ts';
+import { agentRecordingLink, agentRecordings, recordingLinkSchema } from '../fleet-user/recordings.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -100,6 +101,14 @@ agentGatewayRouter.post('/hardware', requireEndpointAgent, async (req, res) => {
 agentGatewayRouter.post('/patch-status', requireEndpointAgent, async (req, res) => {
   await recordPatchStatus(req.endpoint!, parse(agentPatchStatusSchema, req.body));
   res.json({ ok: true });
+});
+
+// "Past recordings…" from the tray (only when the computer's group allows it): fleet-user/recordings.ts.
+agentGatewayRouter.post('/recordings', requireEndpointAgent, async (req, res) => {
+  res.json(await agentRecordings(req.endpoint!));
+});
+agentGatewayRouter.post('/recordings/link', requireEndpointAgent, async (req, res) => {
+  res.json(await agentRecordingLink(req.endpoint!, parse(recordingLinkSchema, req.body)));
 });
 
 // The person at the computer pressed "End session" on the remote support banner.

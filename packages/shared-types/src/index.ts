@@ -2726,7 +2726,7 @@ export interface FleetJobDetail extends FleetJob {
 
 /** One line of the person's "IT activity" list in the agent's tray. */
 export interface FleetItActivityItem {
-  kind: 'session' | 'shell' | 'job';
+  kind: 'session' | 'shell' | 'job' | 'file_transfer' | 'patch';
   by: string;
   what: string;
   reason: string | null;
