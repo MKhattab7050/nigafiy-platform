@@ -8,7 +8,7 @@ import { z } from 'zod';
 export const fsOpCommandSchema = z
   .object({
     kind: z.literal('fs_op'),
-    op: z.enum(['roots', 'list', 'search', 'mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'download', 'upload']),
+    op: z.enum(['roots', 'list', 'search', 'mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'download', 'upload', 'hash']),
     path: z.string().max(1024).optional(),
     paths: z.array(z.string().max(1024)).max(100).optional(),
     target_path: z.string().max(1024).optional(),

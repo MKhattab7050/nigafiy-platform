@@ -460,5 +460,5 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
       setBusy('');
     }
   }
-  return { overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile };
+  return { askOverwrite, overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile };
 }

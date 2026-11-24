@@ -22,11 +22,25 @@ import { Badge, Button, Card, ErrorNote, Input } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { formatBytes } from './file-utils';
 import { OverwriteDialog } from './overwrite-dialog';
-import { RemoteFileManagerProps, useRemoteFiles } from './use-remote-files';
+import type { RemoteFileEntry } from '@nigafiy/shared-types';
+import { type RemoteFileManagerProps, useRemoteFiles } from './use-remote-files';
 
 export function RemoteFileManager(props: RemoteFileManagerProps) {
-  const { ep, online, canWrite, canUpload, canDelete } = props;
-  const { overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile } = useRemoteFiles(props);
+  const files = useRemoteFiles(props);
+  return <RemoteFilePane {...props} files={files} />;
+}
+
+export interface RemoteFilePaneProps extends RemoteFileManagerProps {
+  files: ReturnType<typeof useRemoteFiles>;
+  /** Two-pane mode: downloads and uploads go through the transfer queue instead of running here. */
+  onQueueDownload?: (entry: RemoteFileEntry) => void;
+  onQueueUpload?: (files: File[]) => void;
+}
+
+/** The remote pane: browse, search and manage the computer's files (the agent's path guards apply). */
+export function RemoteFilePane(props: RemoteFilePaneProps) {
+  const { ep, online, canWrite, canUpload, canDelete, onQueueDownload, onQueueUpload } = props;
+  const { overwritePrompt, answerOverwrite, locale, isAr, roots, currentPath, parentPath, pathInput, setPathInput, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, progress, error, notice, cancelRef, fileInputRef, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile } = props.files;
 
   return (
     <div className="space-y-4">
@@ -179,10 +193,12 @@ export function RemoteFileManager(props: RemoteFileManagerProps) {
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple={Boolean(onQueueUpload)}
                   className="hidden"
                   onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void handleUploadFile(f);
+                    const picked = Array.from(e.target.files ?? []);
+                    if (onQueueUpload) onQueueUpload(picked);
+                    else if (picked[0]) void handleUploadFile(picked[0]);
                     e.target.value = '';
                   }}
                 />
@@ -337,7 +353,7 @@ export function RemoteFileManager(props: RemoteFileManagerProps) {
                               size="sm"
                               disabled={!online}
                               busy={busy === `dl-${entry.path}`}
-                              onClick={() => void handleDownload(entry)}
+                              onClick={() => (onQueueDownload ? onQueueDownload(entry) : void handleDownload(entry))}
                               title={isAr ? 'تحميل الملف' : 'Download'}
                             >
                               <Download className="size-3.5" aria-hidden />

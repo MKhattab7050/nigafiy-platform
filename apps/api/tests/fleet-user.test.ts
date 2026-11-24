@@ -130,4 +130,24 @@ describe('fleet: the user side of the tray', () => {
       expect((await a.agent.post('/api/v1/fleet/groups').set(CSRF).send({ name: `G ${field}`, [field]: false })).status).toBe(400);
     }
   });
+  it('file manager: the SHA-256 check (hash) is a read-only fs_op for technicians, audited by path, guarded like a download', async () => {
+    const a = await newAccount('user-files');
+    const { epId } = await onlineEndpoint(a, 'FILES-PC');
+    const send = (body: Record<string, unknown>) => a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'fs_op', ...body });
+    const path = 'C:\Users\Public\setup.msi';
+    const ok = await send({ op: 'hash', path });
+    expect(ok.status).toBe(202);
+    expect(ok.body.payload).toMatchObject({ op: 'hash', path });
+    // Options that make no sense for it are refused like for any other op.
+    expect((await send({ op: 'hash', path, overwrite: true })).status).toBe(400);
+    expect((await send({ op: 'checksum', path })).status).toBe(400);
+    const audited = await systemPool.query<{ metadata: Record<string, unknown> }>(`SELECT metadata FROM audit_logs WHERE target_id = $1 AND action = 'endpoint.fs_op'`, [epId]);
+    expect(audited.rows.map((r) => r.metadata)).toEqual([expect.objectContaining({ op: 'hash', path })]);
+    // Viewers cannot send it.
+    const viewer = await newAccount('user-files-viewer');
+    const user = await systemPool.query<{ id: string }>(`SELECT id FROM users WHERE lower(email) = $1`, [viewer.email]);
+    await systemPool.query(`INSERT INTO memberships (user_id, organization_id, role) VALUES ($1,$2,'viewer')`, [user.rows[0]!.id, a.organizationId]);
+    await viewer.agent.post('/api/v1/auth/switch-organization').set(CSRF).send({ organization_id: a.organizationId });
+    expect((await viewer.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'fs_op', op: 'hash', path })).status).toBe(403);
+  });
 });

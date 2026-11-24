@@ -46,7 +46,7 @@ type FileEntry struct {
 }
 
 type Request struct {
-	Op                 string   `json:"op"` // roots | list | search | mkdir | touch | rename | copy | move | delete | download | upload
+	Op                 string   `json:"op"` // roots | list | search | mkdir | touch | rename | copy | move | delete | download | upload | hash
 	Path               string   `json:"path,omitempty"`
 	Paths              []string `json:"paths,omitempty"`
 	TargetPath         string   `json:"target_path,omitempty"`
@@ -80,6 +80,9 @@ type Response struct {
 	Message    string      `json:"message,omitempty"`
 	// Overwritten is set when an upload replaced a file that already existed (with Overwrite).
 	Overwritten bool `json:"overwritten,omitempty"`
+	// UploadNext (hash only): an interrupted upload of this file that this agent started and can
+	// still continue, and the offset its next chunk must start at (the file's size).
+	UploadNext *int64 `json:"upload_next,omitempty"`
 }
 
 // ValidateAndCleanPath rejects traversal segments, null bytes, relative paths, and
@@ -471,6 +474,13 @@ func Execute(req Request) (Response, error) {
 		}
 		return uploadChunk(clean, req.Offset, req.DataBase64, req.ExpectedSHA256, req.Overwrite)
 
+	case "hash":
+		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, false)
+		if err != nil {
+			return Response{}, err
+		}
+		return hashFile(clean)
+
 	default:
 		return Response{}, fmt.Errorf("unsupported file manager operation: %s", req.Op)
 	}
@@ -646,6 +656,34 @@ func downloadChunk(clean string, offset int64, length int64) (Response, error) {
 		DataBase64: base64.StdEncoding.EncodeToString(chunk),
 		SHA256:     sumHex,
 	}, nil
+}
+
+// hashFile: the SHA-256 and size of a whole file (the transfer queue checks every finished
+// transfer against it, of any size), and whether an interrupted upload of it can be resumed here.
+func hashFile(clean string) (Response, error) {
+	info, err := os.Stat(clean)
+	if err != nil {
+		return Response{}, fmt.Errorf("stat failed: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return Response{}, errors.New("only a regular file can be checked")
+	}
+	f, err := os.Open(clean)
+	if err != nil {
+		return Response{}, fmt.Errorf("open failed: %w", err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	n, err := io.Copy(h, f)
+	if err != nil {
+		return Response{}, fmt.Errorf("read failed: %w", err)
+	}
+	out := Response{Op: "hash", Path: clean, TotalSize: n, SHA256: hex.EncodeToString(h.Sum(nil))}
+	if uploads.continues(clean, n) {
+		next := n
+		out.UploadNext = &next
+	}
+	return out, nil
 }
 
 // uploadTracker remembers the uploads this agent started (created, or overwrote after

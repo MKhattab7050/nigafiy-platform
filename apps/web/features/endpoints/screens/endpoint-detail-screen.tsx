@@ -22,7 +22,7 @@ import { ConnectionsTab } from '../components/endpoint-detail/connections-tab';
 import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { HardwareTab } from '../components/endpoint-detail/hardware-tab';
 import { PatchesTab } from '../components/endpoint-detail/patches-tab';
-import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
+import { TwoPaneFileManager } from '../components/remote-files/two-pane-file-manager';
 import { ShellPanel } from '../components/fleet-shell/shell-panel';
 import { jobsText } from '../components/fleet-jobs/jobs-text';
 import { EndpointGroupPicker } from '../components/fleet-policy/group-assign';
@@ -207,7 +207,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               )}
 
               {shown === 'files' && (
-                <RemoteFileManager
+                <TwoPaneFileManager
                   ep={ep}
                   online={online}
                   canWrite={can('technician')}

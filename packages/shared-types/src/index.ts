@@ -1202,6 +1202,8 @@ export interface RemoteFileResponse {
   message?: string;
   /** An upload replaced an existing file (only with an operator-confirmed `overwrite`). */
   overwritten?: boolean;
+  /** `hash` only: an interrupted upload of this file the agent can continue, from this offset. */
+  upload_next?: number;
 }
 
 export interface RemoteDesktopDisplay {
