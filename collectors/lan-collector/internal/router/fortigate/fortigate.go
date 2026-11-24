@@ -12,6 +12,8 @@
 //   - clients:  merges GET /api/v2/monitor/user/device/query and GET /api/v2/monitor/system/dhcp
 //   - block:    FortiOS User Quarantine (banned users): GET /api/v2/monitor/user/banned/select,
 //               POST /api/v2/monitor/user/banned/add_users and clear_users.
+//   - rename:   description of the device's DHCP reserved address (rename.go)
+//   - Wi-Fi:    SSID (wireless-controller VAP) interface status up/down (wifi.go)
 package fortigate
 
 import (
@@ -244,10 +246,10 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapRateLimit, Supported: false, Note: "FortiGate traffic shaping uses firewall shaping policies"},
 		{Capability: router.CapSchedule, Supported: false, Note: "FortiGate schedules attach to firewall policies"},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
-		{Capability: router.CapWiFi, Supported: false, Note: "FortiWiFi/FortiAP SSIDs are managed via FortiOS wireless-controller profiles"},
+		d.wifiCapability(ctx),
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward, Note: "Creates/removes FortiOS Virtual IPs (attach a WAN→LAN policy permitting the VIP if needed)"},
-		{Capability: router.CapRename, Supported: false, Note: "FortiGate device inventory aliases are read-only via the monitor API"},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename, Requires: router.RequiresReservation, Note: "The device inventory is read-only in the FortiOS API, so the name is stored as the description of the device's DHCP reservation; the device needs a reservation first"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }
@@ -569,4 +571,19 @@ func first(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// wifiCapability offers Wi-Fi only when the firewall lists wireless-controller SSIDs with a local
+// interface (a FortiWiFi, or a FortiGate managing FortiAPs).
+func (d *Driver) wifiCapability(ctx context.Context) router.CapabilityStatus {
+	nets, ok, err := d.readWiFi(ctx, "capabilities")
+	switch {
+	case err != nil:
+		return router.CapabilityStatus{Capability: router.CapWiFi, Supported: false, Note: "Could not read the SSIDs (wireless-controller VAPs); give the API profile read/write access to WiFi & Switch and Network"}
+	case !ok:
+		return router.CapabilityStatus{Capability: router.CapWiFi, Supported: false, Note: "This FortiGate has no wireless controller (no /api/v2/cmdb/wireless-controller/vap)"}
+	case len(nets) == 0:
+		return router.CapabilityStatus{Capability: router.CapWiFi, Supported: false, Note: "No SSID with a local interface is configured on this FortiGate"}
+	}
+	return router.CapabilityStatus{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi, Note: "Turning an SSID off takes its interface down; FortiOS has no guest/main flag, so every SSID asks for confirmation"}
 }

@@ -27,6 +27,9 @@ type fgControls struct {
 	vips       []map[string]any
 	rebooted   bool
 	failWrites bool
+	vaps       []map[string]any  // wireless-controller VAPs (nil: no wireless controller → 404)
+	ifStatus   map[string]string // system interface status by name
+	wifiCli    []map[string]any  // /api/v2/monitor/wifi/client
 	srv        *httptest.Server
 }
 
@@ -50,6 +53,33 @@ func (f *fgControls) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v2/cmdb/wireless-controller/vap":
+		if f.vaps == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.vaps})
+	case strings.HasPrefix(r.URL.Path, "/api/v2/cmdb/system/interface/"):
+		name := strings.TrimPrefix(r.URL.Path, "/api/v2/cmdb/system/interface/")
+		st, ok := f.ifStatus[name]
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method == http.MethodPut {
+			var b map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&b)
+			if len(b) != 1 || (b["status"] != "up" && b["status"] != "down") {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			f.ifStatus[name] = b["status"].(string)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "success"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": []map[string]any{{"name": name, "status": st}}})
+	case r.URL.Path == "/api/v2/monitor/wifi/client":
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": f.wifiCli})
 	case r.URL.Path == "/api/v2/monitor/system/status":
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": "v7.4", "results": map[string]any{"uptime": 5400}})
 	case r.URL.Path == "/api/v2/monitor/system/interface":
@@ -211,4 +241,148 @@ func TestControlsErrorPaths(t *testing.T) {
 			t.Fatal("nothing may be sent to a router whose certificate does not match")
 		}
 	})
+}
+
+const fgWiFiKey = "wifi-passphrase-never-read-4471"
+
+// withWiFi gives the double a FortiWiFi's SSIDs: "home" (up, one client), "guest" (down, hidden) and
+// "remote" (a tunnel SSID without a local interface).
+func (f *fgControls) withWiFi() {
+	f.vaps = []map[string]any{
+		{"name": "home", "ssid": "Office", "broadcast-ssid": "enable", "security": "wpa2-only-personal", "passphrase": "ENC " + fgWiFiKey},
+		{"name": "guest", "ssid": "Visitors", "broadcast-ssid": "disable", "security": "wpa3-sae", "passphrase": fgWiFiKey},
+		{"name": "remote", "ssid": "Branch", "security": "open"},
+	}
+	f.ifStatus = map[string]string{"home": "up", "guest": "down"}
+	f.wifiCli = []map[string]any{{"mac": "AA:BB:CC:00:00:31", "vap_name": "home", "ssid": "Office"}}
+}
+
+func TestWiFi(t *testing.T) {
+	ctx := context.Background()
+	f := newFgControls(t)
+	f.withWiFi()
+	d := f.driver(t, "", fgToken)
+
+	caps, err := d.Capabilities(ctx)
+	if err != nil || !caps.Supports(router.CapWiFi) {
+		t.Fatalf("Wi-Fi must be offered with SSIDs: %v %+v", err, caps.Get(router.CapWiFi))
+	}
+	s, err := d.Settings(ctx)
+	if err != nil || len(s.WiFi) != 2 {
+		t.Fatalf("want the two SSIDs with an interface, got %v %+v", err, s.WiFi)
+	}
+	home, guest := s.WiFi[0], s.WiFi[1]
+	if home.ID != "home" || home.SSID != "Office" || !home.Enabled || !home.Main || len(home.ClientMACs) != 1 || home.ClientMACs[0] != "aa:bb:cc:00:00:31" {
+		t.Fatalf("unexpected home SSID: %+v", home)
+	}
+	if guest.Enabled || !guest.Hidden || guest.Security != "wpa3-sae" {
+		t.Fatalf("unexpected guest SSID: %+v", guest)
+	}
+	noSecretOf(t, fgWiFiKey, "Settings", s)
+
+	ch, err := d.SetWiFiEnabled(ctx, "guest", true)
+	if err != nil || !ch.Applied || f.ifStatus["guest"] != "up" || !strings.Contains(ch.Undo, "off") {
+		t.Fatalf("turning guest on failed: %+v %v", ch, err)
+	}
+	if ch, err := d.SetWiFiEnabled(ctx, "guest", true); err != nil || ch.Applied || !ch.AlreadyInEffect {
+		t.Fatalf("no-op expected: %+v %v", ch, err)
+	}
+	if ch, err := d.SetWiFiEnabled(ctx, "home", false); err != nil || !ch.Applied || f.ifStatus["home"] != "down" {
+		t.Fatalf("turning home off failed: %+v %v", ch, err)
+	}
+	noSecretOf(t, fgWiFiKey, "Change", ch)
+
+	// Refused before sending: unknown SSID, an SSID without a local interface, a malformed id.
+	for _, id := range []string{"nope", "remote", "../system", "", "a b"} {
+		if _, err := d.SetWiFiEnabled(ctx, id, true); err == nil {
+			t.Fatalf("%q must be refused", id)
+		}
+	}
+	if f.ifStatus["home"] != "down" || f.ifStatus["guest"] != "up" {
+		t.Fatal("refused input changed the router")
+	}
+
+	// The router refuses: error, state unchanged.
+	f.failWrites = true
+	if _, err := d.SetWiFiEnabled(ctx, "home", true); !errors.Is(err, router.ErrRejected) || f.ifStatus["home"] != "down" {
+		t.Fatalf("want ErrRejected and no change, got %v", err)
+	}
+}
+
+func TestWiFiAbsentAndAuth(t *testing.T) {
+	ctx := context.Background()
+	f := newFgControls(t) // no wireless controller
+	d := f.driver(t, "", fgToken)
+	caps, err := d.Capabilities(ctx)
+	if err != nil || caps.Supports(router.CapWiFi) || !strings.Contains(caps.Get(router.CapWiFi).Note, "no wireless controller") {
+		t.Fatalf("Wi-Fi must not be offered without a controller: %v %+v", err, caps.Get(router.CapWiFi))
+	}
+	if s, _ := d.Settings(ctx); s.WiFi != nil {
+		t.Fatalf("no SSIDs may be invented: %+v", s.WiFi)
+	}
+	if _, err := d.SetWiFiEnabled(ctx, "home", false); !errors.Is(err, router.ErrUnsupported) {
+		t.Fatalf("want ErrUnsupported, got %v", err)
+	}
+
+	f2 := newFgControls(t)
+	f2.withWiFi()
+	if _, err := f2.driver(t, "", "wrong-"+fgToken).SetWiFiEnabled(ctx, "home", false); !errors.Is(err, router.ErrBadCredentials) {
+		t.Fatalf("want ErrBadCredentials, got %v", err)
+	} else {
+		noSecret(t, "error", err)
+	}
+	if _, err := f2.driver(t, strings.Repeat("ab", 32), fgToken).SetWiFiEnabled(ctx, "home", false); !errors.Is(err, router.ErrCertificate) {
+		t.Fatalf("want ErrCertificate, got %v", err)
+	}
+	if f2.ifStatus["home"] != "up" {
+		t.Fatal("nothing may change with a wrong token or certificate")
+	}
+}
+
+func TestRenameThroughReservationDescription(t *testing.T) {
+	ctx := context.Background()
+	f := newFgControls(t)
+	d := f.driver(t, "", fgToken)
+	caps, _ := d.Capabilities(ctx)
+	if c := caps.Get(router.CapRename); !c.Supported || c.Requires != router.RequiresReservation {
+		t.Fatalf("rename must be offered through the reservation: %+v", c)
+	}
+	ch, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "Reception PC")
+	if err != nil || !ch.Applied || f.reserved[0]["description"] != "Reception PC" || f.reserved[0]["ip"] != "192.168.30.10" {
+		t.Fatalf("rename failed: %+v %v %v", ch, err, f.reserved)
+	}
+	noSecret(t, "RenameClient", ch)
+	if ch, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", " Reception PC "); err != nil || ch.Applied || !ch.AlreadyInEffect {
+		t.Fatalf("same name must be a no-op: %+v %v", ch, err)
+	}
+	if ch, _ := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "Desk"); !strings.Contains(ch.Undo, `"Reception PC"`) {
+		t.Fatalf("undo must name the previous name: %q", ch.Undo)
+	}
+	if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:55", "Phone"); !errors.Is(err, router.ErrNotFound) {
+		t.Fatalf("want ErrNotFound without a reservation, got %v", err)
+	}
+	for _, bad := range []string{"", "a\nb", strings.Repeat("x", 64)} {
+		if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", bad); !errors.Is(err, router.ErrInvalidArgument) {
+			t.Fatalf("%q: want ErrInvalidArgument, got %v", bad, err)
+		}
+	}
+	f.failWrites = true
+	if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "Other"); !errors.Is(err, router.ErrRejected) || f.reserved[0]["description"] != "Desk" {
+		t.Fatalf("want ErrRejected and no change, got %v", err)
+	}
+	f.failWrites = false
+	if _, err := f.driver(t, "", "bad").RenameClient(ctx, "aa:bb:cc:00:00:10", "X"); !errors.Is(err, router.ErrBadCredentials) {
+		t.Fatalf("want ErrBadCredentials, got %v", err)
+	}
+	if _, err := f.driver(t, strings.Repeat("ab", 32), fgToken).RenameClient(ctx, "aa:bb:cc:00:00:10", "X"); !errors.Is(err, router.ErrCertificate) || f.reserved[0]["description"] != "Desk" {
+		t.Fatalf("want ErrCertificate and no change, got %v", err)
+	}
+}
+
+func noSecretOf(t *testing.T, secret, what string, v any) {
+	t.Helper()
+	b, _ := json.Marshal(v)
+	if strings.Contains(string(b), secret) {
+		t.Fatalf("%s leaked a secret: %s", what, b)
+	}
 }

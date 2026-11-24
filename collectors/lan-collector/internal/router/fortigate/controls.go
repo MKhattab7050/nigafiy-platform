@@ -202,8 +202,11 @@ func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 		return router.Settings{}, err
 	}
 	pf, _ := d.readPortForwards(ctx)
+	// SSIDs: absent when the firewall has no wireless controller or they cannot be read now.
+	wifi, _, _ := d.readWiFi(ctx, "settings")
 	return router.Settings{
 		Overview:     ov,
+		WiFi:         wifi,
 		Reservations: res,
 		PortForwards: pf,
 	}, nil
