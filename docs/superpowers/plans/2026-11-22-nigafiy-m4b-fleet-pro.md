@@ -55,7 +55,7 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 
 **Task 7: Recording, multi-operator, audio, printing** (migration `035`) — encrypted recordings stored by the engine with retention per policy, recording mark, playback in Fleet beside the audit timeline, user-side viewing when policy allows; invite / hand over to another operator, each named on the bar; remote audio (WASAPI loopback; codec chosen per toolchain check, off unless the profile allows); remote printing to the operator's printer.
 
-**Task 8: Remote shell, scripts and jobs** (migration `036`) — interactive PowerShell / shell, admin role only, off in the default policy, full transcript in the audit, listed in the user's IT activity; scripts library with parameters; jobs on one computer or a group, now or scheduled; results per computer; rerun failed.
+**Task 8: Remote shell, scripts and jobs** (built in migration `042`, see Progress below) — interactive PowerShell / shell, admin role only, off in the default policy, full transcript in the audit, listed in the user's IT activity; scripts library with parameters; jobs on one computer or a group, now or scheduled; results per computer; rerun failed.
 
 **Task 9: Patches, monitoring, inventory, compliance** (migration `037`) — Windows Update status via the WUA COM API; approve and install in maintenance windows; reboot policy with user postponement; CPU / memory / disk / service / event-log rules raising Watch alerts; inventory (hardware, software, licences seen, disk health, battery); compliance (firewall, Defender, BitLocker, pending updates, local admins) with "not measured" where the agent cannot measure.
 
@@ -71,6 +71,31 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 ## Results
 
 (Filled in at the end of the milestone.)
+
+## Progress (2026-11-24: remote shell, scripts and jobs)
+
+Builder F4, branch `worktree-fleet-pro`, migration `042` (Task 8; the plan's migration number moved
+because `036` went to in-session tools). What was built and exactly what ran for real are in
+`docs/features/fleet-pro.md` → "Built: shell, scripts and jobs".
+
+- [x] Remote shell: PowerShell over ConPTY (Windows), the user's shell on a pty (Linux), pipes (macOS,
+  no cgo); admins only, group switch off by default, access policy and MFA, profile flag `shell`, Quick
+  Support refused; at most 3 per computer; idle timeout and transcript limit
+- [x] Transcript sealed per shell (AES-256-GCM, key in `rotate-key`), linked from the audit, admins only to
+  read (audited); never in the plain audit
+- [x] Banner "Shell open by [operator]" with End and Ctrl+Alt+Shift+E; the tray's IT activity list
+- [x] Scripts library: PowerShell / sh per OS, typed parameters checked on the server, versions,
+  technician mark, archive; parameters passed as environment data, never in the script text
+- [x] Jobs: one computer, a selection or a group; now, once, recurring in a time zone; maintenance
+  windows; offline catch-up with expiry; results per computer with the full output downloadable; rerun
+  failed, run now, pause, cancel (stops the process tree); every step audited
+- [x] Web (EN + AR): Fleet → Scripts, Fleet → Jobs, job page, endpoint Remote shell tab (xterm.js),
+  transcript page, group switch, address book bulk **Run job**
+- [x] Real agent on this PC: PowerShell over ConPTY through the WebSocket, and a job with a hostile
+  parameter value returned as data
+- [ ] Not verified here: the Linux pty and macOS pipes on real machines, the new web pages in a browser
+  against a running API, the scheduler firing from the module timer in a long-running server, a
+  maintenance window on a real site.
 
 ## Progress (2026-11-24: permission profiles, groups and access policy)
 

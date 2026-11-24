@@ -609,6 +609,130 @@ the audit.
 - **Never run here:** `bcdedit`, a restart, the service install, the sign-in-screen helper, another
   user's session, a real Quick Support session from a downloaded exe, the new web UI in a browser.
 
+## Built: shell, scripts and jobs (2026-11-24)
+
+Builder F4, branch `worktree-fleet-pro`, migration `042_fleet_shell_scripts_jobs.sql`. API in
+`apps/api/src/modules/endpoints/fleet-shell/` and `fleet-jobs/`; agent in `internal/shell`,
+`internal/scripts`, `internal/agent/{shell,jobs}.go`, `internal/desktop/bannermux.go`, `internal/tray`;
+web in `apps/web/features/endpoints/components/fleet-shell/`, `components/fleet-jobs/` and the new pages
+**Fleet → Scripts** (`/fleet/scripts`), **Fleet → Jobs** (`/fleet/jobs`), the job page
+(`/fleet/jobs/<id>`), the **Remote shell** tab on the endpoint page and the transcript page
+(`/fleet/endpoints/<id>/shell/<shellId>`).
+
+New web dependencies: `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 (the terminal, loaded only on
+the shell tab and the transcript page). No new Go module.
+
+### Remote shell
+- **Who and when.** Admins and owners only (`shell_admin_only`; technicians get the refusal audited,
+  viewers are stopped at the door). The computer's **group** must switch it on (`shell_enabled`, off by
+  default; with no group the organization default has no shell: `shell_disabled_by_policy`). Then the
+  group's access policy runs exactly as for a session (hours, IP list, operator roles, MFA step-up,
+  approval), and the chosen permission profile, clamped by the group's maximum, must have the
+  **shell** flag (`profile_forbids_shell`). Quick Support computers never allow it
+  (`quick_support_limited`). At most 3 open shells per computer (`too_many_shells`); the computer must
+  be online (`endpoint_offline`). A reason is required.
+- **The terminal.** Windows: Windows PowerShell in a **pseudo console** (ConPTY through
+  `golang.org/x/sys`, Windows 10 1809+): colours, line editing, tab completion and full-screen programs
+  work; the shell and everything it starts sit in a job object killed with it. Linux: the user's
+  `$SHELL` (else `/bin/sh`) on a pseudo terminal from `/dev/ptmx` as its own session (job control,
+  Ctrl+C). macOS: **pipes** (commands and output work; no line editing, job control, resize or full-screen
+  programs), because opening a pty on macOS needs `grantpt`/`unlockpt` from libc, which pure Go without
+  cgo cannot call. The operator's terminal is xterm.js; keystrokes go out as binary WebSocket messages,
+  output comes back the same way, resizes as JSON.
+- **Transport.** `shell_open` reaches the agent over the existing command channel; the agent dials
+  `/api/v1/agent/shell?shell=<id>` and the operator's browser `/api/v1/endpoints/<id>/shell/stream`
+  (cookie, same origin, the operator who opened it only). Several API instances relay through
+  `pg_notify`, as the session stream does.
+- **Transcript.** Every chunk of input, output and event (opened by, resized, ended) is sealed with
+  AES-256-GCM under the shell's own key; the AAD binds the chunk to its shell, position and direction,
+  so chunks cannot be moved or swapped. The key is sealed with `APP_ENCRYPTION_KEY` in
+  `fleet_shell_sessions.transcript_key_sealed` (listed in `ops/sealed-columns.ts`, re-sealed by
+  `rotate-key`) and never returned by any API. The audit rows `fleet.shell_opened`/`fleet.shell_closed`
+  link to the transcript page; reading it is admins only and audited (`fleet.shell_transcript_viewed`).
+  **The plain audit never holds a keystroke or a line of output**; only byte counts.
+- **Limits.** Idle timeout per group (`shell_idle_timeout_minutes`, default 15, 1–240): no input and no
+  output ends it (agent watch, and the API sweep if no instance is watching). Transcript limit 32 MiB:
+  the shell ends rather than run unrecorded (`limit`). An agent that never connects ends as `open_failed`.
+- **Transparency (cannot be turned off).** While a shell is open, the agent's banner says
+  **"Shell open by [operator]"** with the reason (one banner names every open shell and session), with
+  **End** and Ctrl+Alt+Shift+E; ending it tells the API first so the reason is `user`. The tray's
+  **IT activity** list shows the shell (operator, reason, start, end) for 30 days, beside sessions and jobs.
+- **End reasons:** `operator`, `user`, `idle`, `limit`, `exited` (with the exit code), `open_failed`,
+  `agent_gone`, `revoked`.
+
+### Scripts library
+- PowerShell (Windows) or `/bin/sh` (Linux, macOS) scripts, one OS per script. Admins create, edit,
+  archive and restore (`fleet.script_created|updated|archived|restored`); the audit keeps the body's
+  SHA-256 and the parameter names and types, never the body.
+- **Versions:** a new body, parameters or timeout makes a new version (with an optional note); name,
+  description and the technician mark keep it. Every version stays readable; a job records the version
+  it runs.
+- **Typed parameters** (up to 20): `string` (max length), `int` (min/max), `bool`, `choice` (listed
+  values), required or with a default, names `^[A-Za-z][A-Za-z0-9_]{0,39}$`, unique without case. The
+  server checks every value against the declaration and lists every problem (`invalid_parameters`).
+- **Passed as data, never pasted into the script.** Each value goes into an environment variable
+  `NIGAFIY_PARAM_<NAME>` of the script's process only. On Windows a generated launcher (which holds only
+  parameter names and the file path) converts each by its declared type and splats them onto the saved
+  script file, so the script's own `param()` block binds them; `sh` scripts read `"$NIGAFIY_PARAM_<NAME>"`.
+  Quotes, `$(...)`, backticks, `;` or newlines in a value are just characters (Go test and the real-agent
+  test with a hostile value).
+- **Technicians** see and run only scripts an admin marked **Technicians may run it**
+  (`script_not_runnable_by_technicians`); viewers have no access to scripts or jobs.
+
+### Jobs
+- **Target:** one computer, a selection (the address book's bulk bar **Run job**, or computers chosen in
+  the dialog) or a group (resolved at each run). Computers of another OS are listed as skipped.
+- **When:** now; once at a time (not in the past, at most a year ahead); or recurring hourly (at a
+  minute), daily, weekly (chosen days) or monthly (day 1–28) at a wall-clock time in a **time zone**
+  (default: the site's zone of the first computer; daylight-saving gaps move forward, repeated times
+  take the first). Missed occurrences while the server was down give **one** run, then the next time
+  after now.
+- **Maintenance windows (optional):** a computer outside its site's window waits for it, until the run
+  expires.
+- **Offline computers** wait (`waiting for the computer to come online`) and run when they return,
+  until the run's **expiry** (5 minutes to 30 days, default 1 day); then they are `expired`.
+- **Results per computer:** state, exit code, duration, stdout and stderr previews (8 KiB shown, the
+  full copy downloadable as a text file, `fleet.job_output_downloaded`), with a note when the agent
+  capped a stream at 1 MiB. The script stops at its timeout or on cancel together with every process it
+  started (a Windows job object; a process group elsewhere). A queued script whose agent never answers
+  fails after its timeout.
+- **Rerun failed** (failed, expired or cancelled computers of a run), **Run now** on a scheduled job,
+  **Pause/Resume** a recurring job, **Cancel** (waiting computers are cancelled, an undelivered command is
+  withdrawn, a running script gets `script_cancel`). Admins manage every job; a technician manages only
+  the jobs they created, and only while the script is still marked for technicians (`job_not_yours`).
+- **Audit:** `fleet.job_created`, `fleet.job_run_started`, `fleet.job_dispatched`, `fleet.job_result`,
+  `fleet.job_run_now`, `fleet.job_rerun`, `fleet.job_paused`, `fleet.job_resumed`, `fleet.job_cancelled`,
+  `fleet.job_output_downloaded`. Parameter values and output are never in the audit; output is not kept
+  on the command row either.
+
+### Refusal codes (English and Arabic in `jobs-text.ts`)
+`shell_admin_only`, `shell_disabled_by_policy`, `profile_forbids_shell`, `quick_support_limited`,
+`endpoint_offline`, `too_many_shells`, `shell_closed`, `not_shell_operator`, `invalid_parameters`,
+`script_name_taken`, `script_archived`, `script_not_runnable_by_technicians`, `run_at_in_past`,
+`run_at_too_far`, `nothing_to_rerun`, `job_cancelled`, `job_not_yours`, `job_state`; the access-policy
+codes come from `policy-text.ts`.
+
+### What ran for real, and what did not
+- **Ran for real on this Windows desktop** (`real-agent-shell-jobs.test.ts`, the compiled agent against
+  the API on 127.0.0.1): Windows PowerShell opened over a real **ConPTY**, a command typed through the
+  WebSocket ran and its output came back, `exit 4` ended the shell with exit code 4, the transcript had
+  the command and the audit did not, and the real banner showed for those seconds. Then a script job ran
+  through the agent with a hostile parameter value
+  (`'; Remove-Item …; $(whoami) … & echo pwned`) which came back as data, never as code. The Go tests
+  `TestRealTerminal` (ConPTY) and the scripts package's real PowerShell runs (hostile values, timeout
+  and cancel stopping the process tree) ran here too.
+- **Tests only:** API tests against embedded PostgreSQL (`fleet-shell.test.ts`, `fleet-jobs.test.ts`):
+  every refusal (role, group switch, profile, policy MFA, Quick Support, three shells), relay across two
+  API instances, sealed transcript and plain audit, every end reason, IT activity; script versions and
+  roles, parameter validation and order, run now, results and full output, offline catch-up and expiry,
+  missed recurring occurrences, maintenance windows, rerun, cancel, pause, technician ownership,
+  organization isolation; schedule maths across daylight saving. Go tests with fakes for the shell
+  manager, the banner and the tray's IT activity. Web type-check and build.
+- **Never run here:** the Linux pty and the macOS pipes on real machines (compiled and vetted for
+  `linux` and `darwin` only), the web pages in a browser against a running API (shell tab, Scripts, Jobs,
+  job page, transcript replay), a scheduled job firing from the module timer in a long-running server
+  (the scheduler function is tested directly), and a maintenance window on a real site.
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)
