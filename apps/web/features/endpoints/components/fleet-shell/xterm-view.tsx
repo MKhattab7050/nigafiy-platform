@@ -14,18 +14,18 @@ export function XtermView({
   label,
   className,
 }: {
-  onReady: (term: Terminal, fit: () => { cols: number; rows: number }) => (() => void) | void;
+  onReady: (term: Terminal, fit: () => { cols: number; rows: number }) => (() => void) | undefined;
   readOnly?: boolean;
   label: string;
   className?: string;
 }) {
-  const box = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLElement>(null);
   const ready = useRef(onReady);
   ready.current = onReady;
 
   useEffect(() => {
     let disposed = false;
-    let cleanup: (() => void) | void;
+    let cleanup: (() => void) | undefined;
     let term: Terminal | null = null;
     let observer: ResizeObserver | null = null;
     void (async () => {
@@ -65,5 +65,5 @@ export function XtermView({
     };
   }, [readOnly]);
 
-  return <div ref={box} role="region" aria-label={label} dir="ltr" className={className ?? 'h-[28rem] w-full overflow-hidden rounded-md border border-line bg-[#0b0f14] p-1'} />;
+  return <section ref={box} aria-label={label} dir="ltr" className={className ?? 'h-[28rem] w-full overflow-hidden rounded-md border border-line bg-[#0b0f14] p-1'} />;
 }

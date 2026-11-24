@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EndpointSummary, FleetGroup, FleetJob, FleetScript, FleetScriptParam } from '@nigafiy/shared-types';
 import { Async, Button, Field, Input, Modal, Segmented, Select, Switch } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
@@ -115,6 +115,13 @@ export function JobDialog({ endpointIds, onClose, onCreated, scriptId }: { endpo
   const tzList = useMemo(zones, []);
 
   const chosen = scriptsQ.data?.scripts.find((s) => s.id === script) ?? null;
+  // Opened from a script ("Run job" on the Scripts screen): start from that script's defaults once it loads.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !scriptId || !chosen) return;
+    seeded.current = true;
+    setValues(defaults(chosen.current.parameters));
+  }, [scriptId, chosen]);
   const targets = fixed ? endpointIds! : picked;
   const ready =
     Boolean(chosen) &&
@@ -219,7 +226,7 @@ export function JobDialog({ endpointIds, onClose, onCreated, scriptId }: { endpo
                       ))}
                     </Select>
                   ) : (
-                    <div role="group" aria-label={tx.pickComputers} className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-line p-2 text-sm">
+                    <fieldset aria-label={tx.pickComputers} className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-line p-2 text-sm">
                       {(endpointsQ.data?.items ?? [])
                         .filter((e) => !chosen || (chosen.os === 'windows' ? e.platform === 'windows' : e.platform !== 'windows'))
                         .map((e) => (
@@ -229,7 +236,7 @@ export function JobDialog({ endpointIds, onClose, onCreated, scriptId }: { endpo
                             <span className="text-xs text-faint">{e.site_name}</span>
                           </label>
                         ))}
-                    </div>
+                    </fieldset>
                   )}
                 </>
               )}
@@ -258,14 +265,14 @@ export function JobDialog({ endpointIds, onClose, onCreated, scriptId }: { endpo
                   </Field>
                   <Field label={every === 'hourly' ? tx.atMinute : tx.at}>{(id) => <Input id={id} value={time} onChange={(e) => setTime(e.target.value)} placeholder="03:00" dir="ltr" />}</Field>
                   {every === 'weekly' && (
-                    <div role="group" aria-label={tx.weekdays} className="flex flex-wrap gap-2 text-sm sm:col-span-2">
+                    <fieldset aria-label={tx.weekdays} className="flex flex-wrap gap-2 text-sm sm:col-span-2">
                       {tx.weekdayNames.map((d, i) => (
                         <label key={d} className="flex items-center gap-1">
                           <input type="checkbox" checked={weekdays.includes(i)} onChange={(e) => setWeekdays(e.target.checked ? [...weekdays, i] : weekdays.filter((x) => x !== i))} />
                           {d}
                         </label>
                       ))}
-                    </div>
+                    </fieldset>
                   )}
                   {every === 'monthly' && (
                     <Field label={tx.monthday}>{(id) => <Input id={id} type="number" min={1} max={28} value={monthday} onChange={(e) => setMonthday(Number(e.target.value))} dir="ltr" />}</Field>

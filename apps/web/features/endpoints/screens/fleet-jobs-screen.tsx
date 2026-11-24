@@ -46,7 +46,7 @@ export function FleetJobsScreen() {
             label={tx.jobsTitle}
             value={state}
             onChange={setState}
-            options={(['active', 'paused', 'finished', 'cancelled', 'all'] as const).map((s) => ({ value: s, label: s === 'all' ? '∗' : tx.jobState[s] }))}
+            options={(['active', 'paused', 'finished', 'cancelled', 'all'] as const).map((s) => ({ value: s, label: s === 'all' ? tx.allStates : tx.jobState[s] }))}
           />
         </div>
         <Async query={q}>

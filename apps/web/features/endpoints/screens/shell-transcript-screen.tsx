@@ -43,6 +43,7 @@ function TranscriptView({ t }: { t: Transcript }) {
   const replay = useCallback(
     (term: Terminal) => {
       term.write(output);
+      return undefined;
     },
     [output],
   );
@@ -57,7 +58,7 @@ function TranscriptView({ t }: { t: Transcript }) {
             <dd dir="auto">{s.reason}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted">{tx.shellState[s.state]}</dt>
+            <dt className="text-xs text-muted">{tx.stateLabel}</dt>
             <dd>
               {s.end_reason ? <Badge tone="idle">{tx.endReason[s.end_reason]}</Badge> : <Badge tone="ok">{tx.shellState[s.state]}</Badge>}
               {s.exit_code !== null && <span className="mono ms-2 text-xs">{tx.exited(s.exit_code)}</span>}

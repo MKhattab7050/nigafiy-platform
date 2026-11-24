@@ -14,6 +14,8 @@ import { JobDialog, jobsError } from '../components/fleet-jobs/job-dialog';
 import { jobsText } from '../components/fleet-jobs/jobs-text';
 
 interface ParamDraft {
+  /** A stable React key while editing (not sent). */
+  key: number;
   name: string;
   type: FleetScriptParamType;
   label: string;
@@ -25,7 +27,11 @@ interface ParamDraft {
   max_length: string;
 }
 
+let draftKey = 0;
+const nextKey = () => ++draftKey;
+
 const toDraft = (p: FleetScriptParam): ParamDraft => ({
+  key: nextKey(),
   name: p.name,
   type: p.type,
   label: p.label ?? '',
@@ -241,7 +247,7 @@ function ScriptEditor({ script, onClose, onSaved }: { script: FleetScript | null
         <fieldset className="space-y-2 rounded-md border border-line p-3">
           <legend className="px-1 text-xs font-medium text-muted">{tx.parameters}</legend>
           {params.map((p, i) => (
-            <div key={i} className="grid gap-2 rounded-md bg-raised/50 p-2 sm:grid-cols-6">
+            <div key={p.key} className="grid gap-2 rounded-md bg-raised/50 p-2 sm:grid-cols-6">
               <Input aria-label={tx.paramName} placeholder={tx.paramName} value={p.name} maxLength={40} onChange={(e) => setParam(i, { name: e.target.value })} dir="ltr" className="sm:col-span-2" />
               <Select aria-label={tx.paramType} value={p.type} onChange={(e) => setParam(i, { type: e.target.value as FleetScriptParamType })}>
                 {(['string', 'int', 'bool', 'choice'] as const).map((t) => (
@@ -281,7 +287,7 @@ function ScriptEditor({ script, onClose, onSaved }: { script: FleetScript | null
             type="button"
             size="sm"
             disabled={params.length >= 20}
-            onClick={() => setParams([...params, { name: '', type: 'string', label: '', required: false, default: '', choices: '', min: '', max: '', max_length: '' }])}
+            onClick={() => setParams([...params, { key: nextKey(), name: '', type: 'string', label: '', required: false, default: '', choices: '', min: '', max: '', max_length: '' }])}
           >
             <Plus className="size-3.5" aria-hidden />
             {tx.addParam}

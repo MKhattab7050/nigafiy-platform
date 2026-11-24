@@ -15,7 +15,7 @@ const en = {
   os: 'Operating system',
   osName: { windows: 'Windows (PowerShell)', linux: 'Linux (sh)', macos: 'macOS (sh)' } as Record<FleetScriptOs, string>,
   body: 'Script',
-  bodyHint: (lang: string) =>
+  bodyHint: (lang: string): string =>
     lang === 'powershell'
       ? 'Parameters arrive through a param() block, for example param([string]$Path, [int]$Days, [switch]$Force). Values are passed as data, never written into the script.'
       : 'Parameters arrive as environment variables NIGAFIY_PARAM_<NAME> (upper case), for example "$NIGAFIY_PARAM_PATH". Quote them; values are never written into the script.',
@@ -55,6 +55,7 @@ const en = {
   jobsSubtitle: 'A script on one computer, a selection or a group: now, once, or on a schedule in the site’s time zone. Offline computers run it when they come back, until it expires.',
   newJob: 'New job',
   noJobs: 'No job yet.',
+  allStates: 'All',
   jobName: 'Job name (optional)',
   script: 'Script',
   pickScript: 'Choose a script',
@@ -139,6 +140,7 @@ const en = {
   mfaCode: 'Verification code',
   mfaHint: 'The computer’s policy asks for your authenticator code.',
   transcriptNote: 'Everything typed and shown is recorded in an encrypted transcript linked from the audit log. The person at the computer can end the shell at any time.',
+  stateLabel: 'State',
   shellState: { opening: 'Opening', open: 'Open', closed: 'Ended' } as Record<string, string>,
   endReason: { operator: 'ended by the operator', user: 'ended by the person at the computer', idle: 'idle timeout', limit: 'size limit reached', exited: 'the shell exited', open_failed: 'could not open', agent_gone: 'the agent disconnected', revoked: 'revoked' } as Record<FleetShellEndReason, string>,
   endShell: 'End shell',
@@ -233,6 +235,7 @@ const ar: Text = {
   jobsSubtitle: 'برنامج نصي على حاسوب أو مجموعة مختارة أو مجموعة: الآن أو مرة لاحقًا أو بجدول بتوقيت الموقع. الحواسيب غير المتصلة تشغّله عند عودتها حتى تنتهي صلاحيته.',
   newJob: 'مهمة جديدة',
   noJobs: 'لا توجد مهام بعد.',
+  allStates: 'الكل',
   jobName: 'اسم المهمة (اختياري)',
   script: 'البرنامج النصي',
   pickScript: 'اختر برنامجًا نصيًا',
@@ -314,6 +317,7 @@ const ar: Text = {
   mfaCode: 'رمز التحقق',
   mfaHint: 'سياسة الحاسوب تطلب رمز تطبيق المصادقة.',
   transcriptNote: 'كل ما يُكتب ويُعرض يُسجَّل في سجل مشفّر مرتبط بسجل التدقيق. ويمكن للشخص أمام الحاسوب إنهاء سطر الأوامر في أي وقت.',
+  stateLabel: 'الحالة',
   shellState: { opening: 'جارٍ الفتح', open: 'مفتوح', closed: 'انتهى' },
   endReason: { operator: 'أنهاه المشغّل', user: 'أنهاه الشخص أمام الحاسوب', idle: 'انتهت مهلة الخمول', limit: 'بلغ حد الحجم', exited: 'خرجت الصدفة', open_failed: 'تعذّر الفتح', agent_gone: 'انقطع الوكيل', revoked: 'أُلغي' },
   endShell: 'إنهاء سطر الأوامر',

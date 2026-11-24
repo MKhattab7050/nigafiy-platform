@@ -516,7 +516,7 @@ export async function runDueJobs(orgId?: string, jobId?: string): Promise<number
   for (const d of due) {
     await withTenant(d.organization_id, async (db) => {
       const j = await lockJob(db, d.id);
-      if (!j || j.state !== 'active' || !j.next_run_at || j.next_run_at.getTime() > Date.now()) return;
+      if (j?.state !== 'active' || !j.next_run_at || j.next_run_at.getTime() > Date.now()) return;
       const scheduledFor = j.next_run_at;
       await createRun(db, d.organization_id, j, 'scheduled', scheduledFor, j.created_by_email);
       if (j.schedule_kind === 'recurring') {
