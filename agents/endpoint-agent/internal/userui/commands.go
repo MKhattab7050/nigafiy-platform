@@ -15,20 +15,21 @@ import (
 // ours), or osascript `display dialog … giving up after N`.
 func ConsentCommand(goos string, r ConsentRequest, lookPath func(string) (string, error)) (string, []string, error) {
 	r = r.Normalize()
+	title, allow, decline := r.Labels()
 	if goos == "darwin" {
-		script := "display dialog " + AppleScriptString(ConsentText(r, -1)+"\n\nDeclined automatically in "+strconv.Itoa(r.TimeoutSeconds)+" s.") +
-			" with title " + AppleScriptString(ConsentTitle) +
-			" buttons {" + AppleScriptString(DeclineLabel) + ", " + AppleScriptString(AllowLabel) + "}" +
-			" default button " + AppleScriptString(DeclineLabel) + " cancel button " + AppleScriptString(DeclineLabel) +
+		script := "display dialog " + AppleScriptString(ConsentText(r, -1)+"\n\n"+r.TimeoutNote()) +
+			" with title " + AppleScriptString(title) +
+			" buttons {" + AppleScriptString(decline) + ", " + AppleScriptString(allow) + "}" +
+			" default button " + AppleScriptString(decline) + " cancel button " + AppleScriptString(decline) +
 			" with icon caution giving up after " + strconv.Itoa(r.TimeoutSeconds)
 		return "/usr/bin/osascript", []string{"-e", script}, nil
 	}
 	if p, err := lookPath("zenity"); err == nil {
-		return p, []string{"--question", "--title=" + ConsentTitle, "--text=" + ConsentText(r, -1) + "\n\nDeclined automatically in " + strconv.Itoa(r.TimeoutSeconds) + " s.",
-			"--ok-label=" + AllowLabel, "--cancel-label=" + DeclineLabel, "--default-cancel", "--no-markup", "--timeout=" + strconv.Itoa(r.TimeoutSeconds)}, nil
+		return p, []string{"--question", "--title=" + title, "--text=" + ConsentText(r, -1) + "\n\n" + r.TimeoutNote(),
+			"--ok-label=" + allow, "--cancel-label=" + decline, "--default-cancel", "--no-markup", "--timeout=" + strconv.Itoa(r.TimeoutSeconds)}, nil
 	}
 	if p, err := lookPath("kdialog"); err == nil {
-		return p, []string{"--title", ConsentTitle, "--yes-label", AllowLabel, "--no-label", DeclineLabel, "--warningyesno", ConsentText(r, -1)}, nil
+		return p, []string{"--title", title, "--yes-label", allow, "--no-label", decline, "--warningyesno", ConsentText(r, -1)}, nil
 	}
 	return "", nil, errors.New("no dialog tool to ask for consent: install zenity or kdialog")
 }
@@ -43,7 +44,7 @@ func InterpretConsent(tool string, stdout string, exitCode int, killed bool) Con
 		if strings.Contains(stdout, "gave up:true") {
 			return TimedOut
 		}
-		if exitCode == 0 && strings.Contains(stdout, "button returned:"+AllowLabel) {
+		if exitCode == 0 && (strings.Contains(stdout, "button returned:"+AllowLabel) || strings.Contains(stdout, "button returned:"+StartNowLabel)) {
 			return Accepted
 		}
 		return Denied

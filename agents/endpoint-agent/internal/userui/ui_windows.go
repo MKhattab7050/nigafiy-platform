@@ -323,12 +323,13 @@ func (u *winUI) Consent(ctx context.Context, req ConsentRequest) (ConsentAnswer,
 		finish(self, Denied) // closing the dialog is a refusal
 		return true
 	}
-	s := spec{title: ConsentTitle, text: ConsentText(req, left), exStyle: wsExTopmost | wsExDlgFrame, style: wsPopup | wsCaption | wsSysMenu | wsVisible, w: 560, h: 300,
+	title, allow, decline := req.Labels()
+	s := spec{title: title, text: ConsentText(req, left), exStyle: wsExTopmost | wsExDlgFrame, style: wsPopup | wsCaption | wsSysMenu | wsVisible, w: 560, h: 340,
 		buttons: []struct {
 			id    int
 			label string
 			def   bool
-		}{{idAllow, AllowLabel, false}, {idDecline, DeclineLabel, true}}}
+		}{{idAllow, allow, false}, {idDecline, decline, true}}}
 	go runWindow(s, w, func(hwnd uintptr) {
 		self = hwnd
 		textHwnd, _, _ = pGetDlgItem.Call(hwnd, idText)
@@ -385,7 +386,11 @@ func (u *winUI) ShowBanner(info BannerInfo, onEnd func()) error {
 		_, _, _ = pSetWindowPos.Call(b.hwnd, hwndTopmost, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate|swpShowWindow)
 	}
 	w.onClose = func() bool { return false } // Alt+F4 does not hide it; End session ends the session
-	s := spec{title: BannerTitle, text: BannerText(info), exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: 620, h: 150, top: true,
+	h := 150
+	if info.Permissions != nil {
+		h = 200 // two more lines: what is allowed, in English and Arabic
+	}
+	s := spec{title: BannerTitle, text: BannerText(info), exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: 620, h: h, top: true,
 		buttons: []struct {
 			id    int
 			label string

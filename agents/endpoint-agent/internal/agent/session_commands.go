@@ -8,6 +8,7 @@ import (
 	"github.com/nigafiy/agent/internal/control"
 	"github.com/nigafiy/agent/internal/rdstream"
 	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 )
 
 // Remote desktop session commands run through the Desktop (this process, or the session helper
@@ -56,10 +57,22 @@ func (a *Agent) sessionCommand(ctx context.Context, cmd control.Command) (contro
 		if err := json.Unmarshal(cmd.Payload, &ev); err != nil {
 			return control.Result{ID: cmd.ID, OK: false, Error: "Invalid remote desktop input payload"}, true
 		}
+		// The open session's profile decides here too (the server checked it first).
+		if perms, open := a.sessionPermissions(); open && !perms.Control {
+			return control.Result{ID: cmd.ID, OK: false, Error: "The session's permission profile is view only: input refused by the agent"}, true
+		}
 		if err := a.deps.Desktop.Input(ev); err != nil {
 			return control.Result{ID: cmd.ID, OK: false, Error: err.Error()}, true
 		}
 		return control.Result{ID: cmd.ID, OK: true, Output: fmt.Sprintf("Input '%s' delivered", ev.Kind)}, true
 	}
 	return control.Result{}, false
+}
+
+// sessionPermissions: what the open session allows (ok false when none is open here).
+func (a *Agent) sessionPermissions() (userui.Permissions, bool) {
+	if a.sessions == nil {
+		return userui.Permissions{}, false
+	}
+	return a.sessions.Allows()
 }

@@ -39,11 +39,31 @@ type OpenRequest struct {
 	Display               int     `json:"display_index"`
 	Quality               int     `json:"quality"`
 	Scale                 float64 `json:"scale"`
+	// Unattended sessions: the person may refuse within this many seconds (0 = no dialog); no
+	// answer lets the session start.
+	RefuseWindowSeconds int `json:"refuse_window_s"`
+	// Permissions of the session's profile (Fleet Pro). The agent enforces them as well as the
+	// server (defence in depth) and lists them on the banner. Absent from servers before profiles:
+	// then Control alone decides, as before.
+	Permissions *userui.Permissions `json:"permissions,omitempty"`
+	Profile     string              `json:"profile,omitempty"`
+}
+
+// Effective returns the permissions this agent enforces for the request: the server's profile
+// flags (mouse and keyboard only when both Control and the profile allow it), or for an older
+// server without profiles, view + Control + clipboard both ways (what sessions did before).
+func (r OpenRequest) Effective() userui.Permissions {
+	if r.Permissions == nil {
+		return userui.Permissions{View: true, Control: r.Control, ClipboardIn: true, ClipboardOut: true}
+	}
+	p := *r.Permissions
+	p.Control = p.Control && r.Control
+	return p
 }
 
 // OpenResult goes back as the command's result data.
 type OpenResult struct {
-	Consent      string       `json:"consent"` // accepted | denied | timeout | not_required | unavailable
+	Consent      string       `json:"consent"` // accepted | denied | timeout | not_required | unavailable | not_refused
 	ConsentError string       `json:"consent_error,omitempty"`
 	Banner       string       `json:"banner"` // shown | unavailable | not_shown
 	BannerError  string       `json:"banner_error,omitempty"`
@@ -106,6 +126,42 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 		return res
 	}
 	m.Close("", "replaced")
+	perms := req.Effective()
+	req.Control = perms.Control
+
+	if !req.ConsentRequired && req.RefuseWindowSeconds > 0 {
+		// Unattended with a refuse window: the person sees who connects, why and what is allowed,
+		// and may refuse; no answer lets the session start. Nobody to ask (no desktop) also starts
+		// it: unattended policies are for computers nobody uses.
+		cctx, cancel := context.WithCancel(ctx)
+		m.mu.Lock()
+		m.asking, m.cancelAsking = req.SessionID, cancel
+		m.mu.Unlock()
+		answer, err := d.Consent(cctx, userui.ConsentRequest{SessionID: req.SessionID, Operator: req.Operator, Reason: req.Reason, TimeoutSeconds: req.RefuseWindowSeconds, Mode: userui.ModeRefuse, Permissions: &perms})
+		closed := cctx.Err() != nil && ctx.Err() == nil
+		m.mu.Lock()
+		if m.asking == req.SessionID {
+			m.asking, m.cancelAsking = "", nil
+		}
+		m.mu.Unlock()
+		cancel()
+		switch {
+		case closed:
+			res.Consent = "unavailable"
+			res.ConsentError = "the session was closed before the refuse window ended"
+			return res
+		case err != nil:
+			res.Consent = "unavailable"
+			res.ConsentError = err.Error()
+		case answer == userui.Denied:
+			res.Consent = "denied"
+			return res
+		case answer == userui.Accepted:
+			res.Consent = "accepted"
+		default:
+			res.Consent = "not_refused"
+		}
+	}
 
 	if req.ConsentRequired {
 		cctx, cancel := context.WithCancel(ctx)
@@ -138,8 +194,9 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 		}
 	}
 
-	l := &live{m: m, req: req, done: make(chan struct{})}
-	info := userui.BannerInfo{SessionID: req.SessionID, Operator: req.Operator, Reason: req.Reason, Control: req.Control}
+	l := &live{m: m, req: req, perms: perms, done: make(chan struct{})}
+	// The banner shows for every session, whatever the profile allows (nothing can turn it off).
+	info := userui.BannerInfo{SessionID: req.SessionID, Operator: req.Operator, Reason: req.Reason, Control: req.Control, Permissions: &perms, Profile: req.Profile}
 	if err := d.ShowBanner(info, func() { m.endedByUser(req.SessionID) }); err != nil {
 		res.Banner = "unavailable"
 		res.BannerError = err.Error()
@@ -160,6 +217,17 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 		close(l.done)
 	}
 	return res
+}
+
+// Allows reports what the open session permits, for commands that arrive outside the stream (the
+// HTTP fallback). ok is false when no session is open here.
+func (m *Manager) Allows() (perms userui.Permissions, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.active == nil {
+		return userui.Permissions{}, false
+	}
+	return m.active.perms, true
 }
 
 // Close ends the session with that id ("" = whichever is open): stream, banner, encoder state.
@@ -212,6 +280,7 @@ func (m *Manager) endedByUser(sessionID string) {
 type live struct {
 	m      *Manager
 	req    OpenRequest
+	perms  userui.Permissions
 	cancel context.CancelFunc
 	done   chan struct{}
 }

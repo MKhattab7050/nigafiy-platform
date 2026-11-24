@@ -85,3 +85,36 @@ func TestWindowsBannerEndButtonAndHide(t *testing.T) {
 		t.Fatal("HideBanner did not close the window")
 	}
 }
+
+// Fleet Pro: the unattended refuse window (Refuse / Start now / no answer) and a banner that lists
+// the session's permissions, as real windows.
+func TestWindowsRefuseWindowAndPermissionBanner(t *testing.T) {
+	requireUITest(t)
+	defer func() { testConsentShown = nil }()
+	u := New()
+	perms := &Permissions{View: true, Control: true, ClipboardOut: true}
+	for _, c := range []struct {
+		press int
+		want  ConsentAnswer
+	}{{idAllow, Accepted}, {idDecline, Denied}} {
+		press := c.press
+		testConsentShown = func(hwnd uintptr) {
+			go func() { time.Sleep(500 * time.Millisecond); pressButton(hwnd, press) }()
+		}
+		got, err := u.Consent(context.Background(), ConsentRequest{SessionID: "r1", Operator: "tech@corp.example", Reason: "UI test", TimeoutSeconds: 30, Mode: ModeRefuse, Permissions: perms})
+		if err != nil || got != c.want {
+			t.Fatalf("refuse window press %d: %s %v", press, got, err)
+		}
+	}
+	testConsentShown = nil
+	got, err := u.Consent(context.Background(), ConsentRequest{SessionID: "r2", Operator: "tech@corp.example", TimeoutSeconds: MinConsentTimeout, Mode: ModeRefuse, Permissions: perms})
+	if err != nil || got != TimedOut {
+		t.Fatalf("no answer in the refuse window must time out (the caller lets the session start): %s %v", got, err)
+	}
+	w := u.(*winUI)
+	if err := w.ShowBanner(BannerInfo{SessionID: "b1", Operator: "tech@corp.example", Reason: "UI test", Control: true, Permissions: perms, Profile: "Support"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(700 * time.Millisecond)
+	w.HideBanner("b1")
+}

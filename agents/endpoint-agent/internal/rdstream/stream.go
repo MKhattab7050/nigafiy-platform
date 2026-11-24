@@ -318,8 +318,8 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 		if m.Ev == nil {
 			return false
 		}
-		if !s.l.req.Control {
-			s.send(map[string]any{"t": "input_error", "error": "this session is view only"})
+		if !s.l.req.Control || !s.l.perms.Control {
+			s.send(map[string]any{"t": "input_error", "code": "profile_forbids_control", "error": "this session is view only"})
 			return false
 		}
 		if err := d.Input(*m.Ev); err != nil {
@@ -327,6 +327,10 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 		}
 		s.signal()
 	case "clipboard_get":
+		if !s.l.perms.ClipboardOut {
+			s.send(map[string]any{"t": "clipboard_error", "req": m.Req, "code": "profile_forbids_clipboard_out", "error": "the session profile does not allow taking the clipboard from this computer"})
+			return false
+		}
 		go func(req string) {
 			text, err := d.ClipboardText()
 			if err != nil {
@@ -336,6 +340,10 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 			s.send(map[string]any{"t": "clipboard", "req": req, "text": text})
 		}(m.Req)
 	case "clipboard_set":
+		if !s.l.perms.ClipboardIn {
+			s.send(map[string]any{"t": "clipboard_error", "req": m.Req, "code": "profile_forbids_clipboard_in", "error": "the session profile does not allow sending the clipboard to this computer"})
+			return false
+		}
 		go func(req, text string) {
 			if err := clipboard.Check(text); err != nil {
 				s.send(map[string]any{"t": "clipboard_error", "req": req, "error": err.Error()})
