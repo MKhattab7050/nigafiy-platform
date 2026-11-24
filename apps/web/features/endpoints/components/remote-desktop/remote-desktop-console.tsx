@@ -3,12 +3,14 @@
 import clsx from 'clsx';
 import { ClipboardCopy, ClipboardPaste, Hourglass, Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, ShieldCheck, Square } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote, Input, Notice, Select, Textarea, type Tone } from '@/components/ui';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '@/lib/app';
 import { ltr } from '@/lib/localize/bidi';
 import { ConnectDialog } from '../fleet-policy/connect-dialog';
 import { PermissionChips } from '../fleet-policy/permission-chips';
 import { policyText } from '../fleet-policy/policy-text';
+import { reachText } from '../reach/reach-text';
+import { RestartPanel } from '../reach/restart-panel';
 import { bytes, rdText } from './rd-text';
 import { SessionHistory } from './session-history';
 import { AnnotationLayer, ChatCard, OperatorsCard, SessionToolbar, TransferCard, WakeCard } from './session-tools-panel';
@@ -18,13 +20,26 @@ import { useSessionTools } from './use-session-tools';
 const PATH_TONE: Record<RdPath, Tone> = { connecting: 'idle', direct: 'ok', relay: 'ok', waiting: 'warn', http: 'warn' };
 
 export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
-  const { ep, online, canControl, viewOnly = false } = props;
+  const { ep, online, canControl, viewOnly = false, autoConnect = false, onReload } = props;
   const rd = useRemoteDesktop(props);
   const { me } = useApp();
   const tools = useSessionTools(rd, ep.id, me.user.id);
   const [wakeOpen, setWakeOpen] = useState(false);
   const tx = rdText(rd.locale);
   const px = policyText(rd.locale);
+  const rx = reachText(rd.locale);
+  const { reloadStatus, setConnectOpen } = rd;
+  const onResumed = useCallback(() => {
+    void reloadStatus();
+    onReload();
+  }, [reloadStatus, onReload]);
+  // ?connect=1 (connect by name, Nigafiy ID or code; the Hub search): the connect dialog opens once.
+  const autoOpened = useRef(false);
+  useEffect(() => {
+    if (!autoConnect || autoOpened.current || !online || !canControl || rd.session) return;
+    autoOpened.current = true;
+    setConnectOpen(true);
+  }, [autoConnect, online, canControl, rd.session, setConnectOpen]);
   const waitingApproval = rd.state === 'waiting_approval';
   const waitingConsent = rd.state === 'waiting_consent';
   const refuseWindow = waitingConsent && fsRefuse(rd.fleetSession);
@@ -66,6 +81,8 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             {rd.live && <Badge tone={PATH_TONE[rd.path]}>{tx.path[rd.path]}</Badge>}
             {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' ? 'ok' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
             {rd.hello?.desktop?.mode && <Badge tone="info">{tx.desktopMode[rd.hello.desktop.mode] ?? rd.hello.desktop.mode}</Badge>}
+            {rd.session.user_session && <Badge tone="info">{rd.session.user_session === 'winlogon' ? rx.userSessionWinlogon : `${rx.userSession} ${ltr(rd.session.user_session)}`}</Badge>}
+            {rd.session.quick_support && <Badge tone="warn">{rx.qsPanel}</Badge>}
           </div>
         )}
         {/* What this session's profile allows: the same list the user sees on the session bar. */}
@@ -285,9 +302,10 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
       {rd.session && <OperatorsCard t={tools} meId={me.user.id} canControl={canControl} />}
       {rd.live && canControl && (tools.may('files') || tools.may('clipboard_in') || tools.may('clipboard_out')) && <TransferCard t={tools} perms={tools.perms} />}
       {!online && !rd.session && ep.status !== 'revoked' && <WakeCard t={tools} canControl={canControl} onWake={() => setWakeOpen(true)} />}
+      <RestartPanel endpoint={ep} live={rd.live} allowed={rd.allows('restart')} canControl={canControl && !rd.session?.quick_support} onResumed={onResumed} />
       {wakeOpen && (
         <ConnectDialog
-          endpoint={{ id: ep.id, name: ep.name }}
+          endpoint={ep}
           onClose={() => setWakeOpen(false)}
           onSubmit={async (c) => {
             const refused = await tools.requestWake(c);
@@ -296,7 +314,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
           }}
         />
       )}
-      {rd.connectOpen && <ConnectDialog endpoint={{ id: ep.id, name: ep.name }} onClose={() => rd.setConnectOpen(false)} onSubmit={rd.requestSession} />}
+      {rd.connectOpen && <ConnectDialog endpoint={ep} onClose={() => rd.setConnectOpen(false)} onSubmit={rd.requestSession} />}
 
       <SessionHistory endpointId={ep.id} />
     </div>

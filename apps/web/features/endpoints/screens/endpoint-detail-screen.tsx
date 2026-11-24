@@ -23,6 +23,7 @@ import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
 import { EndpointGroupPicker } from '../components/fleet-policy/group-assign';
 import { RemoteDesktopConsole } from '../components/remote-desktop/remote-desktop-console';
+import { reachText } from '../components/reach/reach-text';
 import { endpointsText } from '../text';
 import { DeviceLink } from '@/components/device-link';
 
@@ -37,8 +38,12 @@ export function EndpointDetailScreen({ id }: { id: string }) {
   const seriesQuery = useQuery<{ points: EndpointSeriesPoint[] }>(`/endpoints/${id}/series?range=${range}`, ['devices'], 15_000);
 
   // ?tab=desktop / ?tab=files: opened from a device card's Fleet action (remote desktop, files).
-  const requested = useSearchParams().get('tab');
-  const [tab, setTab] = useState<Tab>(() => (requested as Tab | null) ?? 'overview');
+  // ?connect=1: connect by name, Nigafiy ID or code (Fleet, the Hub search) opens the connect dialog.
+  const params = useSearchParams();
+  const requested = params.get('tab');
+  const autoConnect = params.get('connect') === '1';
+  const rx = reachText(locale);
+  const [tab, setTab] = useState<Tab>(() => (autoConnect ? 'desktop' : ((requested as Tab | null) ?? 'overview')));
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -119,7 +124,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               <PageHeader
                 icon={<PlatformIcon platform={ep.platform} className="size-[18px]" />}
                 title={ep.name}
-                description={`${ep.site_name} · ${tx.platforms[ep.platform] ?? ep.platform}${ep.hostname ? ` · ${ep.hostname}` : ''}`}
+                description={`${ep.site_name} · ${tx.platforms[ep.platform] ?? ep.platform}${ep.hostname ? ` · ${ep.hostname}` : ''}${ep.nigafiy_id ? ` · ${rx.nigafiyId} ${rx.idValue(ep.nigafiy_id)}` : ''}`}
                 actions={
                   <>
                     <Badge tone={tone}>{statusLabel}</Badge>
@@ -188,6 +193,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                   ep={ep}
                   online={online}
                   canControl={can('technician')}
+                  autoConnect={autoConnect}
                   onReload={query.reload}
                 />
               )}

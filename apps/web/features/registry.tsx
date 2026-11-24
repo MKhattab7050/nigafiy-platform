@@ -16,6 +16,7 @@ import {
   Hash,
   History,
   LayoutGrid,
+  LifeBuoy,
   Lightbulb,
   LockKeyhole,
   type LucideIcon,
@@ -247,6 +248,20 @@ export const FEATURES: Feature[] = [
     widget: { component: lazy(() => import('./endpoints/widget')), order: 50, attention: true },
   },
   { id: 'fleet-sessions', program: 'fleet', route: '/fleet/sessions', label: 'endpoints.nav.sessions', icon: MonitorSmartphone, minRole: 'technician' },
+  {
+    id: 'fleet-requests',
+    program: 'fleet',
+    route: '/fleet/requests',
+    label: 'endpoints.nav.requests',
+    icon: LifeBuoy,
+    minRole: 'technician',
+    badge: {
+      path: () => '/fleet/help-requests?state=open&limit=100',
+      topics: ['events', 'devices'],
+      count: (data) => (data as { requests: unknown[] }).requests.length,
+      label: 'endpoints.nav.openRequests',
+    },
+  },
   { id: 'fleet-policies', program: 'fleet', route: '/fleet/policies', label: 'endpoints.nav.policies', icon: LockKeyhole, minRole: 'technician' },
   { id: 'fleet-approvals', program: 'fleet', route: '/fleet/approvals', label: 'endpoints.nav.approvals', icon: UserCheck, minRole: 'admin' },
 

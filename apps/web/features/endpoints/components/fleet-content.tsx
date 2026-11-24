@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { Ban, KeyRound, Plus, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Ban, KeyRound, LifeBuoy, Plus, Search, ShieldAlert, ShieldCheck, Star } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
@@ -9,14 +9,17 @@ import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { PlatformIcon } from '@/components/device-icon';
 import { DeviceLink } from '@/components/device-link';
 import { SetupArt } from '@/components/illustrations';
-import { Badge, Button, Card, EmptyState, Segmented, Select } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Input, Segmented, Select } from '@/components/ui';
+import { api } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { localizeComplianceReason } from '@/lib/localize';
 import { endpointsText } from '../text';
-import { GroupAssignBar, GroupTag, useFleetGroups } from './fleet-policy/group-assign';
+import { GroupTag, useFleetGroups } from './fleet-policy/group-assign';
 import { policyText } from './fleet-policy/policy-text';
 import { Meter, complianceTone, epTone } from './endpoint-tones';
+import { BulkBar } from './reach/bulk-bar';
+import { reachText } from './reach/reach-text';
 
 export function FleetContent({
   items,
@@ -26,6 +29,7 @@ export function FleetContent({
   setComplianceFilter,
   busy,
   canAdmin,
+  canTech = canAdmin,
   onAdd,
   onReissue,
   onRevoke,
@@ -38,6 +42,8 @@ export function FleetContent({
   setComplianceFilter: (v: 'all' | EndpointComplianceStatus) => void;
   busy: string;
   canAdmin: boolean;
+  /** Technicians and above: favourites, selection and the bulk bar. */
+  canTech?: boolean;
   onAdd: () => void;
   onReissue: (id: string) => Promise<void>;
   onRevoke: (id: string) => Promise<void>;
@@ -46,7 +52,14 @@ export function FleetContent({
   const { locale, t } = useI18n();
   const tx = endpointsText(locale);
   const px = policyText(locale);
+  const rx = reachText(locale);
   const groupsQ = useFleetGroups();
+  const [q, setQ] = useState('');
+  const [siteFilter, setSiteFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
+  const [userFilter, setUserFilter] = useState('all');
+  const [view, setView] = useState<'all' | 'favourites' | 'recent'>('all');
+  const [favBusy, setFavBusy] = useState('');
   const groups = groupsQ.data?.groups ?? [];
   const [groupFilter, setGroupFilter] = useState<string>('all');
   const [selected, setSelected] = useState<string[]>([]);
@@ -83,15 +96,43 @@ export function FleetContent({
     color: c === 'compliant' ? 'var(--color-ok)' : c === 'attention' ? 'var(--color-warn)' : c === 'non_compliant' ? 'var(--color-crit)' : 'var(--color-idle)',
   }));
 
+  // Address book: what the filters offer comes from the computers themselves.
+  const sitesSeen = useMemo(() => [...new Set(items.map((e) => e.site_name))].sort(), [items]);
+  const tagsSeen = useMemo(() => [...new Set(items.flatMap((e) => e.tags ?? []))].sort(), [items]);
+  const usersSeen = useMemo(() => [...new Set(items.flatMap((e) => [...e.logged_in_users, ...(e.user_sessions ?? []).flatMap((s) => (s.user ? [s.user] : []))]))].sort(), [items]);
+
+  async function toggleFavourite(id: string, on: boolean) {
+    setFavBusy(id);
+    try {
+      await api(`/fleet/favourites/${id}`, { method: on ? 'PUT' : 'DELETE' });
+      onReload?.();
+    } finally {
+      setFavBusy('');
+    }
+  }
+
   const filtered = useMemo(() => {
-    return items.filter((e) => {
+    const needle = q.trim().toLowerCase();
+    const digits = needle.replace(/[\s-]/g, '');
+    const list = items.filter((e) => {
+      if (needle) {
+        const hay = [e.name, e.hostname, e.primary_ip, e.site_name, ...(e.tags ?? []), ...e.logged_in_users].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(needle) && !(digits.length >= 3 && /^\d+$/.test(digits) && (e.nigafiy_id ?? '').includes(digits))) return false;
+      }
+      if (siteFilter !== 'all' && e.site_name !== siteFilter) return false;
+      if (tagFilter !== 'all' && !(e.tags ?? []).includes(tagFilter)) return false;
+      if (userFilter !== 'all' && !e.logged_in_users.includes(userFilter) && !(e.user_sessions ?? []).some((s) => s.user === userFilter)) return false;
+      if (view === 'favourites' && !e.favourite) return false;
+      if (view === 'recent' && !e.my_last_session_at) return false;
       if (platformFilter !== 'all' && e.platform !== platformFilter) return false;
       if (complianceFilter !== 'all' && e.compliance_status !== complianceFilter) return false;
       if (groupFilter === 'none' && e.fleet_group_id) return false;
       if (groupFilter !== 'all' && groupFilter !== 'none' && e.fleet_group_id !== groupFilter) return false;
       return true;
     });
-  }, [items, platformFilter, complianceFilter, groupFilter]);
+    if (view === 'recent') list.sort((a, b) => (b.my_last_session_at ?? '').localeCompare(a.my_last_session_at ?? ''));
+    return list;
+  }, [items, platformFilter, complianceFilter, groupFilter, q, siteFilter, tagFilter, userFilter, view]);
 
   if (items.length === 0) {
     return (
@@ -175,8 +216,58 @@ export function FleetContent({
         />
       </div>
 
-      {/* Fleet groups: filter, and (admins) bulk assignment. */}
-      {(groups.length > 0 || canAdmin) && groupsQ.data && (
+      {/* Address book: search, site, tag, signed-in user, favourites and my recent sessions. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-64 flex-1">
+          <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={rx.search} aria-label={rx.search} className="ps-8" dir="auto" />
+        </div>
+        {sitesSeen.length > 1 && (
+          <Select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} aria-label={rx.allSites} className="w-44">
+            <option value="all">{rx.allSites}</option>
+            {sitesSeen.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        )}
+        {tagsSeen.length > 0 && (
+          <Select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label={rx.allTags} className="w-40">
+            <option value="all">{rx.allTags}</option>
+            {tagsSeen.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        )}
+        {usersSeen.length > 0 && (
+          <Select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} aria-label={rx.anyUser} className="w-48">
+            <option value="all">{rx.anyUser}</option>
+            {usersSeen.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        )}
+        {canTech && (
+          <Segmented<'all' | 'favourites' | 'recent'>
+            value={view}
+            label={rx.viewLabel}
+            onChange={setView}
+            options={[
+              { value: 'all', label: rx.view.all },
+              { value: 'favourites', label: rx.view.favourites },
+              { value: 'recent', label: rx.view.recent },
+            ]}
+          />
+        )}
+      </div>
+
+      {/* Fleet groups: filter, and bulk actions on a selection. */}
+      {(groups.length > 0 || canTech) && (
         <div className="flex flex-wrap items-center gap-2">
           <Select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} aria-label={px.group} className="w-64">
             <option value="all">{px.allGroups}</option>
@@ -187,24 +278,24 @@ export function FleetContent({
               </option>
             ))}
           </Select>
-          {canAdmin && (
+          {canTech && (
             <Button size="sm" onClick={() => setSelected(filtered.filter((e) => e.status !== 'revoked').map((e) => e.id))}>
               {px.selectAll}
             </Button>
           )}
         </div>
       )}
-      {canAdmin && selected.length > 0 && (
-        <GroupAssignBar
+      {canTech && selected.length > 0 && (
+        <BulkBar
           selected={selected}
-          groups={groups}
+          names={Object.fromEntries(items.map((e) => [e.id, e.name]))}
+          groups={groupsQ.data ? groups : null}
+          canAdmin={canAdmin}
           onClear={() => setSelected([])}
-          onDone={() => {
-            setSelected([]);
-            onReload?.();
-          }}
+          onDone={() => onReload?.()}
         />
       )}
+      {filtered.length === 0 && <p className="text-sm text-muted">{rx.noMatch}</p>}
 
       {/* Endpoint Cards */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -223,15 +314,36 @@ export function FleetContent({
               key={ep.id}
               title={
                 <span className="flex flex-wrap items-center gap-2">
-                  {canAdmin && ep.status !== 'revoked' && (
+                  {canTech && ep.status !== 'revoked' && (
                     <input type="checkbox" checked={selected.includes(ep.id)} onChange={(e) => toggle(ep.id, e.target.checked)} aria-label={px.select(ep.name)} />
                   )}
                   <PlatformIcon platform={ep.platform} className="size-4 text-muted" />
                   <Link href={`/fleet/endpoints/${ep.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline">
                     {ep.name}
                   </Link>
+                  {canTech && ep.status !== 'revoked' && (
+                    <button
+                      type="button"
+                      className="rounded p-0.5 text-faint hover:text-warn disabled:opacity-50"
+                      aria-pressed={Boolean(ep.favourite)}
+                      aria-label={ep.favourite ? rx.unfavourite(ep.name) : rx.favourite(ep.name)}
+                      title={ep.favourite ? rx.unfavourite(ep.name) : rx.favourite(ep.name)}
+                      disabled={favBusy === ep.id}
+                      onClick={() => void toggleFavourite(ep.id, !ep.favourite)}
+                    >
+                      <Star className={clsx('size-4', ep.favourite && 'fill-warn text-warn')} aria-hidden />
+                    </button>
+                  )}
                   <Badge tone="info">{tx.platforms[ep.platform] ?? ep.platform}</Badge>
                   <Badge tone={epTone(ep)}>{statusLabel}</Badge>
+                  {(ep.open_help_requests ?? 0) > 0 && (
+                    <Link href="/fleet/requests" className="inline-flex">
+                      <Badge tone="warn">
+                        <LifeBuoy className="me-1 inline size-3" aria-hidden />
+                        {rx.helpOpen(ep.open_help_requests ?? 0)}
+                      </Badge>
+                    </Link>
+                  )}
                   {groupsQ.data && <GroupTag name={ep.fleet_group_name} color={groups.find((g) => g.id === ep.fleet_group_id)?.color} />}
                   <Badge tone={complianceTone(ep.compliance_status)}>
                     {ep.compliance_status === 'compliant' ? (
@@ -272,6 +384,19 @@ export function FleetContent({
               }
             >
               <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {ep.nigafiy_id && (
+                    <span className="text-muted">
+                      {rx.nigafiyId}: <span className="mono font-medium text-fg">{rx.idValue(ep.nigafiy_id)}</span>
+                    </span>
+                  )}
+                  {(ep.tags ?? []).map((tag) => (
+                    <button key={tag} type="button" onClick={() => setTagFilter(tag)} className="rounded-[4px] border border-line bg-raised px-1.5 py-0.5 text-[11px] text-muted hover:text-fg" dir="auto">
+                      #{tag}
+                    </button>
+                  ))}
+                  {ep.my_last_session_at && <span className="text-faint">{rx.lastSession(relativeTime(ep.my_last_session_at, locale))}</span>}
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     {ep.site_name}

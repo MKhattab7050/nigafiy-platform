@@ -4,11 +4,12 @@ import { Cpu, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { EndpointComplianceStatus, EndpointCreated, EndpointEnrollmentSuggestion, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
-import { Async, Button, CopyBlock, ErrorNote, Field, InferredBadge, Input, Modal, Notice, PageHeader, Select, SkeletonBlock, SuggestedBadge } from '@/components/ui';
+import { Async, Button, Card, CopyBlock, ErrorNote, Field, InferredBadge, Input, Modal, Notice, PageHeader, Select, SkeletonBlock, SuggestedBadge } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { fill, useI18n } from '@/lib/i18n';
 import { FleetContent } from '../components/fleet-content';
+import { ConnectBox } from '../components/reach/connect-box';
 import { endpointsText } from '../text';
 
 export function EndpointsScreen() {
@@ -136,6 +137,12 @@ export function EndpointsScreen() {
         </div>
       )}
 
+      {can('technician') && (
+        <Card className="mb-4">
+          <ConnectBox />
+        </Card>
+      )}
+
       <Async query={query}>
         {({ items }) => (
           <FleetContent
@@ -146,6 +153,7 @@ export function EndpointsScreen() {
             setComplianceFilter={setComplianceFilter}
             busy={busy}
             canAdmin={can('admin')}
+            canTech={can('technician')}
             onAdd={openBlank}
             onReissue={reissueToken}
             onRevoke={revokeEndpoint}

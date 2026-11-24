@@ -3,12 +3,13 @@
 import clsx from 'clsx';
 import { Check, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
-import type { FleetPolicyPreview } from '@nigafiy/shared-types';
+import type { FleetBootState, FleetPolicyPreview, FleetUserSession } from '@nigafiy/shared-types';
 import { Async, Button, Field, Input, Modal, Notice, Select } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { ltr } from '@/lib/localize/bidi';
+import { reachText } from '../reach/reach-text';
 import { toolsText } from '../remote-desktop/tools-text';
 import { PermissionChips } from './permission-chips';
 import { codeMessage, policyText, profileLabel } from './policy-text';
@@ -21,6 +22,8 @@ export interface ConnectChoice {
   recording_enabled?: boolean;
   /** Set by Wake-on-LAN then connect: the wake request this session completes. */
   wake_request_id?: string;
+  /** Windows: the user session to attach to (a session id, or 'winlogon' for the sign-in screen). */
+  user_session?: string;
 }
 
 /**
@@ -33,7 +36,8 @@ export function ConnectDialog({
   onClose,
   onSubmit,
 }: {
-  endpoint: { id: string; name: string };
+  /** With the platform, the Windows sessions and the boot state, the dialog offers the session choice. */
+  endpoint: { id: string; name: string; platform?: string; user_sessions?: FleetUserSession[]; boot_state?: FleetBootState };
   onClose: () => void;
   /** Sends the session request; resolves to the API's refusal, or null when the request went out. */
   onSubmit: (choice: ConnectChoice) => Promise<ApiError | null>;
@@ -45,6 +49,11 @@ export function ConnectDialog({
   const [profileId, setProfileId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [record, setRecord] = useState(false);
+  const [userSession, setUserSession] = useState('');
+  const rx = reachText(locale);
+  const sessions = (endpoint.user_sessions ?? []).filter((s) => s.state !== 'listen');
+  const canPickSession = endpoint.platform === 'windows';
+  const asService = endpoint.boot_state?.service === true;
   const tt = toolsText(locale);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -60,7 +69,7 @@ export function ConnectDialog({
       }
       const recordAllowed = p.profiles.find((x) => x.id === chosen)?.record === true;
       const recording_enabled = p.recording_mode === 'required' || (p.recording_mode === 'optional' && record && recordAllowed);
-      const refused = await onSubmit({ reason: reason.trim(), profile_id: chosen, recording_enabled, ...(token ? { step_up_token: token } : {}) });
+      const refused = await onSubmit({ reason: reason.trim(), profile_id: chosen, recording_enabled, ...(token ? { step_up_token: token } : {}), ...(userSession ? { user_session: userSession } : {}) });
       if (refused) {
         setError(refused);
         void query.reload();
@@ -127,6 +136,23 @@ export function ConnectDialog({
                 )}
               </Field>
               {profile && <PermissionChips permissions={profile} all />}
+
+              {/* Windows: which user session, or the sign-in screen when nobody is signed in (needs the service). */}
+              {canPickSession && (
+                <Field label={rx.userSession} hint={asService ? (userSession === 'winlogon' ? rx.userSessionWinlogonNote : undefined) : rx.userSessionNeedsService}>
+                  {(id) => (
+                    <Select id={id} value={userSession} disabled={!asService} onChange={(e) => setUserSession(e.target.value)}>
+                      <option value="">{rx.userSessionDefault}</option>
+                      {sessions.map((s) => (
+                        <option key={s.id} value={String(s.id)}>
+                          {rx.userSessionItem(s.id, s.user ? (s.domain ? `${s.domain}\\${s.user}` : s.user) : null, s.state)}
+                        </option>
+                      ))}
+                      <option value="winlogon">{rx.userSessionWinlogon}</option>
+                    </Select>
+                  )}
+                </Field>
+              )}
 
               {/* Recording follows the group's rule; the person always sees the recording mark. */}
               {p.recording_mode === 'optional' && profile?.record && (

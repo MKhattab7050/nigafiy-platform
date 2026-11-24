@@ -13,6 +13,8 @@ export interface RemoteDesktopConsoleProps {
   canControl: boolean;
   /** The agent cannot inject mouse/keyboard input on this platform. */
   viewOnly?: boolean;
+  /** Open the connect dialog on arrival (?connect=1). */
+  autoConnect?: boolean;
   onReload: () => void;
 }
 
@@ -533,6 +535,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     toolListeners,
     mayControl,
     requestSession,
+    reloadStatus: loadStatus,
     stopSession,
     sendInput,
     requestFull,
