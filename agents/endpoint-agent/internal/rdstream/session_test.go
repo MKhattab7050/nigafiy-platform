@@ -146,8 +146,9 @@ func (s *srvConn) read() (int, []byte, error) {
 }
 
 type msgIn struct {
-	text map[string]any
-	pkt  *remotedesktop.FrameHeader
+	text  map[string]any
+	pkt   *remotedesktop.FrameHeader
+	audio []byte // 'N',2 audio packet
 }
 
 func wsServer(t *testing.T, onConn func(c *srvConn, in <-chan msgIn, r *http.Request)) *httptest.Server {
@@ -175,6 +176,10 @@ func wsServer(t *testing.T, onConn func(c *srvConn, in <-chan msgIn, r *http.Req
 					_ = json.Unmarshal(p, &m)
 					in <- msgIn{text: m}
 				case wsclient.OpBinary:
+					if len(p) > 2 && p[0] == 'N' && p[1] == 2 {
+						in <- msgIn{audio: p}
+						continue
+					}
 					h, _, err := remotedesktop.ParsePacket(p)
 					if err == nil {
 						in <- msgIn{pkt: &h}
@@ -196,6 +201,9 @@ func next(t *testing.T, in <-chan msgIn, want string) msgIn {
 		case m, ok := <-in:
 			if !ok {
 				t.Fatalf("socket closed while waiting for %s", want)
+			}
+			if want == "audio" && m.audio != nil {
+				return m
 			}
 			if want == "frame" && m.pkt != nil {
 				return m
@@ -271,7 +279,8 @@ func TestSessionConsentBannerStreamInputClipboardAndServerEnd(t *testing.T) {
 	}
 	// The server's end closes the session here: banner removed.
 	deadline := time.Now().Add(3 * time.Second)
-	for m.Active() != "" && time.Now().Before(deadline) {
+	hidden := func() bool { ui.mu.Lock(); defer ui.mu.Unlock(); return len(ui.hidden) > 0 }
+	for (m.Active() != "" || !hidden()) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if m.Active() != "" {

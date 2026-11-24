@@ -47,6 +47,10 @@ type OpenRequest struct {
 	// then Control alone decides, as before.
 	Permissions *userui.Permissions `json:"permissions,omitempty"`
 	Profile     string              `json:"profile,omitempty"`
+	// Operators: everyone in the session (Fleet Pro multi-operator); Recording: the session is
+	// recorded. Both are shown on the banner; rd_session_update changes them later.
+	Operators []string `json:"operators,omitempty"`
+	Recording bool     `json:"recording,omitempty"`
 }
 
 // Effective returns the permissions this agent enforces for the request: the server's profile
@@ -84,6 +88,8 @@ type Config struct {
 	Dialer func(ctx context.Context, network, addr string) (net.Conn, error)
 	// MaxFPS caps the frame rate (default 15).
 	MaxFPS int
+	// SAS sends Ctrl+Alt+Del (default sas.Send; asService: this agent is the Windows service).
+	SAS func(asService bool) error
 }
 
 // Manager holds at most one live session (a new one replaces the old).
@@ -103,7 +109,11 @@ func NewManager(cfg Config) *Manager {
 	if cfg.MaxFPS <= 0 {
 		cfg.MaxFPS = 15
 	}
-	return &Manager{cfg: cfg}
+	m := &Manager{cfg: cfg}
+	if cfg.Desktop != nil {
+		cfg.Desktop.SetToolEvents(m.toolEvent)
+	}
+	return m
 }
 
 // Active returns the open session's id ("" when none).
@@ -195,9 +205,10 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 	}
 
 	l := &live{m: m, req: req, perms: perms, done: make(chan struct{})}
+	l.tools.operators = userui.BannerInfo{Operators: req.Operators}.Normalize().Operators
+	l.tools.recording = req.Recording
 	// The banner shows for every session, whatever the profile allows (nothing can turn it off).
-	info := userui.BannerInfo{SessionID: req.SessionID, Operator: req.Operator, Reason: req.Reason, Control: req.Control, Permissions: &perms, Profile: req.Profile}
-	if err := d.ShowBanner(info, func() { m.endedByUser(req.SessionID) }); err != nil {
+	if err := d.ShowBanner(l.bannerInfo(), func() { m.endedByUser(req.SessionID) }); err != nil {
 		res.Banner = "unavailable"
 		res.BannerError = err.Error()
 		m.cfg.Log.Warn("session banner could not be shown", "session", req.SessionID, "error", err.Error())
@@ -256,6 +267,8 @@ func (m *Manager) Close(sessionID, reason string) bool {
 		case <-time.After(3 * time.Second):
 		}
 	}
+	// Every tool of the session goes with it: privacy screen, blocked input, chat, overlay, audio.
+	_, _, _ = m.cfg.Desktop.Tool(context.Background(), desktop.ToolRequest{Session: l.req.SessionID, Op: desktop.ToolEndAllForSess}, nil)
 	m.cfg.Desktop.HideBanner(l.req.SessionID)
 	m.cfg.Desktop.EndStream(l.req.SessionID)
 	m.cfg.Log.Info("remote support session closed", "session", l.req.SessionID, "reason", reason)
@@ -283,6 +296,7 @@ type live struct {
 	perms  userui.Permissions
 	cancel context.CancelFunc
 	done   chan struct{}
+	tools  toolState
 }
 
 // StreamURL is where the agent's socket goes: <server>/api/v1/agent/stream?session=<id>.
@@ -318,7 +332,7 @@ func (l *live) run(ctx context.Context) {
 		opts := wsclient.Options{
 			Header:     http.Header{"Authorization": {"Bearer " + cfg.Credential()}, "User-Agent": {cfg.UserAgent}},
 			TLS:        cfg.TLS,
-			MaxMessage: 1 << 20,
+			MaxMessage: 8 << 20, // a clipboard picture (4 MiB PNG, base64) from the operator
 		}
 		opts.Dialer = cfg.Dialer
 		conn, err := wsclient.Dial(ctx, target, opts)

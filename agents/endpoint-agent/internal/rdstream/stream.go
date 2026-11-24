@@ -9,6 +9,7 @@ import (
 
 	"github.com/nigafiy/agent/internal/clipboard"
 	"github.com/nigafiy/agent/internal/remotedesktop"
+	"github.com/nigafiy/agent/internal/userui"
 	"github.com/nigafiy/agent/internal/wsclient"
 )
 
@@ -31,6 +32,19 @@ type inMsg struct {
 	Req      string                    `json:"req"`
 	Text     string                    `json:"text"`
 	Reason   string                    `json:"reason"`
+	// In-session tools (tools.go) and the extra stream settings.
+	On       bool              `json:"on"`
+	Mono     bool              `json:"mono"`
+	From     string            `json:"from"`
+	ID       string            `json:"id"`
+	Kind     string            `json:"kind"`
+	TimeoutS int               `json:"timeout_s"`
+	Op       *userui.OverlayOp `json:"op"`
+	Format   string            `json:"format"`
+	Data     string            `json:"data"`
+	Paths    []string          `json:"paths"`
+	Cursor   *bool             `json:"cursor"`
+	Depth    *int              `json:"depth"`
 }
 
 // CloseSessionEnded is the close code the server uses when the session is over.
@@ -60,6 +74,8 @@ type stream struct {
 	sentCount int
 	lastStats time.Time
 	lastFrame remotedesktop.FrameHeader
+	cursor    bool
+	depth     int
 	wmu       sync.Mutex
 }
 
@@ -76,7 +92,7 @@ func newStream(l *live, conn *wsclient.Conn) *stream {
 	if s <= 0 {
 		s = 1
 	}
-	return &stream{l: l, conn: conn, display: l.req.Display, ctrl: NewController(q, s, true, time.Now()), inflight: map[uint64]sent{}, wake: make(chan struct{}, 1), needFull: true}
+	return &stream{l: l, conn: conn, display: l.req.Display, ctrl: NewController(q, s, true, time.Now()), inflight: map[uint64]sent{}, wake: make(chan struct{}, 1), needFull: true, cursor: true, depth: remotedesktop.Depth24}
 }
 
 func (s *stream) send(v any) {
@@ -103,7 +119,11 @@ func (s *stream) serve(ctx context.Context) bool {
 
 	displays, _ := d.Displays()
 	s.send(map[string]any{"t": "hello", "session_id": s.l.req.SessionID, "displays": displays, "desktop": d.Info(),
-		"encoder": "jpeg", "webp": false, "tile": remotedesktop.TileSize, "control": s.l.req.Control, "max_fps": cfg.MaxFPS})
+		"encoder": "jpeg", "webp": false, "tile": remotedesktop.TileSize, "control": s.l.req.Control, "max_fps": cfg.MaxFPS,
+		"features": Features(), "cursor_supported": remotedesktop.CursorSupported, "end_hotkey": "Ctrl+Alt+Shift+E"})
+	s.send(s.l.stateMsg())
+	s.l.setStream(s)
+	defer s.l.setStream(nil)
 
 	readDone := make(chan struct{})
 	go func() {
@@ -143,6 +163,7 @@ func (s *stream) serve(ctx context.Context) bool {
 		full := s.needFull
 		s.needFull = false
 		display := s.display
+		cursor, depth := s.cursor, s.depth
 		step := s.ctrl.Current()
 		s.expireInflight(time.Now())
 		blocked := len(s.inflight) >= InflightWindow
@@ -161,7 +182,7 @@ func (s *stream) serve(ctx context.Context) bool {
 			continue
 		}
 		started := time.Now()
-		frame, err := d.Grab(s.l.req.SessionID, remotedesktop.GrabRequest{Display: display, Quality: step.Quality, Scale: step.Scale, Full: full})
+		frame, err := d.Grab(s.l.req.SessionID, remotedesktop.GrabRequest{Display: display, Quality: step.Quality, Scale: step.Scale, Full: full, Cursor: cursor, Depth: depth})
 		if err != nil {
 			s.send(map[string]any{"t": "error", "where": "capture", "error": err.Error()})
 			s.waitWake(cctx, time.Second)
@@ -294,6 +315,12 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 		if m.Display != nil && *m.Display >= 0 && *m.Display <= 16 {
 			s.display = *m.Display
 		}
+		if m.Cursor != nil {
+			s.cursor = *m.Cursor
+		}
+		if m.Depth != nil {
+			s.depth = remotedesktop.NormalizeDepth(*m.Depth)
+		}
 		adaptive := s.ctrl.adaptive
 		if m.Adaptive != nil {
 			adaptive = *m.Adaptive
@@ -327,6 +354,9 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 		}
 		s.signal()
 	case "clipboard_get":
+		if s.richClipboard(ctx, m, true) {
+			return false
+		}
 		if !s.l.perms.ClipboardOut {
 			s.send(map[string]any{"t": "clipboard_error", "req": m.Req, "code": "profile_forbids_clipboard_out", "error": "the session profile does not allow taking the clipboard from this computer"})
 			return false
@@ -340,6 +370,9 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 			s.send(map[string]any{"t": "clipboard", "req": req, "text": text})
 		}(m.Req)
 	case "clipboard_set":
+		if s.richClipboard(ctx, m, false) {
+			return false
+		}
 		if !s.l.perms.ClipboardIn {
 			s.send(map[string]any{"t": "clipboard_error", "req": m.Req, "code": "profile_forbids_clipboard_in", "error": "the session profile does not allow sending the clipboard to this computer"})
 			return false
@@ -355,6 +388,8 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 			}
 			s.send(map[string]any{"t": "clipboard_set_ok", "req": req})
 		}(m.Req, m.Text)
+	case "privacy", "block_input", "sas", "chat", "ask", "annotate", "audio":
+		s.handleTool(ctx, m)
 	case "end":
 		s.mu.Lock()
 		s.over = true

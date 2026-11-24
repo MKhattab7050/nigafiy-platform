@@ -64,7 +64,7 @@ const (
 type comObj uintptr
 
 func (o comObj) call(slot int, args ...uintptr) uintptr {
-	vtbl := *(*uintptr)(ptrAt(uintptr(o)))                                // #nosec G103 -- COM object
+	vtbl := *(*uintptr)(ptrAt(uintptr(o)))                                   // #nosec G103 -- COM object
 	fn := *(*uintptr)(ptrAt(vtbl + uintptr(slot)*unsafe.Sizeof(uintptr(0)))) // #nosec G103 -- vtable slot
 	r, _, _ := syscall.SyscallN(fn, append([]uintptr{uintptr(o)}, args...)...)
 	return r

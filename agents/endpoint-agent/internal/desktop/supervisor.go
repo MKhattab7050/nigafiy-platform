@@ -36,6 +36,7 @@ type Supervisor struct {
 	lastErr    error
 	launching  chan struct{}
 	banner     *bannerState
+	toolEvents func(ToolEvent, []byte)
 }
 
 type bannerState struct {
@@ -126,6 +127,7 @@ func (s *Supervisor) launch() (*HelperClient, *bannerState, error) {
 	s.mu.Lock()
 	s.client, s.stop, s.lastErr = c, stop, nil
 	b := s.banner
+	c.SetToolEvents(s.toolEvents)
 	s.mu.Unlock()
 	s.log.Info("session helper started", "where", s.launcher.Describe())
 	return c, b, nil

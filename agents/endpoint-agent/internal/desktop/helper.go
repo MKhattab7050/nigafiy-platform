@@ -91,6 +91,11 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, d Desktop) error {
 		defer wmu.Unlock()
 		_ = writeMsg(w, m, data)
 	}
+	d.SetToolEvents(func(ev ToolEvent, data []byte) {
+		raw, _ := json.Marshal(ev)
+		send(wireMsg{Event: "tool", Result: raw}, data)
+	})
+	defer d.Tool(context.Background(), ToolRequest{Op: ToolEndAllForSess}, nil) //nolint:errcheck // best effort at exit
 	reply := func(id uint64, v any, data []byte, err error) {
 		m := wireMsg{ID: id}
 		if err != nil {
@@ -101,7 +106,7 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, d Desktop) error {
 		send(m, data)
 	}
 	for {
-		m, _, err := readMsg(r)
+		m, data, err := readMsg(r)
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 				return nil
@@ -166,6 +171,14 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, d Desktop) error {
 				_ = json.Unmarshal(m.Params, &p)
 				d.HideBanner(p.Info.SessionID)
 				reply(m.ID, nil, nil, nil)
+			case "tool":
+				var req ToolRequest
+				if err := json.Unmarshal(m.Params, &req); err != nil {
+					reply(m.ID, nil, nil, err)
+					return
+				}
+				res, out, err := d.Tool(ctx, req, data)
+				reply(m.ID, res, out, err)
 			case "clip_get":
 				s, err := d.ClipboardText()
 				reply(m.ID, s, nil, err)
@@ -197,6 +210,8 @@ type HelperClient struct {
 	pending map[uint64]chan response
 	done    chan struct{}
 	banners map[string]func()
+	// toolEvents: chat replies, the end combination and audio packets from the helper.
+	toolEvents func(ToolEvent, []byte)
 }
 
 func NewHelperClient(rwc io.ReadWriteCloser) *HelperClient {
@@ -223,6 +238,10 @@ func (c *HelperClient) readLoop() {
 		if err != nil {
 			return
 		}
+		if m.Event == "tool" {
+			c.handleToolEvent(m, data)
+			continue
+		}
 		if m.Event == "banner_end" {
 			c.mu.Lock()
 			fn := c.banners[m.Sess]
@@ -244,6 +263,11 @@ func (c *HelperClient) readLoop() {
 }
 
 func (c *HelperClient) call(ctx context.Context, method string, params any, out any, timeout time.Duration) ([]byte, error) {
+	return c.callData(ctx, method, params, nil, out, timeout)
+}
+
+// callData sends binary data with the request (a picture for the clipboard).
+func (c *HelperClient) callData(ctx context.Context, method string, params any, payload []byte, out any, timeout time.Duration) ([]byte, error) {
 	raw, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
@@ -261,7 +285,7 @@ func (c *HelperClient) call(ctx context.Context, method string, params any, out 
 	c.pending[id] = ch
 	c.mu.Unlock()
 	c.wmu.Lock()
-	err = writeMsg(c.rwc, wireMsg{ID: id, Method: method, Params: raw}, nil)
+	err = writeMsg(c.rwc, wireMsg{ID: id, Method: method, Params: raw}, payload)
 	c.wmu.Unlock()
 	if err != nil {
 		c.mu.Lock()

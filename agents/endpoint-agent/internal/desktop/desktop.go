@@ -35,6 +35,10 @@ type Desktop interface {
 	HideBanner(sessionID string)
 	ClipboardText() (string, error)
 	SetClipboardText(text string) error
+	// Tool runs one in-session tool (privacy screen, chat, question, annotations, input block,
+	// rich clipboard, audio); see tools.go.
+	Tool(ctx context.Context, req ToolRequest, data []byte) (ToolResult, []byte, error)
+	SetToolEvents(fn func(ToolEvent, []byte))
 	Info() Info
 	Close() error
 }
@@ -60,6 +64,7 @@ type Local struct {
 	capture  remotedesktop.CaptureSource
 	mu       sync.Mutex
 	encoders map[string]*remotedesktop.Encoder
+	tools    localTools
 }
 
 func NewLocal() *Local {
@@ -117,7 +122,11 @@ func (l *Local) ShowBanner(info userui.BannerInfo, onEnd func()) error {
 func (l *Local) HideBanner(sessionID string)        { l.ui.HideBanner(sessionID) }
 func (l *Local) ClipboardText() (string, error)     { return clipboard.ReadText() }
 func (l *Local) SetClipboardText(text string) error { return clipboard.WriteText(text) }
-func (l *Local) Close() error                       { l.ui.HideBanner(""); return nil }
+func (l *Local) Close() error {
+	l.endTools("")
+	l.ui.HideBanner("")
+	return nil
+}
 
 func (l *Local) Info() Info {
 	info := Info{Mode: "local", InputSupported: true, Backend: remotedesktop.Backend()}

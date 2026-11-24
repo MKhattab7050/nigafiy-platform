@@ -6,8 +6,8 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"sync"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -247,7 +247,7 @@ type spec struct {
 	custom func(hwnd uintptr)
 	// noActivate: never take the keyboard focus (privacy screen, overlay).
 	noActivate bool
-	buttons []struct {
+	buttons    []struct {
 		id    int
 		label string
 		def   bool

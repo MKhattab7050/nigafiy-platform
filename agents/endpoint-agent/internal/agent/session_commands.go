@@ -16,6 +16,7 @@ import (
 //
 //	rd_session_open   consent (when required) → banner → live stream   (server-issued)
 //	rd_session_close  stream and banner off                             (server-issued)
+//	rd_session_update operators and the recording mark on the banner    (server-issued)
 //	rd_capture        one JPEG frame: the HTTP fallback path
 //	rd_input          one mouse/keyboard event: the HTTP fallback path
 func (a *Agent) sessionCommand(ctx context.Context, cmd control.Command) (control.Result, bool) {
@@ -39,6 +40,15 @@ func (a *Agent) sessionCommand(ctx context.Context, cmd control.Command) (contro
 		_ = json.Unmarshal(cmd.Payload, &p)
 		closed := a.sessions.Close(p.SessionID, p.Reason)
 		return control.Result{ID: cmd.ID, OK: true, Output: fmt.Sprintf("Session %s closed (%v)", p.SessionID, closed)}, true
+	case "rd_session_update":
+		var u rdstream.UpdateRequest
+		if err := json.Unmarshal(cmd.Payload, &u); err != nil || u.SessionID == "" {
+			return control.Result{ID: cmd.ID, OK: false, Error: "Invalid remote session update payload"}, true
+		}
+		if !a.sessions.Update(u) {
+			return control.Result{ID: cmd.ID, OK: false, Error: "That session is not open on this computer"}, true
+		}
+		return control.Result{ID: cmd.ID, OK: true, Output: fmt.Sprintf("Session %s banner updated: %d operator(s), recording %v", u.SessionID, len(u.Operators), u.Recording)}, true
 	case "rd_capture":
 		var opts remotedesktop.CaptureOptions
 		_ = json.Unmarshal(cmd.Payload, &opts)

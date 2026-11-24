@@ -78,7 +78,7 @@ func keyboardProc(nCode int, wParam, lParam uintptr) uintptr {
 		b := current
 		mu.Unlock()
 		if b != nil {
-			k := (*kbdLLHookStruct)(unsafe.Pointer(lParam)) // #nosec G103 -- the hook's own struct
+			k := hookStruct[kbdLLHookStruct](lParam) // #nosec G103 -- the hook's own struct
 			if k.flags&injectedKbMask == 0 {
 				down := wParam == wmKeyDown || wParam == wmSysKeyDown
 				if b.combo.Key(k.vkCode, down) && b.onEnd != nil {
@@ -98,7 +98,7 @@ func mouseProc(nCode int, wParam, lParam uintptr) uintptr {
 		b := current
 		mu.Unlock()
 		if b != nil {
-			m := (*msLLHookStruct)(unsafe.Pointer(lParam)) // #nosec G103 -- the hook's own struct
+			m := hookStruct[msLLHookStruct](lParam) // #nosec G103 -- the hook's own struct
 			if m.flags&injectedMsMask == 0 {
 				return 1
 			}
@@ -168,4 +168,9 @@ func (b *winBlocker) Stop() {
 		_, _, _ = pPostThreadMessageW.Call(uintptr(b.thread), wmQuit, 0, 0)
 		<-b.done
 	})
+}
+
+// hookStruct reads the struct Windows passes to a low-level hook (lParam points at it).
+func hookStruct[T any](p uintptr) *T {
+	return (*T)(*(*unsafe.Pointer)(unsafe.Pointer(&p))) // #nosec G103 -- pointer from the hook
 }
