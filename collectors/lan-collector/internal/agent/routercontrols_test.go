@@ -230,3 +230,18 @@ func TestWireSettingsDropsEntriesTheAPIWouldRefuse(t *testing.T) {
 		t.Errorf("unnamed WAN: %+v", wan)
 	}
 }
+
+// A capability that acts through the device's reservation says so on the wire (the API gates the
+// rename on a reservation); other values of Requires are never sent.
+func TestWireCapsRequires(t *testing.T) {
+	out := wireCaps(router.Capabilities{
+		{Capability: router.CapRename, Supported: true, Requires: router.RequiresReservation},
+		{Capability: router.CapWiFi, Supported: true, Requires: "something-else"},
+	})
+	if out[0]["requires"] != "reservation" {
+		t.Fatalf("rename must carry requires=reservation: %v", out[0])
+	}
+	if _, ok := out[1]["requires"]; ok {
+		t.Fatalf("an unknown requirement must not be sent: %v", out[1])
+	}
+}

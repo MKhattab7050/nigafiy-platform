@@ -268,7 +268,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
-		{Capability: router.CapRename, Supported: false, Note: "TP-Link Archer firmware does not expose a client alias API"},
+		{Capability: router.CapRename, Supported: false, Note: "Not offered: the Archer /cgi-bin/luci/;stok=/admin/* forms used by this driver (dhcps, access_control, firmware) have no documented client-name form; names set in the Tether app are stored in the TP-Link cloud, not on the router. Rename the device in Tether or the router's Network Map"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }

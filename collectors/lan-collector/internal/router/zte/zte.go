@@ -352,7 +352,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
-		{Capability: router.CapRename, Supported: false, Note: "ZTE CGILua does not provide a uniform client alias API"},
+		{Capability: router.CapRename, Supported: false, Note: "Not offered: the ZXHN CGILua pages used by this driver (accessdev_landev_lua.lua: H168N, H188A, H108N, F660, F670L, F680) list LAN hosts read-only, and no documented page sets a host name for a client"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }

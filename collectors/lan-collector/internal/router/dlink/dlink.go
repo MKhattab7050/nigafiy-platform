@@ -253,7 +253,7 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
-		{Capability: router.CapRename, Supported: false, Note: "HNAP1 client nicknames vary across DIR/COVR firmware revisions"},
+		{Capability: router.CapRename, Supported: false, Note: "Not offered: GetClientInfo reports a NickName, but no public documentation of a matching HNAP1 write (SetClientInfo) exists for DIR-8xx/EXO/COVR firmware; the only documented one, SetClientInfoDemo on DIR-868L, changes audio settings. Rename the device in the router's Connected Clients page"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }

@@ -267,9 +267,9 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapSchedule, Supported: false, Note: "Not exposed via HiLink XML API"},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
-		{Capability: router.CapReservations, Supported: false, Note: "HiLink 4G/5G CPEs do not expose a uniform static DHCP reservation endpoint"},
+		{Capability: router.CapReservations, Supported: false, Note: "Not offered: HiLink only documents GET /api/dhcp/static-addr-info (found on B310s-22 firmware; huawei-lte-api lists it as read-only with unknown use); no write format for static DHCP entries is documented for B315/B525/B535/B818/H122/H155, so reserve addresses in the router's DHCP page"},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward, Note: "Supports single-port virtual server entries"},
-		{Capability: router.CapRename, Supported: false, Note: "HiLink host-list device names are read-only"},
+		{Capability: router.CapRename, Supported: false, Note: "Not offered: /api/wlan/host-list and /api/lan/HostInfo are read-only in the HiLink API (huawei-lte-api); the only name a client can be given is the wifihostname label of a MAC-filter entry, which is not a rename"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }

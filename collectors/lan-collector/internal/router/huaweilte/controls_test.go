@@ -196,3 +196,14 @@ func TestHuaweiLTEControls(t *testing.T) {
 		t.Fatalf("Reboot: %+v %v rebooted=%v", ch, err, f.rebooted)
 	}
 }
+
+// No documented vendor interface: the control stays unsupported (the capability note says why) and
+// the driver does not implement it, so nothing can be sent.
+func TestUndocumentedControlsNotOffered(t *testing.T) {
+	if _, ok := any((*Driver)(nil)).(router.Renamer); ok {
+		t.Fatal("rename has no documented interface on this firmware and must not be offered")
+	}
+	if _, ok := any((*Driver)(nil)).(router.ReservationManager); ok {
+		t.Fatal("HiLink has no documented static-DHCP write; reservations must not be offered")
+	}
+}
