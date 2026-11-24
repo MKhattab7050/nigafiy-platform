@@ -329,6 +329,51 @@ describe('router control', () => {
     expect(cmds.find((x) => x.payload.request_id === clear.body.request_id)!.payload.clear).toBe(true);
   });
 
+  it('sends a schedule to a router whose driver schedules devices itself, with the driver’s limits shown', async () => {
+    const s = await setup('rc-router-sched');
+    const caps = [
+      ...CAPS.slice(0, 3),
+      { capability: 'rate_limit', supported: true, mechanism: 'traffic shaper', note: 'up to 7 kbit/s looser than asked' },
+      { capability: 'schedule', supported: true, mechanism: 'floating block rule with a schedule', note: 'pfSense schedules accept only times on the quarter hour' },
+    ];
+    await telemetry(s.c, [result(s.routerId, { action: 'refresh', trigger: 'scheduled', ok: true, capabilities: caps })]);
+    const laptop = s.devices['192.168.50.20']!;
+    const controls = await s.a.agent.get(`/api/v1/devices/${laptop}/controls`);
+    const r = controls.body.sections.router.routers[0];
+    expect(r.actions.schedule).toMatchObject({ possible: true, href: `/api/v1/routers/${s.routerId}/schedule`, note: expect.stringContaining('quarter hour') });
+    expect(r.actions.schedule.mode).toBeUndefined();
+    expect(r.actions.rate_limit).toMatchObject({ possible: true, note: expect.stringContaining('looser') });
+
+    // An overnight window goes to the router as asked (the driver splits it); nothing is stored by Nigafiy.
+    const windows = [{ days: [1, 2, 3, 4, 5], start: '22:00', end: '06:30' }, { days: [0, 1, 2, 3, 4, 5, 6], start: '00:00', end: '00:00' }];
+    const sc = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows });
+    expect(sc.status).toBe(202);
+    expect(sc.body.mode).toBe('router');
+    const [cmd] = await command(s.c, 'router_schedule');
+    expect(cmd!.payload).toMatchObject({ router_id: s.routerId, mac: 'aa:bb:cc:00:00:20', windows });
+    expect((await systemPool.query(`SELECT 1 FROM router_product_schedules WHERE router_id = $1`, [s.routerId])).rowCount).toBe(0);
+    const audits = await systemPool.query(`SELECT action, metadata FROM audit_logs WHERE organization_id = $1 AND action LIKE 'router.schedule%'`, [s.a.organizationId]);
+    expect(audits.rows).toMatchObject([{ action: 'router.schedule', metadata: { windows } }]);
+
+    // Bad windows are refused before anything is queued.
+    const bad = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows: [{ days: [7], start: '22:00', end: '06:00' }] });
+    expect(bad.status).toBe(400);
+
+    // null clears it on the router.
+    const off = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows: null });
+    expect(off.status).toBe(202);
+    const cmds = await command(s.c, 'router_schedule');
+    expect(cmds.find((x) => x.payload.request_id === off.body.request_id)!.payload.clear).toBe(true);
+
+    // Viewers and technicians see no write action and are refused.
+    for (const role of ['viewer', 'technician'] as const) {
+      await setRole(s.a.email, s.a.organizationId, role);
+      const no = await s.a.agent.post(`/api/v1/routers/${s.routerId}/schedule`).set(CSRF).send({ device_id: laptop, windows });
+      expect(no.status).toBe(403);
+    }
+    await setRole(s.a.email, s.a.organizationId, 'admin');
+  });
+
   it('stops logging in after rejected credentials or a lock-out, with one event, until credentials change', async () => {
     const s = await setup('rc-lockout');
     await refresh(s);

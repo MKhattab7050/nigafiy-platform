@@ -386,7 +386,15 @@ function RouterDeviceRow({
               {entry.actions.schedule.note ?? t('routers.schedule.productNote')} {fill(t('routers.schedule.zone'), { zone: localZone })}
             </p>
           ) : (
-            <p className="text-xs text-muted">{t('routers.section.scheduleHint')}</p>
+            <>
+              <p className="text-xs text-muted">{t('routers.section.scheduleHint')}</p>
+              {/* What this router's own schedule can and cannot do (e.g. quarter-hour times, 23:59 at midnight). */}
+              {entry.actions.schedule.note && (
+                <p className="text-xs text-muted">
+                  {t('routers.section.routerNote')} <span dir="ltr">{entry.actions.schedule.note}</span>
+                </p>
+              )}
+            </>
           )}
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted">{t('routers.section.days')}</p>
