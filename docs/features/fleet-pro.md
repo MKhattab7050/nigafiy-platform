@@ -733,6 +733,198 @@ codes come from `policy-text.ts`.
   job page, transcript replay), a scheduled job firing from the module timer in a long-running server
   (the scheduler function is tested directly), and a maintenance window on a real site.
 
+## Built: patches, monitoring, inventory (2026-11-24)
+
+Builder F5, branch `worktree-fleet-pro`, migration `043_fleet_patches_monitoring.sql`. One migration
+covers this whole wave: inventory columns, patch status, catalog, approvals, policies and installs,
+monitoring rules and states, and the tray's recording links.
+
+Where the code is:
+- API: `apps/api/src/modules/endpoints/fleet-patches/`, `fleet-monitoring/` and `fleet-inventory/`.
+- Agent: `internal/patch`, `internal/monitor`, `internal/sysinfo/{hardware,localadmins}.go` and
+  `internal/agent/{patch,hardware}.go`.
+- Web: the pages **Fleet → Patches** (`/fleet/patches`) and **Fleet → Monitoring** (`/fleet/monitoring`),
+  and the endpoint tabs **Patches** and **Hardware & licences**.
+
+No new Go module and no new web dependency.
+
+### Patches
+- **What the agent reads.**
+  - Windows: the Windows Update Agent COM API (`Microsoft.Update.Session`), driven from pure Go over raw
+    `IDispatch` (ole32 and oleaut32, no cgo). It searches `IsInstalled=0 and IsHidden=0`. It reads the
+    classification from the WUA category IDs (security, critical, definition, update rollup, feature
+    pack, driver, other), plus the KB, size, severity and reboot behaviour.
+  - Linux: `apt` (a simulated upgrade, with the security pocket labelled), or `dnf check-update` and
+    `updateinfo`.
+  - macOS: `softwareupdate --list`.
+  - Every update carries its **source** label (`wua`, `apt`, `dnf`, `softwareupdate`) in the API and on
+    screen.
+  - The scan runs 90 s after start, then every 6 hours, and whenever IT presses **Scan now**
+    (technician).
+- **Approvals.** Nothing installs unless it is approved, in one of two ways:
+  - An admin approves each update, for the whole organization or for one group.
+  - The policy's auto-approve classifications cover it.
+
+  Approval details come from what the agents reported, never from the request.
+- **Windows.**
+  - Each group has a policy. A computer without one uses the organization default; with neither,
+    patching is disabled.
+  - The window is either the site's maintenance window (an occurrence from migration 019) or the
+    group's own weekly window (weekdays, start time, length, time zone).
+  - The scheduler runs as a job every 30 s (lock `727173`). Inside the window it sends one
+    `patch_install` to each computer, carrying only the approved updates. A computer runs one install at
+    a time.
+- **Reboot policy.**
+  - `never`: the restart is marked pending and the computer is never restarted.
+  - `ask`: the person chooses Restart now or Later. They can postpone up to `max_postponements` times,
+    `postpone_minutes` each; at `reboot_deadline_hours` the restart is forced. When nobody is signed in,
+    or nobody answers, the restart happens at the deadline only.
+  - `force`: the computer restarts at the end of the window, with a visible notice.
+
+  The restart questions go through the desktop helper. The restart itself is
+  `shutdown /r /t <notice>` with a message.
+- **History.**
+  - Each install keeps the updates as they were approved, the result and HRESULT of each update, the
+    window, the reboot state and the postponements.
+  - Installs appear in Fleet → Patches → Installs, on the endpoint's Patches tab and in the person's IT
+    activity.
+  - Approvals, policy changes, scans, cancels and every install are audited.
+- Delivered `patch_install`, `patch_reboot_prompt` and `script_run` commands are no longer expired by
+  the 10-minute stale-command sweep. Their own jobs time them out.
+
+### Monitoring rules
+- **Kinds.**
+  - `cpu` and `memory`: percent, breaching above the threshold.
+  - `disk_free`: percent or GB, breaching below the threshold, for one volume or all of them.
+  - `service`: the service is not running.
+  - `event_log`: at least N matching Windows event log or journal entries within a time window. Entries
+    match by log, source, IDs, level and text.
+- **Breach and recovery.**
+  - Each rule has a duration. A breach that lasts that long raises a Watch event and an `endpoint`
+    incident, correlated per rule and computer.
+  - The first healthy measurement resolves it.
+  - "Not measured" never raises or resolves anything.
+- **Who can do what.** A rule applies to one group or to the whole organization. Admins write;
+  technicians and viewers read. Every change is audited.
+
+### Inventory
+- The agent collects every 6 hours, and on refresh:
+  - CPUs and memory modules
+  - system, board and BIOS details, with serials
+  - licences seen: the Windows activation state and edition, and Office when its licensing service
+    reports it
+  - physical disks, with health and reliability counters
+  - batteries: design capacity against full-charge capacity, and cycle count
+- Anything it could not measure is listed with the reason.
+- **Product keys are never read.** The licensing query asks only for the name, description and status.
+
+### Compliance: local administrators
+- The agent lists the members of the administrators group, by name only:
+  - Windows: the well-known SID S-1-5-32-544, with an ADSI fallback.
+  - Linux: the `sudo`, `wheel` and `admin` groups.
+  - macOS: the `admin` group.
+- The API judges them against the policy's `allowed_local_admins`. Without that list they are shown as
+  information.
+- If the agent cannot read the list, the result is "not measured" with the reason, never "pass".
+
+### What ran for real, and what did not
+- **Ran for real on this Windows desktop:**
+  - A read-only WUA search. It found 3 updates (a definition and two drivers) and reported
+    `install_supported=false` because the test was not elevated. Nothing was installed.
+  - The live hardware read: CPU, memory modules, disks, and licences without keys.
+- **Tests only:**
+  - API tests against embedded PostgreSQL: `fleet-patches.test.ts`, `fleet-monitoring.test.ts` and
+    `fleet-inventory.test.ts`.
+  - Go tests with parsers and fakes for apt, dnf, softwareupdate, the WUA results, the reboot prompt and
+    the monitor probes.
+- **Never run here:**
+  - A real update install or restart. This is on purpose: nothing is installed on this PC.
+  - apt, dnf and softwareupdate on real machines.
+  - The new pages in a browser against a running API.
+  - The scheduler inside a real maintenance window.
+
+## Built: the user's side (2026-11-24)
+
+Builder F5, same branch and migration `043`.
+
+Where the code is:
+- Agent: `internal/tray`, `internal/desktop/{tray,openurl}.go`, `internal/agent/usertray.go`,
+  `internal/rdstream` and `internal/filemgr`.
+- API: `apps/api/src/modules/endpoints/fleet-user/`, and `fleet-shell/shells.ts` for IT activity.
+- Web: `apps/web/app/recording-view/[token]` and `components/remote-files/`.
+
+### Tray
+- **Always present.** Request help, IT activity…, End current session, the Nigafiy ID and About. No
+  policy or group setting can hide the tray: the group schema refuses unknown fields such as
+  `tray_hidden`, and a test pins that.
+- **IT activity** lists the last 30 days, each entry with who and when:
+  - remote sessions
+  - shells
+  - script jobs
+  - **file transfers**: file manager uploads and downloads (one line per file per hour), and files sent
+    or received during a session
+  - **update installs**: which KBs, and in which window
+- **End current session** ends the remote session exactly as the banner's End button (or
+  Ctrl+Alt+Shift+E) does, then ends every remote shell. It is grayed out when nothing is open.
+- **Past recordings…** appears only when the computer's group has `user_may_view_recordings`:
+  - The agent lists this computer's recordings, and the person types the number of the one to watch.
+  - The API creates a link. Its token is stored only as a SHA-256 hash. The link must be opened within
+    15 minutes, and plays for 4 hours once opened.
+  - The API re-checks the group on every request: 403 when the permission was withdrawn, 410 when the
+    link expired.
+  - The link and its first opening are audited (`fleet.recording_user_link`,
+    `fleet.recording_viewed_by_user`).
+  - The agent opens only an http(s) page on its own server whose path starts with `/recording-view/`.
+  - The player page (EN and AR) needs no sign-in and can reach only that one recording.
+
+### Two-pane file manager
+- **Layout.**
+  - **This browser** on one side: pick or drop files to send. Files copied from the computer are listed
+    here too, with Save again.
+  - **The computer** on the other side: the full existing manager (volumes, search, new folder or file,
+    rename, copy, cut and paste, delete).
+  - A **transfer queue** below.
+- **Nothing about access changed.** Transfers run one at a time, in 256 KiB chunks, through the same
+  `fs_op` commands, so the existing controls all still apply:
+  - the agent's allowed roots and its protected and credential path guards
+  - the roles: uploading needs admin, copying needs technician, viewers can only browse
+  - the overwrite confirmation dialog
+  - the per-chunk audit, which records path and size, never contents
+- **Pause and resume.**
+  - A lost connection, a timeout or an offline agent leaves the transfer *interrupted* at the last chunk
+    that arrived.
+  - A download resumes from its offset.
+  - An upload asks the agent where its own upload stopped, using the new read-only `fs_op` `hash`, and
+    continues from there. If the agent cannot continue (it restarted, or the file changed), the upload
+    starts again from the beginning, but only after the operator confirms replacing the partial file.
+- **SHA-256 check.**
+  - Uploads: the browser hashes the file and the agent checks the whole file on the last chunk. The
+    browser's hash is incremental, in pure TypeScript, so it also works on plain-HTTP origins.
+  - Downloads: the browser hashes what arrived and compares it with the agent's `hash` of the file. A
+    file that does not match is never saved.
+
+### What ran for real, and what did not
+- **Tests only:**
+  - `fleet-user.test.ts`, covering:
+    - the tray flag
+    - refusal when the group does not allow recordings
+    - the hashed token
+    - 409 before the link is opened, 410 after it expires, 403 once the permission is withdrawn
+    - refusal of another computer's recording
+    - the audit
+    - the IT activity lines
+    - the `hash` op's roles and audit
+  - Go tests for:
+    - the tray menu (the transparency items are always there) and the IT activity text
+    - ending a session from the tray
+    - the rules for opening URLs
+    - upload resume and hashing
+  - Web unit tests for the SHA-256 hash (compared against `node:crypto`) and the resume rules.
+- **Never run here:**
+  - The tray menu clicked on a real desktop.
+  - A browser opening a recording link.
+  - The player page and the two-pane manager in a browser against a running API and agent.
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)

@@ -57,9 +57,9 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 
 **Task 8: Remote shell, scripts and jobs** (built in migration `042`, see Progress below) — interactive PowerShell / shell, admin role only, off in the default policy, full transcript in the audit, listed in the user's IT activity; scripts library with parameters; jobs on one computer or a group, now or scheduled; results per computer; rerun failed.
 
-**Task 9: Patches, monitoring, inventory, compliance** (migration `037`) — Windows Update status via the WUA COM API; approve and install in maintenance windows; reboot policy with user postponement; CPU / memory / disk / service / event-log rules raising Watch alerts; inventory (hardware, software, licences seen, disk health, battery); compliance (firewall, Defender, BitLocker, pending updates, local admins) with "not measured" where the agent cannot measure.
+**Task 9: Patches, monitoring, inventory, compliance** (built in migration `043`, see Progress below) — Windows Update status via the WUA COM API; approve and install in maintenance windows; reboot policy with user postponement; CPU / memory / disk / service / event-log rules raising Watch alerts; inventory (hardware, software, licences seen, disk health, battery); compliance (firewall, Defender, BitLocker, pending updates, local admins) with "not measured" where the agent cannot measure.
 
-**Task 10: The user's side** — tray app: IT activity list (every session and background action, by whom), Request help, past recordings when allowed; the two-pane file manager with queue / resume / SHA-256 in Fleet.
+**Task 10: The user's side** (built in migration `043`, see Progress below) — tray app: IT activity list (every session and background action, by whom), Request help, past recordings when allowed; the two-pane file manager with queue / resume / SHA-256 in Fleet.
 
 ### Wave 3 — Close (lead)
 
@@ -71,6 +71,27 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 ## Results
 
 (Filled in at the end of the milestone.)
+
+## Progress (2026-11-24: patches, monitoring, inventory and the user's side)
+
+Builder F5, branch `worktree-fleet-pro`, migration `043` (Tasks 9 and 10; the plan's `037` went to
+reaching computers). What was built and exactly what ran for real are in `docs/features/fleet-pro.md`,
+in the sections "Built: patches, monitoring, inventory" and "Built: the user's side".
+
+- [x] Patches: WUA COM in pure Go; apt, dnf and softwareupdate, each labelled with its source;
+  approvals per update or group, and auto-approve by classification; maintenance or group window;
+  reboot policy never, ask (with postponements up to a deadline) or force; install history; audit
+- [x] Monitoring rules: CPU, memory, disk free, service, event log or journal; a duration before a
+  breach counts; Watch events and incidents that resolve on recovery
+- [x] Inventory: hardware, licences seen (never product keys), disk health, batteries
+- [x] Compliance: local administrators judged against an allowed list, "not measured" when unreadable
+- [x] Tray: IT activity with sessions, shells, jobs, file transfers and update installs; End current
+  session; past recordings through short-lived links when the group allows them; never hidden by policy
+- [x] Two-pane file manager: this browser and the computer side by side, transfer queue, pause and
+  resume of interrupted chunked transfers, SHA-256 check of every transfer, existing path guards
+- [ ] Not verified here: a real update install or restart (nothing is installed on this PC), apt, dnf
+  and softwareupdate on real machines, the tray menu and recording link on a real desktop, and the new
+  pages in a browser against a running API.
 
 ## Progress (2026-11-24: remote shell, scripts and jobs)
 
