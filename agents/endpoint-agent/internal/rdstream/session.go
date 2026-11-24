@@ -51,7 +51,19 @@ type OpenRequest struct {
 	// recorded. Both are shown on the banner; rd_session_update changes them later.
 	Operators []string `json:"operators,omitempty"`
 	Recording bool     `json:"recording,omitempty"`
+	// UserSession: the Windows session the helper attaches to (a session id, or "winlogon" for the
+	// sign-in screen). Empty: the console's session. Needs the LocalSystem service.
+	UserSession string `json:"user_session,omitempty"`
 }
+
+// SessionTargeter is a Desktop that can move its session helper to another Windows session or to
+// the sign-in screen (the service's helper supervisor; nothing else can).
+type SessionTargeter interface {
+	TargetSession(session string) error
+}
+
+// ErrNeedsService: another Windows session or the sign-in screen without the LocalSystem service.
+const ErrNeedsService = "user_session_needs_service: another Windows session or the sign-in screen needs the Nigafiy agent installed as a service"
 
 // Effective returns the permissions this agent enforces for the request: the server's profile
 // flags (mouse and keyboard only when both Control and the profile allow it), or for an older
@@ -90,6 +102,8 @@ type Config struct {
 	MaxFPS int
 	// SAS sends Ctrl+Alt+Del (default sas.Send; asService: this agent is the Windows service).
 	SAS func(asService bool) error
+	// OnHelpRequest gets "Request help" from the tray (the person's note and account name).
+	OnHelpRequest func(note, user string)
 }
 
 // Manager holds at most one live session (a new one replaces the old).
@@ -136,6 +150,11 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 		return res
 	}
 	m.Close("", "replaced")
+	if err := m.target(req.UserSession); err != nil {
+		res.Consent = "unavailable"
+		res.ConsentError = err.Error()
+		return res
+	}
 	perms := req.Effective()
 	req.Control = perms.Control
 
@@ -271,8 +290,24 @@ func (m *Manager) Close(sessionID, reason string) bool {
 	_, _, _ = m.cfg.Desktop.Tool(context.Background(), desktop.ToolRequest{Session: l.req.SessionID, Op: desktop.ToolEndAllForSess}, nil)
 	m.cfg.Desktop.HideBanner(l.req.SessionID)
 	m.cfg.Desktop.EndStream(l.req.SessionID)
+	if l.req.UserSession != "" {
+		// Back to the console's session (where the tray and the next session belong).
+		_ = m.target("")
+	}
 	m.cfg.Log.Info("remote support session closed", "session", l.req.SessionID, "reason", reason)
 	return true
+}
+
+// target moves the session helper to the requested Windows session ("" = back to the console).
+func (m *Manager) target(session string) error {
+	t, ok := m.cfg.Desktop.(SessionTargeter)
+	if !ok {
+		if session == "" {
+			return nil
+		}
+		return errors.New(ErrNeedsService)
+	}
+	return t.TargetSession(session)
 }
 
 func (m *Manager) endedByUser(sessionID string) {

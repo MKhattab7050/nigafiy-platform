@@ -131,7 +131,7 @@ func TestHelperStartedWithAUserTokenAnswersOverItsPipes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rwc, stop, err := launchAsToken(primary, exe, nil, []string{"NIGAFIY_TEST_HELPER=1"}, nil)
+	rwc, stop, err := launchAsToken(primary, exe, nil, []string{"NIGAFIY_TEST_HELPER=1"}, nil, userDesktop)
 	if err != nil {
 		t.Fatalf("CreateProcessAsUser: %v", err)
 	}

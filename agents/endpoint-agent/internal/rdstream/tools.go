@@ -114,6 +114,13 @@ func (m *Manager) Update(u UpdateRequest) bool {
 
 // toolEvent receives what the desktop reports on its own.
 func (m *Manager) toolEvent(ev desktop.ToolEvent, data []byte) {
+	if ev.Kind == "help_request" {
+		// From the tray, with or without a session.
+		if m.cfg.OnHelpRequest != nil && ev.Text != "" {
+			m.cfg.OnHelpRequest(ev.Text, ev.User)
+		}
+		return
+	}
 	m.mu.Lock()
 	l := m.active
 	m.mu.Unlock()

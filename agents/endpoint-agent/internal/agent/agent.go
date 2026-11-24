@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/nigafiy/agent/internal/control"
 	"github.com/nigafiy/agent/internal/desktop"
 	"github.com/nigafiy/agent/internal/rdstream"
+	"github.com/nigafiy/agent/internal/reboot"
 	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
@@ -42,6 +44,17 @@ type Deps struct {
 	// process, or through the session helper when the agent runs as a service. Nil: commands of a
 	// remote desktop session go to ExecuteCommand (as before Fleet Pro).
 	Desktop desktop.Desktop
+	// Restart and reconnect (Fleet Pro): InService is true for the LocalSystem service (safe mode,
+	// other Windows sessions and the sign-in screen need it); RebootRun runs bcdedit / reg /
+	// shutdown (tests: a fake); NoTray keeps the tray icon away (Quick Support has none).
+	InService   bool
+	ServiceName string
+	RebootRun   reboot.Runner
+	NoTray      bool
+	// UserSessions lists the Windows sessions for the heartbeat (nil: none reported).
+	UserSessions func() []sysinfo.UserSession
+	// SafeMode reports whether Windows runs in safe mode.
+	SafeMode func() bool
 }
 
 func SystemDeps() Deps {
@@ -51,6 +64,9 @@ func SystemDeps() Deps {
 		CollectInventory: sysinfo.CollectInventory,
 		ExecuteCommand:   runner.Execute,
 		Desktop:          desktop.NewLocal(),
+		RebootRun:        reboot.ExecRunner,
+		UserSessions:     sysinfo.UserSessions,
+		SafeMode:         sysinfo.SafeMode,
 	}
 }
 
@@ -100,6 +116,10 @@ type Agent struct {
 	cmdSem        chan struct{}
 
 	sessions *rdstream.Manager
+	reboot   *reboot.Manager
+	// nigafiyID: this computer's Nigafiy ID (from the heartbeat), shown in the tray.
+	nigafiyID string
+	trayID    string
 }
 
 func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning Tuning) (*Agent, error) {
@@ -156,7 +176,16 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			NotifyEnded: func(ctx context.Context, sessionID string) error {
 				return a.post(ctx, "/rd-session/end", map[string]any{"session_id": sessionID}, true, nil)
 			},
+			OnHelpRequest: a.sendHelpRequest,
 		})
+	}
+	a.reboot = &reboot.Manager{
+		StateDir:    cfg.StateDir,
+		ServiceName: deps.ServiceName,
+		GOOS:        runtime.GOOS,
+		InService:   deps.InService,
+		Run:         deps.RebootRun,
+		Restart:     a.restartComputer,
 	}
 	return a, nil
 }
@@ -179,6 +208,15 @@ func (a *Agent) credentialPath() string {
 func (a *Agent) Run(ctx context.Context) error {
 	if err := a.ensureEnrolled(ctx); err != nil {
 		return err
+	}
+	// Restart and reconnect: a safe-boot flag this agent set before the restart goes first, so the
+	// next boot is normal whatever happens next.
+	if a.reboot.Run != nil {
+		if cleared, err := a.reboot.ClearAtStart(ctx); err != nil {
+			a.log.Error("could not clear safe boot after the restart; the server will ask again", "error", err.Error())
+		} else if cleared {
+			a.log.Info("safe boot cleared after the restart")
+		}
 	}
 	// Notice for transparency on managed company machines.
 	a.log.Info("MANAGED ENDPOINT NOTICE: This computer is enrolled in Nigafiy IT Operations (inventory, health, and authorized remote administration are active)")
@@ -343,10 +381,17 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		body["serial_number"] = h.SerialNumber
 	}
 	body["security"] = h.Security
+	if a.deps.UserSessions != nil {
+		if s := a.deps.UserSessions(); s != nil {
+			body["user_sessions"] = s
+		}
+	}
+	body["boot_state"] = a.bootState()
 
 	var resp struct {
 		HeartbeatIntervalSeconds int               `json:"heartbeat_interval_seconds"`
 		Commands                 []control.Command `json:"commands"`
+		NigafiyID                string            `json:"nigafiy_id"`
 	}
 	if err := a.post(ctx, "/heartbeat", body, true, &resp); err != nil {
 		if ctx.Err() != nil {
@@ -357,6 +402,7 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
 	}
 	*attempt = 0
+	a.showTray(ctx, resp.NigafiyID)
 
 	// Drop acknowledged results
 	if len(results) > 0 {
@@ -499,6 +545,9 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	}
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
 	res, handled := a.sessionCommand(ctx, cmd)
+	if !handled {
+		res, handled = a.reachCommand(ctx, cmd)
+	}
 	if !handled {
 		res = a.deps.ExecuteCommand(ctx, cmd)
 	}

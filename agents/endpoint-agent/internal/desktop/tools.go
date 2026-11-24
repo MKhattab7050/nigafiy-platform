@@ -36,6 +36,8 @@ const (
 	ToolAudioOn       = "audio_on"
 	ToolAudioOff      = "audio_off"
 	ToolEndAllForSess = "end_all"
+	// ToolTray shows (or updates) the Nigafiy tray icon: Request help, About with the Nigafiy ID.
+	ToolTray = "tray"
 )
 
 type ToolRequest struct {
@@ -47,6 +49,13 @@ type ToolRequest struct {
 	Overlay *userui.OverlayOp  `json:"overlay,omitempty"`
 	Paths   []string           `json:"paths,omitempty"`
 	Mono    bool               `json:"mono,omitempty"`
+	Tray    *TrayInfo          `json:"tray,omitempty"`
+}
+
+// TrayInfo is what the tray shows in "About".
+type TrayInfo struct {
+	NigafiyID string `json:"nigafiy_id"`
+	Server    string `json:"server"`
 }
 
 type ToolResult struct {
@@ -60,8 +69,10 @@ type ToolResult struct {
 // combination pressed while input is blocked, an audio packet (Data holds the ADPCM bytes).
 type ToolEvent struct {
 	Session string        `json:"session"`
-	Kind    string        `json:"kind"` // chat_reply | end_combo | audio | audio_error
+	Kind    string        `json:"kind"` // chat_reply | end_combo | audio | audio_error | help_request
 	Text    string        `json:"text,omitempty"`
+	// User: the account that asked (help_request from the tray).
+	User string `json:"user,omitempty"`
 	Audio   *audio.Header `json:"audio,omitempty"`
 }
 
@@ -218,6 +229,11 @@ func (l *Local) Tool(ctx context.Context, req ToolRequest, data []byte) (ToolRes
 			c.Stop()
 		}
 		return ToolResult{}, nil, nil
+	case ToolTray:
+		if req.Tray == nil {
+			return ToolResult{}, nil, errors.New("tray: no info")
+		}
+		return ToolResult{}, nil, l.showTray(*req.Tray)
 	case ToolEndAllForSess:
 		l.endTools(req.Session)
 		return ToolResult{}, nil, nil

@@ -82,7 +82,9 @@ func cmdForeground(args []string) int {
 		return 2
 	}
 	log := newLogger(os.Stderr, cfg.LogLevel)
-	ag, err := agent.New(&cfg, agent.SystemDeps(), log, Version, agent.DefaultTuning())
+	deps := agent.SystemDeps()
+	deps.ServiceName = service.DefaultName()
+	ag, err := agent.New(&cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start endpoint agent", "error", err.Error())
 		return 1
@@ -223,6 +225,9 @@ func cmdRun(args []string) int {
 	sup := desktop.NewSupervisor(launcher, log)
 	deps := agent.SystemDeps()
 	deps.Desktop = sup
+	// The service can start in safe mode and reach other sessions and the sign-in screen.
+	deps.InService = service.InService()
+	deps.ServiceName = name
 	ag, err := agent.New(&cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start endpoint agent", "error", err.Error())

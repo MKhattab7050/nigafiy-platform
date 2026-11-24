@@ -321,3 +321,30 @@ func (l ExecLauncher) Launch(_ context.Context) (io.ReadWriteCloser, func(), err
 	}
 	return pipeRWC{Reader: stdout, WriteCloser: stdin, closeR: stdout.Close}, stop, nil
 }
+
+// Targeter is a Launcher that can start the helper in a chosen Windows session ("" = the
+// console's, a session id, or "winlogon" = the sign-in screen of the console session).
+type Targeter interface {
+	SetTarget(session string) (changed bool, err error)
+}
+
+// TargetSession moves the session helper (rdstream.SessionTargeter). Only the service's launcher
+// can: anything else refuses a target other than the console's session.
+func (s *Supervisor) TargetSession(session string) error {
+	t, ok := s.launcher.(Targeter)
+	if !ok {
+		if session == "" {
+			return nil
+		}
+		return errors.New("user_session_needs_service: another Windows session or the sign-in screen needs the Nigafiy agent installed as a service")
+	}
+	changed, err := t.SetTarget(session)
+	if err != nil {
+		return err
+	}
+	if changed {
+		s.log.Info("session helper moves", "to", session)
+		s.Restart()
+	}
+	return nil
+}

@@ -65,6 +65,7 @@ type Local struct {
 	mu       sync.Mutex
 	encoders map[string]*remotedesktop.Encoder
 	tools    localTools
+	tray     trayState
 }
 
 func NewLocal() *Local {
@@ -123,6 +124,7 @@ func (l *Local) HideBanner(sessionID string)        { l.ui.HideBanner(sessionID)
 func (l *Local) ClipboardText() (string, error)     { return clipboard.ReadText() }
 func (l *Local) SetClipboardText(text string) error { return clipboard.WriteText(text) }
 func (l *Local) Close() error {
+	l.closeTray()
 	l.endTools("")
 	l.ui.HideBanner("")
 	return nil

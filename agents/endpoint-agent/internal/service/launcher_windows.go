@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,27 @@ type WTSLauncher struct {
 	mu      sync.Mutex
 	session uint32
 	started bool
+	// target: "" (the console's session), a session id, or "winlogon" (the sign-in screen).
+	target string
+}
+
+const (
+	userDesktop   = `winsta0\default`
+	signInDesktop = `winsta0\winlogon`
+)
+
+// SetTarget chooses where the next helper starts (desktop.Targeter).
+func (l *WTSLauncher) SetTarget(session string) (bool, error) {
+	if session != "" && session != "winlogon" {
+		if _, err := strconv.ParseUint(session, 10, 32); err != nil {
+			return false, fmt.Errorf("invalid Windows session %q", session)
+		}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	changed := l.target != session
+	l.target = session
+	return changed, nil
 }
 
 const noSession = 0xFFFFFFFF
@@ -48,11 +70,27 @@ func (l *WTSLauncher) Describe() string {
 func (l *WTSLauncher) Stale() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.started && windows.WTSGetActiveConsoleSessionId() != l.session
+	// A chosen session or the sign-in screen stays where it is until the session ends.
+	return l.started && l.target == "" && windows.WTSGetActiveConsoleSessionId() != l.session
 }
 
 func (l *WTSLauncher) Launch(_ context.Context) (io.ReadWriteCloser, func(), error) {
-	sid := windows.WTSGetActiveConsoleSessionId()
+	l.mu.Lock()
+	target := l.target
+	l.mu.Unlock()
+	switch target {
+	case "":
+	case "winlogon":
+		return l.launchOnSignInScreen()
+	default:
+		n, _ := strconv.ParseUint(target, 10, 32)
+		return l.launchInSession(uint32(n))
+	}
+	return l.launchInSession(windows.WTSGetActiveConsoleSessionId())
+}
+
+// launchInSession: the signed-in user of that session (WTSQueryUserToken, needs SeTcbPrivilege).
+func (l *WTSLauncher) launchInSession(sid uint32) (io.ReadWriteCloser, func(), error) {
 	if sid == noSession {
 		return nil, nil, errors.New("no session is attached to the console")
 	}
@@ -61,7 +99,38 @@ func (l *WTSLauncher) Launch(_ context.Context) (io.ReadWriteCloser, func(), err
 		return nil, nil, fmt.Errorf("nobody is signed in at the console (session %d): %w", sid, err)
 	}
 	defer tok.Close()
-	rwc, stop, err := launchAsToken(tok, l.Exe, l.Args, l.ExtraEnv, l.Log)
+	rwc, stop, err := launchAsToken(tok, l.Exe, l.Args, l.ExtraEnv, l.Log, userDesktop)
+	if err != nil {
+		return nil, nil, err
+	}
+	l.mu.Lock()
+	l.session, l.started = sid, true
+	l.mu.Unlock()
+	return rwc, stop, nil
+}
+
+// launchOnSignInScreen starts the helper as LocalSystem on the console session's Winlogon desktop
+// (nobody signed in, the lock screen, the secure desktop): the service's own token, duplicated and
+// moved into the console session. Only the LocalSystem service can do this.
+func (l *WTSLauncher) launchOnSignInScreen() (io.ReadWriteCloser, func(), error) {
+	sid := windows.WTSGetActiveConsoleSessionId()
+	if sid == noSession {
+		return nil, nil, errors.New("no session is attached to the console")
+	}
+	var own windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ALL_ACCESS, &own); err != nil {
+		return nil, nil, fmt.Errorf("the service's token: %w", err)
+	}
+	defer own.Close()
+	var tok windows.Token
+	if err := windows.DuplicateTokenEx(own, windows.MAXIMUM_ALLOWED, nil, windows.SecurityImpersonation, windows.TokenPrimary, &tok); err != nil {
+		return nil, nil, fmt.Errorf("duplicate the service's token: %w", err)
+	}
+	defer tok.Close()
+	if err := windows.SetTokenInformation(tok, windows.TokenSessionId, (*byte)(unsafe.Pointer(&sid)), uint32(unsafe.Sizeof(sid))); err != nil {
+		return nil, nil, fmt.Errorf("move the helper's token to the console session (needs LocalSystem): %w", err)
+	}
+	rwc, stop, err := launchAsToken(tok, l.Exe, l.Args, l.ExtraEnv, l.Log, signInDesktop)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,7 +144,7 @@ func (l *WTSLauncher) Launch(_ context.Context) (io.ReadWriteCloser, func(), err
 // pipes (stdin, stdout for the protocol; stderr drained into the log). Only those three handles
 // are inherited (PROC_THREAD_ATTRIBUTE_HANDLE_LIST), so nothing else of the service leaks into the
 // user's process.
-func launchAsToken(tok windows.Token, exe string, args, extraEnv []string, log *slog.Logger) (io.ReadWriteCloser, func(), error) {
+func launchAsToken(tok windows.Token, exe string, args, extraEnv []string, log *slog.Logger, desktop string) (io.ReadWriteCloser, func(), error) {
 	sa := &windows.SecurityAttributes{InheritHandle: 1}
 	sa.Length = uint32(unsafe.Sizeof(*sa))
 	var inR, inW, outR, outW, errR, errW windows.Handle
@@ -128,7 +197,7 @@ func launchAsToken(tok windows.Token, exe string, args, extraEnv []string, log *
 	si.Cb = uint32(unsafe.Sizeof(*si))
 	si.Flags = windows.STARTF_USESTDHANDLES
 	si.StdInput, si.StdOutput, si.StdErr = inR, outW, errW
-	si.Desktop, _ = windows.UTF16PtrFromString(`winsta0\default`)
+	si.Desktop, _ = windows.UTF16PtrFromString(desktop)
 	si.ProcThreadAttributeList = attrs.List()
 
 	app, err := windows.UTF16PtrFromString(exe)
