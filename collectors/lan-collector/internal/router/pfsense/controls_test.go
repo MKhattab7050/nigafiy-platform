@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -53,6 +54,8 @@ func (f *pfControls) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/api/v2/system/version":
+		ok(map[string]any{"version": "2.7.2-RELEASE", "base": "2.7.2"})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v2/status/system":
 		ok(map[string]any{"uptime": 9900})
 	case r.Method == http.MethodGet && r.URL.Path == "/api/v2/status/interfaces":
@@ -68,6 +71,20 @@ func (f *pfControls) handle(w http.ResponseWriter, r *http.Request) {
 		b["id"] = 1
 		f.mappings = append(f.mappings, b)
 		ok(b)
+	case r.Method == http.MethodPatch && r.URL.Path == "/api/v2/services/dhcp_server/static_mapping":
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		for _, m := range f.mappings {
+			if m["parent_id"] == b["parent_id"] && fmt.Sprint(m["id"]) == fmt.Sprint(b["id"]) {
+				for k, v := range b {
+					m[k] = v
+				}
+				ok(m)
+				return
+			}
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "not found", "code": 404, "message": "Object not found"})
 	case r.Method == http.MethodDelete && r.URL.Path == "/api/v2/services/dhcp_server/static_mapping":
 		f.mappings = f.mappings[:1]
 		ok(map[string]any{})
@@ -233,4 +250,72 @@ func TestControlsErrorPaths(t *testing.T) {
 			t.Fatalf("want ErrCertificate and no reboot, got %v", err)
 		}
 	})
+}
+
+// Rename is stored as the host name of the device's DHCP static mapping (pfrest v2
+// DHCPServerStaticMapping), so it needs a reservation and a valid host name.
+func TestRenameThroughStaticMapping(t *testing.T) {
+	ctx := context.Background()
+	f := newPfControls(t)
+	d := f.driver(t, "", pfKey)
+
+	caps, err := d.Capabilities(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := caps.Get(router.CapRename); !c.Supported || c.Requires != router.RequiresReservation {
+		t.Fatalf("rename must be offered through the reservation: %+v", c)
+	}
+	applied := f.applied
+	ch, err := d.RenameClient(ctx, "AA-BB-CC-00-00-10", " living-room-tv ")
+	if err != nil || !ch.Applied || f.mappings[0]["hostname"] != "living-room-tv" || f.applied != applied+1 {
+		t.Fatalf("rename failed: %+v %v %v", ch, err, f.mappings)
+	}
+	noSecret(t, "RenameClient", ch)
+	if ch, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "living-room-tv"); err != nil || ch.Applied || !ch.AlreadyInEffect {
+		t.Fatalf("same name must be a no-op: %+v %v", ch, err)
+	}
+	if ch, _ := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "nas"); !strings.Contains(ch.Undo, `"living-room-tv"`) {
+		t.Fatalf("undo must name the previous name: %q", ch.Undo)
+	}
+
+	// No reservation: refused, nothing sent.
+	if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:99", "phone"); !errors.Is(err, router.ErrNotFound) {
+		t.Fatalf("want ErrNotFound without a reservation, got %v", err)
+	}
+	// Not a host name: refused before anything is sent.
+	before := f.mappings[0]["hostname"]
+	for _, bad := range []string{"my phone", "-x", "", "ff:ff"} {
+		if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", bad); !errors.Is(err, router.ErrInvalidArgument) {
+			t.Fatalf("%q: want ErrInvalidArgument, got %v", bad, err)
+		}
+	}
+	if _, err := d.RenameClient(ctx, "01:00:5e:00:00:01", "x"); !errors.Is(err, router.ErrInvalidArgument) {
+		t.Fatalf("multicast MAC: want ErrInvalidArgument, got %v", err)
+	}
+	if f.mappings[0]["hostname"] != before {
+		t.Fatal("refused input changed the router")
+	}
+
+	// The router refuses: error, state unchanged.
+	f.failWrites = true
+	if _, err := d.RenameClient(ctx, "aa:bb:cc:00:00:10", "other"); !errors.Is(err, router.ErrRejected) || f.mappings[0]["hostname"] != before {
+		t.Fatalf("want ErrRejected and no change, got %v", err)
+	}
+}
+
+func TestRenameAuthAndPin(t *testing.T) {
+	ctx := context.Background()
+	f := newPfControls(t)
+	if _, err := f.driver(t, "", "wrong-"+pfKey).RenameClient(ctx, "aa:bb:cc:00:00:10", "nas"); !errors.Is(err, router.ErrBadCredentials) {
+		t.Fatalf("want ErrBadCredentials, got %v", err)
+	} else {
+		noSecret(t, "rename error", err)
+	}
+	if _, err := f.driver(t, strings.Repeat("cd", 32), pfKey).RenameClient(ctx, "aa:bb:cc:00:00:10", "nas"); !errors.Is(err, router.ErrCertificate) {
+		t.Fatalf("want ErrCertificate, got %v", err)
+	}
+	if _, set := f.mappings[0]["hostname"]; set {
+		t.Fatal("nothing may change with a wrong key or certificate")
+	}
 }

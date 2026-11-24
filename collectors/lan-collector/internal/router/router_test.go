@@ -143,3 +143,16 @@ func TestProductBinariesExcludeTestDouble(t *testing.T) {
 		}
 	}
 }
+
+func TestCleanHostname(t *testing.T) {
+	for _, ok := range []string{"nas", " Living-Room-TV ", "a", "pc01"} {
+		if _, err := CleanHostname(ok); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"", "my phone", "-nas", "nas-", "naïve", "a.b", "x\ty", strings.Repeat("a", 64)} {
+		if _, err := CleanHostname(bad); !errors.Is(err, ErrInvalidArgument) {
+			t.Errorf("%q: want ErrInvalidArgument, got %v", bad, err)
+		}
+	}
+}

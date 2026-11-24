@@ -179,10 +179,10 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 		{Capability: router.CapRateLimit, Supported: false, Note: "pfSense limiters require policy-specific pipe rules"},
 		{Capability: router.CapSchedule, Supported: false, Note: "pfSense schedules are attached to firewall rules rather than per-MAC entries"},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
-		{Capability: router.CapWiFi, Supported: false, Note: "pfSense is a dedicated firewall; manage Wi-Fi on your access points"},
+		{Capability: router.CapWiFi, Supported: false, Note: "pfSense REST API v2 (pfSense-pkg-RESTAPI 2.x) has no wireless endpoints; Wi-Fi cards in pfSense CE 2.7 / Plus are set up on the interface page only, so manage Wi-Fi on your access points"},
 		{Capability: router.CapReservations, Supported: true, Mechanism: mechReservation},
 		{Capability: router.CapPortForward, Supported: true, Mechanism: mechPortForward},
-		{Capability: router.CapRename, Supported: false, Note: "pfSense does not keep a separate client alias table outside DHCP static mappings"},
+		{Capability: router.CapRename, Supported: true, Mechanism: mechRename, Requires: router.RequiresReservation, Note: "pfSense keeps no client alias table: the name is stored as the host name of the device's DHCP static mapping, so the device needs a reservation first; letters, digits and hyphens only"},
 		{Capability: router.CapReboot, Supported: true, Mechanism: mechReboot},
 	}, nil
 }

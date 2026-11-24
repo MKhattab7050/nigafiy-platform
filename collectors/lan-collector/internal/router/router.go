@@ -49,6 +49,10 @@ const (
 // AllCapabilities in display order.
 var AllCapabilities = []Capability{CapClients, CapDHCPLeases, CapBlock, CapRateLimit, CapSchedule, CapOverview, CapWiFi, CapReservations, CapPortForward, CapRename, CapReboot}
 
+// RequiresReservation (CapabilityStatus.Requires): the control acts on the device's DHCP reservation,
+// so the device needs one on the router first (e.g. a rename stored as the reservation's host name).
+const RequiresReservation = "reservation"
+
 // CapabilityStatus says whether this router, with this firmware, can do one thing, and why not.
 type CapabilityStatus struct {
 	Capability Capability `json:"capability"`
@@ -57,6 +61,9 @@ type CapabilityStatus struct {
 	Mechanism string `json:"mechanism,omitempty"`
 	// Note explains a refusal or a limitation in words an administrator understands.
 	Note string `json:"note,omitempty"`
+	// Requires names what the device needs on the router before the control applies (RequiresReservation:
+	// a rename that is stored on the device's DHCP reservation). Empty: nothing beyond the capability.
+	Requires string `json:"requires,omitempty"`
 }
 
 // Capabilities is the report a caller consults before offering an action in the UI.

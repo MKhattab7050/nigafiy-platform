@@ -137,6 +137,24 @@ func CleanName(name string) (string, error) {
 	return n, nil
 }
 
+// CleanHostname validates a name for routers that store a rename as a DHCP host name (an RFC 1123
+// label: 1–63 letters, digits and hyphens, not starting or ending with a hyphen). Such routers refuse
+// anything else (pfSense HostnameValidator, OPNsense Kea HostnameField, the DHCP option 12 the name
+// is handed out in), so the name is refused here, before anything is sent, with a message that says why.
+func CleanHostname(name string) (string, error) {
+	n, err := CleanName(name)
+	if err != nil {
+		return "", err
+	}
+	for i, r := range n {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || (r == '-' && i > 0 && i < len(n)-1)
+		if !ok {
+			return "", Errorf(ErrInvalidArgument, "rename", "this router stores the name as a DHCP host name: use only letters, digits and hyphens (no spaces), not starting or ending with a hyphen")
+		}
+	}
+	return n, nil
+}
+
 // NormalizeProtocol maps "tcp", "udp", "both" (and "tcp/udp", "all") to the canonical names.
 func NormalizeProtocol(p string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(p)) {

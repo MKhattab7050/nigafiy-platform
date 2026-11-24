@@ -866,6 +866,9 @@ func wireCaps(cs router.Capabilities) []map[string]any {
 		if c.Note != "" {
 			e["note"] = clip(c.Note, 400)
 		}
+		if c.Requires == router.RequiresReservation {
+			e["requires"] = c.Requires
+		}
 		out = append(out, e)
 		if len(out) >= 16 {
 			break
