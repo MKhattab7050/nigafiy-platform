@@ -13,6 +13,8 @@
 ;    The user's data (%APPDATA%\LAN Detective) is never touched here; the app offers to move it on
 ;    its first run. Silent installs never remove anything. An earlier install in the same scope is
 ;    upgraded in place by electron-builder itself (the NSIS GUID is pinned).
+; 3. Uninstall (not an update) also removes the nigafiy:// handler when it opens this installation
+;    and the copy of the setup electron-builder keeps in %LOCALAPPDATA%\@nigafiydesktop-updater.
 
 !include LogicLib.nsh
 !include FileFunc.nsh
@@ -277,5 +279,32 @@
     DeleteRegValue SHELL_CONTEXT "${NG_PROGRAMS_KEY}" "Programs"
     DeleteRegKey /ifempty SHELL_CONTEXT "${NG_PROGRAMS_KEY}"
     DeleteRegKey /ifempty SHELL_CONTEXT "Software\Nigafiy"
+    Push $R0
+    Push $R1
+    Push $R2
+    ; The nigafiy:// link handler the app registers for the person who ran it (HKCU), only when it
+    ; still opens this installation (another install's registration is left alone).
+    ReadRegStr $R0 HKCU "Software\Classes\nigafiy\shell\open\command" ""
+    StrLen $R1 '"$INSTDIR\'
+    StrCpy $R2 $R0 $R1
+    ${If} $R2 == '"$INSTDIR\'
+      DeleteRegKey HKCU "Software\Classes\nigafiy"
+    ${EndIf}
+    ; electron-builder keeps a copy of the setup (about 160 MB) for electron-updater, which Nigafiy
+    ; does not use (the engine downloads and checks updates itself, docs/operations/updates.md).
+    !ifdef APP_INSTALLER_STORE_FILE
+      ${If} $installMode == "all"
+        SetShellVarContext current
+      ${EndIf}
+      Delete "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+      ${GetParent} "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}" $R0
+      RMDir "$R0"
+      ${If} $installMode == "all"
+        SetShellVarContext all
+      ${EndIf}
+    !endif
+    Pop $R2
+    Pop $R1
+    Pop $R0
   ${endIf}
 !macroend
