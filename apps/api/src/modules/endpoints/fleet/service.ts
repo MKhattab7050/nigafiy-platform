@@ -17,8 +17,9 @@ export async function listEndpoints(organizationId: string, q: z.infer<typeof en
           AND ($2::uuid IS NULL OR e.device_id = $2)
           AND ($3::text IS NULL OR e.platform = $3)
           AND ($4::text IS NULL OR e.compliance_status = $4)
+          AND ($5::text IS NULL OR ($5 = 'none' AND e.fleet_group_id IS NULL) OR e.fleet_group_id::text = $5)
         ORDER BY CASE e.connection_state WHEN 'online' THEN 0 WHEN 'offline' THEN 1 ELSE 2 END, e.name`,
-      [q.site_id ?? null, q.device_id ?? null, q.platform ?? null, q.compliance_status ?? null],
+      [q.site_id ?? null, q.device_id ?? null, q.platform ?? null, q.compliance_status ?? null, q.fleet_group ?? null],
     ),
   );
   return items.rows;

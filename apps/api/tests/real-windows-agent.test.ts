@@ -107,7 +107,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go N
 
         // 2. Live Remote Desktop screen frame capture from the real binary, inside a session
         //    (starting it shows the operator's name on this computer's screen).
-        const rdStart = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+        const rdStart = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
         expect(rdStart.status, JSON.stringify(rdStart.body)).toBe(200);
         const rdRes = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=5000`).set(CSRF).send({
           kind: 'rd_capture',

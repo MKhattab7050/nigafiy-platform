@@ -43,9 +43,10 @@ export const ENDPOINT_SUMMARY_SELECT = `
          e.cpu_pct, e.ram_used_mb, e.ram_pct, e.disk_used_pct,
          e.last_heartbeat_at, e.inventory_updated_at,
          CASE WHEN e.status = 'pending' THEN e.enrollment_expires_at END AS enrollment_expires_at,
-         e.created_at
+         e.created_at, e.fleet_group_id, fg.name AS fleet_group_name
     FROM endpoints e
-    JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id`;
+    JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id
+    LEFT JOIN fleet_groups fg ON fg.organization_id = e.organization_id AND fg.id = e.fleet_group_id`;
 
 export function newEnrollmentToken(): { token: string; hash: string; expires: Date } {
   const token = `ldea_${randomToken(32)}`;

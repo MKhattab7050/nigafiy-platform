@@ -8,6 +8,7 @@ import { notifyRealtime } from '../../realtime/index.ts';
 import { ONLINE_WITHIN_MS, commandEvents, payloadForAudit } from '../repo.ts';
 import { frameForCommand } from '../remote-desktop/frames.ts';
 import { validateCommandForPlatform } from './guards.ts';
+import { PROFILE_REFUSAL_MESSAGES, commandRefusal, openSessionFor, refusalFlag } from '../fleet-policy/enforce.ts';
 import type { CommandInput } from './schema.ts';
 
 // Remote commands: process/service/power/software actions, logs, diagnostics, user notices, and
@@ -15,6 +16,19 @@ import type { CommandInput } from './schema.ts';
 // `req` is passed only for the audit trail.
 
 export async function queueCommand(req: Request, ctx: AuthContext, id: string, body: CommandInput): Promise<EndpointCommand> {
+  // The permission profile of an open session (Fleet Pro): refused actions are audited and refused.
+  if (body.kind === 'rd_capture' || body.kind === 'rd_input' || body.kind === 'fs_op' || body.kind === 'power_action') {
+    const refusal = await withTenant(ctx.organizationId, async (db) => {
+      const open = await openSessionFor(db, id, ctx.userId);
+      if (!open) return null;
+      const code = commandRefusal(body, open.perms, open.holder);
+      if (code && !(body.kind === 'rd_input' && body.event_kind === 'mouse_move')) {
+        await audit(db, req, 'fleet.session_refused_action', { type: 'endpoint', id }, { session_id: open.sessionId, code, kind: body.kind, via: 'http', needs: refusalFlag(code) });
+      }
+      return code;
+    });
+    if (refusal) throw new AppError(403, refusal, PROFILE_REFUSAL_MESSAGES[refusal]);
+  }
   return withTenant(ctx.organizationId, async (db) => {
     const ep = (
       await db.query<{

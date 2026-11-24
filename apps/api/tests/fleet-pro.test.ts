@@ -180,7 +180,7 @@ describe('fleet sessions: consent, banner and history', () => {
       [undefined, false, 'consent_unavailable'],
     ];
     for (const [data, ok, expected] of cases) {
-      const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+      const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
       expect(start.status).toBe(200);
       const open = (await pollFor(cred)).find((c) => c.kind === 'rd_session_open')!;
       await answer(cred, open.id, ok, data, ok ? undefined : 'unknown command kind "rd_session_open"');
@@ -198,7 +198,7 @@ describe('fleet sessions: consent, banner and history', () => {
   it('unattended: records the banner and lets the person at the computer end the session', async () => {
     const a = await newAccount('banner');
     const { epId, cred } = await onlineEndpoint(a);
-    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     expect(start.body.session.state).toBe('active');
     const cmds = await pollFor(cred);
     // Told first (notice), then the banner/stream command, then the first HTTP frame.
@@ -230,7 +230,7 @@ describe('fleet sessions: consent, banner and history', () => {
   it('macOS sessions take mouse and keyboard input (CoreGraphics on the agent), not view-only', async () => {
     const a = await newAccount('mac-input');
     const { epId, cred } = await onlineEndpoint(a, 'MAC-01', 'macos');
-    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     expect(start.status).toBe(200);
     const open = (await pollFor(cred)).find((c) => c.kind === 'rd_session_open')!;
     await answer(cred, open.id, true, { consent: 'not_required', banner: 'shown', stream: 'connecting' });
@@ -247,7 +247,7 @@ describe('fleet sessions: consent, banner and history', () => {
     const a = await newAccount('hist');
     const b = await newAccount('hist-other');
     const { epId } = await onlineEndpoint(a);
-    await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     expect((await a.agent.get('/api/v1/fleet/sessions')).body.sessions).toHaveLength(1);
     expect((await b.agent.get('/api/v1/fleet/sessions')).body.sessions).toHaveLength(0);
     expect((await b.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`)).status).toBe(404);

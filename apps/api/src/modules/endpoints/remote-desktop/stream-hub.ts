@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { STATUS_CODES, type IncomingMessage, type Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { EndpointPlatform, RemoteDesktopSession, Role } from '@nigafiy/shared-types';
+import type { EndpointPlatform, FleetPermissions, RemoteDesktopSession, Role } from '@nigafiy/shared-types';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';
@@ -14,6 +14,8 @@ import { readCookie, resolveSessionToken, SESSION_COOKIE } from '../../auth/inde
 import { authenticateAgentCredential } from '../agent/auth.ts';
 import { validateCommandForPlatform } from '../commands/guards.ts';
 import { payloadForAudit } from '../repo.ts';
+import { PROFILE_REFUSAL_MESSAGES, type ProfileRefusalCode, refusalFlag } from '../fleet-policy/enforce.ts';
+import { sessionPermissions } from '../fleet-policy/profiles.ts';
 import { rdInputCommandSchema } from './schema.ts';
 import { RD_STREAM_CHANNEL } from './sessions.ts';
 import { clearStream, markStreamDown, markStreamUp, streamLocation } from './stream-registry.ts';
@@ -182,6 +184,8 @@ interface Room {
   frames: number;
   bytes: number;
   lastDisplay: number | null;
+  /** The session's granted permission profile (rd_session.permissions), enforced on every operator message. */
+  permissions: FleetPermissions;
 }
 
 export interface StreamHubOptions {
@@ -263,17 +267,35 @@ export class StreamHub {
     });
   }
 
-  private room(endpointId: string, orgId: string, sessionId: string, platform: EndpointPlatform | null): Room {
+  private room(endpointId: string, orgId: string, sessionId: string, platform: EndpointPlatform | null, session: RemoteDesktopSession | null = null): Room {
     let r = this.rooms.get(endpointId);
     if (r && r.sessionId !== sessionId) {
       this.closeRoom(r, CLOSE_SESSION_ENDED, 'session replaced', true);
       r = undefined;
     }
     if (!r) {
-      r = { endpointId, orgId, sessionId, platform, agent: null, active: false, upstream: null, upstreamInstance: null, viewers: new Set(), peers: new Set(), hello: null, sentCount: -1, frames: 0, bytes: 0, lastDisplay: null };
+      r = {
+        endpointId,
+        orgId,
+        sessionId,
+        platform,
+        agent: null,
+        active: false,
+        upstream: null,
+        upstreamInstance: null,
+        viewers: new Set(),
+        peers: new Set(),
+        hello: null,
+        sentCount: -1,
+        frames: 0,
+        bytes: 0,
+        lastDisplay: null,
+        permissions: sessionPermissions(session),
+      };
       this.rooms.set(endpointId, r);
     }
     if (platform) r.platform = platform;
+    if (session) r.permissions = sessionPermissions(session);
     return r;
   }
 
@@ -297,7 +319,7 @@ export class StreamHub {
     if (!cur?.session) throw new AppError(410, 'no_remote_session', 'No remote desktop session is open');
     if (cur.session.id !== sessionId) throw new AppError(409, 'session_mismatch', 'This is not the open session');
     const ws = await this.upgrade(req, socket, head);
-    const r = this.room(ep.id, ep.organizationId, sessionId, cur.platform);
+    const r = this.room(ep.id, ep.organizationId, sessionId, cur.platform, cur.session);
     if (r.agent) r.agent.close(CLOSE_SUPERSEDED, 'replaced by a newer connection');
     r.agent = ws;
     r.active = (cur.session.state ?? 'active') === 'active';
@@ -452,7 +474,7 @@ export class StreamHub {
     if (!cur) throw new AppError(404, 'not_found', 'Endpoint not found');
     if (!cur.session || cur.session.id !== sessionId) throw new AppError(409, 'no_remote_session', 'This remote desktop session is not open');
     const ws = await this.upgrade(req, socket, head);
-    const r = this.room(endpointId, who.organizationId, sessionId, cur.platform);
+    const r = this.room(endpointId, who.organizationId, sessionId, cur.platform, cur.session);
     if (!r.agent) r.active = (cur.session.state ?? 'active') === 'active';
     const sink: Sink = {
       id: randomUUID().replaceAll('-', ''),
@@ -464,7 +486,7 @@ export class StreamHub {
       user: { userId: who.userId, email: who.userEmail, orgId: who.organizationId, role: who.role, ip: req.socket.remoteAddress ?? null },
     };
     r.viewers.add(sink);
-    this.sendJson(sink, { t: 'session', state: cur.session.state ?? 'active', session_id: sessionId });
+    this.sendJson(sink, { t: 'session', state: cur.session.state ?? 'active', session_id: sessionId, permissions: r.permissions });
     if (r.agent) {
       this.sendJson(sink, { t: 'path', path: 'direct', instance: this.instanceId });
       if (r.hello) this.sendRaw(sink, r.hello);
@@ -542,6 +564,11 @@ export class StreamHub {
           return;
         }
         const { kind: _k, event_kind, ...rest } = parsedEv.data;
+        if (!r.permissions.control) {
+          this.sendJson(sink, { t: 'input_error', code: 'profile_forbids_control', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_control });
+          if (event_kind !== 'mouse_move') await this.refused(r, user, 'profile_forbids_control', { kind: event_kind });
+          return;
+        }
         const out = { ...rest, kind: event_kind };
         if (!this.toAgent(r, { t: 'input', ev: out })) {
           this.sendJson(sink, { t: 'input_error', error: r.active ? 'The endpoint is not connected to the live stream' : 'The user has not accepted the session yet' });
@@ -552,9 +579,19 @@ export class StreamHub {
         return;
       }
       case 'clipboard_get':
+        if (!r.permissions.clipboard_out) {
+          this.sendJson(sink, { t: 'clipboard_error', req: m.req, code: 'profile_forbids_clipboard_out', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_clipboard_out });
+          await this.refused(r, user, 'profile_forbids_clipboard_out', { direction: 'from_remote' });
+          return;
+        }
         if (!this.toAgent(r, { t: 'clipboard_get', req: `${sink.id}.${m.req}` })) this.sendJson(sink, { t: 'clipboard_error', req: m.req, error: 'The endpoint is not connected to the live stream' });
         return;
       case 'clipboard_set':
+        if (!r.permissions.clipboard_in) {
+          this.sendJson(sink, { t: 'clipboard_error', req: m.req, code: 'profile_forbids_clipboard_in', error: PROFILE_REFUSAL_MESSAGES.profile_forbids_clipboard_in });
+          await this.refused(r, user, 'profile_forbids_clipboard_in', { direction: 'to_remote', chars: m.text.length });
+          return;
+        }
         if (!this.toAgent(r, { t: 'clipboard_set', req: `${sink.id}.${m.req}`, text: m.text })) {
           this.sendJson(sink, { t: 'clipboard_error', req: m.req, error: 'The endpoint is not connected to the live stream' });
           return;
@@ -562,6 +599,11 @@ export class StreamHub {
         await this.recordClipboard(r, sink, 'to_remote', m.text.length);
         return;
     }
+  }
+
+  /** An operator message the session's profile refused (audited; the text of a clipboard never). */
+  private async refused(r: Room, user: ViewerUser, code: ProfileRefusalCode, metadata: Record<string, unknown>): Promise<void> {
+    await this.auditViewer(r, user, 'fleet.session_refused_action', { ...metadata, code, needs: refusalFlag(code), via: 'live_stream' });
   }
 
   private async recordClipboard(r: Room, sink: Sink, direction: 'to_remote' | 'from_remote', chars: number): Promise<void> {
@@ -706,7 +748,7 @@ export class StreamHub {
         return;
       case 'state': {
         const state = parts[2];
-        if (!r || (state !== 'active' && state !== 'waiting_consent')) return;
+        if (!r || (state !== 'active' && state !== 'waiting_consent' && state !== 'waiting_approval')) return;
         r.active = state === 'active';
         this.broadcastText(r, { t: 'session', state, session_id: r.sessionId }, false);
         this.sendViewerCount(r);

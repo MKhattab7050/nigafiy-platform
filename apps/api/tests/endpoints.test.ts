@@ -321,7 +321,7 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
     // A policy that demands the user's consent: the session waits for the answer and nothing is
     // captured or controlled meanwhile (the consent flow itself is in fleet-pro.test.ts).
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'prompt' });
-    const asked = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const asked = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     expect(asked.status).toBe(200);
     expect(asked.body.session.state).toBe('waiting_consent');
     const early = await a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send({ kind: 'rd_capture' });
@@ -336,6 +336,7 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
       quality: 70,
       scale: 0.75,
       recording_enabled: false,
+      reason: 'Check the printer queue',
     });
     expect(rdStart.status).toBe(200);
     expect(rdStart.body.session.operator_email).toBe(a.email);

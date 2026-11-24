@@ -1203,14 +1203,126 @@ export interface RemoteDesktopSession {
   recording_enabled: boolean;
   /** Fleet Pro: the session's history row (fleet_sessions.id). */
   fleet_session_id?: string;
-  /** waiting_consent: the person at the computer has not answered yet; frames and input wait. */
-  state?: 'waiting_consent' | 'active';
+  /**
+   * waiting_approval: a second admin has to approve first (unattended policy);
+   * waiting_consent: the person at the computer has not answered yet (or the refuse window runs);
+   * frames and input wait in both.
+   */
+  state?: 'waiting_approval' | 'waiting_consent' | 'active';
   reason?: string | null;
+  /** Fleet Pro: what the operator may do in this session (the granted profile snapshot). */
+  permissions?: FleetPermissions;
+  profile_name?: string | null;
+  group_name?: string | null;
 }
 
-export type FleetSessionState = 'waiting_consent' | 'active' | 'ended';
-export type FleetConsentResult = 'pending' | 'not_required' | 'accepted' | 'denied' | 'timeout' | 'unavailable';
-export type FleetSessionEndReason = 'operator' | 'user' | 'consent_denied' | 'consent_timeout' | 'consent_unavailable' | 'replaced' | 'revoked' | 'expired';
+export type FleetSessionState = 'waiting_approval' | 'waiting_consent' | 'active' | 'ended';
+export type FleetConsentResult = 'pending' | 'not_required' | 'accepted' | 'denied' | 'timeout' | 'unavailable' | 'not_refused';
+export type FleetSessionEndReason =
+  | 'operator'
+  | 'user'
+  | 'consent_denied'
+  | 'consent_timeout'
+  | 'consent_unavailable'
+  | 'replaced'
+  | 'revoked'
+  | 'expired'
+  | 'approval_denied'
+  | 'approval_expired';
+
+/** The flags of a permission profile, in display order. */
+export const FLEET_PERMISSION_KEYS = [
+  'view',
+  'control',
+  'clipboard_in',
+  'clipboard_out',
+  'files',
+  'audio',
+  'record',
+  'restart',
+  'privacy_screen',
+  'block_input',
+  'shell',
+] as const;
+export type FleetPermissionKey = (typeof FLEET_PERMISSION_KEYS)[number];
+/** clipboard_in: operator → remote computer; clipboard_out: remote computer → operator. */
+export type FleetPermissions = Record<FleetPermissionKey, boolean>;
+
+export type FleetBuiltinProfileKey = 'view_only' | 'support' | 'full_admin';
+
+export interface FleetPermissionProfile extends FleetPermissions {
+  id: string;
+  builtin_key: FleetBuiltinProfileKey | null;
+  name: string;
+  description: string | null;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Groups that use it as their default or maximum (a profile in use cannot be deleted). */
+  used_by_groups: number;
+}
+
+/** A weekly window in wall-clock time of the endpoint's site; end <= start crosses midnight. */
+export interface FleetHoursWindow {
+  days: number[];
+  start: string;
+  end: string;
+}
+
+export type FleetOperatorRole = 'owner' | 'admin' | 'technician';
+
+/** The access policy of a fleet group (or the organization default for endpoints in no group). */
+export interface FleetAccessPolicy {
+  access_mode: 'attended' | 'unattended';
+  consent_timeout_s: number;
+  /** Unattended: the user may refuse within this many seconds (0 = no dialog). */
+  refuse_window_s: number;
+  allowed_hours: FleetHoursWindow[];
+  allowed_roles: FleetOperatorRole[];
+  default_profile_id: string;
+  max_profile_id: string;
+  mfa_required: boolean;
+  /** Unattended sessions wait for a second admin. */
+  approval_required: boolean;
+  approval_ttl_minutes: number;
+  ip_allowlist: string[];
+}
+
+export interface FleetGroup extends FleetAccessPolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  endpoint_count: number;
+  created_by_email: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FleetPolicyTrailItem {
+  check: string;
+  result: 'pass' | 'fail' | 'info';
+  detail?: string;
+}
+
+/** GET /endpoints/:id/remote-desktop/policy: what the connect dialog needs before asking. */
+export interface FleetPolicyPreview {
+  source: 'group' | 'organization_default';
+  group: { id: string; name: string } | null;
+  policy: FleetAccessPolicy;
+  site_timezone: string;
+  /** Profiles the operator may pick (each within the maximum). */
+  profiles: FleetPermissionProfile[];
+  default_profile_id: string;
+  max_profile: FleetPermissionProfile;
+  within_hours: boolean;
+  role_allowed: boolean;
+  ip_allowed: boolean;
+  request_ip: string | null;
+  /** The operator has a TOTP authenticator set up (needed when mfa_required). */
+  operator_has_mfa: boolean;
+  approval_needed: boolean;
+}
 
 /** One remote support session (fleet_sessions). Frames are never stored: only relay counts. */
 export interface FleetSession {
@@ -1243,6 +1355,22 @@ export interface FleetSession {
   end_reason: FleetSessionEndReason | null;
   ended_by_email: string | null;
   source: 'live' | 'audit_backfill';
+  fleet_group_id: string | null;
+  group_name: string | null;
+  profile_id: string | null;
+  profile_name: string | null;
+  /** Null on sessions from before permission profiles. */
+  permissions: FleetPermissions | null;
+  consent_timeout_s: number | null;
+  refuse_window_s: number;
+  policy_trail: FleetPolicyTrailItem[];
+  mfa_verified: boolean;
+  request_ip: string | null;
+  approval_state: 'not_required' | 'pending' | 'approved' | 'denied' | 'expired';
+  approval_expires_at: string | null;
+  approver_email: string | null;
+  approval_decided_at: string | null;
+  approval_note: string | null;
 }
 
 /** GET /endpoints/:id/remote-desktop/session */
@@ -1336,6 +1464,8 @@ export interface EndpointSummary {
   inventory_updated_at: string | null;
   enrollment_expires_at: string | null;
   created_at: string;
+  fleet_group_id: string | null;
+  fleet_group_name: string | null;
 }
 
 export interface EndpointCreated {

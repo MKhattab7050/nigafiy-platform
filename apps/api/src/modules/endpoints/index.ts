@@ -5,6 +5,7 @@ import { agentGatewayRouter } from './agent/routes.ts';
 import { commandsRouter } from './commands/routes.ts';
 import { enrollmentRouter } from './enrollment/routes.ts';
 import { fleetRouter } from './fleet/routes.ts';
+import { fleetPolicyRouter } from './fleet-policy/routes.ts';
 import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
 import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
@@ -19,13 +20,14 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   fleet/           fleet & inventory reads
  *   enrollment/      register endpoints, re-issue enrollment tokens, revoke
  *   policy/          per-endpoint policy (compliance is evaluated in capabilities.ts)
+ *   fleet-policy/    Fleet permission profiles, groups, per-group access policy, MFA step-up, approvals
  *   remote-desktop/  live remote desktop sessions: fleet_sessions history, consent, the live
  *                    WebSocket stream hub (stream-hub.ts) and the HTTP command fallback
  *   file-manager/    remote file operations (travel as fs_op commands)
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;

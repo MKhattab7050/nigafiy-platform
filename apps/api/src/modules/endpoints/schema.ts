@@ -218,6 +218,8 @@ export const endpointListQuery = z.object({
   device_id: z.uuid().optional(),
   platform: platformEnum.optional(),
   compliance_status: z.enum(['compliant', 'non_compliant', 'attention', 'unknown']).optional(),
+  // A fleet group id, or "none" for endpoints in no group.
+  fleet_group: z.union([z.uuid(), z.literal('none')]).optional(),
 });
 
 export const endpointCreateSchema = z

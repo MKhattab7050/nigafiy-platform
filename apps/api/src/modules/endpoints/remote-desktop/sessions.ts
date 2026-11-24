@@ -14,7 +14,9 @@ export const CONSENT_TIMEOUT_SECONDS = 60;
 export const FLEET_SESSION_COLUMNS = `id, endpoint_id, public_id, operator_email, reason, state, consent_mode, consent_result, consent_error,
   consent_decided_at, banner_state, banner_error, transport, stream_connected_at, desktop_mode, display_index, quality, scale,
   frames_relayed::float8 AS frames_relayed, bytes_relayed::float8 AS bytes_relayed, clipboard_to_remote, clipboard_from_remote,
-  started_at, accepted_at, ended_at, end_reason, ended_by_email, source`;
+  started_at, accepted_at, ended_at, end_reason, ended_by_email, source, fleet_group_id, group_name, profile_id, profile_name, permissions,
+  consent_timeout_s, refuse_window_s, policy_trail, mfa_verified, request_ip, approval_state, approval_expires_at, approver_email,
+  approval_decided_at, approval_note`;
 
 /** Records an action the endpoint (its agent or the person at it) took, in the caller's transaction. */
 export async function auditEndpointEvent(db: Db, orgId: string, endpointId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
@@ -26,7 +28,7 @@ export async function auditEndpointEvent(db: Db, orgId: string, endpointId: stri
 }
 
 /** Tells every API instance's hub that an endpoint's session changed (delivered on COMMIT). */
-export async function signalSessionState(db: Db, endpointId: string, state: 'waiting_consent' | 'active' | 'ended'): Promise<void> {
+export async function signalSessionState(db: Db, endpointId: string, state: 'waiting_approval' | 'waiting_consent' | 'active' | 'ended'): Promise<void> {
   await db.query('SELECT pg_notify($1, $2)', [RD_STREAM_CHANNEL, state === 'ended' ? `end|${endpointId}` : `state|${endpointId}|${state}`]);
 }
 
@@ -135,6 +137,32 @@ export async function applySessionOpenResult(
     data?.desktop?.mode?.slice(0, 40) ?? null,
   ]);
   const consent = !ok ? (fs.consent_mode === 'prompt' ? 'unavailable' : 'not_required') : (data?.consent ?? 'unavailable');
+  if (fs.consent_mode !== 'prompt' && fs.refuse_window_s > 0) {
+    // Unattended with a refuse window: only an explicit refusal stops the session. No answer goes
+    // on; so does a computer where nobody can be asked (no desktop), or an agent that did not
+    // know the window (recorded, the banner still shows).
+    if (consent === 'denied') {
+      await db.query(`UPDATE fleet_sessions SET consent_result = 'denied', consent_decided_at = now() WHERE id = $1`, [fs.id]);
+      await endOpenSession(db, orgId, endpointId, 'consent_denied', { userId: null, email: null }, publicId);
+      await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result: 'denied', refuse_window_s: fs.refuse_window_s });
+      return;
+    }
+    const result = consent === 'accepted' ? 'accepted' : consent === 'timeout' || consent === 'not_refused' ? 'not_refused' : consent === 'unavailable' ? 'unavailable' : 'not_required';
+    const note =
+      result === 'unavailable'
+        ? (data?.consent_error ?? error ?? 'nobody could be asked').slice(0, 300)
+        : result === 'not_required'
+          ? 'the agent did not show the refuse window'
+          : null;
+    await db.query(
+      `UPDATE fleet_sessions SET state = 'active', consent_result = $2, consent_error = $3, consent_decided_at = now(), accepted_at = now() WHERE id = $1`,
+      [fs.id, result, note],
+    );
+    await db.query(`UPDATE endpoints SET rd_session = rd_session || '{"state":"active"}'::jsonb WHERE id = $1 AND rd_session->>'id' = $2`, [endpointId, publicId]);
+    await signalSessionState(db, endpointId, 'active');
+    await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result, refuse_window_s: fs.refuse_window_s, note, banner });
+    return;
+  }
   if (fs.consent_mode !== 'prompt') {
     await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_banner', { fleet_session_id: fs.id, session_id: publicId, banner, banner_error: data?.banner_error ?? (ok ? null : error) });
     return;

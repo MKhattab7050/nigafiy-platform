@@ -168,7 +168,7 @@ describe('live remote desktop stream (WebSocket hub)', () => {
     const a = await newAccount('stream');
     const { epId, cred } = await onlineEndpoint(a);
     const cookie = await loginCookie(a);
-    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     const session: string = start.body.session.id;
 
     // Who may connect.
@@ -257,7 +257,7 @@ describe('live remote desktop stream (WebSocket hub)', () => {
     const { epId, cred } = await onlineEndpoint(a);
     const cookie = await loginCookie(a);
     await a.agent.patch(`/api/v1/endpoints/${epId}/policy`).set(CSRF).send({ remote_desktop_consent: 'prompt' });
-    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     const session: string = start.body.session.id;
     const agent = await agentSocket(A, cred, session);
     const viewer = await viewerSocket(A, cookie, epId, session);
@@ -289,7 +289,7 @@ describe('live remote desktop stream (WebSocket hub)', () => {
     const a = await newAccount('stream-peer');
     const { epId, cred } = await onlineEndpoint(a);
     const cookie = await loginCookie(a);
-    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({});
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     const session: string = start.body.session.id;
 
     // The operator connects to B first: no agent anywhere yet.
@@ -337,5 +337,55 @@ describe('live remote desktop stream (WebSocket hub)', () => {
     await viewer2.until(() => viewer2.closed, 'viewer on A closed');
     expect(viewer.closed?.code).toBe(4000);
     expect(B.hub.stats(epId)).toBeNull();
+  });
+  it('enforces the session permission profile on every operator message (view only, clipboard directions)', async () => {
+    const a = await newAccount('stream-profile');
+    const { epId, cred } = await onlineEndpoint(a);
+    const cookie = await loginCookie(a);
+    const profiles = (await a.agent.get('/api/v1/fleet/profiles')).body.profiles as Array<{ id: string; builtin_key: string | null }>;
+    const custom = await a.agent.post('/api/v1/fleet/profiles').set(CSRF).send({ name: 'Copy out only', control: true, clipboard_out: true });
+    const g = await a.agent
+      .post('/api/v1/fleet/groups')
+      .set(CSRF)
+      .send({ name: 'Kiosks', access_mode: 'unattended', default_profile_id: profiles.find((p) => p.builtin_key === 'view_only')!.id });
+    await a.agent.post('/api/v1/fleet/groups/assign').set(CSRF).send({ endpoint_ids: [epId], fleet_group_id: g.body.group.id });
+
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Kiosk check' });
+    const session: string = start.body.session.id;
+    const agent = await agentSocket(A, cred, session);
+    const viewer = await viewerSocket(A, cookie, epId, session);
+    expect((await viewer.text('session')).permissions).toMatchObject({ view: true, control: false, clipboard_in: false, clipboard_out: false });
+    viewer.send({ t: 'input', ev: { kind: 'key_press', key: 'Enter' } });
+    expect((await viewer.text('input_error')).code).toBe('profile_forbids_control');
+    viewer.send({ t: 'clipboard_get', req: 'c1' });
+    expect((await viewer.text('clipboard_error', (m) => m.req === 'c1')).code).toBe('profile_forbids_clipboard_out');
+    viewer.send({ t: 'clipboard_set', req: 'c2', text: 'secret text' });
+    expect((await viewer.text('clipboard_error', (m) => m.req === 'c2')).code).toBe('profile_forbids_clipboard_in');
+    viewer.send({ t: 'ack', seq: 1 });
+    await agent.text('ack');
+    // Nothing refused reached the agent.
+    expect(agent.texts.some((m) => m.t === 'input' || m.t === 'clipboard_get' || m.t === 'clipboard_set')).toBe(false);
+    const refused = (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'fleet.session_refused_action' ORDER BY created_at, id`, [a.organizationId])).rows;
+    expect(refused.map((r) => r.metadata.code)).toEqual(['profile_forbids_control', 'profile_forbids_clipboard_out', 'profile_forbids_clipboard_in']);
+    expect(JSON.stringify(refused)).not.toContain('secret text');
+    viewer.ws.close();
+    agent.ws.close();
+
+    // A custom profile: clipboard from the computer allowed, to the computer refused; control allowed.
+    const s2 = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Copy a log line', profile_id: custom.body.profile.id });
+    const sid2: string = s2.body.session.id;
+    const agent2 = await agentSocket(A, cred, sid2);
+    const viewer2 = await viewerSocket(A, cookie, epId, sid2);
+    await viewer2.text('session', (m) => m.state === 'active');
+    viewer2.send({ t: 'input', ev: { kind: 'key_press', key: 'a' } });
+    await agent2.text('input');
+    viewer2.send({ t: 'clipboard_get', req: 'k1' });
+    const get = await agent2.text('clipboard_get');
+    agent2.send({ t: 'clipboard', req: get.req, text: 'log line' });
+    expect((await viewer2.text('clipboard')).text).toBe('log line');
+    viewer2.send({ t: 'clipboard_set', req: 'k2', text: 'nope' });
+    expect((await viewer2.text('clipboard_error', (m) => m.req === 'k2')).code).toBe('profile_forbids_clipboard_in');
+    viewer2.ws.close();
+    agent2.ws.close();
   });
 });
