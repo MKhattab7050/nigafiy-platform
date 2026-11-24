@@ -188,6 +188,138 @@ nigafiy-agent.exe uninstall
     compiled with `go vet` for both platforms and unit-tested on their pure parts.
   - More than one physical monitor.
 
+## Built: permission profiles and access policy (2026-11-24)
+
+Migration `035_fleet_profiles_and_policy.sql`. API code is in
+`apps/api/src/modules/endpoints/fleet-policy/`, agent code in `internal/rdstream`, `internal/userui` and
+`internal/agent/session_commands.go`, and web code in `apps/web/features/endpoints/components/fleet-policy/` plus the
+**Fleet → Access policies** and **Fleet → Approvals** pages.
+
+### Data model
+- **`fleet_permission_profiles`** holds one boolean column per flag: `view`, `control`,
+  `clipboard_in` (operator → computer), `clipboard_out` (computer → operator), `files`, `audio`,
+  `record`, `restart`, `privacy_screen`, `block_input`, `shell`.
+  - The built-ins are `view_only` (view, record), `support` (view, control, clipboard both ways, files,
+    record, restart) and `full_admin` (everything).
+  - Every organization gets the built-ins. `fleet_seed_builtin_profiles(org)` seeds the existing
+    organizations in the migration. New organizations are seeded lazily on first use. A trigger was
+    avoided because it would collide with pg_dump restores.
+  - Row-level security splits the policies: `lan_app` can read and insert, but can update or delete only
+    rows where `builtin_key IS NULL`. So built-ins are read-only even for SQL that skips the API.
+  - Names are unique per organization, case-insensitive.
+- **`fleet_groups`** stores the access policy:
+  - `access_mode` (attended / unattended) and `consent_timeout_s` (10–300)
+  - `refuse_window_s` (0, or 10–300)
+  - `allowed_hours`: up to 14 weekly windows in the site's time zone; an end before the start crosses
+    midnight
+  - `allowed_roles` (owner / admin / technician)
+  - `default_profile_id` and `max_profile_id`
+  - `mfa_required`, `approval_required` and `approval_ttl_minutes` (1–240)
+  - `ip_allowlist` (`cidr[]`, up to 32)
+- **`endpoints.fleet_group_id`** is nullable. Deleting a group sets it back to null. The groups are
+  designed to become the address-book groups later.
+- **No group means the organization default:**
+  - attended (60 s) when the endpoint's `policy.remote_desktop_consent` is `prompt`, otherwise
+    unattended without a refuse window
+  - all operator roles, any time and any address
+  - Support by default, Full admin at most
+  - no code and no approval
+- **`fleet_sessions` gains:**
+  - the group, the profile (id and name), and a snapshot of the `permissions`
+  - `consent_timeout_s` and `refuse_window_s`
+  - `policy_trail` (each check with pass, fail or info)
+  - `mfa_verified` and `request_ip`
+  - `approval_state`, `approval_expires_at`, approver id and email, the decision time and the note
+  - the new state `waiting_approval`, consent result `not_refused`, and end reasons `approval_denied`
+    and `approval_expired`
+  - Sessions that were open during the migration got Support-like permissions, named "Support (before
+    profiles)".
+
+### Flow
+1. **Connect dialog.** The operator opens the dialog, which shows
+   `GET /endpoints/:id/remote-desktop/policy`. This is advice only: the request checks everything again.
+   The operator gives a reason (required, 3–200 characters) and picks a profile up to the maximum. If
+   the policy asks for a code, the operator enters a TOTP code. `POST /fleet/step-up` exchanges it for a
+   step-up token that lasts 5 minutes:
+   - The token is stateless: an HMAC over the user, the organization, the sign-in session and the
+     expiry time.
+   - Codes are checked with `verifyTotp` through `systemPool`, and `mfa_last_step` blocks replays.
+   - After 5 wrong codes the account is locked for 15 minutes (`mfa_locked`, 429).
+2. **Evaluation in `POST /remote-desktop/start`,** in this order: role → IP (through the existing
+   trust-proxy handling) → hours → MFA → profile → mode → approval.
+   - A profile above the maximum is clamped to the maximum, and the trail records that.
+   - Each refusal writes `fleet.policy_refused` in its own transaction, so the audit survives the
+     rollback.
+3. **Second admin (unattended + `approval_required`).** The session waits in `waiting_approval` and is
+   listed on **Fleet → Approvals**.
+   - Another admin approves or denies it. The requester cannot do either (`approval_self`).
+   - A request nobody decides in time expires (`approval_expired`). The check runs on every status read
+     and every approvals list.
+   - After approval, the session goes on to the agent.
+4. **The user at the computer.**
+   - Attended: the consent dialog.
+   - Unattended with a refuse window: a "Start now / Refuse" dialog that lists the permissions. No answer
+     lets the session start (`not_refused`).
+   - Unattended without a window: a notice, then the session starts.
+   - The window is counted from the approval, if there was one.
+5. **Live.** Two layers enforce the profile:
+   - **The API.** The stream hub refuses input without `control`, `clipboard_get` without
+     `clipboard_out` and `clipboard_set` without `clipboard_in`. The commands path refuses `rd_capture`
+     without `view` and `rd_input` without `control`. For the session holder, it also refuses `fs_op` without `files` and
+     `power_action` without `restart`. Each refusal is audited as `fleet.session_refused_action`, except
+     mouse moves.
+   - **The agent.** It applies the same flags to the stream and to HTTP input. It lists the flags on the
+     banner in English and Arabic. The banner shows for every profile; nothing turns it off.
+
+### Refusal codes (English and Arabic in `policy-text.ts`)
+- **Policy (403):**
+  - `policy_role_not_allowed`, `policy_ip_not_allowed`, `policy_outside_hours`
+  - `policy_mfa_not_enrolled`, `policy_mfa_required`, `policy_mfa_invalid`
+- **Profile (422):** `profile_no_view`, `profile_not_found`
+- **Enforcement (403):** `profile_forbids_view`, `_control`, `_clipboard_in`, `_clipboard_out`,
+  `_files`, `_restart`
+- **Step-up:** `invalid_mfa_code` (401), `mfa_locked` (429)
+- **Approvals:** `approval_self` (403), `approval_expired` (409), `approval_not_pending` (409)
+- **Admin CRUD:** `profile_builtin`, `profile_in_use`, `profile_name_taken`,
+  `profile_default_exceeds_max`, `group_name_taken`
+
+### Audit
+- **Profiles:** `fleet.profile_created`, `_updated`, `_deleted`
+- **Groups:** `fleet.group_created`, `_updated`, `_deleted`, `_assigned`
+- **Policy:** `fleet.policy_updated` (when policy fields change, with before and after),
+  `fleet.policy_refused`, `fleet.policy_mfa_verified`, `fleet.policy_mfa_failed`
+- **Sessions:** `fleet.session_requested`, `_approval_requested`, `_approved`, `_approval_denied`,
+  `_approval_expired`, `_refused_action`, plus the existing `_opened`, `_consent` and so on
+
+Typed text, clipboard text and codes are never logged.
+
+### Roles
+- **Viewers** see no Policies page, no Approvals page, no group controls and no connect button.
+- **Technicians** can read profiles and groups, see the policy preview, and connect within the policy.
+- **Admins** can create and change profiles and groups, assign groups (in bulk on the endpoint list,
+  one at a time on the endpoint detail) and decide approvals.
+
+### What ran for real, and what did not
+- **Ran for real on this Windows desktop:** the opt-in Go test
+  `NIGAFIY_UI_TEST=1 go test ./internal/userui -run TestWindowsRefuseWindowAndPermissionBanner`. It
+  opened the real "Start now / Refuse" dialog and the session banner with the permission lines in
+  English and Arabic.
+- **Tests only:** everything else.
+  - The API tests ran against embedded PostgreSQL:
+    - every policy branch: role, IP (including X-Forwarded-For), hours in and out with the time zone,
+      MFA (missing, wrong, replay, lockout, valid)
+    - the profile clamp and the profile CRUD rules
+    - groups, bulk assignment and tenant isolation
+    - approvals: self-approval, approve, deny, expiry
+    - enforcement in the API and in the stream hub
+  - The Go tests cover agent enforcement (stream and HTTP input), the refuse window and the banner for
+    every profile.
+  - The web pages were type-checked and built.
+- **Never run here:**
+  - the new web pages and the connect dialog in a browser against a running API
+  - an approval or a refuse window with a real agent on another computer
+  - a real authenticator app
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)

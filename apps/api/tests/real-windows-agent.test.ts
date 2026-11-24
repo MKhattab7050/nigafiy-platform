@@ -114,6 +114,8 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go N
           display_index: 0,
           quality: 65,
           scale: 0.5,
+          // Opening the session already captured once; an idle screen would come back "unchanged".
+          full_frame: true,
         });
         expect(rdRes.status).toBe(200);
         expect(rdRes.body.status).toBe('completed');

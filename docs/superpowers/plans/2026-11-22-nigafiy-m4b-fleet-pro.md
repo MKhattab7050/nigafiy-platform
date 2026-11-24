@@ -33,10 +33,10 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 ### Wave 1 — Session foundation (one builder)
 
 **Task 1: Session model, permission profiles, access policy** (migration `032`)
-- [ ] `fleet_permission_profiles` (built-ins View only / Support / Full admin + custom; flags: view, control, clipboard_in, clipboard_out, files, audio, record, restart, privacy_screen, block_input, shell).
-- [ ] Group access policy: attended (accept + timeout) / unattended, "user may refuse within N s", allowed hours, operator roles, MFA-to-connect, second-admin approval for unattended, operator IP allow-list.
+- [x] `fleet_permission_profiles` (built-ins View only / Support / Full admin + custom; flags: view, control, clipboard_in, clipboard_out, files, audio, record, restart, privacy_screen, block_input, shell).
+- [x] Group access policy: attended (accept + timeout) / unattended, "user may refuse within N s", allowed hours, operator roles, MFA-to-connect, second-admin approval for unattended, operator IP allow-list.
 - [ ] `fleet_sessions` (+ participants for multi-operator, permissions granted, path used, end reason) and the audit events. Existing remote-desktop session rows migrate into it.
-- [ ] API: request → policy evaluation → (approval) → user accept → live; End from either side. Tests for every policy branch.
+- [x] API: request → policy evaluation → (approval) → user accept → live; End from either side. Tests for every policy branch.
 
 **Task 2: Live control channel**
 - [ ] Agent ↔ API WebSocket (agent dials out, same auth as polling, falls back to polling) carrying session signalling and small messages; multi-instance through `LISTEN/NOTIFY`.
@@ -71,6 +71,25 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 ## Results
 
 (Filled in at the end of the milestone.)
+
+## Progress (2026-11-24: permission profiles, groups and access policy)
+
+Built on branch `worktree-fleet-pro`, migration `035`. Details, refusal codes and exactly what ran for
+real are in `docs/features/fleet-pro.md` → "Built: permission profiles and access policy".
+
+- [x] `fleet_permission_profiles`: built-ins (read-only, seeded per organization) + custom profiles with admin CRUD
+- [x] `fleet_groups` + `endpoints.fleet_group_id`: CRUD, bulk assignment, organization default from `remote_desktop_consent`
+- [x] Access policy: attended/unattended, refuse window, allowed hours (site time zone), operator roles,
+  default/max profile, MFA step-up token, second-admin approval with expiry, operator IP allow-list
+- [x] Session request flow with required reason, policy trail, approval, refuse window; `fleet.session_*`,
+  `fleet.profile_*`, `fleet.group_*`, `fleet.policy_*` audit
+- [x] Enforcement in the API (stream hub + commands) and in the agent; permissions on the banner (EN + AR)
+- [x] Web: Fleet → Access policies, Fleet → Approvals, connect dialog, group assignment, live permissions
+  on the toolbar, session history columns (EN + AR)
+- [ ] Not verified here: the new web pages in a browser against a running API, an approval or refuse
+  window with a real agent on a second computer, a real authenticator app.
+- Still open: multi-operator participants, recording, audio, privacy screen, block input and shell
+  (the flags exist and are shown; the features that use them are later tasks).
 
 ## Progress (resumed 2026-11-22: remote desktop and agent transport)
 
