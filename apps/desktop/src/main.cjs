@@ -21,8 +21,20 @@ const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisCompu
 const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
 const { readEnv } = require('./env-compat.cjs');
 const { CHOICES, readInstallSettings, selectedIds, writePrograms } = require('./install-settings.cjs');
+const { MOVE_FLAG, findLegacyInstalls, moveProfile, offerText, planProfileMove, prefsStore, shouldOffer } = require('./legacy-import.cjs');
 const { resolveDataDir, DEV_PROFILE_NAME, LEGACY_DEV_PROFILE_NAME } = require('./data-dir.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
+
+// An explicit --user-data-dir (tests, a second profile) is never moved, imported or asked about.
+const EXPLICIT_DATA_DIR = app.commandLine.hasSwitch('user-data-dir');
+// "Move my data" (src/legacy-import.cjs) relaunches with --move-legacy-profile: the rename happens
+// here, before the profile is chosen or opened. On any failure the old folder stays in use.
+let legacyMoveResult = null;
+if (!EXPLICIT_DATA_DIR && app.isPackaged && process.argv.includes(MOVE_FLAG)) {
+  const plan = planProfileMove({ appData: app.getPath('appData'), exists: (p) => fs.existsSync(p) });
+  legacyMoveResult = plan ? moveProfile(plan) : { ok: false, error: 'there was nothing to move' };
+  console.info(legacyMoveResult.ok ? `[profile] moved ${plan.from} to ${plan.to}` : `[profile] not moved: ${legacyMoveResult.error}`);
+}
 
 // The profile folder, before anything reads userData (or takes the single-instance lock, which is
 // per profile): the legacy one from before the rename while only that exists (src/data-dir.cjs). An explicit
@@ -191,6 +203,34 @@ function openPending() {
   const next = pendingOpen;
   pendingOpen = null;
   openProgram(next.program, next.path);
+}
+
+// ── an install from before the rename (src/legacy-import.cjs) ────────────────
+async function offerLegacyImport() {
+  const locale = app.getLocale().toLowerCase().startsWith('ar') ? 'ar' : 'en';
+  if (legacyMoveResult && !legacyMoveResult.ok) {
+    const t = require('./legacy-import.cjs').STRINGS[locale];
+    await dialog.showMessageBox({ type: 'warning', title: t.title, message: t.moveFailed(legacyMoveResult.error) });
+  }
+  const prefs = prefsStore(app.getPath('userData'));
+  const exists = (p) => fs.existsSync(p);
+  const move = planProfileMove({ appData: app.getPath('appData'), exists });
+  const installs = findLegacyInstalls({ localAppData: process.env.LOCALAPPDATA, programFiles: process.env.ProgramW6432 || process.env.ProgramFiles, installDir: path.dirname(process.execPath), exists });
+  if (!shouldOffer({ packaged: app.isPackaged, explicitDataDir: EXPLICIT_DATA_DIR, smoke: SMOKE || LOCAL_SMOKE || CHOOSE_PROGRAMS, neverAsk: prefs.load().neverAsk, move, installs })) return;
+  const text = offerText({ locale, move, installs });
+  const { response } = await dialog.showMessageBox({ type: 'question', title: text.title, message: text.message, buttons: text.buttons.map((b) => b.label), cancelId: text.buttons.findIndex((b) => b.id === 'later'), noLink: true });
+  const choice = text.buttons[response]?.id;
+  if (choice === 'never') prefs.save({ neverAsk: true });
+  else if (choice === 'remove') {
+    // The old copy's own uninstaller with its own window (and its own UAC prompt for an all-users copy).
+    for (const i of installs.filter((x) => x.uninstaller)) {
+      const r = await shell.openPath(i.uninstaller);
+      if (r) console.warn(`[legacy] could not start ${i.uninstaller}: ${r}`);
+    }
+  } else if (choice === 'move') {
+    app.relaunch({ args: [...process.argv.slice(1).filter((a) => a !== MOVE_FLAG), MOVE_FLAG] });
+    await quit();
+  }
 }
 
 // ── program chooser (docs/operations/installers.md, "Choose programs") ──────
@@ -618,6 +658,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     app.setAppUserModelId('com.nigafiy.hub');
     if (CHOOSE_PROGRAMS) return void showProgramChooser();
+    void offerLegacyImport().catch((err) => console.warn(`[legacy] ${err?.message ?? err}`));
     // nigafiy:// is registered by the installed app only; a source checkout or a test run never writes HKCU\Software\Classes\nigafiy.
     if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({
