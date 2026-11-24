@@ -248,11 +248,12 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 			return nil, err
 		}
 	}
+	_, qosInstalled, qosErr := d.nftQoS(ctx, "capabilities")
 	return router.Capabilities{
 		{Capability: router.CapClients, Supported: true, Mechanism: "ubus luci-rpc (DHCP leases + host hints) and iwinfo"},
 		{Capability: router.CapDHCPLeases, Supported: true, Mechanism: "luci-rpc.getDHCPLeases"},
 		{Capability: router.CapBlock, Supported: true, Mechanism: mechBlock, Note: "Adds a dedicated UCI firewall REJECT rule for the MAC; administrator rules stay untouched"},
-		{Capability: router.CapRateLimit, Supported: false, Note: "OpenWrt has no single standard per-MAC rate-limit API across SQM/tc setups"},
+		limitCapability(qosInstalled, qosErr),
 		{Capability: router.CapSchedule, Supported: true, Mechanism: mechSchedule, Note: "Adds UCI firewall rules with start_time, stop_time and weekdays"},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
 		{Capability: router.CapWiFi, Supported: true, Mechanism: mechWiFi},
