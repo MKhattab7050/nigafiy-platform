@@ -259,8 +259,10 @@ end is not after its start crosses midnight; it becomes start→24:00 on its day
 next days; start = end is 24 hours; segments with the same times are merged). Every new driver
 call: refuses bad input before sending anything; treats an empty schedule as "clear"; labels what
 it creates `LAN Detective: limit|schedule <mac>` (or the vendor's name field: `LD:<mac>`,
-`ld-lim-<hex>`, `LD_<hex>_<n>`); never changes or deletes anything without that label, and refuses
-when the administrator already set a limit or schedule for that device on the router; adds the new
+`ld-lim-<hex>`, `LD_<hex>_<n>`); never changes or deletes anything without that label; where the
+router keeps one entry per device (UniFi user group, nft-qos client, ASUS Parental Controls) it
+refuses when that entry is the administrator's (FortiGate, OPNsense and pfSense get separate
+Nigafiy rules and leave the administrator's rules as they are); adds the new
 schedule before removing the old one and removes what it just added if the router refuses, so a
 refusal leaves the previous schedule in place; re-reads the router after the change and fails if
 the router does not show it; says how to undo it.
