@@ -170,7 +170,8 @@ Milestone 4 (2026-11-22, programs; plan `docs/superpowers/plans/2026-11-21-nigaf
 | Engine in local mode, packaged desktop app | Packaged run on scratch ports and profile | — |
 | Engine as a Windows service | — | Go tests |
 | Update download and install | — | Signed test manifests |
-| Agent installer, MSI build, upgrade over a real LAN Detective install | — | Never run |
+| Desktop installer (NSIS) per user | Silent install, upgrade with data kept, uninstall in a scratch folder (2026-11-25) | Interactive pages, all-users install |
+| MSI, agent installer, upgrade over a real LAN Detective install | MSI and agent installer built, signed and inspected only | Agent upgrade/rollback in unit tests; never installed |
 | Backup/restore with pg_dump, Redis rate limits | — | Skipped (no client tools, no Redis) |
 | Notifications to Telegram, Slack, Discord, ntfy | — | Local test servers |
 | GitHub CI workflow | — | Never pushed |
@@ -264,7 +265,7 @@ Milestones 2, 3 and 4, the spec gap work and the parity audit (2026-11-23) are d
    | huaweilte | – | Y | – | Y | Y | – | – |
    | ciscoxe | – | – | – | – | – | – | – (read-only by design) |
 3. **Config restore** covers Juniper Junos only.
-4. **Installers:** no installer step that finds and imports a `C:\Program Files\LAN Detective` install, no per-program packages or bundle installer, MSI never built (needs WiX), agent installer never run and has no in-place upgrade.
+4. **Installers** (I1, 2026-11-25; `docs/operations/installers.md`): program choice at install (NSIS page, MSI `PROGRAMS=`), import of an old LAN Detective install, MSI vs NSIS update detection, agent self-copy install + in-place upgrade with rollback, `-token-file`. Ran for real here: NSIS, MSI and agent installer built and test-signed, MSI tables inspected, and the desktop app installed per user, upgraded and uninstalled silently in a scratch folder. Never run: an MSI install, the agent installer or agent upgrade, an all-users install, the interactive installer pages (needs a disposable Windows VM).
 5. Remote desktop sends JPEG only (no pure-Go WebP encoder).
 6. Older features (DNS access, IPAM, monitoring, Doctor) have no `docs/features` page; they are described here and in `docs/architecture`.
 7. Website (`apps/site`): on hold by the owner.
