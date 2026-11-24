@@ -41,7 +41,9 @@ class Peer {
   readonly bytes: Buffer[] = [];
   readonly texts: Array<Record<string, unknown>> = [];
   closed: number | null = null;
-  constructor(readonly ws: WebSocket) {
+  readonly ws: WebSocket;
+  constructor(ws: WebSocket) {
+    this.ws = ws;
     ws.on('message', (data, isBinary) => {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
       if (isBinary) this.bytes.push(buf);
