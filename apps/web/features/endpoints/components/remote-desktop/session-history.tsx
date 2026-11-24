@@ -8,15 +8,19 @@ import { useQuery } from '@/lib/app';
 import { absoluteTime, duration } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { ltr } from '@/lib/localize/bidi';
+import { PermissionChips } from '../fleet-policy/permission-chips';
+import { policyText } from '../fleet-policy/policy-text';
 import { bytes, rdText } from './rd-text';
 
-const CONSENT_TONE: Record<string, Tone> = { accepted: 'ok', not_required: 'idle', pending: 'warn', denied: 'crit', timeout: 'warn', unavailable: 'crit' };
+const CONSENT_TONE: Record<string, Tone> = { accepted: 'ok', not_required: 'idle', pending: 'warn', denied: 'crit', timeout: 'warn', unavailable: 'crit', not_refused: 'ok' };
+const APPROVAL_TONE: Record<string, Tone> = { approved: 'ok', pending: 'warn', denied: 'crit', expired: 'warn' };
 const BANNER_TONE: Record<string, Tone> = { shown: 'ok', pending: 'idle', unavailable: 'crit', not_supported: 'warn' };
 
 /** Remote support session history (fleet_sessions): one endpoint, or the whole organization. */
 export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string; limit?: number }) {
   const { locale } = useI18n();
   const tx = rdText(locale);
+  const px = policyText(locale);
   const query = useQuery<{ sessions: FleetSession[] }>(`/fleet/sessions${qs({ endpoint_id: endpointId, limit })}`, ['devices'], 10_000);
 
   return (
@@ -32,6 +36,7 @@ export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string
                   <th>{tx.col.started}</th>
                   {!endpointId && <th>{tx.col.endpoint}</th>}
                   <th>{tx.col.operator}</th>
+                  <th>{px.profileCol}</th>
                   <th>{tx.col.consent}</th>
                   <th>{tx.col.transport}</th>
                   <th>{tx.col.end}</th>
@@ -65,11 +70,26 @@ export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string
                           </span>
                         )}
                       </td>
+                      <td data-label={px.profileCol}>
+                        {s.profile_name ? (
+                          <span dir="auto">
+                            {s.profile_name}
+                            {s.group_name && <span className="text-faint">{` · ${s.group_name}`}</span>}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                        {s.permissions && <PermissionChips permissions={s.permissions} className="mt-1 max-w-80" />}
+                      </td>
                       <td data-label={tx.col.consent}>
                         <span className="flex flex-wrap gap-1">
+                          {s.approval_state !== 'not_required' && (
+                            <Badge tone={APPROVAL_TONE[s.approval_state] ?? 'idle'}>{`${px.approvalCol}: ${px.decision[s.approval_state] ?? s.approval_state}`}</Badge>
+                          )}
                           <Badge tone={CONSENT_TONE[s.consent_result] ?? 'idle'}>{tx.consentResult[s.consent_result] ?? s.consent_result}</Badge>
                           <Badge tone={BANNER_TONE[s.banner_state] ?? 'idle'}>{`${tx.col.banner}: ${tx.bannerShort[s.banner_state] ?? s.banner_state}`}</Badge>
                         </span>
+                        {s.approver_email && <span className="block text-[11px] text-faint">{`${px.approvalCol} ${px.decidedBy(ltr(s.approver_email))}`}</span>}
                       </td>
                       <td data-label={tx.col.transport}>
                         {tx.transport[s.transport] ?? s.transport}
@@ -77,7 +97,7 @@ export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string
                       </td>
                       <td data-label={tx.col.end}>
                         {s.state !== 'ended' ? (
-                          <Badge tone="ok">{s.state === 'waiting_consent' ? tx.waitingConsent : tx.open}</Badge>
+                          <Badge tone={s.state === 'active' ? 'ok' : 'warn'}>{s.state === 'waiting_approval' ? px.waitingApproval : s.state === 'waiting_consent' ? tx.waitingConsent : tx.open}</Badge>
                         ) : (
                           <span>
                             {s.end_reason ? tx.endShort[s.end_reason] : '—'}

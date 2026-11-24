@@ -3,17 +3,19 @@
 import clsx from 'clsx';
 import { Ban, KeyRound, Plus, ShieldAlert, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { PlatformIcon } from '@/components/device-icon';
 import { DeviceLink } from '@/components/device-link';
 import { SetupArt } from '@/components/illustrations';
-import { Badge, Button, Card, EmptyState, Segmented } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Segmented, Select } from '@/components/ui';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { localizeComplianceReason } from '@/lib/localize';
 import { endpointsText } from '../text';
+import { GroupAssignBar, GroupTag, useFleetGroups } from './fleet-policy/group-assign';
+import { policyText } from './fleet-policy/policy-text';
 import { Meter, complianceTone, epTone } from './endpoint-tones';
 
 export function FleetContent({
@@ -27,6 +29,7 @@ export function FleetContent({
   onAdd,
   onReissue,
   onRevoke,
+  onReload,
 }: {
   items: EndpointSummary[];
   platformFilter: 'all' | EndpointPlatform;
@@ -38,9 +41,16 @@ export function FleetContent({
   onAdd: () => void;
   onReissue: (id: string) => Promise<void>;
   onRevoke: (id: string) => Promise<void>;
+  onReload?: () => void;
 }) {
   const { locale, t } = useI18n();
   const tx = endpointsText(locale);
+  const px = policyText(locale);
+  const groupsQ = useFleetGroups();
+  const groups = groupsQ.data?.groups ?? [];
+  const [groupFilter, setGroupFilter] = useState<string>('all');
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggle = (id: string, on: boolean) => setSelected((s) => (on ? [...new Set([...s, id])] : s.filter((x) => x !== id)));
 
   const active = useMemo(() => items.filter((e) => e.status !== 'revoked'), [items]);
 
@@ -77,9 +87,11 @@ export function FleetContent({
     return items.filter((e) => {
       if (platformFilter !== 'all' && e.platform !== platformFilter) return false;
       if (complianceFilter !== 'all' && e.compliance_status !== complianceFilter) return false;
+      if (groupFilter === 'none' && e.fleet_group_id) return false;
+      if (groupFilter !== 'all' && groupFilter !== 'none' && e.fleet_group_id !== groupFilter) return false;
       return true;
     });
-  }, [items, platformFilter, complianceFilter]);
+  }, [items, platformFilter, complianceFilter, groupFilter]);
 
   if (items.length === 0) {
     return (
@@ -163,6 +175,37 @@ export function FleetContent({
         />
       </div>
 
+      {/* Fleet groups: filter, and (admins) bulk assignment. */}
+      {(groups.length > 0 || canAdmin) && groupsQ.data && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} aria-label={px.group} className="w-64">
+            <option value="all">{px.allGroups}</option>
+            <option value="none">{px.noGroup}</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </Select>
+          {canAdmin && (
+            <Button size="sm" onClick={() => setSelected(filtered.filter((e) => e.status !== 'revoked').map((e) => e.id))}>
+              {px.selectAll}
+            </Button>
+          )}
+        </div>
+      )}
+      {canAdmin && selected.length > 0 && (
+        <GroupAssignBar
+          selected={selected}
+          groups={groups}
+          onClear={() => setSelected([])}
+          onDone={() => {
+            setSelected([]);
+            onReload?.();
+          }}
+        />
+      )}
+
       {/* Endpoint Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {filtered.map((ep) => {
@@ -180,12 +223,16 @@ export function FleetContent({
               key={ep.id}
               title={
                 <span className="flex flex-wrap items-center gap-2">
+                  {canAdmin && ep.status !== 'revoked' && (
+                    <input type="checkbox" checked={selected.includes(ep.id)} onChange={(e) => toggle(ep.id, e.target.checked)} aria-label={px.select(ep.name)} />
+                  )}
                   <PlatformIcon platform={ep.platform} className="size-4 text-muted" />
                   <Link href={`/fleet/endpoints/${ep.id}`} className="font-semibold text-fg hover:text-accent-hover hover:underline">
                     {ep.name}
                   </Link>
                   <Badge tone="info">{tx.platforms[ep.platform] ?? ep.platform}</Badge>
                   <Badge tone={epTone(ep)}>{statusLabel}</Badge>
+                  {groupsQ.data && <GroupTag name={ep.fleet_group_name} color={groups.find((g) => g.id === ep.fleet_group_id)?.color} />}
                   <Badge tone={complianceTone(ep.compliance_status)}>
                     {ep.compliance_status === 'compliant' ? (
                       <ShieldCheck className=" me-1 inline size-3" aria-hidden />

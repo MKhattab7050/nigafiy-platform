@@ -4,6 +4,9 @@ import clsx from 'clsx';
 import { ClipboardCopy, ClipboardPaste, Hourglass, Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, ShieldCheck, Square } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote, Input, Notice, Select, Textarea, type Tone } from '@/components/ui';
 import { ltr } from '@/lib/localize/bidi';
+import { ConnectDialog } from '../fleet-policy/connect-dialog';
+import { PermissionChips } from '../fleet-policy/permission-chips';
+import { policyText } from '../fleet-policy/policy-text';
 import { bytes, rdText } from './rd-text';
 import { SessionHistory } from './session-history';
 import { type RdPath, type RemoteDesktopConsoleProps, useRemoteDesktop } from './use-remote-desktop';
@@ -14,6 +17,10 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
   const { ep, online, canControl, viewOnly = false } = props;
   const rd = useRemoteDesktop(props);
   const tx = rdText(rd.locale);
+  const px = policyText(rd.locale);
+  const waitingApproval = rd.state === 'waiting_approval';
+  const waitingConsent = rd.state === 'waiting_consent';
+  const refuseWindow = waitingConsent && fsRefuse(rd.fleetSession);
   const fs = rd.fleetSession;
   const policyPrompt = ep.policy?.remote_desktop_consent === 'prompt';
   const deniedPermissions = Object.entries(rd.hello?.desktop?.permissions ?? {}).filter(([, v]) => v === 'denied');
@@ -39,7 +46,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
       {/* Transparency: the user sees who is connected, for the whole session. */}
       <div className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-line bg-raised/60 px-3.5 py-2.5 text-xs">
         <div className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-center gap-2">
-          <Badge tone={rd.live ? 'ok' : rd.state === 'waiting_consent' ? 'warn' : 'idle'}>{rd.live ? tx.live : rd.state === 'waiting_consent' ? tx.waitingConsent : tx.idle}</Badge>
+          <Badge tone={rd.live ? 'ok' : rd.state ? 'warn' : 'idle'}>{rd.live ? tx.live : waitingApproval ? px.waitingApproval : waitingConsent ? tx.waitingConsent : tx.idle}</Badge>
           <span className="flex items-start gap-1.5 text-muted">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
@@ -52,6 +59,16 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             {rd.live && <Badge tone={PATH_TONE[rd.path]}>{tx.path[rd.path]}</Badge>}
             {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' ? 'ok' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
             {rd.hello?.desktop?.mode && <Badge tone="info">{tx.desktopMode[rd.hello.desktop.mode] ?? rd.hello.desktop.mode}</Badge>}
+          </div>
+        )}
+        {/* What this session's profile allows: the same list the user sees on the session bar. */}
+        {rd.session && rd.permissions && (
+          <div className="flex w-full flex-wrap items-center gap-2 border-t border-line pt-2">
+            <span className="text-muted" dir="auto">
+              {px.allowed}
+              {rd.session.profile_name ? ` (${rd.session.profile_name})` : ''}:
+            </span>
+            <PermissionChips permissions={rd.permissions} />
           </div>
         )}
       </div>
@@ -94,7 +111,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               <input type="checkbox" checked={rd.adaptive} onChange={(e) => rd.setAdaptive(e.target.checked)} />
               {tx.adaptive}
             </label>
-            {canControl && !viewOnly && rd.live && (
+            {canControl && !viewOnly && rd.live && rd.allows('control') && (
               <Button size="sm" onClick={() => rd.setInteractive((v) => !v)} className={clsx(rd.interactive && 'border-accent text-fg')}>
                 <MousePointer className="size-3.5" aria-hidden />
                 {rd.interactive ? tx.control : tx.viewOnly}
@@ -107,7 +124,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               <Maximize2 className="size-3.5" aria-hidden />
             </Button>
             {!rd.session ? (
-              <Button size="sm" variant="primary" disabled={!online || !canControl} busy={rd.busy === 'start'} onClick={() => void rd.startSession()}>
+              <Button size="sm" variant="primary" disabled={!online || !canControl} busy={rd.busy === 'start'} onClick={() => rd.setConnectOpen(true)}>
                 <Play className="size-3.5" aria-hidden />
                 {tx.start}
               </Button>
@@ -121,16 +138,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         }
       >
         <div className="space-y-3">
-          {!rd.session && canControl && (
-            <div className="block text-xs text-muted">
-              <label htmlFor="rd-reason" className="mb-1 block">
-                {tx.reason}
-              </label>
-              <Input id="rd-reason" value={rd.reason} maxLength={200} onChange={(e) => rd.setReason(e.target.value)} placeholder={tx.reasonPlaceholder} />
-            </div>
-          )}
-
-          {canControl && !viewOnly && rd.live && (
+          {canControl && !viewOnly && rd.live && rd.allows('control') && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
               <form
                 onSubmit={(e) => {
@@ -175,11 +183,21 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             />
             {!rd.hasPicture && (
               <div className="flex flex-col items-center gap-3 p-8 text-center text-white/70">
-                {rd.state === 'waiting_consent' ? <Hourglass className="size-10 text-warn" aria-hidden /> : <Monitor className="size-10 text-white/40" aria-hidden />}
+                {waitingConsent || waitingApproval ? <Hourglass className="size-10 text-warn" aria-hidden /> : <Monitor className="size-10 text-white/40" aria-hidden />}
                 <p className="text-sm font-medium text-white" dir="auto">
-                  {rd.state === 'waiting_consent' ? tx.waitingTitle(ep.name) : rd.live ? tx.connecting : tx.readyTitle}
+                  {waitingApproval ? px.waitingApprovalTitle(ep.name) : waitingConsent ? tx.waitingTitle(ep.name) : rd.live ? tx.connecting : tx.readyTitle}
                 </p>
-                <p className="max-w-md text-xs">{rd.state === 'waiting_consent' ? tx.waitingBody(rd.consentLeft ?? 60) : rd.live ? '' : tx.readyBody}</p>
+                <p className="max-w-md text-xs">
+                  {waitingApproval
+                    ? px.waitingApprovalBody(rd.approvalLeft !== null ? ltr(`${Math.floor(rd.approvalLeft / 60)}:${String(rd.approvalLeft % 60).padStart(2, '0')}`) : null)
+                    : refuseWindow
+                      ? px.refuseWindowBody(rd.consentLeft ?? 0)
+                      : waitingConsent
+                        ? tx.waitingBody(rd.consentLeft ?? 60)
+                        : rd.live
+                          ? ''
+                          : tx.readyBody}
+                </p>
               </div>
             )}
           </div>
@@ -208,12 +226,12 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
       </Card>
 
       {/* Clipboard: text only, operator-initiated, audited. */}
-      {canControl && rd.live && (
+      {canControl && rd.live && (rd.allows('clipboard_in') || rd.allows('clipboard_out')) && (
         <Card title={tx.clipboard}>
           <p className="mb-2 text-xs text-muted">{tx.clipboardHint}</p>
           {!rd.wsLive && <Notice className="border-warn/30 bg-warn/[0.08]">{tx.clipboardNeedsStream}</Notice>}
           <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
+            <div className={clsx('space-y-2', !rd.allows('clipboard_in') && 'hidden')}>
               <Textarea value={rd.clipOut} rows={3} onChange={(e) => rd.setClipOut(e.target.value)} placeholder={tx.clipboardSendPlaceholder} dir="auto" />
               {rd.clipOut.length > 16_000 && <p className="text-xs text-crit">{tx.tooLong}</p>}
               <Button size="sm" disabled={!rd.wsLive || !rd.clipOut || rd.clipOut.length > 16_000} onClick={rd.sendClipboard}>
@@ -221,7 +239,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
                 {tx.clipboardSend}
               </Button>
             </div>
-            <div className="space-y-2">
+            <div className={clsx('space-y-2', !rd.allows('clipboard_out') && 'hidden')}>
               <Textarea value={rd.clipIn ?? ''} rows={3} readOnly dir="auto" aria-label={tx.clipboardGet} />
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" disabled={!rd.wsLive} onClick={rd.getClipboard}>
@@ -244,7 +262,14 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         </Card>
       )}
 
+      {rd.connectOpen && <ConnectDialog endpoint={{ id: ep.id, name: ep.name }} onClose={() => rd.setConnectOpen(false)} onSubmit={rd.requestSession} />}
+
       <SessionHistory endpointId={ep.id} />
     </div>
   );
+}
+
+/** Unattended with a refuse window: the person may refuse, no answer starts the session. */
+function fsRefuse(fs: { consent_mode: string; refuse_window_s: number } | null): boolean {
+  return Boolean(fs && fs.consent_mode !== 'prompt' && fs.refuse_window_s > 0);
 }

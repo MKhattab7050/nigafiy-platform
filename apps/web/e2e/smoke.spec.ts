@@ -48,6 +48,8 @@ const SCREENS: readonly Screen[] = [
   // Fleet
   { path: '/fleet/endpoints', name: 'Endpoints', program: 'fleet' },
   { path: '/fleet/sessions', name: 'Fleet, Remote sessions', program: 'fleet' },
+  { path: '/fleet/policies', name: 'Fleet, Access policies', program: 'fleet' },
+  { path: '/fleet/approvals', name: 'Fleet, Approvals', program: 'fleet' },
   // Mind
   { path: '/mind/automation', name: 'Mind, Automation', program: 'mind' },
   { path: '/mind/knowledge', name: 'Mind, Knowledge', program: 'mind' },

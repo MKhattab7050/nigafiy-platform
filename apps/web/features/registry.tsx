@@ -17,6 +17,7 @@ import {
   History,
   LayoutGrid,
   Lightbulb,
+  LockKeyhole,
   type LucideIcon,
   MonitorSmartphone,
   Network,
@@ -28,6 +29,7 @@ import {
   Siren,
   Stethoscope,
   ToggleRight,
+  UserCheck,
   Workflow,
   Wrench,
 } from 'lucide-react';
@@ -245,6 +247,8 @@ export const FEATURES: Feature[] = [
     widget: { component: lazy(() => import('./endpoints/widget')), order: 50, attention: true },
   },
   { id: 'fleet-sessions', program: 'fleet', route: '/fleet/sessions', label: 'endpoints.nav.sessions', icon: MonitorSmartphone, minRole: 'technician' },
+  { id: 'fleet-policies', program: 'fleet', route: '/fleet/policies', label: 'endpoints.nav.policies', icon: LockKeyhole, minRole: 'technician' },
+  { id: 'fleet-approvals', program: 'fleet', route: '/fleet/approvals', label: 'endpoints.nav.approvals', icon: UserCheck, minRole: 'admin' },
 
   // ── Nigafiy Mind ──
   {

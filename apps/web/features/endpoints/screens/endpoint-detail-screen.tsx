@@ -21,6 +21,7 @@ import { ServicesTab } from '../components/endpoint-detail/services-tab';
 import { ConnectionsTab } from '../components/endpoint-detail/connections-tab';
 import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
+import { EndpointGroupPicker } from '../components/fleet-policy/group-assign';
 import { RemoteDesktopConsole } from '../components/remote-desktop/remote-desktop-console';
 import { endpointsText } from '../text';
 import { DeviceLink } from '@/components/device-link';
@@ -134,6 +135,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                       {ep.compliance_status === 'compliant' ? <ShieldCheck className="size-3" aria-hidden /> : <ShieldAlert className="size-3" aria-hidden />}
                       {tx.complianceStatus[ep.compliance_status] ?? ep.compliance_status}
                     </Badge>
+                    {ep.status !== 'revoked' && <EndpointGroupPicker endpointId={ep.id} groupId={ep.fleet_group_id} groupName={ep.fleet_group_name} onChanged={query.reload} />}
                     {ep.device_id && (
                       <DeviceLink
                         id={ep.device_id}

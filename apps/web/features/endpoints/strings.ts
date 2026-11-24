@@ -1,6 +1,8 @@
 /** UI strings owned by this module. The i18n core merges every module's `en` and `ar` into one typed dictionary. */
 export const en = {
   'endpoints.nav.sessions': 'Remote sessions',
+  'endpoints.nav.policies': 'Access policies',
+  'endpoints.nav.approvals': 'Approvals',
   'endpoints.widget.none': 'No computer is managed yet. Enroll one to see its health and compliance here.',
   'endpoints.widget.enroll': 'Enroll a computer',
   'endpoints.attn.nonCompliant': '{count} managed computers fail compliance.',
@@ -18,6 +20,8 @@ export const en = {
 
 export const ar: Record<keyof typeof en, string> = {
   'endpoints.nav.sessions': 'الجلسات البعيدة',
+  'endpoints.nav.policies': 'سياسات الوصول',
+  'endpoints.nav.approvals': 'الموافقات',
   'endpoints.widget.none': 'لا يوجد حاسوب مُدار بعد. سجّل حاسوبًا لترى صحته وامتثاله هنا.',
   'endpoints.widget.enroll': 'سجّل حاسوبًا',
   'endpoints.attn.nonCompliant': '{count} من الحواسيب المُدارة غير ممتثلة.',

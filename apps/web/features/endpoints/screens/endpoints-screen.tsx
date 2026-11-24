@@ -149,6 +149,7 @@ export function EndpointsScreen() {
             onAdd={openBlank}
             onReissue={reissueToken}
             onRevoke={revokeEndpoint}
+            onReload={query.reload}
           />
         )}
       </Async>

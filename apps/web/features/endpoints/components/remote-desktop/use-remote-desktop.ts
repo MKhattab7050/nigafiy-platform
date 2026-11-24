@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { EndpointCommand, EndpointDetail, FleetSession, FleetSessionStatus, RemoteDesktopDisplay, RemoteDesktopFrame } from '@nigafiy/shared-types';
+import type { EndpointCommand, EndpointDetail, FleetPermissions, FleetSession, FleetSessionStatus, RemoteDesktopDisplay, RemoteDesktopFrame } from '@nigafiy/shared-types';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import type { ConnectChoice } from '../fleet-policy/connect-dialog';
+import { policyText } from '../fleet-policy/policy-text';
 import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';
 
 export interface RemoteDesktopConsoleProps {
@@ -38,13 +40,17 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const sessionId = session?.id ?? null;
   const state = session ? (session.state ?? 'active') : null;
   const live = state === 'active';
+  /** What the session's permission profile allows (null: not open, or a server before profiles). */
+  const permissions: FleetPermissions | null = session?.permissions ?? status?.fleet_session?.permissions ?? null;
+  const allows = (k: keyof FleetPermissions) => !permissions || permissions[k];
+  const codeText = (m: Record<string, unknown>) => (typeof m.code === 'string' && policyText(locale).codes[m.code]) || String(m.error ?? '');
 
   const [interactive, setInteractive] = useState(true);
   const [displayIndex, setDisplayIndex] = useState<number>(ep.rd_session?.display_index ?? 0);
   const [quality, setQuality] = useState<number>(ep.rd_session?.quality ?? 68);
   const [scale, setScale] = useState<number>(ep.rd_session?.scale ?? 0.75);
   const [adaptive, setAdaptive] = useState(true);
-  const [reason, setReason] = useState('');
+  const [connectOpen, setConnectOpen] = useState(false);
 
   const [path, setPath] = useState<RdPath>('connecting');
   const [hello, setHello] = useState<StreamHello | null>(null);
@@ -114,7 +120,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   // While a session is open: re-read it (consent answer, banner state, the agent's socket).
   useEffect(() => {
     if (!sessionId) return;
-    const t = setInterval(() => void loadStatus(), state === 'waiting_consent' ? 1_500 : 4_000);
+    const t = setInterval(() => void loadStatus(), state === 'waiting_consent' || state === 'waiting_approval' ? 1_500 : 4_000);
     return () => clearInterval(t);
   }, [sessionId, state, loadStatus]);
 
@@ -200,8 +206,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
         case 'clipboard_error':
         case 'input_error':
         case 'error':
-          if (m.t === 'clipboard_error') setClipNote({ tone: 'crit', text: String(m.error ?? '') });
-          else setStreamNote(String(m.error ?? ''));
+          if (m.t === 'clipboard_error') setClipNote({ tone: 'crit', text: codeText(m) });
+          else setStreamNote(codeText(m));
           break;
         case 'end':
           void loadStatus();
@@ -228,7 +234,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
       ws.close(1000);
       if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [ep.id, sessionId, online, wsAttempt, sendWs, loadStatus, onReload]);
+  }, [ep.id, sessionId, online, wsAttempt, sendWs, loadStatus, onReload, locale]);
 
   // Quality / scale / display choices go to the agent over the socket (again when the path changes).
   // biome-ignore lint/correctness/useExhaustiveDependencies: path is the trigger (a new socket needs the settings).
@@ -267,12 +273,13 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         if (err.code === 'consent_pending' || err.code === 'no_remote_session') void loadStatus();
+        else if (err.code.startsWith('profile_forbids_')) setStreamNote(policyText(locale).codes[err.code] ?? err.message);
         else setError(err);
       }
     } finally {
       inFlightRef.current = false;
     }
-  }, [displayIndex, ep.id, hasPicture, isAr, loadStatus, online, quality, scale]);
+  }, [displayIndex, ep.id, hasPicture, isAr, loadStatus, online, quality, scale, locale]);
 
   useEffect(() => {
     if (!useHttp) return;
@@ -307,19 +314,25 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   }, [sessionId]);
 
   // ── Start / stop ──
-  async function startSession() {
+  /**
+   * Sends the session request from the connect dialog (reason, profile, step-up token). The access
+   * policy is evaluated by the API; a refusal comes back to the dialog with its code.
+   */
+  async function requestSession(choice: ConnectChoice): Promise<ApiError | null> {
     setBusy('start');
     setError(null);
     setLastEnded(null);
     try {
       await api(`/endpoints/${ep.id}/remote-desktop/start`, {
         method: 'POST',
-        body: { display_index: displayIndex, quality, scale, ...(reason.trim() ? { reason: reason.trim() } : {}) },
+        body: { display_index: displayIndex, quality, scale, ...choice },
       });
+      setConnectOpen(false);
       await loadStatus();
       onReload();
+      return null;
     } catch (err) {
-      setError(err as ApiError);
+      return err instanceof ApiError ? err : new ApiError(0, 'error', String(err));
     } finally {
       setBusy('');
     }
@@ -340,7 +353,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   }
 
   // ── Input ──
-  const mayControl = live && online && canControl && !viewOnly && interactive;
+  const mayControl = live && online && canControl && !viewOnly && interactive && allows('control');
 
   async function sendInput(ev: Record<string, unknown>) {
     if (!mayControl) return;
@@ -435,7 +448,13 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     else void captureNextFrame();
   }
 
-  const consentLeft = status?.fleet_session && state === 'waiting_consent' ? Math.max(0, 60 - Math.floor((Date.now() - new Date(status.fleet_session.started_at).getTime()) / 1000)) : null;
+  // The consent answer time (attended) or the refuse window (unattended) runs from the request, or
+  // from the approval when a second admin approved it.
+  const fsNow = status?.fleet_session ?? null;
+  const consentWindow = fsNow ? (fsNow.consent_mode === 'prompt' ? fsNow.consent_timeout_s : fsNow.refuse_window_s) || 60 : 60;
+  const consentFrom = fsNow ? new Date(fsNow.approval_decided_at ?? fsNow.started_at).getTime() : 0;
+  const consentLeft = fsNow && state === 'waiting_consent' ? Math.max(0, consentWindow - Math.floor((Date.now() - consentFrom) / 1000)) : null;
+  const approvalLeft = fsNow?.approval_expires_at && state === 'waiting_approval' ? Math.max(0, Math.floor((new Date(fsNow.approval_expires_at).getTime() - Date.now()) / 1000)) : null;
 
   return {
     locale,
@@ -447,6 +466,9 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     fleetSession: status?.fleet_session ?? null,
     lastEnded,
     consentLeft,
+    approvalLeft,
+    permissions,
+    allows,
     interactive,
     setInteractive,
     displayIndex,
@@ -457,8 +479,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     setScale,
     adaptive,
     setAdaptive,
-    reason,
-    setReason,
+    connectOpen,
+    setConnectOpen,
     path: useHttp && path === 'waiting' ? ('http' as RdPath) : path,
     wsLive,
     hello,
@@ -483,7 +505,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     canvasHandlers,
     onViewportKey,
     mayControl,
-    startSession,
+    requestSession,
     stopSession,
     sendInput,
     requestFull,
