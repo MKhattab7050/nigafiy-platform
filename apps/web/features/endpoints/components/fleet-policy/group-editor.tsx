@@ -3,10 +3,11 @@
 import clsx from 'clsx';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { FleetAccessPolicy, FleetGroup, FleetHoursWindow, FleetOperatorRole, FleetPermissionProfile } from '@nigafiy/shared-types';
+import type { FleetAccessPolicy, FleetGroup, FleetHoursWindow, FleetOperatorRole, FleetPermissionProfile, FleetRecordingMode } from '@nigafiy/shared-types';
 import { Button, Field, Input, Modal, Segmented, SectionLabel, Select, Switch, Textarea } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { toolsText } from '../remote-desktop/tools-text';
 import { codeMessage, policyText, profileLabel } from './policy-text';
 
 const ROLES: FleetOperatorRole[] = ['owner', 'admin', 'technician'];
@@ -46,6 +47,10 @@ export function GroupEditor({
     approval_ttl_minutes: group?.approval_ttl_minutes ?? 15,
     ip_allowlist: group?.ip_allowlist ?? [],
   }));
+  const tt = toolsText(locale).groupRecording;
+  const [recMode, setRecMode] = useState<FleetRecordingMode>(group?.recording_mode ?? 'optional');
+  const [recDays, setRecDays] = useState(group?.recording_retention_days ?? 30);
+  const [userMayView, setUserMayView] = useState(group?.user_may_view_recordings ?? false);
   const [ipText, setIpText] = useState((group?.ip_allowlist ?? []).join('\n'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -65,6 +70,9 @@ export function GroupEditor({
         description: description.trim() || null,
         color,
         ...policy,
+        recording_mode: recMode,
+        recording_retention_days: recDays,
+        user_may_view_recordings: userMayView,
         ip_allowlist: ipText
           .split(/[\s,]+/)
           .map((s) => s.trim())
@@ -152,6 +160,31 @@ export function GroupEditor({
               </Field>
             </div>
           )}
+
+          {/* Session recording rule: the person always sees the recording mark while it runs. */}
+          <div className="space-y-2 rounded-md border border-line p-3">
+            <p className="text-xs font-medium text-fg/85">{tt.title}</p>
+            <Segmented<FleetRecordingMode>
+              value={recMode}
+              onChange={setRecMode}
+              label={tt.title}
+              options={(['off', 'optional', 'required'] as const).map((m) => ({ value: m, label: tt.modes[m] }))}
+            />
+            <p className="text-xs text-muted">{tt.hints[recMode]}</p>
+            {recMode !== 'off' && (
+              <>
+                <div className="max-w-60">
+                  <Field label={tt.retention}>
+                    {(id) => <Input id={id} type="number" min={1} max={3650} value={recDays} onChange={(e) => setRecDays(num(e.target.value, 1, 3650))} dir="ltr" />}
+                  </Field>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span>{tt.userMayView}</span>
+                  <Switch checked={userMayView} label={tt.userMayView} onChange={setUserMayView} />
+                </div>
+              </>
+            )}
+          </div>
 
           <div>
             <p className="mb-1 text-xs font-medium text-fg/85">{tx.roles}</p>

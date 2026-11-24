@@ -1,5 +1,6 @@
 import type { FleetPermissionKey, FleetPermissions, RemoteDesktopSession } from '@nigafiy/shared-types';
 import type { Db } from '../../../infrastructure/db.ts';
+import { participantAccess } from '../remote-desktop/session-tools.ts';
 import { sessionPermissions } from './profiles.ts';
 
 // What a session's permission profile refuses, at the API (commands, the live stream hub). The
@@ -64,9 +65,15 @@ export function commandRefusal(
 }
 
 /** For commands/service.ts: the open session's permissions and whether `userId` holds it. */
-export async function openSessionFor(db: Db, endpointId: string, userId: string): Promise<{ perms: FleetPermissions; holder: boolean; sessionId: string } | null> {
+export async function openSessionFor(
+  db: Db,
+  endpointId: string,
+  userId: string,
+): Promise<{ perms: FleetPermissions; holder: boolean; participant: boolean; sessionId: string } | null> {
   const r = await db.query<{ rd_session: (RemoteDesktopSession & { operator_user_id?: string }) | null }>(`SELECT rd_session FROM endpoints WHERE id = $1`, [endpointId]);
   const s = r.rows[0]?.rd_session;
   if (!s) return null;
-  return { perms: sessionPermissions(s), holder: s.operator_user_id === userId, sessionId: s.id };
+  // Several operators (migration 036): a joined colleague acts with their own, narrower permissions.
+  const mine = await participantAccess(db, s, userId);
+  return { perms: mine ?? sessionPermissions(s), holder: s.operator_user_id === userId, participant: mine !== null, sessionId: s.id };
 }

@@ -62,6 +62,22 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
     ).rows[0]!.id;
     await c.query(`UPDATE site_routers SET secret_enc = $2 WHERE id = $1`, [router, seal('site_routers', 'secret_enc', [router], JSON.stringify({ username: 'admin', password: `router-${label}` }))]);
 
+    // A session recording's file key (Fleet Pro, migration 036).
+    const ep = (
+      await c.query<{ id: string }>(`INSERT INTO endpoints (organization_id, site_id, name, status, connection_state, compliance_status) VALUES ($1, $2, 'pc', 'active', 'online', 'compliant') RETURNING id`, [org, site])
+    ).rows[0]!.id;
+    const fsess = (
+      await c.query<{ id: string }>(`INSERT INTO fleet_sessions (organization_id, endpoint_id, public_id, state, consent_mode) VALUES ($1, $2, $3, 'ended', 'unattended') RETURNING id`, [org, ep, `pub-${label}`])
+    ).rows[0]!.id;
+    const rec = (
+      await c.query<{ id: string }>(
+        `INSERT INTO fleet_recordings (organization_id, endpoint_id, fleet_session_id, session_public_id, key_sealed, retention_days, retention_until)
+         VALUES ($1, $2, $3, $4, 'placeholder', 30, now() + interval '30 days') RETURNING id`,
+        [org, ep, fsess, `pub-${label}`],
+      )
+    ).rows[0]!.id;
+    await c.query(`UPDATE fleet_recordings SET key_sealed = $2 WHERE id = $1`, [rec, seal('fleet_recordings', 'key_sealed', [rec], 'cd'.repeat(32))]);
+
     const target = (await c.query<{ id: string }>(`INSERT INTO config_backup_targets (organization_id, site_id, name, address) VALUES ($1, $2, 'core-sw', '10.20.0.3') RETURNING id`, [org, site])).rows[0]!.id;
     await c.query(`UPDATE config_backup_targets SET secret_enc = $2, secret_fp_key_enc = $3 WHERE id = $1`, [
       target,
@@ -120,7 +136,7 @@ describe('sealed column list', () => {
     for (const sc of SEALED_COLUMNS) {
       expect([...expected.keys()].some((k) => k.startsWith(`${sc.table}.${sc.column}|`)), `${sc.table}.${sc.column}`).toBe(true);
     }
-    expect(SEALED_COLUMNS).toHaveLength(12);
+    expect(SEALED_COLUMNS).toHaveLength(13);
   });
 });
 

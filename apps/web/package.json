@@ -8,7 +8,7 @@
     "start": "next start -p 3100",
     "typecheck": "tsc --noEmit -p .",
     "test:e2e": "playwright test",
-    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts"
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts features/endpoints/components/remote-desktop/adpcm.test.ts"
   },
   "dependencies": {
     "@nigafiy/shared-types": "workspace:*",

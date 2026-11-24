@@ -1,5 +1,6 @@
 'use client';
 
+import { CircleDot } from 'lucide-react';
 import Link from 'next/link';
 import type { FleetSession } from '@nigafiy/shared-types';
 import { Async, Badge, Card, DataTable, type Tone } from '@/components/ui';
@@ -11,6 +12,7 @@ import { ltr } from '@/lib/localize/bidi';
 import { PermissionChips } from '../fleet-policy/permission-chips';
 import { policyText } from '../fleet-policy/policy-text';
 import { bytes, rdText } from './rd-text';
+import { toolsText } from './tools-text';
 
 const CONSENT_TONE: Record<string, Tone> = { accepted: 'ok', not_required: 'idle', pending: 'warn', denied: 'crit', timeout: 'warn', unavailable: 'crit', not_refused: 'ok' };
 const APPROVAL_TONE: Record<string, Tone> = { approved: 'ok', pending: 'warn', denied: 'crit', expired: 'warn' };
@@ -21,6 +23,7 @@ export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string
   const { locale } = useI18n();
   const tx = rdText(locale);
   const px = policyText(locale);
+  const tt = toolsText(locale);
   const query = useQuery<{ sessions: FleetSession[] }>(`/fleet/sessions${qs({ endpoint_id: endpointId, limit })}`, ['devices'], 10_000);
 
   return (
@@ -94,6 +97,12 @@ export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string
                       <td data-label={tx.col.transport}>
                         {tx.transport[s.transport] ?? s.transport}
                         <span className="block text-[11px] text-faint">{`${tx.col.relayed} ${relayed}${clip}`}</span>
+                        {s.recording_id && (
+                          <Link href={`/fleet/recordings/${s.recording_id}`} className="mt-1 inline-flex items-center gap-1 text-[11px] text-accent-hover hover:underline">
+                            <CircleDot className="size-3 text-crit" aria-hidden />
+                            {tt.playRecording}
+                          </Link>
+                        )}
                       </td>
                       <td data-label={tx.col.end}>
                         {s.state !== 'ended' ? (

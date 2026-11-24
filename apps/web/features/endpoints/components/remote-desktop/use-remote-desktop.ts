@@ -71,6 +71,10 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  /** The in-session tools (use-session-tools.ts) listen to every text message and to audio packets. */
+  const toolListeners = useRef(new Set<(m: Record<string, unknown> | ArrayBuffer) => void>());
+  /** Keys by physical position (the remote layout decides the character) or by character. */
+  const [keyMode, setKeyMode] = useState<'position' | 'character'>('position');
   const drawChain = useRef<Promise<void>>(Promise.resolve());
   const inFlightRef = useRef(false);
   const waitingSince = useRef<number | null>(null);
@@ -156,6 +160,11 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     };
     ws.onmessage = (ev) => {
       if (typeof ev.data !== 'string') {
+        // 'N', 2: an audio packet for the tools; 'N', 1: a frame.
+        if ((ev.data as ArrayBuffer).byteLength > 1 && new Uint8Array(ev.data as ArrayBuffer, 0, 2)[1] === 2) {
+          for (const l of toolListeners.current) l(ev.data as ArrayBuffer);
+          return;
+        }
         const parsed = parsePacket(ev.data as ArrayBuffer);
         if (!parsed) return;
         const { header, tiles } = parsed;
@@ -213,6 +222,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
           void loadStatus();
           break;
       }
+      for (const l of toolListeners.current) l(m);
     };
     ws.onclose = (ev) => {
       if (wsRef.current === ws) wsRef.current = null;
@@ -429,7 +439,19 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     if (!mayControl) return;
     if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
     e.preventDefault();
-    void sendInput({ kind: 'key_press', key: e.key, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey });
+    // By position: the physical key goes down and up, so the remote layout (and held modifiers)
+    // decide; live stream only (the HTTP fallback has no key_down/key_up).
+    if (keyMode === 'position' && wsLive && e.code) {
+      void sendInput({ kind: 'key_down', code: e.code });
+      return;
+    }
+    void sendInput({ kind: 'key_press', key: e.key, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
+  }
+  function onViewportKeyUp(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!mayControl || keyMode !== 'position' || !wsLive || !e.code) return;
+    if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    void sendInput({ kind: 'key_up', code: e.code });
   }
 
   // ── Clipboard (live stream only; each transfer is audited by the API) ──
@@ -504,6 +526,11 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     canvasRef,
     canvasHandlers,
     onViewportKey,
+    onViewportKeyUp,
+    keyMode,
+    setKeyMode,
+    sendWs,
+    toolListeners,
     mayControl,
     requestSession,
     stopSession,

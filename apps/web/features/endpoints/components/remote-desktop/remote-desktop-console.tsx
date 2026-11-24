@@ -3,19 +3,26 @@
 import clsx from 'clsx';
 import { ClipboardCopy, ClipboardPaste, Hourglass, Keyboard, Maximize2, Monitor, MousePointer, Play, RefreshCw, ShieldCheck, Square } from 'lucide-react';
 import { Badge, Button, Card, ErrorNote, Input, Notice, Select, Textarea, type Tone } from '@/components/ui';
+import { useState } from 'react';
+import { useApp } from '@/lib/app';
 import { ltr } from '@/lib/localize/bidi';
 import { ConnectDialog } from '../fleet-policy/connect-dialog';
 import { PermissionChips } from '../fleet-policy/permission-chips';
 import { policyText } from '../fleet-policy/policy-text';
 import { bytes, rdText } from './rd-text';
 import { SessionHistory } from './session-history';
+import { AnnotationLayer, ChatCard, OperatorsCard, SessionToolbar, TransferCard, WakeCard } from './session-tools-panel';
 import { type RdPath, type RemoteDesktopConsoleProps, useRemoteDesktop } from './use-remote-desktop';
+import { useSessionTools } from './use-session-tools';
 
 const PATH_TONE: Record<RdPath, Tone> = { connecting: 'idle', direct: 'ok', relay: 'ok', waiting: 'warn', http: 'warn' };
 
 export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
   const { ep, online, canControl, viewOnly = false } = props;
   const rd = useRemoteDesktop(props);
+  const { me } = useApp();
+  const tools = useSessionTools(rd, ep.id, me.user.id);
+  const [wakeOpen, setWakeOpen] = useState(false);
   const tx = rdText(rd.locale);
   const px = policyText(rd.locale);
   const waitingApproval = rd.state === 'waiting_approval';
@@ -120,7 +127,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             <Button size="sm" disabled={!online || !rd.live} onClick={rd.requestFull} title={tx.snapshot} aria-label={tx.snapshot}>
               <RefreshCw className="size-3.5" aria-hidden />
             </Button>
-            <Button size="sm" onClick={() => void rd.viewportRef.current?.requestFullscreen?.()} title={tx.fullscreen} aria-label={tx.fullscreen}>
+            <Button size="sm" onClick={() => void enterFullscreen(rd.viewportRef.current)} title={tx.fullscreen} aria-label={tx.fullscreen}>
               <Maximize2 className="size-3.5" aria-hidden />
             </Button>
             {!rd.session ? (
@@ -138,6 +145,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         }
       >
         <div className="space-y-3">
+          {rd.live && <SessionToolbar rd={rd} t={tools} canControl={canControl} />}
           {canControl && !viewOnly && rd.live && rd.allows('control') && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
               <form
@@ -173,6 +181,16 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             // biome-ignore lint/a11y/noNoninteractiveTabindex: the remote screen takes keyboard focus to forward keys.
             tabIndex={0}
             onKeyDown={rd.onViewportKey}
+            onKeyUp={rd.onViewportKeyUp}
+            // Files dropped on the remote screen go to the destination folder (needs the files permission).
+            onDragOver={(e) => {
+              if (rd.live && canControl && tools.may('files')) e.preventDefault();
+            }}
+            onDrop={(e) => {
+              if (!rd.live || !canControl || !tools.may('files')) return;
+              e.preventDefault();
+              void tools.uploadFiles(Array.from(e.dataTransfer.files), false);
+            }}
             className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-lg border border-line-strong bg-black focus:outline-2 focus:outline-accent"
           >
             <canvas
@@ -181,6 +199,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               aria-label={tx.title}
               {...rd.canvasHandlers}
             />
+            {rd.live && rd.hasPicture && canControl && <AnnotationLayer rd={rd} t={tools} />}
             {!rd.hasPicture && (
               <div className="flex flex-col items-center gap-3 p-8 text-center text-white/70">
                 {waitingConsent || waitingApproval ? <Hourglass className="size-10 text-warn" aria-hidden /> : <Monitor className="size-10 text-white/40" aria-hidden />}
@@ -262,6 +281,21 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         </Card>
       )}
 
+      {rd.live && rd.session && <ChatCard t={tools} canControl={canControl} />}
+      {rd.session && <OperatorsCard t={tools} meId={me.user.id} canControl={canControl} />}
+      {rd.live && canControl && (tools.may('files') || tools.may('clipboard_in') || tools.may('clipboard_out')) && <TransferCard t={tools} perms={tools.perms} />}
+      {!online && !rd.session && ep.status !== 'revoked' && <WakeCard t={tools} canControl={canControl} onWake={() => setWakeOpen(true)} />}
+      {wakeOpen && (
+        <ConnectDialog
+          endpoint={{ id: ep.id, name: ep.name }}
+          onClose={() => setWakeOpen(false)}
+          onSubmit={async (c) => {
+            const refused = await tools.requestWake(c);
+            if (!refused) setWakeOpen(false);
+            return refused;
+          }}
+        />
+      )}
       {rd.connectOpen && <ConnectDialog endpoint={{ id: ep.id, name: ep.name }} onClose={() => rd.setConnectOpen(false)} onSubmit={rd.requestSession} />}
 
       <SessionHistory endpointId={ep.id} />
@@ -272,4 +306,12 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
 /** Unattended with a refuse window: the person may refuse, no answer starts the session. */
 function fsRefuse(fs: { consent_mode: string; refuse_window_s: number } | null): boolean {
   return Boolean(fs && fs.consent_mode !== 'prompt' && fs.refuse_window_s > 0);
+}
+
+/** Fullscreen, and Keyboard Lock where the browser has it, so Alt+Tab, Win and Esc reach the remote computer. */
+async function enterFullscreen(el: HTMLElement | null) {
+  if (!el?.requestFullscreen) return;
+  await el.requestFullscreen();
+  const kb = (navigator as Navigator & { keyboard?: { lock?: (codes?: string[]) => Promise<void> } }).keyboard;
+  await kb?.lock?.().catch(() => undefined);
 }

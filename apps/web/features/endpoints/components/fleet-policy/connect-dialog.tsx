@@ -9,6 +9,7 @@ import { ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { ltr } from '@/lib/localize/bidi';
+import { toolsText } from '../remote-desktop/tools-text';
 import { PermissionChips } from './permission-chips';
 import { codeMessage, policyText, profileLabel } from './policy-text';
 
@@ -16,6 +17,10 @@ export interface ConnectChoice {
   reason: string;
   profile_id: string;
   step_up_token?: string;
+  /** Asked for when the group's recording rule is "optional" (the API decides from the rule and profile). */
+  recording_enabled?: boolean;
+  /** Set by Wake-on-LAN then connect: the wake request this session completes. */
+  wake_request_id?: string;
 }
 
 /**
@@ -39,6 +44,8 @@ export function ConnectDialog({
   const [reason, setReason] = useState('');
   const [profileId, setProfileId] = useState<string | null>(null);
   const [code, setCode] = useState('');
+  const [record, setRecord] = useState(false);
+  const tt = toolsText(locale);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -51,7 +58,9 @@ export function ConnectDialog({
         const r = await api<{ step_up_token: string }>('/fleet/step-up', { method: 'POST', body: { code: code.trim() } });
         token = r.step_up_token;
       }
-      const refused = await onSubmit({ reason: reason.trim(), profile_id: chosen, ...(token ? { step_up_token: token } : {}) });
+      const recordAllowed = p.profiles.find((x) => x.id === chosen)?.record === true;
+      const recording_enabled = p.recording_mode === 'required' || (p.recording_mode === 'optional' && record && recordAllowed);
+      const refused = await onSubmit({ reason: reason.trim(), profile_id: chosen, recording_enabled, ...(token ? { step_up_token: token } : {}) });
       if (refused) {
         setError(refused);
         void query.reload();
@@ -77,7 +86,7 @@ export function ConnectDialog({
             { label: tx.checkHours, ok: p.within_hours },
           ];
           const blocked = checks.some((c) => !c.ok) || mfaBlocked;
-          const ready = !blocked && reason.trim().length >= 3 && Boolean(chosen) && (!p.policy.mfa_required || /^\d{6}$/.test(code.trim()));
+          const ready = !blocked && !(p.recording_mode === 'required' && profile?.record === false) && reason.trim().length >= 3 && Boolean(chosen) && (!p.policy.mfa_required || /^\d{6}$/.test(code.trim()));
           return (
             <form
               className="space-y-4"
@@ -118,6 +127,18 @@ export function ConnectDialog({
                 )}
               </Field>
               {profile && <PermissionChips permissions={profile} all />}
+
+              {/* Recording follows the group's rule; the person always sees the recording mark. */}
+              {p.recording_mode === 'optional' && profile?.record && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={record} onChange={(e) => setRecord(e.target.checked)} />
+                  {tt.recordThis(p.recording_retention_days)}
+                </label>
+              )}
+              {p.recording_mode === 'required' && (
+                <Notice className={profile?.record ? undefined : 'border-warn/30 bg-warn/[0.08]'}>{profile?.record ? tt.recordRequired(p.recording_retention_days) : tt.recordProfileCannot}</Notice>
+              )}
+              {p.recording_mode === 'off' && <p className="text-xs text-muted">{tt.recordOff}</p>}
 
               {p.policy.mfa_required &&
                 (mfaBlocked ? (

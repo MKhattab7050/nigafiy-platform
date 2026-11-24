@@ -3,6 +3,7 @@ import type { FleetPolicyPreview } from '@nigafiy/shared-types';
 import { type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { effectivePolicy, ipAllowed, normalizeIp, pickableProfiles, withinHours } from './policy.ts';
+import { recordingRule } from '../remote-desktop/session-tools.ts';
 import { listProfilesIn } from './profiles.ts';
 import { operatorHasMfa } from './step-up.ts';
 
@@ -19,6 +20,7 @@ export async function policyPreview(req: Request, ctx: AuthContext, endpointId: 
     if (!eff) throw notFound('Endpoint');
     const all = await listProfilesIn(db);
     const max = all.find((p) => p.id === eff.policy.max_profile_id)!;
+    const rec = await recordingRule(db, endpointId);
     return {
       source: eff.source,
       group: eff.group,
@@ -33,6 +35,8 @@ export async function policyPreview(req: Request, ctx: AuthContext, endpointId: 
       request_ip: requestIp,
       operator_has_mfa: hasMfa,
       approval_needed: eff.policy.access_mode === 'unattended' && eff.policy.approval_required,
+      recording_mode: rec.mode,
+      recording_retention_days: rec.retentionDays,
     };
   });
 }

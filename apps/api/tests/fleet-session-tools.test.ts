@@ -267,6 +267,8 @@ describe('Fleet Pro in-session tools', () => {
     expect(off.status).toBe(403);
     expect(off.body.error.code).toBe('recording_disabled_by_policy');
     await a.agent.patch(`/api/v1/fleet/groups/${group.id}`).set(CSRF).send({ recording_mode: 'required', recording_retention_days: 7 });
+    // The connect dialog's preview shows the rule.
+    expect((await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/policy`)).body).toMatchObject({ recording_mode: 'required', recording_retention_days: 7 });
 
     // Required: recorded even though the operator did not ask.
     const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Recorded fix' });
@@ -359,6 +361,11 @@ describe('Fleet Pro in-session tools', () => {
     // Not invited: no picture.
     await expect(viewerSocket(bCookie, epId, session)).rejects.toThrow('HTTP 403');
     expect((await b.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/participants/join`).set(CSRF).send({})).body.error.code).toBe('not_invited');
+    // Nor through the HTTP fallback: rd_capture and rd_input are for participants only (audited).
+    for (const kind of ['rd_capture', 'rd_input']) {
+      const r = await b.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send(kind === 'rd_input' ? { kind, event_kind: 'key_press', key: 'Enter' } : { kind });
+      expect([r.status, r.body.error?.code], kind).toEqual([403, 'not_a_participant']);
+    }
 
     const viewOnly = { view: true, control: false, clipboard_in: false, clipboard_out: false, files: false, audio: false, record: false, restart: false, privacy_screen: false, block_input: false, shell: false };
     const inv = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/participants`).set(CSRF).send({ user_id: b.id, permissions: viewOnly });

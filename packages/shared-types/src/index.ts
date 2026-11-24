@@ -1334,6 +1334,9 @@ export interface FleetPolicyPreview {
   /** The operator has a TOTP authenticator set up (needed when mfa_required). */
   operator_has_mfa: boolean;
   approval_needed: boolean;
+  /** The group's recording rule (off: never; optional: the operator chooses; required: always). */
+  recording_mode: FleetRecordingMode;
+  recording_retention_days: number;
 }
 
 /** One remote support session (fleet_sessions). Frames are never stored: only relay counts. */
