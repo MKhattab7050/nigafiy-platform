@@ -1,10 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { FleetGroup } from '@nigafiy/shared-types';
 import { Button, Input, Select } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
+import { JobDialog } from '../fleet-jobs/job-dialog';
+import { jobsText } from '../fleet-jobs/jobs-text';
 import { GroupAssignBar } from '../fleet-policy/group-assign';
 import { codeMessage, policyText } from '../fleet-policy/policy-text';
 import { reachText } from './reach-text';
@@ -56,6 +59,9 @@ export function BulkBar({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [results, setResults] = useState<ItemResult[]>([]);
+  const jx = jobsText(locale);
+  const router = useRouter();
+  const [jobOpen, setJobOpen] = useState(false);
 
   const ready =
     action === 'tags'
@@ -139,6 +145,10 @@ export function BulkBar({
         <Button size="sm" variant="primary" busy={busy} disabled={!ready || selected.length === 0} onClick={() => void apply()}>
           {tx.apply}
         </Button>
+        {/* Run job: a script from the library on the selection (technicians: the scripts marked for them). */}
+        <Button size="sm" onClick={() => setJobOpen(true)} disabled={selected.length === 0}>
+          {jx.runJob}
+        </Button>
         <Button size="sm" onClick={onClear}>
           {tx.clear}
         </Button>
@@ -149,6 +159,7 @@ export function BulkBar({
         )}
       </div>
       {action === 'power' && <p className="text-xs text-muted">{tx.powerAdminNote}</p>}
+      {jobOpen && <JobDialog endpointIds={selected} onClose={() => setJobOpen(false)} onCreated={(job) => router.push(`/fleet/jobs/${job.id}`)} />}
       {results.length > 0 && (
         <ul className="space-y-0.5 text-xs text-crit">
           {results.map((r) => (

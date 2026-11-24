@@ -21,6 +21,8 @@ import { ServicesTab } from '../components/endpoint-detail/services-tab';
 import { ConnectionsTab } from '../components/endpoint-detail/connections-tab';
 import { SoftwareTab } from '../components/endpoint-detail/software-tab';
 import { RemoteFileManager } from '../components/remote-files/remote-file-manager';
+import { ShellPanel } from '../components/fleet-shell/shell-panel';
+import { jobsText } from '../components/fleet-jobs/jobs-text';
 import { EndpointGroupPicker } from '../components/fleet-policy/group-assign';
 import { RemoteDesktopConsole } from '../components/remote-desktop/remote-desktop-console';
 import { reachText } from '../components/reach/reach-text';
@@ -115,6 +117,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
             ...(capEnabled('diagnostics_logs') ? [{ value: 'diagnostics' as Tab, label: tx.tabs.diagnostics }] : []),
             { value: 'security', label: tx.tabs.security },
             { value: 'commands', label: `${tx.tabs.commands} (${ep.commands.length})` },
+            // Remote shell: admins only (the API refuses everyone else and audits it).
+            ...(can('admin') ? [{ value: 'shell' as Tab, label: jobsText(locale).shellTitle }] : []),
           ];
           // A requested tab this endpoint does not offer (capability off, unknown name) opens the overview.
           const shown: Tab = availableTabs.some((o) => o.value === tab) ? tab : 'overview';
@@ -277,6 +281,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               {shown === 'commands' && (
                 <CommandsTab ep={ep} />
               )}
+
+              {shown === 'shell' && <ShellPanel endpoint={{ id: ep.id, name: ep.name, online }} />}
             </>
           );
         }}

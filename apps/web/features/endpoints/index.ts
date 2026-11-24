@@ -6,3 +6,6 @@ export { FleetPoliciesScreen } from './screens/fleet-policies-screen';
 export { FleetApprovalsScreen } from './screens/fleet-approvals-screen';
 export { RecordingPlayerScreen } from './screens/recording-player-screen';
 export { FleetRequestsScreen } from './screens/fleet-requests-screen';
+export { FleetScriptsScreen } from './screens/fleet-scripts-screen';
+export { FleetJobsScreen, FleetJobDetailScreen } from './screens/fleet-jobs-screen';
+export { ShellTranscriptScreen } from './screens/shell-transcript-screen';

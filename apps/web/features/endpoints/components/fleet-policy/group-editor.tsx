@@ -8,6 +8,7 @@ import { Button, Field, Input, Modal, Segmented, SectionLabel, Select, Switch, T
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { toolsText } from '../remote-desktop/tools-text';
+import { jobsText } from '../fleet-jobs/jobs-text';
 import { codeMessage, policyText, profileLabel } from './policy-text';
 
 const ROLES: FleetOperatorRole[] = ['owner', 'admin', 'technician'];
@@ -51,6 +52,9 @@ export function GroupEditor({
   const [recMode, setRecMode] = useState<FleetRecordingMode>(group?.recording_mode ?? 'optional');
   const [recDays, setRecDays] = useState(group?.recording_retention_days ?? 30);
   const [userMayView, setUserMayView] = useState(group?.user_may_view_recordings ?? false);
+  const jx = jobsText(locale);
+  const [shellOn, setShellOn] = useState(group?.shell_enabled ?? false);
+  const [shellIdle, setShellIdle] = useState(group?.shell_idle_timeout_minutes ?? 15);
   const [ipText, setIpText] = useState((group?.ip_allowlist ?? []).join('\n'));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -73,6 +77,8 @@ export function GroupEditor({
         recording_mode: recMode,
         recording_retention_days: recDays,
         user_may_view_recordings: userMayView,
+        shell_enabled: shellOn,
+        shell_idle_timeout_minutes: shellIdle,
         ip_allowlist: ipText
           .split(/[\s,]+/)
           .map((s) => s.trim())
@@ -183,6 +189,22 @@ export function GroupEditor({
                   <Switch checked={userMayView} label={tt.userMayView} onChange={setUserMayView} />
                 </div>
               </>
+            )}
+          </div>
+
+          {/* Remote shell (Fleet Pro): off unless switched on here; admins only, transcript kept. */}
+          <div className="space-y-2 rounded-md border border-line p-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span>{jx.policyShell}</span>
+              <Switch checked={shellOn} label={jx.policyShell} onChange={setShellOn} />
+            </div>
+            <p className="text-xs text-muted">{jx.policyShellHint}</p>
+            {shellOn && (
+              <div className="max-w-60">
+                <Field label={jx.policyShellIdle}>
+                  {(id) => <Input id={id} type="number" min={1} max={240} value={shellIdle} onChange={(e) => setShellIdle(num(e.target.value, 1, 240))} dir="ltr" />}
+                </Field>
+              </div>
             )}
           </div>
 

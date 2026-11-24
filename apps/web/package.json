@@ -11,8 +11,10 @@
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts features/endpoints/components/remote-desktop/adpcm.test.ts"
   },
   "dependencies": {
-    "@nigafiy/shared-types": "workspace:*",
     "@nigafiy/brand": "workspace:*",
+    "@nigafiy/shared-types": "workspace:*",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "@xyflow/react": "^12.12.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.540.0",

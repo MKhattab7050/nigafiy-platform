@@ -11,6 +11,7 @@ import {
   Clock,
   Cpu,
   FileBarChart2,
+  FileCode2,
   Gauge,
   GitBranch,
   Hash,
@@ -264,6 +265,8 @@ export const FEATURES: Feature[] = [
   },
   { id: 'fleet-policies', program: 'fleet', route: '/fleet/policies', label: 'endpoints.nav.policies', icon: LockKeyhole, minRole: 'technician' },
   { id: 'fleet-approvals', program: 'fleet', route: '/fleet/approvals', label: 'endpoints.nav.approvals', icon: UserCheck, minRole: 'admin' },
+  { id: 'fleet-scripts', program: 'fleet', route: '/fleet/scripts', label: 'endpoints.nav.scripts', icon: FileCode2, minRole: 'technician' },
+  { id: 'fleet-jobs', program: 'fleet', route: '/fleet/jobs', label: 'endpoints.nav.jobs', icon: CalendarClock, minRole: 'technician' },
 
   // ── Nigafiy Mind ──
   {
