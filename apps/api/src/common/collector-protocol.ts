@@ -366,7 +366,16 @@ const routerResultSchema = z
       .strict()
       .optional(),
     capabilities: z
-      .array(z.object({ capability: shortText(40), supported: z.boolean(), mechanism: shortText(200).optional(), note: shortText(400).optional() }).strict())
+      .array(z
+          .object({
+            capability: shortText(40),
+            supported: z.boolean(),
+            mechanism: shortText(200).optional(),
+            note: shortText(400).optional(),
+            // The control acts on the device's DHCP reservation (e.g. a rename stored as its host name).
+            requires: z.enum(['reservation']).optional(),
+          })
+          .strict())
       .max(16)
       .optional(),
     clients: z

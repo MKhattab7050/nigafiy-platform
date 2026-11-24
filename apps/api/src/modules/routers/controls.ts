@@ -113,11 +113,19 @@ async function routerSection(db: Db, req: Request, d: { id: string; site_id: str
     const base = `/api/v1/routers/${r.id}`;
     const unknownPart = (part: unknown) => (part ? null : { possible: false, reason: 'settings_unknown' });
     const noMac = !d.mac ? { possible: false, reason: 'no_mac' } : null;
+    // Some routers keep no client names of their own and store the name on the device's DHCP
+    // reservation (capability requires: "reservation"): then the reservation is what must exist.
+    const renameViaReservation = capability(r, 'rename')?.requires === 'reservation';
     const renameAction =
       capCheck('rename') ??
       notReady ??
       noMac ??
-      (!client ? { possible: false, reason: 'not_on_router' } : { possible: true, min_role: 'admin', method: 'POST', href: `${base}/rename`, body: { device_id: d.id } });
+      (renameViaReservation
+        ? (unknownPart(settings?.reservations) ??
+          (!reservation ? { possible: false, reason: 'needs_reservation', note: capability(r, 'rename')?.note } : null))
+        : !client
+          ? { possible: false, reason: 'not_on_router' }
+          : null) ?? { possible: true, min_role: 'admin', method: 'POST', href: `${base}/rename`, body: { device_id: d.id }, ...(renameViaReservation ? { via: 'reservation', note: capability(r, 'rename')?.note } : {}) };
     const addressProblem = d.ip ? lanAddressProblem(lan, d.ip) : null;
     const reserveAction =
       capCheck('reservations') ??

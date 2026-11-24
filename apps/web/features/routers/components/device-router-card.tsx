@@ -578,7 +578,10 @@ function RouterSettingsForDevice({
             if (await runAction(a.rename, { name: newName.trim() })) setShowRename(false);
           }}
         >
-          <Field label={t('routers.rename.title')} hint={t('routers.rename.hint')}>
+          <Field
+            label={t('routers.rename.title')}
+            hint={a.rename.via === 'reservation' ? `${t('routers.rename.hintReservation')}${a.rename.note ? ` ${a.rename.note}` : ''}` : t('routers.rename.hint')}
+          >
             {(id) => <Input id={id} value={newName} maxLength={63} required dir="auto" onChange={(e) => setNewName(e.target.value)} />}
           </Field>
           <div className="flex justify-end gap-2">

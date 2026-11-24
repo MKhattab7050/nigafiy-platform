@@ -16,6 +16,8 @@ export interface ControlAction {
   body?: Record<string, unknown>;
   values?: string[];
   field?: string;
+  /** How the router carries the action out, when the form should say so (e.g. "reservation": a rename stored on the device's DHCP reservation). */
+  via?: string;
 }
 
 /** A section of the consolidated controls: computed on its own, so one failing section never hides the others. */

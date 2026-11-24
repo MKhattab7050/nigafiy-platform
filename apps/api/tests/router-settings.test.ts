@@ -447,3 +447,56 @@ describe('router settings and controls', () => {
     expect(portForwardProblem(rule(10000, 10999), [])).toBeNull();
   });
 });
+
+// pfSense, OPNsense and FortiGate keep no client names of their own: the Sensor reports the rename
+// capability with requires: "reservation", and the name is stored on the device's DHCP reservation.
+describe('rename through a reservation', () => {
+  const VIA_RES = CAPS.map((c) => (c.capability === 'rename' ? { ...c, requires: 'reservation', note: 'stored as the host name of the static mapping' } : c));
+
+  it('offers the rename only for a reserved device, queues it, and refuses the others before the collector', async () => {
+    const s = await setup('rs-rename-res', VIA_RES);
+    const laptop = s.devices['192.168.50.20']!; // a client, no reservation
+    const phone = s.devices['192.168.50.21']!; // reserved in SETTINGS
+
+    const router = await s.a.agent.get(`/api/v1/routers/${s.routerId}`);
+    expect(router.body.capabilities.find((c: { capability: string }) => c.capability === 'rename')).toMatchObject({ supported: true, requires: 'reservation' });
+
+    // Settings not read yet: the reservation is unknown.
+    let item = (await s.a.agent.get(`/api/v1/devices/${phone}/controls`)).body.sections.router.routers[0];
+    expect(item.actions.rename).toMatchObject({ possible: false, reason: 'settings_unknown' });
+    expect((await s.a.agent.post(`/api/v1/routers/${s.routerId}/rename`).set(CSRF).send({ device_id: phone, name: 'x' })).body.error.code).toBe('settings_unknown');
+
+    await reportSettings(s);
+    item = (await s.a.agent.get(`/api/v1/devices/${laptop}/controls`)).body.sections.router.routers[0];
+    expect(item.actions.rename).toMatchObject({ possible: false, reason: 'needs_reservation', note: 'stored as the host name of the static mapping' });
+    const refused = await s.a.agent.post(`/api/v1/routers/${s.routerId}/rename`).set(CSRF).send({ device_id: laptop, name: 'study-laptop' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('needs_reservation');
+    expect(await commands(s.c, 'router_rename')).toHaveLength(0);
+
+    item = (await s.a.agent.get(`/api/v1/devices/${phone}/controls`)).body.sections.router.routers[0];
+    expect(item.actions.rename).toMatchObject({ possible: true, via: 'reservation', method: 'POST', min_role: 'admin' });
+    const ok = await s.a.agent.post(`/api/v1/routers/${s.routerId}/rename`).set(CSRF).send({ device_id: phone, name: 'kitchen-phone' });
+    expect(ok.status).toBe(202);
+    const [cmd] = await commands(s.c, 'router_rename');
+    expect(cmd!.payload).toEqual({ request_id: ok.body.request_id, router_id: s.routerId, mac: 'aa:bb:cc:00:00:21', name: 'kitchen-phone' });
+    const audit = await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'router.rename'`, [s.a.organizationId]);
+    expect(audit.rows).toHaveLength(1);
+    expect(JSON.stringify(audit.rows)).not.toContain('router-pass-9z');
+    await complete(s, ok.body.request_id, 'rename', { settings: { reservations: SETTINGS.reservations } });
+
+    // A viewer sees why, never a write.
+    await setRole(s.a.email, s.a.organizationId, 'viewer');
+    expect((await s.a.agent.post(`/api/v1/routers/${s.routerId}/rename`).set(CSRF).send({ device_id: phone, name: 'x' })).status).toBe(403);
+    await setRole(s.a.email, s.a.organizationId, 'admin');
+  });
+
+  it('refuses an unknown requirement in a refresh', async () => {
+    const s = await setup('rs-rename-req');
+    const t = await telemetry(s.c, [
+      result(s.routerId, { action: 'refresh', trigger: 'scheduled', ok: true, capabilities: [{ capability: 'rename', supported: true, requires: 'something' }] }),
+    ]);
+    expect(t.status).toBe(400);
+    expect(t.body.error.details[0].path).toBe('items.0.capabilities.0.requires');
+  });
+});

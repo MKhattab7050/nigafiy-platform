@@ -6,7 +6,7 @@ import { AppError, type AuthContext } from '../../common/http.ts';
 import { normalizeMac } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
-import { assertCapability, oneDevice, protectedDevice, requesterAddress, siteDevice } from './control.ts';
+import { assertCapability, capability, oneDevice, protectedDevice, requesterAddress, siteDevice } from './control.ts';
 import { MANAGEMENT_PORTS, MAX_PORTS_PER_RULE, type PortForwardBody } from './schema.ts';
 import { type RouterAction, type RouterRow, assertControllable, expireStaleRequests, loadRouter, queueRequest } from './service.ts';
 
@@ -202,9 +202,15 @@ export function routerSettings(organizationId: string, routerId: string) {
 /** Set the name the router shows for a device (its client list entry). */
 export function renameOnRouter(req: Request, ctx: AuthContext, routerId: string, deviceId: string, name: string) {
   return withTenant(ctx.organizationId, async (db) => {
-    const { r } = await prepare(db, routerId, 'rename');
+    const { r, settings } = await prepare(db, routerId, 'rename');
     const d = await oneDevice(db, r, deviceId);
-    if (!(await db.query(`SELECT 1 FROM router_clients WHERE router_id = $1 AND mac = $2::macaddr`, [r.id, d.mac])).rowCount) {
+    if (capability(r, 'rename')?.requires === 'reservation') {
+      // The router stores the name on the device's DHCP reservation (pfSense, OPNsense, FortiGate).
+      if (!settings?.reservations) throw new AppError(409, 'settings_unknown', 'The router settings have not been read yet; read them first');
+      if (!settings.reservations.some((x) => x.mac.toLowerCase() === d.mac)) {
+        throw new AppError(409, 'needs_reservation', 'This router stores a device name on its DHCP reservation; reserve an address for the device first');
+      }
+    } else if (!(await db.query(`SELECT 1 FROM router_clients WHERE router_id = $1 AND mac = $2::macaddr`, [r.id, d.mac])).rowCount) {
       throw new AppError(409, 'not_on_router', 'The router does not list this device as a client; it can only rename devices it knows');
     }
     await assertNotPending(db, r, ['rename'], { mac: d.mac });

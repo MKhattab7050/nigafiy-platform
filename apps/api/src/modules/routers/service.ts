@@ -52,6 +52,8 @@ export interface CapabilityStatus {
   supported: boolean;
   mechanism?: string;
   note?: string;
+  /** "reservation": the control acts on the device's DHCP reservation, so it needs one first. */
+  requires?: 'reservation';
 }
 
 export interface RouterRow {
