@@ -33,6 +33,11 @@ export const FILES = [
   'engine/internal/engine/engine_test.go',
   'engine/internal/update/update.go',
   'engine/internal/update/update_test.go',
+  // Importing an install from before the rename: the old folders, uninstaller and profile it looks for.
+  'apps/desktop/installer/nigafiy.nsh',
+  'apps/desktop/src/legacy-import.cjs',
+  'apps/desktop/test/legacy-import.test.cjs',
+  'docs/operations/installers.md',
 ];
 
 /** Lines allowed anywhere: identifiers kept because they are persisted or on the wire. */
