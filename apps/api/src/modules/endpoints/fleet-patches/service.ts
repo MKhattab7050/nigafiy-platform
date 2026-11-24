@@ -364,7 +364,7 @@ export async function dispatchInstalls(orgId: string): Promise<number> {
       await db.query<Candidate>(
         `SELECT e.id, e.organization_id, e.site_id, e.device_id, e.fleet_group_id, s.source, s.updates, s.scanned_at,
                 (e.status = 'active' AND e.last_heartbeat_at > now() - make_interval(secs => $1)) AS online,
-                (SELECT max(i.finished_at) FROM fleet_patch_installs i WHERE i.endpoint_id = e.id) AS last_finished,
+                (SELECT max(i.finished_at) FROM fleet_patch_installs i WHERE i.endpoint_id = e.id AND i.state <> 'cancelled') AS last_finished,
                 EXISTS (SELECT 1 FROM fleet_patch_installs i WHERE i.endpoint_id = e.id AND ${OPEN_INSTALL}) AS open_install
            FROM endpoint_patch_status s JOIN endpoints e ON e.id = s.endpoint_id
           WHERE s.install_supported AND s.source <> 'none' AND jsonb_array_length(s.updates) > 0`,
@@ -373,7 +373,8 @@ export async function dispatchInstalls(orgId: string): Promise<number> {
     ).rows;
     let queued = 0;
     for (const ep of rows) {
-      // Wait for a fresh scan after the last install (what it installed is no longer missing).
+      // Wait for a fresh scan after the last install (what it installed is no longer missing). A cancelled
+      // install was never delivered and changed nothing, so it does not wait for a new scan.
       if (!ep.online || ep.open_install || (ep.last_finished && ep.last_finished >= ep.scanned_at)) continue;
       const policy = effective(policies, ep.fleet_group_id);
       if (!policy.enabled) continue;
