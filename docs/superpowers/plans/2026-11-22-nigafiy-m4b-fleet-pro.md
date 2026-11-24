@@ -49,9 +49,9 @@ Wave 1 is the foundation every later task needs, so it runs alone. Wave 2 tasks 
 
 **Task 4: Input and in-session tools** — view only / control / block local input; Secure Attention Sequence (`SendSAS`, needs the policy registry value documented); special keys and shortcut pass-through; keyboard layout mapping; privacy screen with the required text; clipboard both ways (text, images, files) per profile; drag-and-drop file transfer into the transfer manager; chat + message box; annotations + laser pointer.
 
-**Task 5: Reaching computers** (migration `033`) — address book (groups, tags, favourites, recent, online state, filters, bulk actions); connect by name / ID / code from Fleet and Hub search; Wake-on-LAN through the site Sensor then auto-connect; restart and reconnect (normal / Safe Mode with Networking) with automatic resume; "Request help" in the agent tray → Fleet + Watch item → attended session.
+**Task 5: Reaching computers** (built in migration `037`, see Progress below) — address book (groups, tags, favourites, recent, online state, filters, bulk actions); connect by name / ID / code from Fleet and Hub search; Wake-on-LAN through the site Sensor then auto-connect; restart and reconnect (normal / Safe Mode with Networking) with automatic resume; "Request help" in the agent tray → Fleet + Watch item → attended session.
 
-**Task 6: Quick Support** (migration `034`) — `nigafiy-support.exe` (Go, no install, attended only): 9-digit code + one-time PIN, Accept dialog, session bar, exits and deletes its temp files at the end; engine-side rendezvous; rate limits and lockout on codes; audit.
+**Task 6: Quick Support** (built in migration `037`, see Progress below) — `nigafiy-support.exe` (Go, no install, attended only): 9-digit code + one-time PIN, Accept dialog, session bar, exits and deletes its temp files at the end; engine-side rendezvous; rate limits and lockout on codes; audit.
 
 **Task 7: Recording, multi-operator, audio, printing** (migration `035`) — encrypted recordings stored by the engine with retention per policy, recording mark, playback in Fleet beside the audit timeline, user-side viewing when policy allows; invite / hand over to another operator, each named on the bar; remote audio (WASAPI loopback; codec chosen per toolchain check, off unless the profile allows); remote printing to the operator's printer.
 
@@ -132,6 +132,28 @@ The owner paused Fleet Pro while the Wave 1 builder was still reading the code. 
 - Session signalling can use `endpoint_commands` with new internal kinds that are not in `CommandInput`. Polling then still works with no extra code. The WebSocket would push the same pending commands, woken through `pg_notify` on the endpoint id.
 
 **Still left in Wave 1:** everything in Task 1 and Task 2 (all boxes above stay unticked). This includes the feature doc and the gate run.
+
+## Progress (2026-11-24: reaching computers and Quick Support)
+
+Builder F3, branch `worktree-fleet-pro`, migration `037` (Tasks 5 and 6; the plan's migration numbers
+moved because `035`/`036` went to policy and in-session tools). What was built and exactly what ran for
+real are in `docs/features/fleet-pro.md` → "Built: reaching computers and Quick Support".
+
+- [x] Address book: groups, tags, search, favourites, my recent, online state, filters (site, OS,
+  compliance, group, tag, signed-in user); bulk group/tags/message/power/wake/refresh with per-computer
+  results
+- [x] Stable 9-digit Nigafiy ID per computer (endpoint page, cards, tray, About)
+- [x] Connect by name, Nigafiy ID or Quick Support code from Fleet and the Hub search
+- [x] Unattended access through the `035` policy, tested end to end
+- [x] Restart and reconnect, normal or Safe Mode with Networking (service only), automatic resume,
+  safe boot always cleared (agent start, failure, server request, timeout)
+- [x] Windows user sessions (`WTSEnumerateSessions`) and the sign-in screen through the service
+- [x] Request help in the agent tray → Fleet Help requests + Watch event → attended session; audited
+- [x] Quick Support: `nigafiy-support.exe` (pure Go, signed server binding, server proof, code + one-time
+  PIN, rate limit, lockout, expiry, Support cap, removes itself); rendezvous in the API (not the engine)
+- [ ] Not verified here: bcdedit / a real restart / safe mode, the service install, the sign-in-screen
+  helper, another user's session, a real Quick Support session from a downloaded exe, the web UI in a
+  browser. The exe is not Authenticode-signed.
 
 ## Progress (2026-11-24: in-session tools, recording, operators)
 

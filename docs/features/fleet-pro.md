@@ -477,6 +477,138 @@ operator and shows the recording mark, privacy text never empty and says how to 
   - Linux and macOS dialogs
   - a second operator on another machine
 
+## Built: reaching computers and Quick Support (2026-11-24)
+
+Builder F3, branch `worktree-fleet-pro`, migration `037_fleet_reach.sql`. API in
+`apps/api/src/modules/endpoints/fleet-reach/`; agent in `internal/reboot`, `internal/tray`,
+`internal/quicksupport`, `internal/sysinfo/usersessions*.go`, `cmd/nigafiy-support`; web in
+`apps/web/features/endpoints/components/reach/` and the new page **Fleet → Help requests**
+(`/fleet/requests`).
+
+### Address book
+- Every computer has a stable **Nigafiy ID** (9 digits, never starting with 0, unique per organization,
+  given by a database trigger at enrollment and back-filled for existing computers). It shows on the
+  computer card, on the endpoint page, in the agent's tray tooltip and menu, and in its About box.
+- **Tags** (up to 20 per computer, lower case; admins add or remove them on a selection),
+  **favourites** per operator (technicians), **my recent** (the operator's own last session per
+  computer, newest first), live online state, and filters by site, OS, compliance, group, tag and
+  signed-in user (from the heartbeat's logged-in users and Windows sessions). `GET /endpoints` also
+  takes `q`, `tag`, `favourites`, `user` for API clients.
+- **Bulk actions** on a selection: group and tags (admins), a message, a power action, Wake-on-LAN,
+  refresh inventory (`POST /fleet/bulk`). Each computer goes through the single action's own role check,
+  platform guard and audit row, and gets its own result (restart and shut down still need an admin).
+
+### Connect by name, Nigafiy ID or code
+`GET /fleet/connect/resolve?q=` (technicians): 9 digits find a Nigafiy ID first, then a waiting Quick
+Support code; anything else matches the name or host name exactly, then by prefix. The box on
+**Fleet → Endpoints** opens the computer with the connect dialog (`?connect=1`), lists several matches,
+or asks for the Quick Support PIN. The Hub search (`overview/search.ts`) matches Nigafiy IDs too and
+links straight to `?connect=1`. Quick Support computers never appear in the address book, the Hub search,
+reports or portfolios.
+
+### Unattended access
+Unchanged rules from the access policy (`035`): unattended only where the group's policy says so,
+with its refuse window, hours, IP list, MFA and approval. The new test walks an unattended session end
+to end through the policy (no consent dialog, the notice first, then live), and the same computer
+waits for Accept once its group is attended again. A session from a help request or Quick Support is
+always attended whatever the policy says.
+
+### Restart and reconnect
+- Only the operator holding the session, with a profile that has **restart**, from the session's
+  **Restart and reconnect** panel: normal, or **Safe Mode with Networking**.
+- The agent gets `fleet_restart`. Safe mode needs Windows and the agent running as the LocalSystem
+  **service**; otherwise the API (`safe_mode_needs_service`, `safe_mode_windows_only`) and the agent
+  (`ErrNeedsService`) refuse honestly. The agent writes a marker file first, registers its service under
+  `HKLM\SYSTEM\CurrentControlSet\Control\SafeBoot\Network\<service>`, runs
+  `bcdedit /set {current} safeboot network`, and restarts with a message naming the operator and reason
+  (`shutdown /r /t 15 /c …`).
+- **Safe boot is always cleared**: by the agent first thing when it starts again (before anything
+  else), when setting it or the restart fails (rolled back), and by the server
+  (`fleet_safe_boot_clear`) whenever the heartbeat still reports the marker, the restart fails or it
+  times out. The marker is removed only when `bcdedit /deletevalue {current} safeboot` succeeded or
+  reported that the value is not set.
+- The session ends with the reason **restart**; the API sees the agent back (uptime after the restart)
+  and, when the operator's console polls `GET …/remote-desktop/restart`, opens the resumed session with
+  the same reason, profile, Windows session and recording rule (`resumed_from_id`). Timeout 10 minutes
+  by default (120–3600 s). Quick Support computers cannot be restarted (`quick_support_no_restart`).
+
+### Windows user sessions and the sign-in screen
+- The heartbeat lists Windows sessions (`WTSEnumerateSessions`, user and domain per session) and the
+  boot state (safe mode now, safe-boot marker, running as service).
+- The connect dialog offers the console session (default), any listed session, or **Sign-in screen
+  (nobody signed in)**. The API checks Windows, the service and that the session is listed
+  (`user_session_windows_only`, `user_session_needs_service`, `user_session_unknown`).
+- The service starts the session helper in that session (`WTSQueryUserToken` + `CreateProcessAsUser`),
+  or for the sign-in screen with its own LocalSystem token moved to the console session
+  (`SetTokenInformation(TokenSessionId)`) on `winsta0\winlogon`. After the session the helper goes back
+  to the console session.
+- **Needs LocalSystem** (the service): another user's session, the sign-in screen, Safe Mode with
+  Networking, SAS. The foreground agent refuses all four with the codes above.
+
+### Request help
+- The agent shows a tray icon (Nigafiy ID in the tooltip and menu) with **Request help** and
+  **About** (server, Nigafiy ID, the transparency text, EN and AR). Request help asks for a note and sends
+  it with the signed-in user (`POST /api/v1/agent/help-request`, at most 5 open per computer).
+- The request appears in **Fleet → Help requests** (with a count on the menu entry), as a badge on the
+  computer's card, and as a Watch event (warning). The note is shown to operators; the audit row keeps
+  only its length.
+- **Start attended session** opens the connect dialog; the session is always attended (consent), and the
+  request moves to "in session". **Close** takes an optional note.
+
+### Quick Support
+- **Download** (technicians): Fleet → Help requests → Quick Support, per site. The API appends a signed
+  binding to `nigafiy-support.exe`: server URL, TLS pin, a 7-day organization/site link (HMAC), the issuer
+  and the server's Ed25519 public key, signed with that key. The key is derived from
+  `APP_ENCRYPTION_KEY` (HKDF; nothing stored), so rotating the key retires earlier downloads. Its
+  fingerprint shows beside the download and on the person's screen.
+- **The program** (pure Go, no install, no admin rights): checks the binding signature (a changed URL
+  breaks it), registers with a random nonce, and checks the server's proof (nonce + code signed with the
+  key) so only the server that made the download can answer. It shows a 9-digit code and a one-time PIN,
+  runs the agent's stream and input with a Quick Support profile (no tray, no inventory, no restart, only
+  screen, input, files and a message), and when the session ends, the code expires or is locked, or the
+  person closes the window, it deletes its temporary folder and itself (`-keep` keeps the file) and exits.
+- **Connect**: code + PIN + reason (`POST /fleet/quick-support/connect`, 15 attempts per operator per
+  10 minutes). Only the PIN's hash is stored; 5 wrong PINs lock the code; a code expires after 10
+  minutes; the PIN works once. The session is attended and at most the **Support** profile, with the
+  banner and End session as always. Commands to a Quick Support computer are limited
+  (`quick_support_limited`); its credential is revoked when the session ends.
+- Prerequisite: `pnpm build:agent` builds `agents/endpoint-agent/bin/nigafiy-support.exe` (on a non-Windows
+  server build it with `GOOS=windows`, or point `QUICK_SUPPORT_EXE` at a built copy); without it the
+  download answers `quick_support_not_built`. The exe is **not Authenticode-signed** (the binding is
+  signed, the file is not), so SmartScreen may warn; the page says so.
+
+### Refusal codes (English and Arabic in `policy-text.ts`)
+`not_session_holder`, `profile_forbids_restart`, `restart_in_progress`, `safe_mode_needs_service`,
+`safe_mode_windows_only`, `user_session_windows_only`, `user_session_needs_service`,
+`user_session_unknown`, `quick_support_needs_code`, `quick_support_no_restart`, `quick_support_limited`,
+`quick_support_code_unknown`, `quick_support_wrong_pin`, `quick_support_locked`, `quick_support_expired`,
+`quick_support_link_invalid`, `quick_support_not_built`, `quick_support_busy`, `help_request_closed`,
+`too_many_help_requests`, `too_many_tags`.
+
+### Audit
+`fleet.tags_changed`, `fleet.bulk_action`, `fleet.help_requested`, `fleet.help_session_started`,
+`fleet.help_closed`, `fleet.restart_requested`, `fleet.restarting`, `fleet.restart_failed`,
+`fleet.restart_agent_back`, `fleet.restart_timeout`, `fleet.session_resumed`, `fleet.safe_boot_cleared`,
+`fleet.safe_boot_clear_failed`, `fleet.quick_support_downloaded`, `fleet.quick_support_registered`,
+`fleet.quick_support_connected`, `fleet.quick_support_failed`. Notes, typed text and PINs are never in
+the audit.
+
+### What ran for real, and what did not
+- **Ran for real on this Windows desktop:** the tray icon (opt-in Go test `NIGAFIY_UI_TEST=1`: add,
+  update, balloon, remove) and `WTSEnumerateSessions` (listed the one signed-in session).
+- **Tests only:**
+  - API tests against embedded PostgreSQL (`fleet-reach.test.ts`): Nigafiy IDs, resolve and Hub search,
+    tags, favourites, filters, bulk results, unattended end to end, help requests, user-session checks,
+    restart (safe mode resume, clear, timeout, failure), Quick Support (binding signature, link tamper,
+    register, PIN lockout, Support cap, limited commands, one-time PIN, end and revoke, expiry, close,
+    download 200/503)
+  - Go tests with fakes: safe boot set/clear/rollback (a fake runner: **no bcdedit, reg or restart ran**),
+    restart commands, help request from the tray, session targeting, the Quick Support binding, proof,
+    status and its command list
+  - web type-check and build
+- **Never run here:** `bcdedit`, a restart, the service install, the sign-in-screen helper, another
+  user's session, a real Quick Support session from a downloaded exe, the new web UI in a browser.
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)
