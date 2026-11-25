@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { ThemeProvider } from '@/lib/theme';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme-boot';
 import { I18nProvider } from '@/lib/i18n';
+import { getMessages } from '@/lib/i18n/server';
 import './globals.css';
 
 // One type family across scripts: IBM Plex Sans (Latin), Plex Sans Arabic and Plex Mono share the
@@ -38,7 +39,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="min-h-dvh text-sm">
         <ThemeProvider>
-          <I18nProvider initialLocale={locale}>{children}</I18nProvider>
+          <I18nProvider locale={locale} messages={getMessages(locale)}>{children}</I18nProvider>
         </ThemeProvider>
       </body>
     </html>

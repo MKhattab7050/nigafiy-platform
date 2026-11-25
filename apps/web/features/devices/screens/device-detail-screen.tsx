@@ -7,7 +7,8 @@ import { Async, Badge, Card, EmptyState, Fact, PageHeader, StatusBadge, Tag, Con
 import { useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
-import { DeviceEndpointCard } from '@/features/endpoints';
+// Direct import, not the barrel: the barrel would pull the whole Fleet Pro UI onto every device page.
+import { DeviceEndpointCard } from '@/features/endpoints/components/device-endpoint-card';
 import { DevicePortCard } from '@/features/ports';
 import { DeviceBackupCard } from '@/features/config-backup';
 import { DeviceAccessCard } from '@/features/access';
