@@ -6,6 +6,7 @@
 // with words also in Arabic (`-ar`, laid out right to left). Motion is CSS keyframes inside the SVG,
 // slow and looping, and switched off under prefers-reduced-motion. No fonts, scripts or external
 // references: text uses the system font stack, so each file renders the same in GitHub's <img>.
+// The program cards (docs/assets/readme/programs/) are static: one equal-size card per program.
 // docs/assets/readme/social-preview.svg is the source of social-preview.png (1280×640), rendered by
 // `node scripts/capture-readme-screenshots.mjs --social`.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -496,7 +497,7 @@ ${widget}
 const ARCH_TEXT = {
   en: {
     title: 'Nigafiy architecture',
-    desc: "Everything runs on the admin's Windows PC on loopback: the engine supervises PostgreSQL, the API, the web console and the local Sensor. Sensors at other sites and Agents on managed computers dial out to the API over HTTPS; the Sensor reaches the LAN with ICMP, ARP, SNMP, SSH and router APIs.",
+    desc: "Everything runs on the admin's Windows PC on loopback: the engine supervises PostgreSQL, the API, the web console and the local Sensor. Sensors at other sites and Agents on managed computers and phones dial out to the API over HTTPS; the Sensor reaches the LAN with ICMP, ARP, SNMP, SSH and router APIs.",
     pc: "ADMIN'S WINDOWS PC · LOOPBACK ONLY",
     engine: 'nigafiy-engine',
     engineSub: 'supervises every process · Windows service · control API',
@@ -507,7 +508,7 @@ const ARCH_TEXT = {
     sensor: ['Local Sensor', 'discovery · checks', 'router drivers'],
     remote: ['Sensor', 'at another site'],
     lan: ['Your network', 'devices · routers'],
-    agent: ['Agent', 'Windows · Linux', 'macOS'],
+    agent: ['Agent', 'Windows · Linux', 'macOS · Android'],
     zOther: 'OTHER SITE',
     zLan: 'LAN',
     zManaged: 'MANAGED COMPUTERS',
@@ -528,7 +529,7 @@ const ARCH_TEXT = {
     sensor: ['Sensor المحلي', 'اكتشاف · فحوص', 'تعريفات الراوترات'],
     remote: ['Sensor', 'في موقع آخر'],
     lan: ['شبكتك', 'أجهزة · راوترات'],
-    agent: ['Agent', 'Windows · Linux', 'macOS'],
+    agent: ['Agent', 'Windows · Linux', 'macOS · Android'],
     zOther: 'موقع آخر',
     zLan: 'الشبكة المحلية',
     zManaged: 'الأجهزة المُدارة',
@@ -890,8 +891,131 @@ ${body}
 `;
 }
 
+// ── Program cards ────────────────────────────────────────────────────────────────────────────────
+// One card per program for the README's "Programs" grid (docs/assets/readme/programs/<id>[-ar][-dark].svg).
+// Every card has the same size and layout, so the grid lines up whatever the text: the README puts
+// three side by side at 33 % width each. Names and jobs follow packages/shared-types/src/programs.ts
+// (shortened to one line); Sensor and Agent are the two pieces that run outside the admin's PC.
+// The card carries its own transparent margin, so the gaps between cards come from the art, not
+// from Markdown whitespace.
+const CARD_ORDER = ['hub', 'radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox', 'sensor', 'agent'];
+const CARD_TEXT = {
+  en: {
+    hub: 'Home, sign-in, settings, engine',
+    radar: 'See every device on the network',
+    watch: 'Monitoring, incidents, root causes',
+    guard: 'Protect and control the network',
+    fleet: 'Company computers and phones',
+    mind: 'Knowledge, playbooks, automation',
+    toolbox: 'Ping, DNS, traceroute, subnets',
+    sensor: 'Network collector, one per site',
+    agent: 'Windows, Linux, macOS, Android',
+  },
+  ar: {
+    hub: 'الرئيسية والدخول والإعدادات والمحرك',
+    radar: 'رؤية كل جهاز على الشبكة',
+    watch: 'المراقبة وفهم سبب المشكلة',
+    guard: 'حماية الشبكة والتحكم بها',
+    fleet: 'إدارة أجهزة الشركة ودعمها',
+    mind: 'المعرفة وخطط العمل والأتمتة',
+    toolbox: 'أدوات شبكة سريعة من الـ Sensor',
+    sensor: 'جامع بيانات الشبكة، واحد لكل موقع',
+    agent: 'Windows · Linux · macOS · Android',
+  },
+};
+// The program's own description for screen readers (the <title> and <desc> of each card).
+const CARD_DESC = {
+  en: (name, job) => `Nigafiy ${name}: ${job}.`,
+  ar: (name, job) => `Nigafiy ${name}: ${job}.`,
+};
+// The job line has 252 px. Measured in Chromium (Segoe UI / Segoe UI Arabic, 14 px) the longest is
+// 217 px (Mind, English), which leaves room for wider fallback fonts (Helvetica, Noto). Keep new
+// wording within these character counts and measure again if a line gets longer.
+const CARD_TEXT_MAX = 36;
+
+const ARROW = { ltr: 'M5 12h14M13 6l6 6-6 6', rtl: 'M19 12H5M11 6l-6 6 6 6' };
+
+function programCard(themeName, lang, id) {
+  const t = THEMES[themeName];
+  const rtl = lang === 'ar';
+  const p = P[id];
+  const job = CARD_TEXT[lang][id];
+  if (job.length > CARD_TEXT_MAX) throw new Error(`card text too long for ${id} (${lang}): ${job}`);
+  const W = 300;
+  const H = 136;
+  // The card inside its transparent margin.
+  const x = 6;
+  const y = 4;
+  const w = W - 12;
+  const h = H - 8;
+  const pad = 18;
+  const ts = 46;
+  const tileX = rtl ? x + w - pad - ts : x + pad;
+  const tileY = y + 22;
+  const tx = rtl ? tileX - 14 : tileX + ts + 14;
+  const arrowX = rtl ? x + pad + 12 : x + w - pad - 12;
+  const title = CARD_DESC[lang](p.name, job);
+  const body = [
+    `<clipPath id="c"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14"/></clipPath>`,
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${t.card}" stroke="${t.cardStroke}" filter="url(#sh)"/>`,
+    `<rect x="${x}" y="${y}" width="${w}" height="4" fill="${p.accent}" clip-path="url(#c)"/>`,
+    tile(p.glyph, p.accent, tileX, tileY, ts),
+    T(tx, tileY + 16, 'NIGAFIY', { size: 10.5, weight: 700, fill: t.muted, ls: 1.6, anchor: rtl ? 'end' : 'start' }),
+    T(tx, tileY + 41, p.name, { size: 21, weight: 700, fill: t.ink, anchor: rtl ? 'end' : 'start' }),
+    `<circle cx="${arrowX}" cy="${tileY + 23}" r="13" fill="${t.sunken}" stroke="${t.cardStroke}"/>`,
+    glyphPath(ARROW[rtl ? 'rtl' : 'ltr'], arrowX, tileY + 23, 14, t.muted, 2.4),
+    `<line x1="${x + pad}" y1="${y + 84.5}" x2="${x + w - pad}" y2="${y + 84.5}" stroke="${t.cardStroke}"/>`,
+    T(rtl ? x + w - pad : x + pad, y + 110, job, { size: 14, fill: t.body, rtl }),
+  ].join('\n');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-labelledby="t"${rtl ? ' xml:lang="ar"' : ''}>
+<title id="t">${esc(title)}</title>
+<defs>
+<linearGradient id="tileLight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<filter id="sh" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="1.5" stdDeviation="2" flood-color="${t.shadow}" flood-opacity="${themeName === 'dark' ? 0.35 : 0.06}"/></filter>
+<style>text{font-family:${FONT}}</style>
+</defs>
+${body}
+</svg>
+`;
+}
+
+/**
+ * The same card for narrow screens (the README picks it with `media="(max-width: 600px)"`): at a
+ * third of a phone's width the full card's text is too small to read, so this one shows only the
+ * glyph and the name, large, in white on the program accent. Same size as the full card, so the grid
+ * does not move; the same file serves light and dark pages and both languages.
+ */
+function programCardCompact(id) {
+  const p = P[id];
+  const W = 300;
+  const H = 136;
+  const x = 6;
+  const y = 4;
+  const w = W - 12;
+  const h = H - 8;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-labelledby="t">
+<title id="t">Nigafiy ${esc(p.name)}</title>
+<defs>
+<linearGradient id="light" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<style>text{font-family:${FONT}}</style>
+</defs>
+<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="16" fill="${p.accent}"/>
+<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="16" fill="url(#light)"/>
+${glyphPath(p.glyph, W / 2, y + 40, 46, '#fff', 2)}
+${T(W / 2, y + 108, p.name, { size: 36, weight: 700, fill: '#fff', anchor: 'middle' })}
+</svg>
+`;
+}
+
 // ── Write ────────────────────────────────────────────────────────────────────────────────────────
 const files = {};
+mkdirSync(path.join(out, 'programs'), { recursive: true });
+for (const id of CARD_ORDER) {
+  files[`programs/${id}-compact.svg`] = programCardCompact(id);
+  for (const theme of ['light', 'dark']) {
+    for (const lang of ['en', 'ar']) files[`programs/${id}${lang === 'ar' ? '-ar' : ''}${theme === 'dark' ? '-dark' : ''}.svg`] = programCard(theme, lang, id);
+  }
+}
 for (const theme of ['light', 'dark']) {
   const sfx = theme === 'dark' ? '-dark' : '';
   for (const lang of ['en', 'ar']) {
