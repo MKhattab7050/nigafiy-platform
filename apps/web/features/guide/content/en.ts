@@ -115,6 +115,25 @@ export const GUIDE_EN: GuideContent = [
           'A program that is left out still collects its data; only its pages are not offered. Where another program would link to it, you see "Available in Nigafiy …: Install", which leads to the Programs page.',
         ],
       },
+      { kind: 'h', id: 'install-update', text: 'How Nigafiy is installed and updated' },
+      {
+        kind: 'table',
+        head: ['Installed from', 'How it is updated'],
+        rows: [
+          ['Microsoft Store', 'The Microsoft Store updates it. The update card on the Hub dashboard says so and offers no in-app update. Store apps never show the “Windows protected your PC” warning.'],
+          ['MSI package, deployed by Group Policy or Intune', 'Your administrator publishes the newer MSI the same way. The in-app updater does not install over it.'],
+          ['Nigafiy setup program (.exe)', 'The update card on the Hub dashboard downloads the update, checks its signature and installs it when you ask. A downloaded setup that is not signed with a trusted certificate shows a Windows warning first.'],
+        ],
+      },
+      {
+        kind: 'p',
+        text: 'The Store version and the setup-program version of the desktop app cannot run at the same time on one computer; each keeps its own data. The computer agent for Fleet is not in the Store: it comes as its own setup program, usually deployed by Group Policy (see "Add a computer to Fleet").',
+      },
+      {
+        kind: 'note',
+        tone: 'warn',
+        text: 'The Microsoft Store packages have been built and inspected, but they are not published yet and have not been installed on a real computer. Until the Store listing exists, install with the setup program or the MSI.',
+      },
       {
         kind: 'note',
         tone: 'info',
@@ -302,7 +321,11 @@ export const GUIDE_EN: GuideContent = [
       },
       {
         kind: 'p',
-        text: 'A Quick Support session is always attended and allows at most the Support profile. The program removes itself when the session ends. If the file is not signed, Windows SmartScreen may warn the person before it runs.',
+        text: 'A Quick Support session is always attended and allows at most the Support profile. The downloaded program removes itself when the session ends. If the file is not signed, Windows SmartScreen may warn the person before it runs.',
+      },
+      {
+        kind: 'p',
+        text: 'Nigafiy Quick Support is also packaged for the Microsoft Store, without any warning. A person who installed it from the Store needs a link instead of the file: choose Copy Microsoft Store link in the same panel and send it. Opening the link starts Quick Support for your server; the link is signed and valid for a limited number of days. The Store version cannot remove itself; the person removes it in Windows Settings, Apps. (Not yet published or tried on a real computer.)',
       },
     ],
     links: [
