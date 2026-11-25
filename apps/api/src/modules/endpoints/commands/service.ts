@@ -63,6 +63,17 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     if (ep.kind === 'quick_support' && !['rd_capture', 'rd_input', 'fs_op', 'notify_user'].includes(body.kind)) {
       throw new AppError(409, 'quick_support_limited', 'A Quick Support computer allows the session and its files only');
     }
+    // Quick Support is attended only: its files open to the operators of the session the person
+    // accepted, never before (the code list shows waiting computers to every technician). SEC-02.
+    if (ep.kind === 'quick_support' && body.kind === 'fs_op') {
+      if (!ep.rd_active) throw new AppError(409, 'no_remote_session', 'Connect with the Quick Support code and PIN first; the person has to accept the session');
+      if ((ep.rd_state ?? 'active') !== 'active') throw new AppError(409, 'consent_pending', 'The user has not accepted the remote support session yet');
+      const open = await openSessionFor(db, id, ctx.userId);
+      if (!open?.participant) {
+        await audit(db, req, 'fleet.session_refused_action', { type: 'endpoint', id }, { session_id: open?.sessionId ?? null, code: 'not_a_participant', kind: body.kind, via: 'http' });
+        throw new AppError(403, 'not_a_participant', 'You are not in this session: ask the operator holding it to invite you');
+      }
+    }
 
     // Screen capture and input only inside a started session: that is where the user is told.
     if ((body.kind === 'rd_capture' || body.kind === 'rd_input') && !ep.rd_active) {

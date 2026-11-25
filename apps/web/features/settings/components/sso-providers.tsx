@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { IdentityProvider, IdentityProviderKind, IdentityProviderRoleMapping, SsoAssignableRole } from '@nigafiy/shared-types';
 import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Field, Input, Modal, Select, Textarea, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
-import { useQuery } from '@/lib/app';
+import { useApp, useQuery } from '@/lib/app';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 
 const ROLES: SsoAssignableRole[] = ['viewer', 'technician', 'admin'];
@@ -15,10 +15,12 @@ interface CheckResult {
   checks: Array<{ check: string; ok: boolean; detail: string }>;
 }
 
-/** Settings → Single sign-on: the organization's OIDC / SAML identity providers (owner and admin). */
+/** Settings → Single sign-on: the organization's OIDC / SAML identity providers (admins read and check; only the owner changes them). */
 export function SsoProviders() {
   const confirm = useConfirm();
   const { t, tn } = useI18n();
+  const { can } = useApp();
+  const isOwner = can('owner');
   const query = useQuery<{ items: IdentityProvider[] }>('/sso/providers', [], 60_000);
   const [editing, setEditing] = useState<IdentityProvider | 'new-oidc' | 'new-saml' | null>(null);
   const [checks, setChecks] = useState<Record<string, CheckResult | ApiError>>({});
@@ -52,6 +54,7 @@ export function SsoProviders() {
       title={t('settings.sso.title')}
       description={t('settings.sso.desc')}
       action={
+        isOwner && (
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={() => setEditing('new-oidc')}>
             <Plus className="size-3.5" aria-hidden />
@@ -62,8 +65,10 @@ export function SsoProviders() {
             {t('settings.sso.addSaml')}
           </Button>
         </div>
+        )
       }
     >
+      {!isOwner && <p className="mb-3 text-xs text-muted">{t('settings.sso.ownerOnly')}</p>}
       <Async query={query}>
         {(data) =>
           data.items.length === 0 ? (
@@ -89,12 +94,16 @@ export function SsoProviders() {
                         <Button size="sm" variant="ghost" busy={busy === p.id} onClick={() => runCheck(p)}>
                           {t('settings.sso.check')}
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                          {t('common.edit')}
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => remove(p)}>
-                          {t('common.delete')}
-                        </Button>
+                        {isOwner && (
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
+                              {t('common.edit')}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => remove(p)}>
+                              {t('common.delete')}
+                            </Button>
+                          </>
+                        )}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-muted">

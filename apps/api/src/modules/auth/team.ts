@@ -25,6 +25,28 @@ export function webAppUrl(_req?: Request): string {
   return (env.PUBLIC_URL || env.WEB_ORIGIN).replace(/\/+$/, '');
 }
 
+/**
+ * SEC-04: only an owner adds, invites, promotes, demotes, deactivates or removes an administrator.
+ * A second administrator account of one's own would otherwise approve one's own unattended
+ * session (the two-person rule in fleet-policy/approvals.ts). Administrators still manage
+ * technicians and viewers. A refusal is audited (team.admin_change_refused) and answered 403.
+ */
+async function refuseAdminChange(
+  req: Request,
+  ctx: ReturnType<typeof auth>,
+  what: 'invite' | 'role_change' | 'status_change' | 'remove',
+  target: { type: 'invitation' | 'member'; id: string | null },
+  metadata: Record<string, unknown>,
+): Promise<never> {
+  // Written on its own connection: the caller may be inside a transaction the 403 rolls back.
+  await systemPool.query(
+    `INSERT INTO audit_logs (organization_id, user_id, user_email, action, target_type, target_id, metadata, ip)
+     VALUES ($1,$2,$3,'team.admin_change_refused',$4,$5,$6,$7)`,
+    [ctx.organizationId, ctx.userId, ctx.userEmail, target.type, target.id, JSON.stringify({ what, actor_role: ctx.role, ...metadata }), req.ip ?? null],
+  );
+  throw new AppError(403, 'owner_required', 'Only an organization owner can add, promote, demote or remove an administrator');
+}
+
 const MEMBER_SELECT = `
   SELECT u.id, u.display_name, u.email, m.role, m.status,
          (u.mfa_secret_enc IS NOT NULL) AS mfa_enabled,
@@ -80,6 +102,9 @@ teamRouter.post('/team/invitations', requireRole('admin'), async (req, res) => {
 
   if (body.role === 'owner' && ctx.role !== 'owner') {
     throw forbidden('Only an organization owner can invite another owner');
+  }
+  if (body.role === 'admin' && ctx.role !== 'owner') {
+    await refuseAdminChange(req, ctx, 'invite', { type: 'invitation', id: null }, { email: body.email, role: body.role });
   }
 
   const token = randomToken(32);
@@ -220,6 +245,14 @@ teamRouter.patch('/team/members/:userId', requireRole('admin'), async (req, res)
     if ((current.role === 'owner' || body.role === 'owner') && ctx.role !== 'owner') {
       throw forbidden('Only an organization owner can manage owners');
     }
+    if ((current.role === 'admin' || body.role === 'admin') && ctx.role !== 'owner') {
+      await refuseAdminChange(req, ctx, body.role !== undefined && body.role !== current.role ? 'role_change' : 'status_change', { type: 'member', id: userId }, {
+        email: current.email,
+        role: current.role,
+        requested_role: body.role ?? null,
+        requested_status: body.status ?? null,
+      });
+    }
 
     const nextRole = body.role ?? current.role;
     const nextStatus = body.status ?? current.status;
@@ -305,6 +338,9 @@ teamRouter.delete('/team/members/:userId', requireRole('admin'), async (req, res
     if (current.role === 'owner' && ctx.role !== 'owner') {
       throw forbidden('Only an organization owner can remove an owner');
     }
+    if (current.role === 'admin' && ctx.role !== 'owner') {
+      await refuseAdminChange(req, ctx, 'remove', { type: 'member', id: userId }, { email: current.email, role: current.role });
+    }
 
     if (current.role === 'owner' && current.status === 'active') {
       const otherOwners = await db.query<{ n: number }>(
@@ -360,6 +396,26 @@ teamRouter.post('/team/members/:userId/reset-password', requireRole('admin'), as
 
   if (member.role === 'owner' && ctx.role !== 'owner') {
     throw forbidden('Only an organization owner can reset an owner’s password');
+  }
+  // The link is handed to the person who issues it, so issuing it is taking over the account
+  // (SEC-03). An administrator must not be able to become another administrator (that would
+  // defeat the second-admin approval), so only an owner resets an administrator.
+  if (member.role === 'admin' && ctx.role !== 'owner') {
+    throw forbidden('Only an organization owner can reset an administrator’s password');
+  }
+  // A password belongs to the person, not to this organization: a member who also belongs to
+  // another organization would be taken over there too (perhaps as its owner). They reset their
+  // own password with "Forgot password".
+  const elsewhere = await systemPool.query(
+    `SELECT 1 FROM memberships WHERE user_id = $1 AND organization_id <> $2 LIMIT 1`,
+    [userId, ctx.organizationId],
+  );
+  if (elsewhere.rowCount) {
+    throw new AppError(
+      409,
+      'member_in_other_organizations',
+      'This person also belongs to another organization. They can reset their own password with “Forgot password” on the sign-in page.',
+    );
   }
 
   const token = randomToken(32);

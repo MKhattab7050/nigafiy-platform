@@ -313,6 +313,10 @@ describe('fleet: reaching computers', () => {
 
     // A new run: the right PIN, a Full admin request is capped at Support and is attended.
     const reg2 = await register();
+    // SEC-02: no file operation reaches the computer before an accepted session (the waiting code
+    // and its endpoint id are listed to every technician).
+    const fsList = () => tech.agent.post(`/api/v1/endpoints/${reg2.body.endpoint_id}/commands`).set(CSRF).send({ kind: 'fs_op', op: 'roots' });
+    expect((await fsList()).body.error?.code).toBe('no_remote_session');
     const profiles = (await a.agent.get('/api/v1/fleet/profiles')).body.profiles as Array<{ id: string; builtin_key: string | null }>;
     const full = profiles.find((p) => p.builtin_key === 'full_admin')!;
     const ok = await tech.agent
@@ -321,7 +325,10 @@ describe('fleet: reaching computers', () => {
       .send({ code: `${reg2.body.code.slice(0, 3)}-${reg2.body.code.slice(3)}`, pin: reg2.body.pin, reason: 'Guest laptop printer', profile_id: full.id });
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     expect(ok.body.session).toMatchObject({ state: 'waiting_consent', consent_mode: 'prompt', profile_name: 'Full admin', quick_support: true, permissions: { shell: false, privacy_screen: false, block_input: false } });
-    const open = (await pollFor(reg2.body.credential)).find((c) => c.kind === 'rd_session_open')!;
+    expect((await fsList()).body.error?.code).toBe('consent_pending');
+    const delivered = await pollFor(reg2.body.credential);
+    expect(delivered.some((c) => c.kind === 'fs_op')).toBe(false);
+    const open = delivered.find((c) => c.kind === 'rd_session_open')!;
     expect(open.payload).toMatchObject({ consent_required: true });
     const st = await request(app).get('/api/v1/agent/quick-support/status').set('Authorization', `Bearer ${reg2.body.credential}`);
     expect(st.body).toMatchObject({ state: 'connected', operator: tech.email });

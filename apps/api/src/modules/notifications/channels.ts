@@ -30,6 +30,15 @@ function escapeHtml(text: string): string {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
+/**
+ * Slack mrkdwn control characters (https://api.slack.com/reference/surfaces/formatting#escaping):
+ * without this a device named `<!channel>` or `<@U123>` pings people, and `<https://x|text>`
+ * forges a link. EXT-6.
+ */
+export function escapeSlack(text: string): string {
+  return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
 function summarizeDetails(details: Record<string, unknown>, maxLines = 6): string[] {
   const lines: string[] = [];
   for (const [k, v] of Object.entries(details)) {
@@ -97,13 +106,13 @@ export function renderSlackPayload(event: NotificationEvent, organizationName: s
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `${emoji} *[${event.severity.toUpperCase()}]* ${event.title}`,
+        text: `${emoji} *[${event.severity.toUpperCase()}]* ${escapeSlack(event.title)}`,
       },
     },
     {
       type: 'section',
       fields: [
-        { type: 'mrkdwn', text: `*Where:*\n${where}` },
+        { type: 'mrkdwn', text: `*Where:*\n${escapeSlack(where)}` },
         { type: 'mrkdwn', text: `*Event:*\n\`${event.type}\`` },
       ],
     },
@@ -111,7 +120,7 @@ export function renderSlackPayload(event: NotificationEvent, organizationName: s
   if (details.length) {
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: details.map((l) => `• ${l}`).join('\n').slice(0, 2800) },
+      text: { type: 'mrkdwn', text: details.map((l) => `• ${escapeSlack(l)}`).join('\n').slice(0, 2800) },
     });
   }
   blocks.push({
@@ -125,7 +134,7 @@ export function renderSlackPayload(event: NotificationEvent, organizationName: s
     ],
   });
   return {
-    text: `[Nigafiy ${event.severity.toUpperCase()}] ${event.title}`,
+    text: `[Nigafiy ${event.severity.toUpperCase()}] ${escapeSlack(event.title)}`,
     attachments: [{ color, blocks }],
   };
 }
@@ -138,6 +147,8 @@ export function renderDiscordPayload(event: NotificationEvent, organizationName:
   const details = summarizeDetails(event.details);
   return {
     username: 'Nigafiy',
+    // Device-supplied text (names, titles) never pings anyone: @everyone, <@id> and <@&role> stay text. EXT-6.
+    allowed_mentions: { parse: [] },
     embeds: [
       {
         title: `[${event.severity.toUpperCase()}] ${event.title}`.slice(0, 256),

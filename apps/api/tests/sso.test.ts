@@ -55,7 +55,7 @@ const auditActions = async (orgId: string) =>
   (await systemPool.query<{ action: string; metadata: Record<string, unknown> }>(`SELECT action, metadata FROM audit_logs WHERE organization_id = $1 ORDER BY created_at`, [orgId])).rows;
 
 describe('SSO administration', () => {
-  it('is owner/admin only, keeps the client secret write-only and sealed, and audits every change', async () => {
+  it('is admin-readable and owner-writable, keeps the client secret write-only and sealed, and audits every change', async () => {
     const owner = await newAccount('sso-admin');
     const { id, body } = await createOidc(owner);
     expect(body).not.toHaveProperty('oidc_client_secret');
@@ -95,7 +95,15 @@ describe('SSO administration', () => {
     await setRole(owner.email, owner.organizationId, 'technician');
     expect((await owner.agent.get('/api/v1/sso/providers')).status).toBe(403);
     expect((await owner.agent.delete(`/api/v1/sso/providers/${id}`).set(CSRF)).status).toBe(403);
+    // SEC-01: an admin reads and checks providers but cannot create, change or delete one (a
+    // provider can sign in as any member, the owner included).
     await setRole(owner.email, owner.organizationId, 'admin');
+    expect((await owner.agent.get('/api/v1/sso/providers')).status).toBe(200);
+    expect((await owner.agent.post(`/api/v1/sso/providers/${id}/check`).set(CSRF).send({})).status).toBe(200);
+    expect((await owner.agent.post('/api/v1/sso/providers').set(CSRF).send({ kind: 'oidc', name: 'rogue', oidc_issuer: idp.issuer, oidc_client_id: 'c', allowed_email_domains: ['example.com'], trust_idp_mfa: true })).status).toBe(403);
+    expect((await owner.agent.patch(`/api/v1/sso/providers/${id}`).set(CSRF).send({ trust_idp_mfa: true })).status).toBe(403);
+    expect((await owner.agent.delete(`/api/v1/sso/providers/${id}`).set(CSRF)).status).toBe(403);
+    await setRole(owner.email, owner.organizationId, 'owner');
     expect((await owner.agent.delete(`/api/v1/sso/providers/${id}`).set(CSRF)).status).toBe(204);
 
     const actions = (await auditActions(owner.organizationId)).map((a) => a.action);

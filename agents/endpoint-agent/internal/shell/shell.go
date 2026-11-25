@@ -198,9 +198,17 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (OpenResult, error)
 	m.order = append(m.order, req.ShellID)
 	m.mu.Unlock()
 
-	// The banner goes up before anyone can type: nothing can open a shell without it.
+	// The banner goes up before anyone can type: nothing can open a shell without it. On a computer
+	// with a desktop (Banner set) a banner that cannot be shown ends the shell before the server is
+	// ever joined (fail closed). Only a computer with no desktop at all (Banner nil: a headless
+	// server, nobody to show it to) opens with "unavailable", which the operator sees.
 	res := OpenResult{Shell: term.Name(), PTY: term.Kind(), Banner: "shown"}
 	if err := m.showBanner(); err != nil {
+		if m.cfg.Banner != nil {
+			m.cfg.Log.Warn("shell refused: the banner could not be shown", "shell", req.ShellID, "error", err.Error())
+			s.finish("open_failed", nil, false)
+			return OpenResult{Shell: term.Name(), PTY: term.Kind(), Banner: "failed", BannerError: err.Error()}, fmt.Errorf("the shell was not opened because the Nigafiy banner could not be shown: %w", err)
+		}
 		res.Banner, res.BannerError = "unavailable", err.Error()
 		m.cfg.Log.Warn("shell banner could not be shown", "shell", req.ShellID, "error", err.Error())
 	}

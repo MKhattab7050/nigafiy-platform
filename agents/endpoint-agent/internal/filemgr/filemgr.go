@@ -136,6 +136,64 @@ func ValidateAndCleanPath(raw string, allowedRoots []string, mutating bool) (str
 	return clean, nil
 }
 
+// guard is what an opened handle must still satisfy (EXT-8): the same policy roots and protected
+// locations the path was checked against.
+type guard struct {
+	roots    []string
+	mutating bool
+}
+
+// afterValidate runs between the path check and the open; tests use it to swap a folder for a
+// link at exactly that moment.
+var afterValidate = func(clean string) {}
+
+func resolvedRoots(roots []string) []string {
+	out := make([]string, 0, len(roots))
+	for _, r := range roots {
+		if rr, ok := resolveExisting(filepath.Clean(strings.TrimSpace(r))); ok {
+			out = append(out, rr)
+		} else {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// openChecked opens clean and keeps the handle only if the file it really reaches passes the
+// guards (EXT-8). The path was checked before, but a folder on the way can be replaced by a link
+// or junction between that check and the open (a local user racing the agent, which runs as
+// LocalSystem / root); checking the handle closes that window for reads and writes. Nothing is
+// truncated before the check (callers truncate through the checked handle), and an empty file this
+// call created outside the guards is removed again.
+func openChecked(clean string, flag int, perm fs.FileMode, g guard) (*os.File, error) {
+	f, err := os.OpenFile(clean, flag, perm)
+	if err != nil {
+		return nil, err
+	}
+	real, err := openedPath(f)
+	if err != nil {
+		err = fmt.Errorf("cannot confirm where the opened file is: %w", err)
+	} else if strings.HasPrefix(filepath.ToSlash(real), "//") {
+		err = errors.New("path resolves to a network or device location")
+	} else if gerr := checkGuards(real, resolvedRoots(g.roots), g.mutating); gerr != nil {
+		err = fmt.Errorf("the opened file is not where the path was checked: %w", gerr)
+	}
+	if err == nil {
+		return f, nil
+	}
+	var created fs.FileInfo
+	if flag&os.O_EXCL != 0 {
+		created, _ = f.Stat()
+	}
+	_ = f.Close()
+	if created != nil && real != "" {
+		if st, serr := os.Lstat(real); serr == nil && os.SameFile(st, created) && st.Size() == 0 {
+			_ = os.Remove(real)
+		}
+	}
+	return nil, err
+}
+
 // resolveExisting follows links in the longest existing prefix of p.
 func resolveExisting(p string) (string, bool) {
 	rest := ""
@@ -347,7 +405,8 @@ func Execute(req Request) (Response, error) {
 			}
 		}
 		// Creates only: an existing file of the same name is never truncated (that is an upload).
-		f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		afterValidate(clean)
+		f, err := openChecked(clean, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644, guard{req.AllowedRoots, true})
 		if err != nil {
 			if errors.Is(err, fs.ErrExist) {
 				return Response{}, fmt.Errorf("%s already exists", filepath.Base(clean))
@@ -405,7 +464,8 @@ func Execute(req Request) (Response, error) {
 			if err := mustNotExist(dst); err != nil {
 				return Response{}, err
 			}
-			if err := copyRecursive(src, dst); err != nil {
+			afterValidate(src)
+			if err := copyRecursive(src, dst, req.AllowedRoots); err != nil {
 				return Response{}, fmt.Errorf("copy %s failed: %w", filepath.Base(src), err)
 			}
 		}
@@ -432,7 +492,7 @@ func Execute(req Request) (Response, error) {
 			if err := mustNotExist(dst); err != nil {
 				return Response{}, err
 			}
-			if err := moveItem(src, dst); err != nil {
+			if err := moveItem(src, dst, req.AllowedRoots); err != nil {
 				return Response{}, fmt.Errorf("move %s failed: %w", filepath.Base(src), err)
 			}
 		}
@@ -465,21 +525,24 @@ func Execute(req Request) (Response, error) {
 		if err != nil {
 			return Response{}, err
 		}
-		return downloadChunk(clean, req.Offset, req.Length)
+		afterValidate(clean)
+		return downloadChunk(clean, req.Offset, req.Length, guard{req.AllowedRoots, false})
 
 	case "upload":
 		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, true)
 		if err != nil {
 			return Response{}, err
 		}
-		return uploadChunk(clean, req.Offset, req.DataBase64, req.ExpectedSHA256, req.Overwrite)
+		afterValidate(clean)
+		return uploadChunk(clean, req.Offset, req.DataBase64, req.ExpectedSHA256, req.Overwrite, guard{req.AllowedRoots, true})
 
 	case "hash":
 		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, false)
 		if err != nil {
 			return Response{}, err
 		}
-		return hashFile(clean)
+		afterValidate(clean)
+		return hashFile(clean, guard{req.AllowedRoots, false})
 
 	default:
 		return Response{}, fmt.Errorf("unsupported file manager operation: %s", req.Op)
@@ -603,8 +666,13 @@ func searchDir(rootClean, queryLower string, showHidden bool) (Response, error) 
 	}, nil
 }
 
-func downloadChunk(clean string, offset int64, length int64) (Response, error) {
-	info, err := os.Stat(clean)
+func downloadChunk(clean string, offset int64, length int64, g guard) (Response, error) {
+	f, err := openChecked(clean, os.O_RDONLY, 0, g)
+	if err != nil {
+		return Response{}, fmt.Errorf("open failed: %w", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil {
 		return Response{}, fmt.Errorf("stat failed: %w", err)
 	}
@@ -617,11 +685,6 @@ func downloadChunk(clean string, offset int64, length int64) (Response, error) {
 	if length <= 0 || length > MaxChunkBytes {
 		length = MaxChunkBytes
 	}
-	f, err := os.Open(clean)
-	if err != nil {
-		return Response{}, fmt.Errorf("open failed: %w", err)
-	}
-	defer f.Close()
 
 	if offset > 0 {
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
@@ -660,19 +723,19 @@ func downloadChunk(clean string, offset int64, length int64) (Response, error) {
 
 // hashFile: the SHA-256 and size of a whole file (the transfer queue checks every finished
 // transfer against it, of any size), and whether an interrupted upload of it can be resumed here.
-func hashFile(clean string) (Response, error) {
-	info, err := os.Stat(clean)
+func hashFile(clean string, g guard) (Response, error) {
+	f, err := openChecked(clean, os.O_RDONLY, 0, g)
+	if err != nil {
+		return Response{}, fmt.Errorf("open failed: %w", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil {
 		return Response{}, fmt.Errorf("stat failed: %w", err)
 	}
 	if !info.Mode().IsRegular() {
 		return Response{}, errors.New("only a regular file can be checked")
 	}
-	f, err := os.Open(clean)
-	if err != nil {
-		return Response{}, fmt.Errorf("open failed: %w", err)
-	}
-	defer f.Close()
 	h := sha256.New()
 	n, err := io.Copy(h, f)
 	if err != nil {
@@ -742,7 +805,7 @@ const ErrUploadTargetExists = "upload target already exists"
 // file needs an explicit, operator-confirmed overwrite. A later chunk continues the file this upload
 // created: it must start exactly where the file ends, so it can never write into another file.
 // (The "append" flag older consoles send is implied by offset > 0 and otherwise ignored.)
-func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 string, overwrite bool) (Response, error) {
+func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 string, overwrite bool, g guard) (Response, error) {
 	raw, err := base64.StdEncoding.DecodeString(dataB64)
 	if err != nil {
 		return Response{}, errors.New("invalid base64 upload payload")
@@ -763,14 +826,15 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 		return Response{}, fmt.Errorf("%s is a folder, link or special file and cannot be replaced by an upload", filepath.Base(clean))
 	}
 	overwritten := false
-	flags := os.O_WRONLY
+	// Read-write: the checksum below is read through the same checked handle. Never O_TRUNC: an
+	// overwrite truncates only after the handle passed the checks (EXT-8).
+	flags := os.O_RDWR
 	switch {
 	case firstChunk && !exists:
 		flags |= os.O_CREATE | os.O_EXCL
 	case firstChunk && !overwrite:
 		return Response{}, fmt.Errorf("%s: %s (confirm the overwrite to replace it)", ErrUploadTargetExists, filepath.Base(clean))
 	case firstChunk:
-		flags |= os.O_TRUNC
 		overwritten = true
 	case !exists:
 		return Response{}, errors.New("upload continuation refused: the file this upload started is missing")
@@ -779,7 +843,7 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 	case existing.Size() != offset:
 		return Response{}, fmt.Errorf("upload continuation refused: the file is %d bytes, the chunk starts at %d", existing.Size(), offset)
 	}
-	f, err := os.OpenFile(clean, flags, 0o644)
+	f, err := openChecked(clean, flags, 0o644, g)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return Response{}, fmt.Errorf("%s: %s (confirm the overwrite to replace it)", ErrUploadTargetExists, filepath.Base(clean))
@@ -787,6 +851,21 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 		return Response{}, fmt.Errorf("open for upload failed: %w", err)
 	}
 	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil {
+		return Response{}, fmt.Errorf("stat upload target failed: %w", err)
+	}
+	if !opened.Mode().IsRegular() {
+		return Response{}, fmt.Errorf("%s is not a regular file and cannot be written by an upload", filepath.Base(clean))
+	}
+	switch {
+	case overwritten:
+		if err := f.Truncate(0); err != nil {
+			return Response{}, fmt.Errorf("truncate for upload failed: %w", err)
+		}
+	case !firstChunk && opened.Size() != offset:
+		return Response{}, fmt.Errorf("upload continuation refused: the file is %d bytes, the chunk starts at %d", opened.Size(), offset)
+	}
 
 	if offset > 0 {
 		if _, err := f.Seek(offset, io.SeekStart); err != nil {
@@ -798,23 +877,22 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 		uploads.forget(clean)
 		return Response{}, fmt.Errorf("write failed: %w", err)
 	}
-	_ = f.Close()
 	uploads.advance(clean, offset+int64(n))
 
-	info, err := os.Stat(clean)
+	info, err := f.Stat()
 	if err != nil {
 		return Response{}, err
 	}
 
 	var sumHex string
 	if expectedSHA256 != "" {
-		rf, err := os.Open(clean)
-		if err != nil {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			return Response{}, err
 		}
 		h := sha256.New()
-		_, _ = io.Copy(h, rf)
-		_ = rf.Close()
+		if _, err := io.Copy(h, f); err != nil {
+			return Response{}, err
+		}
 		sumHex = hex.EncodeToString(h.Sum(nil))
 		if !strings.EqualFold(sumHex, expectedSHA256) {
 			return Response{}, fmt.Errorf("upload checksum mismatch: expected %s, got %s", expectedSHA256, sumHex)
@@ -837,7 +915,9 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 	}, nil
 }
 
-func copyRecursive(src, dst string) error {
+// copyRecursive copies src to dst; every file is read and written through a checked handle
+// (EXT-8) and never replaces anything (the destination tree is new).
+func copyRecursive(src, dst string, roots []string) error {
 	if isForbiddenCredentialPath(src) || isForbiddenCredentialPath(dst) {
 		return errors.New("access to protected credential or security store is forbidden")
 	}
@@ -860,19 +940,22 @@ func copyRecursive(src, dst string) error {
 			return err
 		}
 		for _, e := range entries {
-			if err := copyRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			if err := copyRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()), roots); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	in, err := os.Open(src)
+	in, err := openChecked(src, os.O_RDONLY, 0, guard{roots, false})
 	if err != nil {
 		return err
 	}
 	defer in.Close()
+	if st, err := in.Stat(); err != nil || !st.Mode().IsRegular() {
+		return errors.New("only regular files are copied")
+	}
 
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode().Perm())
+	out, err := openChecked(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, info.Mode().Perm(), guard{roots, true})
 	if err != nil {
 		return err
 	}
@@ -882,14 +965,14 @@ func copyRecursive(src, dst string) error {
 	return err
 }
 
-func moveItem(src, dst string) error {
+func moveItem(src, dst string, roots []string) error {
 	if isSameOrSubpath(dst, src) {
 		return errors.New("cannot move a directory into itself")
 	}
 	if err := os.Rename(src, dst); err == nil {
 		return nil
 	}
-	if err := copyRecursive(src, dst); err != nil {
+	if err := copyRecursive(src, dst, roots); err != nil {
 		return err
 	}
 	return os.RemoveAll(src)

@@ -2,7 +2,9 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sha256 } from '../src/common/crypto.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { recoveryCodeHash } from '../src/modules/auth/mfa.ts';
 import { base32Decode, hotp, timeStep, totp } from '../src/modules/auth/totp.ts';
 import { CSRF, type TestAccount, app, newAccount } from './helpers.ts';
 
@@ -104,6 +106,37 @@ describe('MFA replay protection and lockout', () => {
     expect(reused.status).toBe(401);
     expect((await b2.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t2.body.mfa_token, code: recovery[1] })).status).toBe(200);
     expect((await auditRows(a.organizationId, 'auth.login_mfa')).map((r) => r.metadata?.method)).toEqual(['recovery_code', 'recovery_code']);
+  });
+
+  it('issues 80-bit recovery codes, stores only per-user hashes, and lets a racing reuse through once (EXT-5)', async () => {
+    const a = await newAccount('mfa-recovery-v2');
+    const { recovery } = await enableMfa(a);
+    expect(recovery).toHaveLength(8);
+    for (const c of recovery) expect(c).toMatch(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/);
+    const uid = await userId(a.email);
+    const stored = (await systemPool.query<{ code_hash: string }>(`SELECT code_hash FROM user_recovery_codes WHERE user_id = $1`, [uid])).rows.map((r) => r.code_hash);
+    expect(stored).toHaveLength(8);
+    expect(stored.join(' ')).not.toMatch(/[A-Z]{4}-/); // never the plain code
+    expect(stored).not.toContain(sha256(recovery[0]!.replace(/-/g, ''))); // salted with the user id
+    expect(stored).toContain(recoveryCodeHash(uid, recovery[0]!));
+
+    // Two sign-ins race with the same code: exactly one ends in a session.
+    const [b1, b2] = [request.agent(app), request.agent(app)];
+    const [t1, t2] = await Promise.all([login(b1, a.email), login(b2, a.email)]);
+    const results = await Promise.all([
+      b1.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t1.body.mfa_token, code: recovery[0] }),
+      b2.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t2.body.mfa_token, code: recovery[0] }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+
+    // An 8-character code issued before EXT-5 keeps working once.
+    await systemPool.query(`INSERT INTO user_recovery_codes (user_id, code_hash) VALUES ($1, $2)`, [uid, sha256('ABCD2345')]);
+    const b3 = request.agent(app);
+    const t3 = await login(b3, a.email);
+    expect((await b3.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t3.body.mfa_token, code: 'abcd-2345' })).status).toBe(200);
+    const b4 = request.agent(app);
+    const t4 = await login(b4, a.email);
+    expect((await b4.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t4.body.mfa_token, code: 'ABCD-2345' })).status).toBe(401);
   });
 
   it('locks the account for 15 minutes after five wrong codes across sign-in attempts, then lets a correct code in', async () => {
@@ -396,5 +429,101 @@ describe('password reset', () => {
     expect(handover.status).toBe(200);
     expect(handover.body.mail_outcome).toBe('not_configured');
     expect(handover.body.token).toBeTruthy();
+  });
+
+  it('admin-issued: never for another administrator, nor for a person who also belongs to another organization (SEC-03)', async () => {
+    const owner = await newAccount('reset-sec03');
+    const admin = await addMember(owner, 'admin');
+    const admin2 = await addMember(owner, 'admin');
+    const tokensFor = async (id: string) => (await systemPool.query(`SELECT 1 FROM auth_tokens WHERE purpose = 'password_reset' AND user_id = $1`, [id])).rowCount;
+
+    // An administrator cannot take over a second administrator (the two-person approval).
+    const refused = await admin.agent.post(`/api/v1/team/members/${admin2.id}/reset-password`).set(CSRF);
+    expect(refused.status).toBe(403);
+    expect(await tokensFor(admin2.id)).toBe(0);
+    // The owner still can.
+    expect((await owner.agent.post(`/api/v1/team/members/${admin2.id}/reset-password`).set(CSRF)).status).toBe(200);
+
+    // The victim owns another organization and is only a technician here: issuing a link here
+    // would have reset the password of the other organization's owner.
+    const victim = await newAccount('reset-sec03-victim');
+    const inv = await owner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: victim.email, role: 'technician' });
+    expect(inv.status).toBe(201);
+    const acc = await request.agent(app).post(`/api/v1/auth/invitations/${inv.body.token}/accept`).set(CSRF).send({ password: PASSWORD });
+    expect(acc.status).toBe(200);
+    const victimId = await userId(victim.email);
+    for (const issuer of [admin, owner]) {
+      const r = await issuer.agent.post(`/api/v1/team/members/${victimId}/reset-password`).set(CSRF);
+      expect(r.status).toBe(409);
+      expect(r.body.error.code).toBe('member_in_other_organizations');
+      expect(r.body.token).toBeUndefined();
+    }
+    expect(await tokensFor(victimId)).toBe(0);
+    expect((await login(request.agent(app), victim.email)).status).toBe(200);
+  });
+});
+
+describe('Only an owner adds, promotes, demotes or removes an administrator (SEC-04)', () => {
+  it('admin: 403 + audited refusal on every admin path; still manages technicians and viewers; owner can', async () => {
+    const owner = await newAccount('sec04');
+    const admin = await addMember(owner, 'admin');
+    const admin2 = await addMember(owner, 'admin');
+    const tech = await addMember(owner, 'technician');
+    const viewer = await addMember(owner, 'viewer');
+    const roleOf = async (id: string) =>
+      (await systemPool.query<{ role: string; status: string }>(`SELECT role, status FROM memberships WHERE organization_id = $1 AND user_id = $2`, [owner.organizationId, id])).rows[0];
+    const expectRefused = (r: { status: number; body: { error?: { code?: string } } }) => {
+      expect(r.status).toBe(403);
+      expect(r.body.error?.code).toBe('owner_required');
+    };
+
+    // Invite a second admin account of one's own: refused, nothing stored.
+    const accomplice = `accomplice-${Math.random().toString(36).slice(2, 8)}@example.test`;
+    expectRefused(await admin.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: accomplice, role: 'admin' }));
+    expect((await systemPool.query(`SELECT 1 FROM invitations WHERE lower(email) = $1`, [accomplice])).rowCount).toBe(0);
+    // Promote a colluding technician: refused, role unchanged.
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'admin' }));
+    expect(await roleOf(tech.id)).toEqual({ role: 'technician', status: 'active' });
+    // Demote, deactivate or remove another admin: refused.
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${admin2.id}`).set(CSRF).send({ role: 'viewer' }));
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${admin2.id}`).set(CSRF).send({ status: 'deactivated' }));
+    expectRefused(await admin.agent.delete(`/api/v1/team/members/${admin2.id}`).set(CSRF));
+    expect(await roleOf(admin2.id)).toEqual({ role: 'admin', status: 'active' });
+    // Owner management stays owner-only, as before.
+    expect((await admin.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'owner' })).status).toBe(403);
+
+    const refused = await auditRows(owner.organizationId, 'team.admin_change_refused');
+    expect(refused.map((r) => r.metadata?.what)).toEqual(['invite', 'role_change', 'role_change', 'status_change', 'remove']);
+    expect(refused.every((r) => r.user_id === admin.id && r.metadata?.actor_role === 'admin')).toBe(true);
+    expect(refused[0]!.metadata).toMatchObject({ email: accomplice, role: 'admin' });
+    expect(refused[1]).toMatchObject({ target_id: tech.id, metadata: { requested_role: 'admin' } });
+
+    // Technicians and viewers are still the admin's to manage.
+    expect((await admin.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: `t-${Math.random().toString(36).slice(2, 8)}@example.test`, role: 'technician' })).status).toBe(201);
+    expect((await admin.agent.patch(`/api/v1/team/members/${viewer.id}`).set(CSRF).send({ role: 'technician' })).status).toBe(200);
+    expect((await admin.agent.patch(`/api/v1/team/members/${viewer.id}`).set(CSRF).send({ role: 'viewer' })).status).toBe(200);
+
+    // The owner can do all of it.
+    expect((await owner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: accomplice, role: 'admin' })).status).toBe(201);
+    expect((await owner.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'admin' })).status).toBe(200);
+    expect((await owner.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'technician' })).status).toBe(200);
+    expect((await owner.agent.delete(`/api/v1/team/members/${admin2.id}`).set(CSRF)).status).toBe(204);
+    expect(await auditRows(owner.organizationId, 'team.admin_change_refused')).toHaveLength(5);
+  });
+
+  it('an admin invitation sent by a non-owner (before this rule) cannot be accepted', async () => {
+    const owner = await newAccount('sec04-legacy');
+    const admin = await addMember(owner, 'admin');
+    const email = `legacy-${Math.random().toString(36).slice(2, 8)}@example.test`;
+    const token = `legacy-${Math.random().toString(36).slice(2)}`;
+    await systemPool.query(
+      `INSERT INTO invitations (organization_id, email, role, token_hash, invited_by, invited_by_name, expires_at)
+       VALUES ($1,$2,'admin',$3,$4,'admin',now() + interval '1 day')`,
+      [owner.organizationId, email, sha256(token), admin.id],
+    );
+    const acc = await request.agent(app).post(`/api/v1/auth/invitations/${token}/accept`).set(CSRF).send({ password: PASSWORD });
+    expect(acc.status).toBe(403);
+    expect(acc.body.error.code).toBe('invitation_needs_owner');
+    expect((await systemPool.query(`SELECT 1 FROM users WHERE lower(email) = $1`, [email])).rowCount).toBe(0);
   });
 });

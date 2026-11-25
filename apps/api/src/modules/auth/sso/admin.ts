@@ -168,13 +168,18 @@ async function present(organizationId: string, rows: Row[]): Promise<IdentityPro
 /** What an audit row may say about a change: field names, never values of secrets. */
 const changedFields = (body: Record<string, unknown>) => Object.keys(body).map((k) => (k === 'oidc_client_secret' ? 'oidc_client_secret (set)' : k));
 
+// Admins may read the providers and run the check; only the OWNER creates, changes or deletes one.
+// An identity provider can sign in as ANY member of the organization by email (and, with
+// trust_idp_mfa, without their TOTP), so whoever controls the provider can become any member:
+// an admin with that power could impersonate the owner or a second admin (two-person approvals).
+// See docs/security/review-2026-11.md (SEC-01).
 ssoAdminRouter.get('/sso/providers', requireRole('admin'), async (req, res) => {
   const ctx = auth(req);
   const rows = await withTenant(ctx.organizationId, (db) => db.query<Row>(`${SELECT} ORDER BY name`));
   res.json({ items: await present(ctx.organizationId, rows.rows) });
 });
 
-ssoAdminRouter.post('/sso/providers', requireRole('admin'), async (req, res) => {
+ssoAdminRouter.post('/sso/providers', requireRole('owner'), async (req, res) => {
   const ctx = auth(req);
   const body = parse(createSchema, req.body);
   const row = await withTenant(ctx.organizationId, async (db) => {
@@ -215,7 +220,7 @@ ssoAdminRouter.post('/sso/providers', requireRole('admin'), async (req, res) => 
   res.status(201).json((await present(ctx.organizationId, [row]))[0]);
 });
 
-ssoAdminRouter.patch('/sso/providers/:id', requireRole('admin'), async (req, res) => {
+ssoAdminRouter.patch('/sso/providers/:id', requireRole('owner'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   const body = parse(updateSchema, req.body);
@@ -245,7 +250,7 @@ ssoAdminRouter.patch('/sso/providers/:id', requireRole('admin'), async (req, res
   res.json((await present(ctx.organizationId, [row]))[0]);
 });
 
-ssoAdminRouter.delete('/sso/providers/:id', requireRole('admin'), async (req, res) => {
+ssoAdminRouter.delete('/sso/providers/:id', requireRole('owner'), async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   await withTenant(ctx.organizationId, async (db) => {
