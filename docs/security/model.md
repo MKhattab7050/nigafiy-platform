@@ -4,7 +4,7 @@
 | --- | --- |
 | Passwords | `scrypt` (N=2¹⁵, r=8), per-user salt, constant-time compare; login timing is uniform for unknown users; changing or resetting a password revokes other sessions |
 | Multi-factor authentication (TOTP) | RFC 6238 TOTP secrets encrypted at rest with AES-256-GCM (`APP_ENCRYPTION_KEY`), replay protection (`mfa_last_step`), brute-force lockout (`mfa_locked_until`), single-use recovery codes (`user_recovery_codes`: 80 random bits each, stored as SHA-256 over the user id and the code, consumed with a conditional update so a racing reuse fails), and organization policy (`mfa_required`: `off`, `admins`, `all`) |
-| Team invitations & password reset | Single-purpose, single-use expiring tokens stored as SHA-256 hashes (`invitations`, `auth_tokens`); member deactivation (`memberships.status = 'deactivated'`) immediately blocks access; account emails are sent only over SMTP channels explicitly opted in via `use_for_account_emails` |
+| Team invitations & password reset | Single-purpose, single-use expiring tokens stored as SHA-256 hashes (`invitations`, `auth_tokens`); member deactivation (`memberships.status = 'deactivated'`) immediately blocks access; account emails are sent only over SMTP channels explicitly opted in via `use_for_account_emails`; an administrator-issued reset link (handed to the issuer) is refused for another administrator unless an owner issues it, and for anyone who also belongs to another organization (they use "Forgot password") |
 | Sessions | 256-bit opaque token in an `HttpOnly`, `SameSite=Lax` (`Secure` in production) cookie; only its SHA-256 is stored; active membership re-checked on every request |
 | CSRF | Custom header (`X-LD-CSRF`) required on all state-changing requests + `Origin` check; no CORS allowances |
 | Authorization | Role check middleware (`owner`, `admin`, `technician`, `viewer`) on the server for every mutating route; frontend hiding is cosmetic |
@@ -30,10 +30,11 @@
 
 ## Not implemented yet
 
-- External SSO (SAML / OIDC)
 - Mutual TLS for collectors and endpoint agents (path described in the protocol document)
-- A Content-Security-Policy header on the Next.js web app (the desktop panel page has a strict CSP)
-- Independent security review / penetration test
+- Independent outside penetration test (the November 2026 source review is in `review-2026-11.md`)
+
+(SSO over OIDC and SAML, owner-managed, and a nonce-based Content-Security-Policy on the web app
+(`apps/web/lib/csp.ts`) exist since 2026-11.)
 
 ## Deliberately absent
 
