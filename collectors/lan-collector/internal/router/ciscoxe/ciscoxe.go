@@ -1,19 +1,27 @@
-// Package ciscoxe reads Cisco IOS XE routers and L3 gateways via RESTCONF (/restconf/data/*,
-// YANG models Cisco-IOS-XE-native, Cisco-IOS-XE-arp-oper, Cisco-IOS-XE-dhcp-oper) using HTTP Basic
-// Auth. It registers itself as vendor "cisco_xe".
+// Package ciscoxe reads and controls Cisco IOS XE routers and L3 gateways via RESTCONF
+// (/restconf/data/*, YANG models Cisco-IOS-XE-native, -acl, -dhcp, -nat, -policy, -arp-oper,
+// -dhcp-oper, cisco-ia) using HTTP Basic Auth. It registers itself as vendor "cisco_xe".
 //
 // Mechanisms used:
 //   - identify: GET /restconf/data/Cisco-IOS-XE-native:native/version & hostname
 //   - clients:  merges GET /restconf/data/Cisco-IOS-XE-arp-oper:arp-data and
-//               GET /restconf/data/Cisco-IOS-XE-dhcp-oper:dhcp-oper-data
-//   - block:    deliberately unsupported here (enterprise IOS XE ACLs depend on interface, VRF and
-//               direction; use Port Detective switch-port disable/quarantine instead).
+//     GET /restconf/data/Cisco-IOS-XE-dhcp-oper:dhcp-oper-data
+//   - block / schedule: acl.go (ACL NIGAFIY-LAN-IN inbound on the LAN interface, time-ranges)
+//   - rate limit: qos.go (policy-maps with police), reservations and rename: dhcp.go (manual
+//     bindings), port forwards: nat.go (static NAT), every write then "write memory" (restconf.go)
+//   - Wi-Fi: not offered (IOS XE routers have no radios; the 9800 wireless controller is a
+//     separate product with its own model, out of scope).
+//
+// Every control needs IOS XE 16.6 or later (RESTCONF configuration writes). No SSH CLI fallback is
+// used: every control above has a native YANG model.
 package ciscoxe
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -158,20 +166,86 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 			return nil, err
 		}
 	}
-	return router.Capabilities{
+	caps := router.Capabilities{
 		{Capability: router.CapClients, Supported: true, Mechanism: "Cisco IOS XE RESTCONF ARP table (Cisco-IOS-XE-arp-oper)"},
 		{Capability: router.CapDHCPLeases, Supported: true, Mechanism: "Cisco IOS XE RESTCONF DHCP operational data (Cisco-IOS-XE-dhcp-oper)"},
-		{Capability: router.CapBlock, Supported: false, Note: "IOS XE blocking depends on site-specific interface ACLs/VRFs; use Port Detective switch-port control or quarantine VLANs instead"},
-		{Capability: router.CapRateLimit, Supported: false, Note: "IOS XE QoS uses class-map/policy-map templates per interface"},
-		{Capability: router.CapSchedule, Supported: false, Note: "Not offered over generic RESTCONF"},
+		{Capability: router.CapBlock, Mechanism: mechBlock},
+		{Capability: router.CapRateLimit, Mechanism: mechRate},
+		{Capability: router.CapSchedule, Mechanism: mechSchedule},
 		{Capability: router.CapOverview, Supported: true, Mechanism: mechOverview},
-		{Capability: router.CapWiFi, Supported: false, Note: "Cisco IOS XE RESTCONF driver is read-only; manage wireless via WLC/Catalyst Center"},
-		{Capability: router.CapReservations, Supported: false, Note: "Cisco IOS XE RESTCONF driver is intentionally read-only"},
-		{Capability: router.CapPortForward, Supported: false, Note: "Cisco IOS XE RESTCONF driver is intentionally read-only"},
-		{Capability: router.CapRename, Supported: false, Note: "Cisco IOS XE has no client alias table"},
-		{Capability: router.CapReboot, Supported: false, Note: "Reboot is intentionally disabled on enterprise Cisco IOS XE routers"},
-	}, nil
+		{Capability: router.CapWiFi, Supported: false, Note: noteWiFi},
+		{Capability: router.CapReservations, Mechanism: mechReserve},
+		{Capability: router.CapPortForward, Mechanism: mechNAT},
+		{Capability: router.CapRename, Mechanism: mechRename, Requires: router.RequiresReservation},
+		{Capability: router.CapReboot, Supported: false, Note: "Restarting an enterprise IOS XE router is deliberately not offered (it drops every routed network at once)"},
+	}
+	set := func(c router.Capability, ok bool, note string) {
+		for i := range caps {
+			if caps[i].Capability == c {
+				caps[i].Supported, caps[i].Note = ok, note
+			}
+		}
+	}
+	writes := []router.Capability{router.CapBlock, router.CapRateLimit, router.CapSchedule, router.CapReservations, router.CapPortForward, router.CapRename}
+	if ok, known := versionAtLeast(d.info.Firmware, minWriteMajor, minWriteMinor); !known || !ok {
+		for _, c := range writes {
+			set(c, false, fmt.Sprintf("needs IOS XE 16.6 or later for RESTCONF configuration changes (this router reports %q)", d.info.Firmware))
+		}
+		return caps, nil
+	}
+	all, err := d.interfaces(ctx, "capabilities")
+	if err != nil {
+		var rerr *router.Error
+		if !errors.As(err, &rerr) || (rerr.Kind != router.ErrProtocol && rerr.Kind != router.ErrUnsupported) {
+			return nil, err
+		}
+		for _, c := range writes {
+			set(c, false, rerr.Detail)
+		}
+		return caps, nil
+	}
+	var lan *iface
+	natOut := false
+	for i := range all {
+		if all[i].Addr == d.target.Address && all[i].Prefix.IsValid() {
+			lan = &all[i]
+		}
+		natOut = natOut || (all[i].NATOut && all[i].Addr.IsValid())
+	}
+	if lan == nil {
+		for _, c := range writes {
+			set(c, false, fmt.Sprintf("no interface has the router address %s as its primary address, so the LAN interface is unknown", d.target.Address))
+		}
+		return caps, nil
+	}
+	blockNote := "matches the device's current IPv4 address (IOS XE ACLs cannot match MAC addresses on a routed interface); reserve its address so it cannot escape the block"
+	if lan.ACLIn != "" && lan.ACLIn != aclName {
+		set(router.CapBlock, false, fmt.Sprintf("the LAN interface %s already has the administrator's inbound ACL %q; Nigafiy never replaces it", lan.label(), lan.ACLIn))
+		set(router.CapSchedule, false, fmt.Sprintf("the LAN interface %s already has the administrator's inbound ACL %q; Nigafiy never replaces it", lan.label(), lan.ACLIn))
+	} else {
+		set(router.CapBlock, true, blockNote)
+		set(router.CapSchedule, true, "router local time; a window to midnight ends at 23:59 (IOS time-ranges have no 24:00)")
+	}
+	switch {
+	case lan.PolicyI != "" && lan.PolicyI != policyIn:
+		set(router.CapRateLimit, false, fmt.Sprintf("the LAN interface %s already has the administrator's input service policy %q", lan.label(), lan.PolicyI))
+	case lan.PolicyO != "" && lan.PolicyO != policyOut:
+		set(router.CapRateLimit, false, fmt.Sprintf("the LAN interface %s already has the administrator's output service policy %q", lan.label(), lan.PolicyO))
+	default:
+		set(router.CapRateLimit, true, "police per device on the LAN interface; some platforms refuse an output policy with police, which Nigafiy reports")
+	}
+	set(router.CapReservations, true, "manual binding with client-identifier 01+MAC; clients that send another identifier (a DUID) do not match")
+	set(router.CapRename, true, "stored as the client-name of the device's Nigafiy reservation (letters, digits and hyphens)")
+	if lan.NATIn && natOut {
+		set(router.CapPortForward, true, "one port per rule; every static NAT entry is shown as the administrator's (IOS XE static NAT has no description)")
+	} else {
+		set(router.CapPortForward, false, "NAT is not set up (\"ip nat inside\" on the LAN interface and \"ip nat outside\" on an interface with a static IPv4 address); Nigafiy never turns NAT on")
+	}
+	return caps, nil
 }
+
+// noteWiFi: the precise reason, also shown translated in the web app (routers.wifi.ciscoXeNote).
+const noteWiFi = "Cisco IOS XE routers have no Wi-Fi radios; wireless is run by a separate controller (Catalyst 9800) with its own management, which this driver does not control"
 
 func (d *Driver) Clients(ctx context.Context) ([]router.Client, error) {
 	byMAC := map[string]*router.Client{}
@@ -265,24 +339,28 @@ func (d *Driver) Clients(ctx context.Context) ([]router.Client, error) {
 		}
 	}
 
+	// The router's own block state: a Nigafiy block entry in NIGAFIY-LAN-IN (an ACL that cannot be
+	// read leaves the state unknown).
+	blocked := map[string]bool{}
+	known := false
+	if es, _, err := d.readACL(ctx, "clients"); err == nil {
+		known = true
+		for _, p := range pairs(es) {
+			if p.Kind == "block" {
+				blocked[p.MAC] = true
+			}
+		}
+	}
 	out := make([]router.Client, 0, len(byMAC))
 	for _, c := range byMAC {
-		f := false
-		c.Blocked = &f
+		if known {
+			b := blocked[c.MAC]
+			c.Blocked = &b
+		}
 		out = append(out, *c)
 	}
 	router.SortClients(out)
 	return out, nil
-}
-
-func (d *Driver) Blocked(context.Context) ([]router.BlockEntry, error) { return nil, nil }
-
-func (d *Driver) Block(context.Context, string) (router.Change, error) {
-	return router.Change{}, router.Errorf(router.ErrUnsupported, "block", "Cisco IOS XE driver is read-only; use switch-port quarantine or site ACLs")
-}
-
-func (d *Driver) Unblock(context.Context, string) (router.Change, error) {
-	return router.Change{}, router.Errorf(router.ErrUnsupported, "unblock", "Cisco IOS XE driver is read-only")
 }
 
 func (d *Driver) Close(context.Context) error {
