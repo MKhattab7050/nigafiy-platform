@@ -2,8 +2,7 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-// The same throw-away server the API tests use (started with pg_ctl on Windows, where CI runs elevated).
-import { startThrowawayPostgres } from '../../api/tests/pg-server.ts';
+import { pathToFileURL } from 'node:url';
 
 /**
  * Starts a throw-away PostgreSQL and the real API for the browser smoke tests, and stops both
@@ -11,6 +10,10 @@ import { startThrowawayPostgres } from '../../api/tests/pg-server.ts';
  * /api to this API, which runs every migration against this database.
  */
 const apiDir = path.resolve(__dirname, '../../api');
+// The same throw-away server the API tests use (started with pg_ctl on Windows, where CI runs elevated).
+// Loaded with import(): it is an ES module of the API package, and this file is compiled as CommonJS.
+type PgServer = typeof import('../../api/tests/pg-server.ts');
+const loadPgServer = (): Promise<PgServer> => import(pathToFileURL(path.join(apiDir, 'tests', 'pg-server.ts')).href);
 
 const PG_PORT = Number(process.env.E2E_PG_PORT ?? 5446);
 const API_PORT = Number(process.env.E2E_API_PORT ?? 4146);
@@ -33,6 +36,7 @@ async function waitFor(url: string, api: ChildProcess, timeoutMs: number): Promi
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'nigafiy-e2e-pg-'));
+  const { startThrowawayPostgres } = await loadPgServer();
   const pg = await startThrowawayPostgres({ dir, port: PG_PORT, database: DB });
 
   let apiLog = '';
