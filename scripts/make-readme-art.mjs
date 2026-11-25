@@ -543,7 +543,7 @@ function architecture(themeName, lang) {
   const L = ARCH_TEXT[lang];
   const rtl = lang === 'ar';
   const W = 1000;
-  const H = 744;
+  const H = 760;
   const cw = 192;
   const ch = 132;
   const r1 = 150; // row 1 top
@@ -554,7 +554,7 @@ function architecture(themeName, lang) {
   const apiC = xA + cw / 2;
   const bottomY = 588;
   const bw = 192;
-  const bh = 116;
+  const bh = 132;
   const xR = 268;
   const xL = 504;
   const xG = 740;
@@ -610,8 +610,8 @@ function architecture(themeName, lang) {
   const lgx = 16;
   const lx = (dx) => (rtl ? lgx + 200 - dx : lgx + dx);
   body.push(`<g>${T(lx(16), 602, L.legend, { size: 11.5, weight: 700, fill: t.muted, ls: rtl ? 0 : 1.1, rtl })}
-<path d="M${lx(16)} 594H${lx(52)}" stroke="${t.line}" stroke-width="1.6" marker-end="url(#arrow)"/>${T(lx(64), 634.5, L.lg[0], { size: 12.5, fill: t.body, rtl })}
-<path d="M${lx(16)} 624H${lx(52)}" stroke="${t.line}" stroke-width="1.6"/><circle cx="${lx(34)}" cy="660" r="4" fill="${t.accent}"/>${T(lx(64), 664.5, L.lg[1], { size: 12.5, fill: t.body, rtl })}
+<path d="M${lx(16)} 630H${lx(52)}" stroke="${t.line}" stroke-width="1.6" marker-end="url(#arrow)"/>${T(lx(64), 634.5, L.lg[0], { size: 12.5, fill: t.body, rtl })}
+<path d="M${lx(16)} 660H${lx(52)}" stroke="${t.line}" stroke-width="1.6"/><circle cx="${lx(34)}" cy="660" r="4" fill="${t.accent}"/>${T(lx(64), 664.5, L.lg[1], { size: 12.5, fill: t.body, rtl })}
 <rect x="${rtl ? lx(52) : lx(16)}" y="681" width="36" height="16" rx="5" fill="none" stroke="${t.zoneStroke}" stroke-dasharray="4 4"/>${T(lx(64), 693.5, L.lg[2], { size: 12.5, fill: t.body, rtl })}</g>`);
 
   const css = `
@@ -816,7 +816,7 @@ ${g.slice(1).map((l, j) => T(tx, gy + 114 + j * 18, l, { size: 13, fill: t.muted
   const ay = by;
   const tileX = rtl ? ax + 334 - 20 - 44 : ax + 20;
   const atx = rtl ? ax + 334 - 76 : ax + 76;
-  out.push(`<g><rect x="${ax}" y="${ay}" width="334" height="212" rx="16" fill="${t.card}" stroke="${t.cardStroke}" filter="url(#sh)"/>${tile(G.server, BLUE, tileX, ay + 22, 44)}${T(atx, ay + 42, L.api[0], { size: 17, weight: 700, fill: t.ink, rtl })}${T(atx, ay + 60, 'HTTPS · :47100', { size: 12.5, fill: t.muted, mono: true, rtl })}
+  out.push(`<g><rect x="${ax}" y="${ay}" width="334" height="212" rx="16" fill="${t.card}" stroke="${t.cardStroke}" filter="url(#sh)"/>${tile(G.server, BLUE, tileX, ay + 22, 44)}${T(atx, ay + 42, L.api[0], { size: 17, weight: 700, fill: t.ink, rtl })}${T(atx, ay + 60, 'HTTPS · :47100', { size: 12.5, fill: t.muted, mono: true, anchor: rtl ? 'end' : 'start' })}
 ${L.api.slice(1).map((l, j) => `${glyphPath(G.check, rtl ? ax + 334 - 30 : ax + 30, ay + 104 + j * 32, 15, OK, 2.6)}${T(rtl ? ax + 334 - 50 : ax + 50, ay + 109 + j * 32, l, { size: 13.5, fill: t.body, rtl })}`).join('')}</g>`);
   // Outbound arrows (site → API) and the refused inbound one.
   const from = rtl ? zx : zx + 300;
