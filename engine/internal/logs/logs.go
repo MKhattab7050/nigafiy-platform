@@ -30,9 +30,23 @@ var secretPattern = regexp.MustCompile(`ld(?:c|e|ea|a)_[A-Za-z0-9._-]{8,}`)
 // ansiPattern matches terminal colour codes, which scripts/local.mjs prints.
 var ansiPattern = regexp.MustCompile("\x1b\\[[0-9;]*[A-Za-z]")
 
-// Redact replaces every token-like secret in s with "[redacted]".
+// secretField matches a field name whose value is a secret wherever a child prints it, as JSON
+// ("community":"public") or as key=value (slog text): any name ending in password, passphrase,
+// community, secret, token, credential, api key, private/auth/priv key, authorization or cookie
+// (router_password, snmp_community, client_secret, access_token...). EXT-9.
+const secretField = `[A-Za-z0-9_]*(?:password|passwd|passphrase|community|secret|token|credential|api_?key|private_key|auth_key|priv_key|authorization|cookie)`
+
+var (
+	jsonSecretPattern = regexp.MustCompile(`(?i)("` + secretField + `"\s*:\s*)"(?:[^"\\]|\\.)*"`)
+	kvSecretPattern   = regexp.MustCompile(`(?i)(\b` + secretField + `=)(?:"(?:[^"\\]|\\.)*"|[^\s"]+)`)
+)
+
+// Redact replaces every token-like secret in s, and the value of every secret-named field, with
+// "[redacted]".
 func Redact(s string) string {
-	return secretPattern.ReplaceAllString(s, "[redacted]")
+	s = secretPattern.ReplaceAllString(s, "[redacted]")
+	s = jsonSecretPattern.ReplaceAllString(s, `${1}"[redacted]"`)
+	return kvSecretPattern.ReplaceAllString(s, `${1}[redacted]`)
 }
 
 // RotatingFile is an append-only file that is renamed to <path>.1 (and older files shifted up to

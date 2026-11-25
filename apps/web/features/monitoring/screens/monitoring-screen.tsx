@@ -4,7 +4,7 @@ import { Activity, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { DefaultChecksRestored, MonitoringCheck } from '@nigafiy/shared-types';
 import { SetupArt } from '@/components/illustrations';
-import { Async, Button, Card, EmptyState, ErrorNote, Notice, PageHeader, Segmented, StateBadge, Tag } from '@/components/ui';
+import { Async, Button, Card, EmptyState, ErrorNote, Notice, PageHeader, Segmented, StateBadge, Tag, useConfirm } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, ms, pct, relativeTime } from '@/lib/format';
@@ -15,6 +15,7 @@ import { EditCheck } from '../components/edit-check';
 import { WatchEvidence, useWatchValue } from '../components/watch-result';
 
 export function MonitoringScreen() {
+  const confirm = useConfirm();
   const { t, locale } = useI18n();
   const { siteId, can, sites } = useApp();
   const [range, setRange] = useState<Range>('1h');
@@ -119,7 +120,7 @@ export function MonitoringScreen() {
                           size="sm"
                           variant="ghost"
                           aria-label={`${t('common.delete')}: ${c.name}`}
-                          onClick={() => window.confirm(t('monitoring.confirmDelete')) && act(() => api(`/checks/${c.id}`, { method: 'DELETE' }))}
+                          onClick={async () => (await confirm(t('monitoring.confirmDelete'), { destructive: true, confirmLabel: t('common.delete') })) && act(() => api(`/checks/${c.id}`, { method: 'DELETE' }))}
                         >
                           <Trash2 className="size-3.5" aria-hidden />
                         </Button>

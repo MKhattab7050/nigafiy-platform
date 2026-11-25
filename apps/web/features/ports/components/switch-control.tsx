@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Async, Badge, Button, Card, ErrorNote, Field, Select } from '@/components/ui';
+import { Async, Badge, Button, Card, ErrorNote, Field, Select, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
@@ -79,6 +79,7 @@ export function SwitchControlCard({ switchId, admin }: { switchId: string; admin
 }
 
 function WriteCredentials({ c, admin, onSaved }: { c: SwitchControl; admin: boolean; onSaved: () => void }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const cx = controlText(locale);
   const tx = portsText(locale);
@@ -104,7 +105,7 @@ function WriteCredentials({ c, admin, onSaved }: { c: SwitchControl; admin: bool
     }
   }
   async function remove() {
-    if (!window.confirm(cx.removeWriteConfirm)) return;
+    if (!(await confirm(cx.removeWriteConfirm, { destructive: true }))) return;
     setError(null);
     try {
       await api(`/switches/${c.target_id}/write-credentials`, { method: 'DELETE' });

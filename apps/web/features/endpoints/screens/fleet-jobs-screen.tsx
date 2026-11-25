@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { FleetJob, FleetJobDetail, FleetJobResult, FleetJobState } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, DataTable, PageHeader, Tabs, type Tone } from '@/components/ui';
+import { Async, Badge, Button, Card, DataTable, PageHeader, Tabs, type Tone, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
@@ -113,6 +113,7 @@ export function FleetJobsScreen() {
 
 /** One job: its runs and the result of every computer (download the full output, rerun failed, cancel, pause, run now). */
 export function FleetJobDetailScreen({ id }: { id: string }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = jobsText(locale);
   const { can, me } = useApp();
@@ -165,8 +166,8 @@ export function FleetJobDetailScreen({ id }: { id: string }) {
                     <Button
                       size="sm"
                       busy={busy === 'cancel'}
-                      onClick={() => {
-                        if (window.confirm(tx.cancelConfirm)) void act('cancel', 'cancel');
+                      onClick={async () => {
+                        if ((await confirm(tx.cancelConfirm, { destructive: true }))) void act('cancel', 'cancel');
                       }}
                     >
                       <XCircle className="size-3.5" aria-hidden />

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { buildInsights, type DeviceFact, type InsightFacts } from '../src/modules/insights/rules.ts';
+import { INFRASTRUCTURE_LIMIT, buildInsights, type DeviceFact, type InsightFacts } from '../src/modules/insights/rules.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry, type TestAccount } from './helpers.ts';
 
@@ -143,6 +143,21 @@ describe('insights', () => {
 
     const other = await newAccount('other');
     expect((await other.agent.get('/api/v1/insights')).body.insights.map((i: any) => i.code)).toEqual(['no_collector']);
+  });
+
+  it('counts capped infrastructure exactly: the total, not the rows read', () => {
+    const now = new Date('2026-11-10T12:00:00Z');
+    const infra = Array.from({ length: INFRASTRUCTURE_LIMIT }, (_, i) => ({
+      id: `i${i}`, label: `cam-${i}`, ip: `10.1.${Math.floor(i / 250)}.${i % 250}`, device_type: 'camera' as const, type_confidence: 'high' as const, type_evidence: null,
+    }));
+    const facts: InsightFacts = {
+      now, devices: [], collectors: [{ id: 'c', name: 'pc', last_heartbeat_at: now, gateway_ip: '10.0.0.1' }], scopes: 1,
+      checks: [], openIncidents: [], ipConflicts: [], infrastructure: infra, infrastructureTotal: 260,
+    };
+    const found = buildInsights(facts).insights.find((i) => i.code === 'suggest_monitor_infrastructure')!;
+    expect(found.params).toMatchObject({ count: 260 });
+    expect(found.devices).toHaveLength(INFRASTRUCTURE_LIMIT);
+    expect(found.actions[0]!.body).toMatchObject({ ids: infra.map((d) => d.id) });
   });
 
   it('scores a quiet, reviewed network as healthy', () => {

@@ -55,6 +55,24 @@ export async function automationSetting(db: Db, organizationId: string, siteId: 
   return resolve(key, await loadRows(db, organizationId, siteId, [key]), siteId);
 }
 
+/**
+ * The effective setting of one automation for many sites in one query (instead of one query per
+ * site): the organization row plus each site's row, resolved exactly as `automationSetting` does.
+ */
+export async function automationSettingsForSites(db: Db, organizationId: string, siteIds: readonly string[], key: AutomationKey): Promise<Map<string, EffectiveAutomation>> {
+  const out = new Map<string, EffectiveAutomation>();
+  if (siteIds.length === 0) return out;
+  const rows = (
+    await db.query<AutomationRow>(
+      `SELECT ${ROW} FROM automation_settings
+        WHERE organization_id = $1 AND key = $2 AND (site_id IS NULL OR site_id = ANY($3::uuid[]))`,
+      [organizationId, key, siteIds],
+    )
+  ).rows;
+  for (const siteId of siteIds) out.set(siteId, resolve(key, rows, siteId));
+  return out;
+}
+
 /** Whether `key` may act for this site now. Owning modules call this before every automatic action. */
 export async function automationEnabled(db: Db, organizationId: string, siteId: string | null, key: AutomationKey): Promise<boolean> {
   return (await automationSetting(db, organizationId, siteId, key)).enabled;

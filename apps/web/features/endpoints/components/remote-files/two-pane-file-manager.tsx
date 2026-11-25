@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ArrowLeftRight, CheckCircle2, Download, Laptop, Pause, Play, RotateCcw, Upload, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import type { RemoteFileEntry } from '@nigafiy/shared-types';
-import { Badge, Button, Card } from '@/components/ui';
+import { Badge, Button, Card, useConfirm } from '@/components/ui';
 import { ltr } from '@/lib/localize/bidi';
 import { formatBytes } from './file-utils';
 import { RemoteFilePane } from './remote-file-manager';
@@ -105,12 +105,13 @@ function joinPath(dir: string, name: string): string {
 
 export function TwoPaneFileManager(props: RemoteFileManagerProps) {
   const files = useRemoteFiles(props);
+  const confirm = useConfirm();
   const t = files.isAr ? text.ar : text.en;
   const { canWrite, canUpload } = props;
   const [picked, setPicked] = useState<File[]>([]);
   const [dragging, setDragging] = useState(false);
 
-  const confirmRestart = useCallback(async (name: string) => window.confirm(t.restartAsk(name)), [t]);
+  const confirmRestart = useCallback((name: string) => confirm(t.restartAsk(name), { destructive: true }), [t, confirm]);
   const onUploaded = useCallback(() => {
     if (files.currentPath) void files.loadDirectory(files.currentPath);
   }, [files.currentPath, files.loadDirectory]);

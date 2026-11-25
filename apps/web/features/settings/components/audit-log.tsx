@@ -13,7 +13,7 @@ const LIMIT = 100;
 type ActorFilter = 'all' | 'user' | 'system';
 
 export function AuditLog() {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   // GET /audit-logs has no actor filter, so filtering happens on the loaded entries only (said below the filter).
   const query = useQuery<{ items: AuditEntry[] }>(`/audit-logs?limit=${LIMIT}`, [], 60_000);
   const [filter, setFilter] = useState<ActorFilter>('all');
@@ -49,7 +49,7 @@ export function AuditLog() {
             <EmptyState title={t('settings.auditEmpty')} />
           ) : (
             <>
-              {filter !== 'all' && <p className="border-b border-line px-4 py-2 text-xs text-faint">{fill(t('settings.audit.filterNote'), { count: items.length })}</p>}
+              {filter !== 'all' && <p className="border-b border-line px-4 py-2 text-xs text-faint">{fill(tn('settings.audit.filterNote', items.length), { count: items.length })}</p>}
               {shown.length === 0 ? (
                 <EmptyState title={t('settings.audit.noneForFilter')} />
               ) : (

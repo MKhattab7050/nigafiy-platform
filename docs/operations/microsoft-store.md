@@ -168,8 +168,9 @@ below happens on Microsoft's pages, in his name.
      `apps/desktop/release/Nigafiy-Quick-Support-1.0.0-x64.msix`.
    Store builds are left unsigned on purpose (Microsoft re-signs them).
 6. **Run the Windows App Certification Kit** (Start → Windows App Cert Kit, it asks for administrator
-   rights) on each `.msix` and fix what it reports. It did not run in the build session: it needs
-   administrator rights ("What ran here vs never ran").
+   rights) on each `.msix` and fix what it reports. It ran once on the local test packages, started by
+   the owner as administrator ("Real install test"): desktop PASS, Quick Support WARNING
+   (DPI awareness), fixed in the program.
 7. **Upload** each `.msix` in its product's submission → Packages.
 8. **Store listing in English and Arabic** (Policy 10.7: every declared language needs its own
    description): name, description, at least one screenshot, the **privacy policy URL** (Policy
@@ -253,16 +254,46 @@ nothing downloaded):**
   off on this PC and the certificate is in no machine store; trusting it needs administrator rights,
   so the build session went no further (the owner's steps are above).
 
-**Never ran:**
+**Never ran in the build session** (both later ran with the owner, "Real install test" below):
 
 - The Windows App Certification Kit: `appcert.exe` 10.0.26100.2454 is installed but its manifest
-  says `requireAdministrator`, so it was not started (no UAC prompt from a build session). The owner
-  runs it (step 6) before uploading.
-- Installing, starting or removing either package; so neither the desktop app inside a package
-  (LocalState profile, engine/PostgreSQL/API/web/sensor started from `WindowsApps`, the firewall
-  rules, the Store notice, the update card's Store message on a real install) nor Quick Support
-  opened from a `nigafiy-support:` link has run for real. These are covered by tests only
+  says `requireAdministrator`, so a build session does not start it (no UAC prompt).
+- Installing, starting or removing either package.
+
+**Still never ran:** the desktop app's full local stack inside a package (engine, PostgreSQL, API,
+web and Sensor started from `WindowsApps`; only `--smoke` ran), the Store notice and the update
+card's Store message on a real install, and Quick Support opened from a real `nigafiy-support:` Fleet
+link. These are covered by tests only
   (`apps/desktop/test/store-package.test.cjs`, `msix.test.cjs`, engine `update` package tests, the
   agent's `quicksupport` link tests, `platform-updates` and `fleet-reach` API tests).
 - A Store build with real Partner Center values, an upload, certification, and Microsoft's
   re-signing: they need the owner's account.
+## Real install test (owner, elevated, 2026-11-25)
+
+The owner ran `scripts\install-test\run-elevated.ps1` once as administrator (run `20261125-095600`,
+logs and WACK XML in `.data\install-test\20261125-095600\`; MSI results in
+[installers.md](installers.md), "Real install test"). The test certificate went into
+`LocalMachine\TrustedPeople` only and was removed at the end.
+
+| Package | Checks | Result |
+| --- | --- | --- |
+| Desktop `Nigafiy-0.1.0-x64-local-test.msix` | signed by the test certificate (Valid once trusted); `Add-AppxPackage`; `Get-AppxPackage` version 0.1.0.0, publisher the test certificate, status Ok (SignatureKind Developer); `app\Nigafiy.exe`, engine, `local.mjs`, `app.asar` present; Start-menu entry; 3 firewall rules for `app\resources\engine\nigafiy-engine.exe` (declared in the manifest); `Nigafiy.exe --smoke` inside the package ok with `"store":"Nigafiy.LocalTest.Hub_0.1.0.0_x64__9s2n42zx96w3r"`; protocol `nigafiy`; `Remove-AppxPackage` leaves no package, no firewall rules and no `Packages\…` data folder | PASS |
+| Quick Support `Nigafiy-Quick-Support-0.1.0-x64-local-test.msix` | signed; installed; version, publisher, status Ok; `nigafiy-support.exe` byte-identical to the built program; Start-menu entry "Nigafiy Quick Support"; protocol `nigafiy-support`; removed with its data folder | PASS; launch SKIP (without a Fleet link it only shows an error box and waits for a click) |
+| WACK 10.0.26100.2454, desktop | 24 tests, 23 passed; overall **PASS**. The one failure is the **optional** "Blocked executables" test: it lists references to process-launch APIs and to names such as `cmd`, `reg`, `powershell` in Electron, the embedded PostgreSQL, the engine, the bundled API sources and third-party `node_modules` text files. Nigafiy does start its own programs (that is how the desktop runs its local stack), so this stays; it does not block certification. | PASS |
+| WACK 10.0.26100.2454, Quick Support | 24 tests, 23 passed; overall **WARNING**: DPIAwarenessValidation, "Failed to process the binary nigafiy-support.exe" and "not DPI Aware". A Go program has no application manifest; the program only called `SetProcessDPIAware` at run time, which WACK cannot see. | WARNING, fixed |
+
+**Fix (commit `7768aa7`):** `nigafiy-support.exe` now carries an application manifest
+(`agents/endpoint-agent/cmd/nigafiy-support/nigafiy-support.manifest`: PerMonitorV2 DPI awareness,
+`asInvoker`, Windows 10/11), linked in from the committed `rsrc_windows_amd64.syso`, which a small
+pure-Go generator writes (`internal/winres`, `tools/winres`, `go generate ./cmd/nigafiy-support`; no
+cgo, no external tool, no download). Tests: the COFF object reads back with `debug/pe` (section,
+relocation, resource tree, manifest bytes); the committed `.syso` matches the manifest; and the test
+program, which links the same `.syso`, starts PerMonitorV2 DPI aware (without the `.syso` that test
+fails with awareness 0). Per-monitor awareness also gives the screen capture physical pixels on every
+monitor, which `EnumerateDisplays` already assumed. Rebuilt and re-signed
+`Nigafiy-Quick-Support-0.1.0-x64-local-test.msix` (10.4 MB); unpacked: identity
+`Nigafiy.LocalTest.QuickSupport` 0.1.0.0, `runFullTrust` only, `nigafiy-support.exe` (SHA-256
+`6802b14016f40e368d7dcc7f32b54ddafcc8cffa5660a9d86f00bae9e4e4f871`) identical to the built program,
+and `mt.exe` reads the PerMonitorV2 manifest out of the packaged exe. **WACK on the rebuilt package
+(rerun `20261125-105136`, owner, elevated): overall PASS.** The desktop package did
+not change and was not rebuilt.

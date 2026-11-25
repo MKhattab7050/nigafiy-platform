@@ -6,7 +6,7 @@ import { fill, useI18n } from '@/lib/i18n';
 
 /** The measured value of a watch check's last sample, formatted for its kind (null for ping / TCP / DNS). */
 export function useWatchValue(c: MonitoringCheck): { label: string; value: string; tone: 'ok' | 'warn' | 'crit' | null } | null {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const v = c.last_value;
   if (c.kind === 'http' || c.kind === 'https') {
     return { label: t('monitoring.httpStatus'), value: v === null ? '—' : String(Math.round(v)), tone: v === null ? null : c.state === 'ok' ? 'ok' : 'crit' };
@@ -16,7 +16,7 @@ export function useWatchValue(c: MonitoringCheck): { label: string; value: strin
     const days = Math.floor(Math.abs(v));
     return {
       label: t('monitoring.certExpires'),
-      value: v < 0 ? fill(t('monitoring.expiredAgo'), { days }) : fill(t('monitoring.daysLeft'), { days }),
+      value: v < 0 ? fill(tn('monitoring.expiredAgo', days), { days }) : fill(tn('monitoring.daysLeft', days), { days }),
       tone: c.state === 'down' ? 'crit' : c.state === 'degraded' ? 'warn' : 'ok',
     };
   }

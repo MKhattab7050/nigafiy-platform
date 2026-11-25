@@ -55,6 +55,14 @@ describe('instant notification channels and escalation policies', () => {
     const discord = renderDiscordPayload(ev, 'Acme', 'https://nms.example');
     expect((discord.embeds as { color: number; title: string }[])[0]?.color).toBe(0xe53e3e);
 
+    // EXT-6: a device-supplied name cannot mention people or forge a link in Slack or Discord.
+    const hostile = { ...ev, title: '<!channel> <@U123> <https://evil.example|click> PC & co', details: { host: '<!here>' }, site_name: '<@U999>' };
+    const s2 = JSON.stringify(renderSlackPayload(hostile, 'Acme', 'https://nms.example'));
+    for (const bad of ['<!channel>', '<@U123>', '<https://evil.example', '<!here>', '<@U999>']) expect(s2).not.toContain(bad);
+    expect(s2).toContain('&lt;!channel&gt; &lt;@U123&gt;');
+    expect(s2).toContain('PC &amp; co');
+    expect(renderDiscordPayload(hostile, 'Acme').allowed_mentions).toEqual({ parse: [] });
+
     const ntfy = renderNtfyMessage(ev, 'Acme', 'https://nms.example');
     expect(ntfy.headers['X-Priority']).toBe('5');
     expect(ntfy.headers['X-Tags']).toBe('rotating_light');

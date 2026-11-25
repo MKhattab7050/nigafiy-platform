@@ -17,6 +17,13 @@ func TestRedactMatchesDesktopPrefixes(t *testing.T) {
 		"agent cred lda_abcdefgh.ijk":              "agent cred [redacted]",
 		"short lde_abc stays":                      "short lde_abc stays",
 		"nothing secret here":                      "nothing secret here",
+		// EXT-9: secret-named fields, JSON and key=value, whatever the value looks like.
+		`{"msg":"snmp","community":"public","host":"10.0.0.1"}`:   `{"msg":"snmp","community":"[redacted]","host":"10.0.0.1"}`,
+		`{"Password": "hunter2 \"x\"", "user":"admin"}`:           `{"Password": "[redacted]", "user":"admin"}`,
+		`level=INFO msg=login router_password=x password=hunter2`: `level=INFO msg=login router_password=[redacted] password=[redacted]`,
+		`auth_key="a b" priv_key=zzz host=r1`:                     `auth_key=[redacted] priv_key=[redacted] host=r1`,
+		`tokens=3 user=bob`:                                       `tokens=3 user=bob`,
+		`{"client_secret":"s3cr3t"}`:                              `{"client_secret":"[redacted]"}`,
 	}
 	for in, want := range cases {
 		if got := Redact(in); got != want {

@@ -3,7 +3,7 @@
 import type { SwitchDetail } from '@nigafiy/shared-types';
 import { Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { Async, Badge, Button, Card, ErrorNote, Field, Input, Modal, Switch } from '@/components/ui';
+import { Async, Badge, Button, Card, ErrorNote, Field, Input, Modal, Switch, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
@@ -31,6 +31,7 @@ export function SwitchView({
   onRemoved: () => void;
   onUpdated?: () => void;
 }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = portsText(locale);
   const q = useQuery<SwitchDetail>(`/switches/${id}`, ['devices'], 20_000);
@@ -57,7 +58,7 @@ export function SwitchView({
     }
   }
   async function remove() {
-    if (!window.confirm(tx.removeConfirm)) return;
+    if (!(await confirm(tx.removeConfirm, { destructive: true }))) return;
     setError(null);
     try {
       await api(`/switches/${id}`, { method: 'DELETE' });

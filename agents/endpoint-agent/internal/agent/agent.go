@@ -123,7 +123,7 @@ type Agent struct {
 	mu         sync.Mutex
 	credential string
 	results    []control.Result
-	seenCmds   map[string]bool
+	seenCmds   *seenSet
 
 	wakeHeartbeat chan struct{}
 	wakeInventory chan struct{}
@@ -184,7 +184,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		tlsConfig:     tlsCfg,
 		httpClient:    &http.Client{Timeout: 20 * time.Second, Transport: transport, CheckRedirect: noRedirect},
 		pollClient:    &http.Client{Timeout: tuning.LongPollWait + 20*time.Second, Transport: transport, CheckRedirect: noRedirect},
-		seenCmds:      map[string]bool{},
+		seenCmds:      newSeenSet(seenCommandsKept),
 		wakeHeartbeat: make(chan struct{}, 1),
 		wakeInventory: make(chan struct{}, 1),
 		wakeHardware:  make(chan struct{}, 1),
@@ -485,15 +485,9 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 
 	for _, cmd := range resp.Commands {
 		a.mu.Lock()
-		seen := a.seenCmds[cmd.ID]
-		if !seen {
-			if len(a.seenCmds) >= 2048 {
-				clear(a.seenCmds)
-			}
-			a.seenCmds[cmd.ID] = true
-		}
+		fresh := a.seenCmds.add(cmd.ID)
 		a.mu.Unlock()
-		if seen {
+		if !fresh {
 			continue
 		}
 		go a.runCommand(ctx, cmd)
@@ -581,15 +575,9 @@ func pollBackoff(failures int, maxBackoff time.Duration) time.Duration {
 func (a *Agent) dispatch(ctx context.Context, commands []control.Command) {
 	for _, cmd := range commands {
 		a.mu.Lock()
-		seen := a.seenCmds[cmd.ID]
-		if !seen {
-			if len(a.seenCmds) >= 2048 {
-				clear(a.seenCmds)
-			}
-			a.seenCmds[cmd.ID] = true
-		}
+		fresh := a.seenCmds.add(cmd.ID)
 		a.mu.Unlock()
-		if seen {
+		if !fresh {
 			continue
 		}
 		go a.runCommand(ctx, cmd)

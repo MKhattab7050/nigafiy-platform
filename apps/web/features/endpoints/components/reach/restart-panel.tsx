@@ -3,7 +3,7 @@
 import { Power, ShieldAlert } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { FleetBootState, FleetRestart, RemoteDesktopSession } from '@nigafiy/shared-types';
-import { Button, Card, Field, Input, Notice } from '@/components/ui';
+import { Button, Card, Field, Input, Notice, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { codeMessage, policyText } from '../fleet-policy/policy-text';
@@ -32,6 +32,7 @@ export function RestartPanel({
   canControl: boolean;
   onResumed: () => void;
 }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = reachText(locale);
   const px = policyText(locale);
@@ -66,7 +67,7 @@ export function RestartPanel({
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!mode || reason.trim().length < 3) return;
-    if (!window.confirm(tx.restartConfirm)) return;
+    if (!(await confirm(tx.restartConfirm, { destructive: true }))) return;
     setBusy(true);
     setError(null);
     try {

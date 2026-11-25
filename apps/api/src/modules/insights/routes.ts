@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { auth, parse } from '../../common/http.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
-import { automationSetting } from '../automation/index.ts';
-import { INFRASTRUCTURE_TYPES, type InfrastructureFact, type InsightFacts, buildInsights } from './rules.ts';
+import { automationSettingsForSites } from '../automation/index.ts';
+import { INFRASTRUCTURE_LIMIT, INFRASTRUCTURE_TYPES, type InfrastructureFact, type InsightFacts, buildInsights } from './rules.ts';
 
 export const insightsRouter: Router = Router();
 
@@ -123,24 +123,34 @@ export async function loadInsightFacts(db: Db, organizationId: string, siteFilte
     );
     // Infrastructure Nigafiy classified itself (inferred, medium/high confidence) that nothing watches yet.
     // Only proposed where the site's `suggest.monitor_infrastructure` automation is on; nothing is created here.
-    const infraRows = (
-      await db.query<InfrastructureFact & { site_id: string }>(
-        `SELECT d.id, d.site_id, coalesce(d.display_name, d.hostname, host(d.current_ip), d.primary_mac::text) AS label, host(d.current_ip) AS ip,
-                d.device_type, d.type_confidence, d.type_evidence
-           FROM devices d
-          WHERE d.type_source = 'inferred' AND d.device_type = ANY($1) AND d.type_confidence IN ('medium', 'high')
-            AND d.current_ip IS NOT NULL AND NOT EXISTS (SELECT 1 FROM monitoring_checks c WHERE c.device_id = d.id)
-            AND ($2::uuid IS NULL OR d.site_id = $2)
-          ORDER BY d.current_ip`,
-        [INFRASTRUCTURE_TYPES, siteFilter],
-      )
-    ).rows;
-    const infrastructure: InfrastructureFact[] = [];
-    for (const siteId of [...new Set(infraRows.map((r) => r.site_id))]) {
-      const setting = await automationSetting(db, organizationId, siteId, 'suggest.monitor_infrastructure');
+    // Constant query count: the sites in scope, their settings in one batch, then one bounded read
+    // (INFRASTRUCTURE_LIMIT rows, plus the exact total via count(*) OVER ()).
+    const siteIds = (await db.query<{ id: string }>(`SELECT id FROM sites WHERE organization_id = $2 AND ($1::uuid IS NULL OR id = $1)`, [siteFilter, organizationId])).rows.map((r) => r.id);
+    const settings = await automationSettingsForSites(db, organizationId, siteIds, 'suggest.monitor_infrastructure');
+    const anyConfidence: string[] = [];
+    const highOnly: string[] = [];
+    for (const [siteId, setting] of settings) {
       if (!setting.enabled) continue;
-      const highOnly = setting.config.min_confidence === 'high';
-      for (const { site_id: _site, ...r } of infraRows) if (_site === siteId && (!highOnly || r.type_confidence === 'high')) infrastructure.push(r);
+      (setting.config.min_confidence === 'high' ? highOnly : anyConfidence).push(siteId);
+    }
+    let infrastructure: InfrastructureFact[] = [];
+    let infrastructureTotal = 0;
+    if (anyConfidence.length || highOnly.length) {
+      const infraRows = (
+        await db.query<InfrastructureFact & { total: number }>(
+          `SELECT d.id, coalesce(d.display_name, d.hostname, host(d.current_ip), d.primary_mac::text) AS label, host(d.current_ip) AS ip,
+                  d.device_type, d.type_confidence, d.type_evidence, count(*) OVER ()::int AS total
+             FROM devices d
+            WHERE d.type_source = 'inferred' AND d.device_type = ANY($1) AND d.type_confidence IN ('medium', 'high')
+              AND d.current_ip IS NOT NULL AND NOT EXISTS (SELECT 1 FROM monitoring_checks c WHERE c.device_id = d.id)
+              AND (d.site_id = ANY($2::uuid[]) OR (d.site_id = ANY($3::uuid[]) AND d.type_confidence = 'high'))
+            ORDER BY d.current_ip
+            LIMIT $4`,
+          [INFRASTRUCTURE_TYPES, anyConfidence, highOnly, INFRASTRUCTURE_LIMIT],
+        )
+      ).rows;
+      infrastructureTotal = infraRows[0]?.total ?? 0;
+      infrastructure = infraRows.map(({ total: _t, ...r }) => r);
     }
     // Unwanted devices online that a configured, reachable router could block (proposal only).
     const routerBlockable = (
@@ -159,6 +169,7 @@ export async function loadInsightFacts(db: Db, organizationId: string, siteFilte
     return {
       routerBlockable,
       infrastructure,
+      infrastructureTotal,
       ports: { unreadable: unreadable.rows, erroring: erroring.rows },
       access,
       now: new Date(),

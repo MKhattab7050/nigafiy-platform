@@ -34,22 +34,46 @@ export function cleanRecoveryCode(code: string): string {
   return code.trim().toUpperCase().replace(/[\s-]+/g, '');
 }
 
+/** Characters per recovery code: 16 from a 32-letter alphabet = 80 bits (EXT-5; was 8 = 40 bits). */
+const RECOVERY_CHARS = 16;
+
+/**
+ * Recovery codes (EXT-5): 80 random bits each, shown once as XXXX-XXXX-XXXX-XXXX. 256 is a
+ * multiple of the 32-letter alphabet, so `byte % 32` is unbiased.
+ */
 export function generateRecoveryCodes(count = 8): string[] {
   const codes: string[] = [];
   const seen = new Set<string>();
   while (codes.length < count) {
-    const bytes = randomBytes(8);
+    const bytes = randomBytes(RECOVERY_CHARS);
     let chars = '';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < RECOVERY_CHARS; i++) {
       chars += RECOVERY_ALPHABET[bytes[i]! % RECOVERY_ALPHABET.length];
     }
-    const formatted = `${chars.slice(0, 4)}-${chars.slice(4, 8)}`;
+    const formatted = chars.match(/.{4}/g)!.join('-');
     if (!seen.has(formatted)) {
       seen.add(formatted);
       codes.push(formatted);
     }
   }
   return codes;
+}
+
+/**
+ * What is stored for a recovery code: SHA-256 over a version label, the user id and the cleaned
+ * code, so the same code never hashes alike for two users and no shared table can be precomputed.
+ * With 80 random bits per code a fast hash is enough; the plain code is never stored.
+ */
+export function recoveryCodeHash(userId: string, code: string): string {
+  return sha256(`nigafiy-recovery-v2:${userId}:${cleanRecoveryCode(code)}`);
+}
+
+/** Hashes a code may be stored under: the current one, and the 8-character codes issued before EXT-5. */
+function recoveryCandidateHashes(userId: string, code: string): string[] {
+  const clean = cleanRecoveryCode(code);
+  const out = [recoveryCodeHash(userId, code)];
+  if (clean.length === 8) out.push(...new Set([sha256(clean), sha256(code.trim().toUpperCase()), sha256(code.trim())]));
+  return out;
 }
 
 interface MfaSubject {
@@ -190,8 +214,7 @@ mfaRouter.post('/login/mfa', mfaLimiter, async (req, res) => {
 
   let usedRecoveryCodeId: string | null = null;
   if (matchedStep === null) {
-    const clean = cleanRecoveryCode(body.code);
-    const candidateHashes = [...new Set([sha256(clean), sha256(body.code.trim().toUpperCase()), sha256(body.code.trim())])];
+    const candidateHashes = recoveryCandidateHashes(user.id, body.code);
     const recRes = await systemPool.query<{ id: string }>(
       `SELECT id FROM user_recovery_codes WHERE user_id = $1 AND used_at IS NULL AND code_hash = ANY($2) LIMIT 1`,
       [user.id, candidateHashes],
@@ -213,17 +236,23 @@ mfaRouter.post('/login/mfa', mfaLimiter, async (req, res) => {
     throw new AppError(401, 'invalid_mfa_code', 'Invalid verification or recovery code');
   }
 
+  // One-time use is enforced by the UPDATEs themselves (EXT-5): two requests racing with the same
+  // sign-in token, TOTP step or recovery code cannot both succeed; the loser is refused and nothing
+  // of it is kept.
   await withSystem(async (db) => {
-    await db.query(`UPDATE auth_tokens SET used_at = now() WHERE id = $1`, [tokenRow.id]);
+    const tok = await db.query(`UPDATE auth_tokens SET used_at = now() WHERE id = $1 AND used_at IS NULL`, [tokenRow.id]);
+    if (tok.rowCount !== 1) throw new AppError(401, 'invalid_mfa_token', 'Verification session expired or invalid. Sign in again.');
     if (matchedStep !== null) {
-      await db.query(
+      const upd = await db.query(
         `UPDATE users
             SET mfa_failed_attempts = 0, mfa_locked_until = NULL, mfa_last_step = $2, last_login_at = now()
-          WHERE id = $1`,
+          WHERE id = $1 AND (mfa_last_step IS NULL OR mfa_last_step < $2)`,
         [user.id, matchedStep.toString()],
       );
+      if (upd.rowCount !== 1) throw new AppError(401, 'invalid_mfa_code', 'Invalid verification or recovery code');
     } else if (usedRecoveryCodeId) {
-      await db.query(`UPDATE user_recovery_codes SET used_at = now() WHERE id = $1`, [usedRecoveryCodeId]);
+      const used = await db.query(`UPDATE user_recovery_codes SET used_at = now() WHERE id = $1 AND used_at IS NULL`, [usedRecoveryCodeId]);
+      if (used.rowCount !== 1) throw new AppError(401, 'invalid_mfa_code', 'Invalid verification or recovery code');
       await db.query(
         `UPDATE users SET mfa_failed_attempts = 0, mfa_locked_until = NULL, last_login_at = now() WHERE id = $1`,
         [user.id],
@@ -325,7 +354,7 @@ mfaRouter.post('/mfa/confirm', mfaLimiter, async (req, res) => {
     for (const c of recoveryCodes) {
       await db.query(`INSERT INTO user_recovery_codes (user_id, code_hash) VALUES ($1, $2)`, [
         subject.userId,
-        sha256(cleanRecoveryCode(c)),
+        recoveryCodeHash(subject.userId, c),
       ]);
     }
     if (subject.tokenId) {
@@ -417,7 +446,7 @@ mfaRouter.post('/mfa/recovery-codes', requireSession, async (req, res) => {
     for (const c of recoveryCodes) {
       await db.query(`INSERT INTO user_recovery_codes (user_id, code_hash) VALUES ($1, $2)`, [
         ctx.userId,
-        sha256(cleanRecoveryCode(c)),
+        recoveryCodeHash(ctx.userId, c),
       ]);
     }
     await db.query(

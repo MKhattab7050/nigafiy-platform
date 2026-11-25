@@ -101,7 +101,7 @@ export function CheckStatus({
   running: boolean;
   onRun: (() => void) | null;
 }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const failing = runs.some((r) => !r.ok);
   return (
     <Card
@@ -122,7 +122,7 @@ export function CheckStatus({
           ) : (
             <Badge tone="idle">{t('security.scheduleOff')}</Badge>
           )}
-          {check === 'banners' && schedule.due_devices !== undefined && <span className="text-muted">{fill(t('security.dueDevices'), { n: schedule.due_devices })}</span>}
+          {check === 'banners' && schedule.due_devices !== undefined && <span className="text-muted">{fill(tn('security.dueDevices', schedule.due_devices), { n: schedule.due_devices })}</span>}
           {failing && <Badge tone="warn">{t('security.failed')}</Badge>}
           <Link href="/mind/automation" className="text-accent-hover hover:underline">
             {t('security.changeSchedule')}

@@ -255,7 +255,7 @@ hardware: for example 15 of the 16 router drivers (Cisco IOS XE controls include
 config restore (Junos and IOS XE), the agent on Linux and macOS, WebRTC in a real browser, the engine's
 Windows service mode and the MSI / agent installers. Discovery, checks and smart checks ran on a real
 LAN; the Windows agent ran against the real API; one router (Zyxel VMG3625-T50B) was controlled for
-real. The GitHub CI workflow has not run yet. [docs/roadmap/status.md](docs/roadmap/status.md) lists
+real. The GitHub CI workflow (typecheck, lint, tests, build) passes on every push since 2026-11-25. [docs/roadmap/status.md](docs/roadmap/status.md) lists
 exactly what ran for real and what did not.
 
 </details>

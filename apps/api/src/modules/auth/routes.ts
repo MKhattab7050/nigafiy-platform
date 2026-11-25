@@ -25,6 +25,29 @@ const credentialLimiter = rateLimit({
   message: { error: { code: 'rate_limited', message: 'Too many attempts. Wait a minute and try again.' } },
 });
 
+/**
+ * Per-account throttle on failed sign-ins, from every address together (the per-IP limiter above
+ * does not stop a password guesser spread over many addresses). Only failures count
+ * (skipSuccessfulRequests), the window is 15 minutes, and the answer is the same generic 429 for a
+ * known or unknown email. Lockout trade-off: someone who knows an email can spend this budget and
+ * keep that account from signing in WITH A PASSWORD for up to 15 minutes; existing sessions and
+ * single sign-on are unaffected, and the budget is large enough that a person mistyping never
+ * reaches it. EXT-1 in docs/security/review-2026-11.md.
+ */
+export function accountLoginLimiter(limit: number, windowMs = 15 * 60_000) {
+  return rateLimit({
+    store: limiterStore('auth:account'),
+    windowMs,
+    limit,
+    skipSuccessfulRequests: true,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    keyGenerator: (req) => `acct:${sha256(String((req.body as { email?: unknown } | undefined)?.email ?? '').trim().toLowerCase())}`,
+    message: { error: { code: 'rate_limited', message: 'Too many failed sign-ins for this account. Wait 15 minutes and try again.' } },
+  });
+}
+const accountLimiter = accountLoginLimiter(env.NODE_ENV === 'test' ? 10_000 : 20);
+
 const email = z.string().trim().toLowerCase().pipe(z.email().max(254));
 const password = z.string().min(10, 'Use at least 10 characters').max(200);
 
@@ -87,7 +110,7 @@ authRouter.post('/register', credentialLimiter, async (req, res) => {
   res.status(201).json({ ok: true });
 });
 
-authRouter.post('/login', credentialLimiter, async (req, res) => {
+authRouter.post('/login', credentialLimiter, accountLimiter, async (req, res) => {
   requireCsrfHeader(req);
   const body = parse(loginSchema, req.body);
   const { rows } = await systemPool.query<{
@@ -104,7 +127,8 @@ authRouter.post('/login', credentialLimiter, async (req, res) => {
   // Always run one password verification so response time does not reveal whether the account exists.
   const valid = await verifyPassword(body.password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
   if (!user || !valid) {
-    logger.warn({ ip: req.ip }, 'failed login');
+    // Which account is being guessed, without writing the address itself into the log.
+    logger.warn({ ip: req.ip, account: sha256(body.email).slice(0, 16), known: Boolean(user) }, 'failed login');
     throw new AppError(401, 'invalid_credentials', 'Email or password is incorrect');
   }
 
@@ -475,6 +499,19 @@ authRouter.post('/invitations/:token/accept', credentialLimiter, async (req, res
     const inv = invRes.rows[0];
     if (!inv) {
       throw new AppError(404, 'invitation_not_found', 'This invitation link is invalid or has expired');
+    }
+    // SEC-04: an administrator (or owner) invitation counts only while the person who sent it is an
+    // active owner here (covers invitations an administrator sent before only owners could).
+    if (inv.role === 'admin' || inv.role === 'owner') {
+      const inviter = await db.query(
+        `SELECT 1 FROM invitations i
+           JOIN memberships m ON m.organization_id = i.organization_id AND m.user_id = i.invited_by
+          WHERE i.id = $1 AND m.role = 'owner' AND m.status = 'active'`,
+        [inv.id],
+      );
+      if (!inviter.rowCount) {
+        throw new AppError(403, 'invitation_needs_owner', 'This administrator invitation was not sent by an owner of the organization. Ask an owner for a new one.');
+      }
     }
 
     const existingRes = await db.query<{ id: string; email: string; password_hash: string; mfa_secret_enc: string | null }>(

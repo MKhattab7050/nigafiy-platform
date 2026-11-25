@@ -4,7 +4,7 @@ import { Cpu, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { EndpointComplianceStatus, EndpointCreated, EndpointEnrollmentSuggestion, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
-import { Async, Button, Card, CopyBlock, ErrorNote, Field, InferredBadge, Input, Modal, Notice, PageHeader, Select, SkeletonBlock, SuggestedBadge } from '@/components/ui';
+import { Async, Button, Card, CopyBlock, ErrorNote, Field, InferredBadge, Input, Modal, Notice, PageHeader, Select, SkeletonBlock, SuggestedBadge, useConfirm } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { fill, useI18n } from '@/lib/i18n';
@@ -15,6 +15,7 @@ import { AndroidEnrollment } from '../components/android/android-enroll';
 import { androidText } from '../components/android/android-text';
 
 export function EndpointsScreen() {
+  const confirm = useConfirm();
   const { locale, t } = useI18n();
   const tx = endpointsText(locale);
   const { sites, siteId, can } = useApp();
@@ -105,7 +106,7 @@ export function EndpointsScreen() {
   }
 
   async function revokeEndpoint(id: string) {
-    if (!window.confirm(tx.revokeConfirm)) return;
+    if (!(await confirm(tx.revokeConfirm, { destructive: true }))) return;
     setBusy(`revoke-${id}`);
     setError(null);
     try {

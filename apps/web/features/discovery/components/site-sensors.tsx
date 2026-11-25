@@ -4,7 +4,7 @@ import { ArrowRight, Plus, ScanSearch } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { Collector, CollectorCreated, Site } from '@nigafiy/shared-types';
-import { Badge, Button, ErrorNote, Field, Input } from '@/components/ui';
+import { Badge, Button, ErrorNote, Field, Input, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
@@ -36,6 +36,7 @@ export function SiteSensors({
   onToken: (c: CollectorCreated) => void;
   manage: boolean;
 }) {
+  const confirm = useConfirm();
   const { t, locale } = useI18n();
   const { can } = useApp();
   const admin = can('admin') && manage;
@@ -120,7 +121,7 @@ export function SiteSensors({
                   </Button>
                 )}
                 {c.status !== 'revoked' && admin && (
-                  <Button size="sm" variant="danger" onClick={() => window.confirm(t('discovery.confirmRevoke')) && void act(c.id, () => api(`/collectors/${c.id}/revoke`, { method: 'POST' }))}>
+                  <Button size="sm" variant="danger" onClick={async () => (await confirm(t('discovery.confirmRevoke'), { destructive: true, confirmLabel: t('discovery.revoke') })) && void act(c.id, () => api(`/collectors/${c.id}/revoke`, { method: 'POST' }))}>
                     {t('discovery.revoke')}
                   </Button>
                 )}

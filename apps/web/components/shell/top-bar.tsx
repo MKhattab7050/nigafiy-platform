@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import type { GuideSearchIndex } from '@/features/guide/search';
 import type { SearchHit, SearchHitKind, SearchResponse } from '@nigafiy/shared-types';
 import { type ApiError, api, qs } from '@/lib/api';
-import { useApp } from '@/lib/app';
+import { useLive, useSites } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';
 // The component file, not the feature index: the top bar must not pull the guide's content into every page.
 import { HelpButton } from '@/features/guide/components/help-button';
@@ -21,7 +21,8 @@ const SEARCH_GROUPS: SearchHitKind[] = ['device', 'endpoint', 'incident', 'switc
 export function TopBar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
   const { t, locale, setLocale } = useI18n();
-  const { sites, siteId, setSiteId, live } = useApp();
+  const { sites, siteId, setSiteId } = useSites();
+  const live = useLive();
 
   // Global search modal state
   const [searchOpen, setSearchOpen] = useState(false);

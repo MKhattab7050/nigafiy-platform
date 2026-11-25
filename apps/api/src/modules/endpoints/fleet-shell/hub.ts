@@ -9,6 +9,7 @@ import { logger } from '../../../infrastructure/logger.ts';
 import { onNotification } from '../../../infrastructure/pg-listen.ts';
 import { readCookie, resolveSessionToken, SESSION_COOKIE } from '../../auth/index.ts';
 import { authenticateAgentCredential } from '../agent/auth.ts';
+import { CLOSE_POLICY, DEFAULT_WS_LIMITS, MessageRate, heartbeat, type WsLimits } from '../../../common/ws-guard.ts';
 import { openTranscriptKey, sealChunk } from './transcript.ts';
 import { endShell, SHELL_CHANNEL } from './shells.ts';
 import { shellAgentMessage, shellOperatorMessage } from './schema.ts';
@@ -47,6 +48,8 @@ const SCROLLBACK = 64 << 10;
 /** base64 characters per pg_notify piece (payload limit 8000 bytes). */
 const NOTIFY_PIECE = 6000;
 const ROLE_RANK: Record<Role, number> = { viewer: 0, technician: 1, admin: 2, owner: 3 };
+/** Operator sockets (browser tabs) of one shell. */
+const MAX_OPERATOR_SOCKETS = 4;
 
 interface Chunk {
   direction: 'i' | 'o' | 'e';
@@ -86,8 +89,16 @@ function toBuffer(data: RawData): Buffer {
 }
 
 export class ShellHub {
+  /** The agent sends the shell's output. */
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: MAX_OUTPUT_MESSAGE });
+  /** The operator sends keystrokes (a paste is one message) and resizes (EXT-2). */
+  private readonly operatorWss = new WebSocketServer({ noServer: true, maxPayload: MAX_INPUT_MESSAGE });
   private readonly rooms = new Map<string, Room>();
+  readonly limits: WsLimits;
+
+  constructor(limits: Partial<WsLimits> = {}) {
+    this.limits = { ...DEFAULT_WS_LIMITS, ...limits };
+  }
   private unsubscribe: (() => void) | null = null;
   private timer: NodeJS.Timeout | null = null;
 
@@ -120,10 +131,11 @@ export class ShellHub {
     return r ? { agent: r.agent !== null, operators: r.operators.size, holder: r.key !== null } : null;
   }
 
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, url: URL, reject: (socket: Duplex, status: number, code: string, message: string) => void): void {
+  /** Settles when the socket was accepted or refused. */
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, url: URL, reject: (socket: Duplex, status: number, code: string, message: string) => void): Promise<void> {
     const op = OPERATOR_PATH.exec(url.pathname);
     const task = op ? this.acceptOperator(req, socket, head, url, op[1]!) : this.acceptAgent(req, socket, head, url);
-    task.catch((err: unknown) => {
+    return task.catch((err: unknown) => {
       if (err instanceof AppError) reject(socket, err.status, err.code, err.message);
       else {
         logger.error({ err }, 'remote shell upgrade failed');
@@ -132,8 +144,14 @@ export class ShellHub {
     });
   }
 
-  private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<WebSocket> {
-    return new Promise((resolve) => this.wss.handleUpgrade(req, socket, head, (ws) => resolve(ws)));
+  /** Accepts the socket and starts its heartbeat (a socket that stops answering pings is ended). */
+  private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, server: WebSocketServer = this.wss): Promise<WebSocket> {
+    return new Promise((resolve) =>
+      server.handleUpgrade(req, socket, head, (ws) => {
+        heartbeat(ws, this.limits.pingMs);
+        resolve(ws);
+      }),
+    );
   }
 
   private room(s: { public_id: string; id: string; organization_id: string; endpoint_id: string; max_transcript_bytes: number; idle_timeout_s: number }): Room {
@@ -380,7 +398,9 @@ export class ShellHub {
     if (s.state === 'closed') throw new AppError(410, 'shell_closed', 'This shell has ended');
     // Only the admin who opened it types into it.
     if (s.operator_id !== who.userId) throw new AppError(403, 'not_shell_operator', 'Only the admin who opened this shell can use it');
-    const ws = await this.upgrade(req, socket, head);
+    // Connection count (EXT-2): a few tabs of the same shell, not hundreds.
+    if ((this.rooms.get(s.public_id)?.operators.size ?? 0) >= MAX_OPERATOR_SOCKETS) throw new AppError(429, 'too_many_shell_windows', 'This shell is already open in too many windows');
+    const ws = await this.upgrade(req, socket, head, this.operatorWss);
     const r = this.room(s);
     r.operators.add(ws);
     ws.send(JSON.stringify({ t: 'state', state: s.state, shell: s.shell, pty: s.pty, agent: r.agent !== null }));
@@ -389,8 +409,14 @@ export class ShellHub {
       for (const b of r.scrollback) ws.send(b, { binary: true });
     } else void this.publish(`who|${r.publicId}`);
 
+    const rate = new MessageRate(this.limits.softPerSecond, this.limits.hardPerSecond);
     ws.on('message', (data, isBinary) => {
-      if (r.ending) return;
+      const verdict = rate.take();
+      if (verdict === 'close') {
+        ws.close(CLOSE_POLICY, 'too many messages');
+        return;
+      }
+      if (r.ending || verdict === 'drop') return;
       const buf = toBuffer(data);
       if (isBinary) {
         if (buf.length <= MAX_INPUT_MESSAGE) this.input(r, buf);

@@ -3,6 +3,7 @@ import type { EndpointCommand, EndpointDetail, RemoteFileEntry, RemoteFileRespon
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { formatBytes, arrayBufferToBase64, base64ToUint8Array } from './file-utils';
+import { useConfirm } from '@/components/ui';
 
 export interface RemoteFileManagerProps {
   ep: EndpointDetail;
@@ -35,6 +36,7 @@ async function sha256Hex(buf: ArrayBuffer): Promise<string | null> {
 
 /** State and file operations of the remote file manager; the component only renders. */
 export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: RemoteFileManagerProps) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const isAr = locale === 'ar';
 
@@ -273,7 +275,7 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
     const msg = isAr
       ? `تحذير: هل أنت متأكد من حذف ${paths.length} عنصر نهائياً من الجهاز البعيد؟`
       : `Confirm permanent deletion of ${paths.length} item(s) on the remote endpoint?`;
-    if (!window.confirm(msg)) return;
+    if (!(await confirm(msg, { destructive: true }))) return;
     setBusy('delete');
     setError(null);
     try {

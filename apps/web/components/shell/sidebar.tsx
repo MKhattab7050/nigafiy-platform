@@ -8,7 +8,7 @@ import { usePathname } from 'next/navigation';
 import { GuideNavLink } from '@/features/guide/components/help-button';
 import { type Feature, type NavBadge, isActiveRoute } from '@/features/registry';
 import { api } from '@/lib/api';
-import { useApp, useQuery } from '@/lib/app';
+import { useQuery, useSession, useSites } from '@/lib/app';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import { programById } from '@/lib/programs';
 import { useProgramId } from '@/lib/programs-context';
@@ -22,7 +22,7 @@ const RAIL_LABEL =
 
 function BadgeCount({ badge }: { badge: NavBadge }) {
   const { t } = useI18n();
-  const { siteId } = useApp();
+  const { siteId } = useSites();
   const query = useQuery<unknown>(badge.path(siteId), badge.topics, 60_000);
   const count = query.data === undefined ? 0 : badge.count(query.data);
   if (!count) return null;
@@ -88,7 +88,7 @@ function toggleRail() {
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const { t, locale } = useI18n();
-  const { me, can, signOut } = useApp();
+  const { me, can, signOut } = useSession();
   const program = programById(useProgramId());
   const visible = program.sections.filter((f) => !f.minRole || can(f.minRole));
   const siblings = program.sections.map((f) => f.route);

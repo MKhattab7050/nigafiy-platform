@@ -490,6 +490,30 @@ describe('fleet permission profiles, groups and access policy (API)', () => {
     expect(all.rows.some((r) => String(r.m).includes(ok.body.step_up_token))).toBe(false);
   });
 
+  it('SEC-04: an admin cannot make a second admin of their own to approve their own request', async () => {
+    const owner = await newAccount('approval-sec04');
+    const { epId } = await onlineEndpoint(owner);
+    await groupFor(owner, epId, { access_mode: 'unattended', approval_required: true, approval_ttl_minutes: 5 });
+    const adm = await addMember(owner, 'admin');
+    const accomplice = await addMember(owner, 'technician');
+    const accompliceId = (await systemPool.query<{ id: string }>(`SELECT id FROM users WHERE lower(email) = $1`, [accomplice.email])).rows[0]!.id;
+
+    // The admin cannot invite or promote the accomplice to admin (only an owner can).
+    const inv = await adm.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: `alt-${Math.random().toString(36).slice(2, 8)}@example.test`, role: 'admin' });
+    expect(inv.status).toBe(403);
+    const promote = await adm.agent.patch(`/api/v1/team/members/${accompliceId}`).set(CSRF).send({ role: 'admin' });
+    expect(promote.status).toBe(403);
+    expect(promote.body.error.code).toBe('owner_required');
+
+    // So the request waits for a real second admin: neither the requester nor the technician decides it.
+    const s = await start(adm, epId);
+    expect(s.body.session.state).toBe('waiting_approval');
+    const fsId: string = s.body.session.fleet_session_id;
+    expect((await adm.agent.post(`/api/v1/fleet/approvals/${fsId}/approve`).set(CSRF).send({})).body.error.code).toBe('approval_self');
+    expect((await accomplice.agent.post(`/api/v1/fleet/approvals/${fsId}/approve`).set(CSRF).send({})).status).toBe(403);
+    expect((await systemPool.query<{ approval_state: string }>(`SELECT approval_state FROM fleet_sessions WHERE id = $1`, [fsId])).rows[0]!.approval_state).toBe('pending');
+  });
+
   it('second-admin approval: self-approval refused, approve, deny, and expiry', async () => {
     const a = await newAccount('approval');
     const { epId, cred } = await onlineEndpoint(a);

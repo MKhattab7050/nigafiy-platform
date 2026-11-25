@@ -22,7 +22,7 @@ const PLATFORMS: EndpointPlatform[] = ['windows', 'linux', 'macos'];
 
 /** Dashboard: managed computers — reachability, compliance split and platform mix (GET /endpoints). */
 export default function EndpointsWidget() {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const tx = endpointsText(locale);
   const { siteId } = useApp();
   const query = useQuery<{ items: EndpointSummary[] }>(`/endpoints${qs({ site_id: siteId })}`, ['devices'], 30_000);
@@ -34,8 +34,8 @@ export default function EndpointsWidget() {
       const bad = active.filter((e) => e.compliance_status === 'non_compliant').length;
       const check = active.filter((e) => e.compliance_status === 'attention').length;
       return [
-        ...(bad ? [{ id: 'endpoints-noncompliant', tone: 'crit' as const, text: fill(t('endpoints.attn.nonCompliant'), { count: bad }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
-        ...(check ? [{ id: 'endpoints-attention', tone: 'warn' as const, text: fill(t('endpoints.attn.attention'), { count: check }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
+        ...(bad ? [{ id: 'endpoints-noncompliant', tone: 'crit' as const, text: fill(tn('endpoints.attn.nonCompliant', bad), { count: bad }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
+        ...(check ? [{ id: 'endpoints-attention', tone: 'warn' as const, text: fill(tn('endpoints.attn.attention', check), { count: check }), action: { label: t('endpoints.attn.review'), href: '/fleet/endpoints' } }] : []),
       ];
     }),
   );
