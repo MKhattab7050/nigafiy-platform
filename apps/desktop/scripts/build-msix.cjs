@@ -144,7 +144,9 @@ async function main() {
     fs.writeFileSync(path.join(d, 'Resources.resw'), msix.renderResw(o.product, lang));
   }
   await writeAssets(stage, path.join(REPO, 'packages', 'brand', 'svg', p.icon));
-  const run = (exe, args) => execFileSync(path.join(bin, exe), args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
+  // MakeAppx prints one line per file (over 10 000 for the desktop app): Node's default 1 MB buffer
+  // ends the run with ENOBUFS, so the output gets room and only its end is shown on an error.
+  const run = (exe, args) => execFileSync(path.join(bin, exe), args, { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
   const priDir = path.join(DESKTOP, 'build', 'msix', `${o.product}-pri`);
   fs.rmSync(priDir, { recursive: true, force: true });
   fs.mkdirSync(priDir, { recursive: true });
@@ -182,7 +184,7 @@ async function main() {
 if (require.main === module) {
   main().catch((err) => {
     console.error(`[msix] ${err.stderr ? String(err.stderr).trim() || err.message : err.message}`);
-    if (err.stdout) console.error(String(err.stdout).trim());
+    if (err.stdout) console.error(String(err.stdout).trim().split(/\r?\n/).slice(-40).join('\n'));
     process.exit(1);
   });
 }
