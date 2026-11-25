@@ -68,6 +68,8 @@ func Clean(s string) string {
 		for !utf8.ValidString(s) {
 			s = s[:len(s)-1]
 		}
+		// The cut can land after a space ("…TV  rest"): trim again (found by FuzzClean).
+		s = strings.TrimRightFunc(s, unicode.IsSpace)
 	}
 	return s
 }
