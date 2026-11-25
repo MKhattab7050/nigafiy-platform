@@ -36,8 +36,11 @@ const (
 
 // RestoreMethod returns the restore method for a driver, or "" when restore is not supported.
 func RestoreMethod(driver string) string {
-	if driver == junosDriverID {
+	switch driver {
+	case junosDriverID:
 		return RestoreMethodJunos
+	case iosxeDriverID:
+		return RestoreMethodIOSXE
 	}
 	return ""
 }
@@ -63,6 +66,8 @@ type RestoreResult struct {
 	Confirmed     bool
 	RolledBack    bool
 	Config        string
+	// ReadBackCommands are the commands that read Config back (reported with the verification backup).
+	ReadBackCommands []string
 }
 
 func (r *RestoreResult) step(s string) { r.Steps = append(r.Steps, s) }
@@ -129,7 +134,7 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	}
 	res.Method = RestoreMethod(driver)
 	if res.Method == "" {
-		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos, with commit confirmed)")
+		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed and Cisco IOS XE with configure replace and a rollback timer)")
 	}
 	cfg := strings.TrimSpace(strings.ReplaceAll(spec.Config, "\r\n", "\n"))
 	if cfg == "" || len(cfg) > maxRestoreConfigLength || !validRestoreText(cfg) {
@@ -146,6 +151,11 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	if port <= 0 || port > 65535 {
 		port = defaultPort
 	}
+	if res.Method == RestoreMethodIOSXE {
+		res.ReadBackCommands = []string{iosxeReadBack}
+		return restoreIOSXE(ctx, addr, port, t, cfg, minutes, opts, res)
+	}
+	res.ReadBackCommands = []string{"show configuration | no-more"}
 	ctx, cancel := context.WithTimeout(ctx, opts.Budget+opts.Budget/2)
 	defer cancel()
 

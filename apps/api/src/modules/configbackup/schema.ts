@@ -109,6 +109,10 @@ export const restoreRequestSchema = z
     reason: z.string().trim().min(10).max(500),
     /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`). */
     confirm_minutes: z.number().int().min(1).max(10).default(5),
+    /** Restore a version whose host name differs from the device's latest backup (second confirmation). */
+    force_other_device: z.boolean().default(false),
+    /** The version's host name, typed, when force_other_device is set. */
+    confirm_other_device: z.string().max(200).optional(),
   })
   .strict();
 export type RestoreRequest = z.infer<typeof restoreRequestSchema>;

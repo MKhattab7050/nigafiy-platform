@@ -175,7 +175,7 @@ the Zyxel row, none of this has run on real hardware.
 | fortigate | FortiOS 6.4–7.4 REST API | via reservation (description) | Y (when SSIDs exist) | Y | Y | FortiOS CLI reference `system dhcp server` → `reserved-address` (`description`); `wireless-controller vap`; `system interface` `status up/down` (Fortinet Community tip on disabling an SSID); `/api/v2/monitor/wifi/client` |
 | pfsense | pfSense CE 2.7 / Plus 23.09+ with pfSense-pkg-RESTAPI v2 | via reservation (host name) | – | Y | Y | pfrest `Models/DHCPServerStaticMapping.inc` (`hostname` with HostnameValidator, `descr`), PATCH `/api/v2/services/dhcp_server/static_mapping`; the REST API has no wireless endpoints |
 | opnsense | 24.1+ (Kea) | via reservation (host name) | – | Y | Y on **26.1+**, – before | Kea `setReservation/{uuid}` (`reservation.hostname`); OPNsense 26.1 release notes (Port Forward → Destination NAT, MVC/API), `DNatController` and `OPNsense/Firewall/DNat.xml` (docs.opnsense.org development/api/core/firewall.html); no wireless API |
-| ciscoxe | IOS XE RESTCONF | – | – | – | – | read-only by design |
+| ciscoxe | IOS XE **16.6+** RESTCONF (native YANG) | via reservation (`client-name`) | – (no radios; Catalyst 9800 out of scope) | Y | Y (needs NAT set up by the administrator) | Cisco Programmability Configuration Guide (RESTCONF), YangModels/yang `vendor/cisco/xe` (Cisco-IOS-XE-dhcp, -nat); see "Built: X1" |
 
 ## Built: R1 (2026-11-24)
 
@@ -246,7 +246,7 @@ Every R2 entry is exercised against a protocol test double only; none of it has 
 | zte | – | – | no per-device speed page (ISP TR-069 QoS); time rules not documented |
 | huawei | – | – | no per-device speed limit in the web API; parental-control time rules differ per ISP build |
 | huaweilte | – | – | HiLink has no per-device speed limit or time rule |
-| ciscoxe | – | – | read-only by design |
+| ciscoxe | Y | Y | rate: Cisco-IOS-XE-policy `policy-map NIGAFIY-RL-IN/OUT` with `police` per device class (ACL-matched), service-policy on the LAN interface. Schedule: `time-range NIGAFIY-S-<MAC>` (`periodic`) bound to a deny entry of `NIGAFIY-LAN-IN`. See "Built: X1" |
 
 ## Built: R2 (2026-11-24)
 
@@ -301,3 +301,59 @@ floating quick block rule with a schedule is evaluated before the LAN rules on t
 release; OpenWrt — that `luci.setInitAction` / `rc.init` restart nft-qos under the router's rpcd
 ACL; ASUS — how firmware treats the `W1…` rules of a device whose ENABLE is 1 (the format is taken
 from the web UI JavaScript, not from the firewall C code).
+
+## Built: X1 Cisco IOS XE (2026-11-25)
+
+Before X1 the Cisco IOS XE driver (`internal/router/ciscoxe`) was read-only. It now offers every
+control the platform can do safely, all through **RESTCONF** (RFC 8040) on the Cisco-IOS-XE-native
+YANG model. No SSH CLI fallback was needed: every control has a native model. All of it is **verified
+only against a stateful RESTCONF protocol double** (`controls_rw_test.go`, pinned TLS,
+`httptest.NewTLSServer`) and has **never run on a real IOS XE device**.
+
+Sources: Cisco "Programmability Configuration Guide, Cisco IOS XE" (RESTCONF chapter: PATCH merges,
+PUT replaces one list entry, DELETE removes it, each request one validated transaction), the published
+models in github.com/YangModels/yang `vendor/cisco/xe/<release>` (Cisco-IOS-XE-native, -acl, -dhcp,
+-nat, -policy, -arp-oper, -dhcp-oper) and `cisco-ia:save-config` (= `write memory`), IOS XE 16.x/17.x.
+
+| Control | Mechanism (file) |
+|---|---|
+| Block / unblock | `ip access-list extended NIGAFIY-LAN-IN`, applied inbound on the LAN interface (`acl.go`). Per device: a remark naming its MAC and `deny ip host <address> any`; the ACL always ends with `permit ip any any` and is written (PUT, one transaction) **before** it is attached, so attaching it never cuts the LAN off. IOS XE ACLs match IPv4 addresses, not MACs, on a routed interface: the block follows the device's current address, so the note asks for a reservation first |
+| Schedule | `time-range NIGAFIY-S-<MAC>` with `periodic <day> hh:mm to hh:mm` entries bound to the device's deny entry. Router local time; IOS has no 24:00, so a window to midnight ends at 23:59; windows across midnight are split (`router.SplitWindows`) |
+| Rate limit | Per direction: ACL `NIGAFIY-RL-<MAC>-UP/DN`, `class-map match-all` on it, `policy-map NIGAFIY-RL-IN` (service-policy input, upload) / `NIGAFIY-RL-OUT` (output, download) with `police <bit/s>` (`qos.go`). A platform that refuses the policy in a direction is reported and the change is not kept |
+| Reservation | `ip dhcp pool NIGAFIY-<MAC>` manual binding: `host <address> <LAN mask>`, `client-identifier 01<MAC>` (`dhcp.go`). A client that sends another identifier (a DUID) does not match: documented IOS behaviour, stated in the note |
+| Rename | `client-name` of the device's Nigafiy pool, only when a reservation exists (`requires: reservation`, as pfSense/OPNsense/FortiGate); host-name characters only |
+| Port forward | `ip nat inside source static {tcp\|udp} <LAN address> <port> <outside address> <port>` (`nat.go`), one port per rule, "both" = a tcp and a udp entry in one transaction. Offered only when `ip nat inside` is on the LAN interface and `ip nat outside` on an interface with a static IPv4 address: Nigafiy never turns NAT on. Static NAT has no description, so every entry is shown as the administrator's and removal deletes exactly the entry the operator saw (keys re-checked) |
+| Wi-Fi | not supported: IOS XE routers have no radios; wireless runs on a separate Catalyst 9800 controller (out of scope). EN/AR reason `routers.wifi.ciscoXeNote` |
+| Reboot | not offered on purpose (restarting an enterprise router drops every routed network at once) |
+
+Safety rules of every write:
+- every write capability needs IOS XE **16.6 or later** (RESTCONF configuration writes); an older or
+  unparsable release turns them all `supported: false` with a note naming the reported version, and the
+  driver refuses with `ErrUnsupported` before sending anything; a missing YANG model is reported the same way;
+- only objects named `NIGAFIY-…` are created, replaced or deleted; the administrator's ACLs, policy maps,
+  pools and NAT entries are read, never changed; a LAN interface that already carries the administrator's
+  inbound ACL (block, schedule) or service policy (rate limit) is refused, with the name in the note;
+- the LAN interface is the one whose primary address is the router address; when none matches, every
+  write is `supported: false` with that reason;
+- every change is read back; `write memory` (`cisco-ia:save-config`) runs **only after** the read-back
+  matched; a failed save is reported as an error ("the change is active but write memory failed; it is
+  lost at the next restart unless saved"), never hidden;
+- the shared rules still apply (multicast / zero MACs, management ports, LAN-subnet checks), plus the
+  platform's approval, role (admin), audit row and undo text for each change, unchanged.
+
+Tests (`controls_rw_test.go`, `controls_test.go`): block/unblock over the ACL (attached inbound, saved
+once, blocking or unblocking twice changes nothing), refusals with nothing written (the administrator's
+ACL on the LAN, IOS XE 16.3, a release without the time-range model), a failing save reported; a
+schedule across midnight; rate limits in both directions, a platform refusing the output policy (the
+half-made class is removed, nothing saved) and the administrator's service policy; reservation and
+rename (rename without a reservation is `not_found`, an address already bound refused, the
+administrator's binding never removed); static NAT port forwards and a router without NAT; settings
+without the write models and the settings error paths.
+
+Config restore for IOS XE (`configure replace … revert trigger error timer`) is described in
+`docs/features/config-backup.md`.
+
+Not verified and needing a real device: every X1 control. Specific unknowns: which platforms accept
+`police` in an output policy on the LAN interface (the driver reports a refusal and keeps nothing);
+whether the JSON a real device returns uses exactly the key names of the published models on every
+release (the protocol double follows the models, not captured device output).

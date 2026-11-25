@@ -79,7 +79,7 @@ func (f *cxControls) driver(t *testing.T, pin, password string) *Driver {
 	return d
 }
 
-func TestSettingsReadOnly(t *testing.T) {
+func TestSettingsWithoutWriteModels(t *testing.T) {
 	f := newCxControls(t)
 	d := f.driver(t, "", cxPassword)
 	s, err := d.Settings(context.Background())
@@ -89,22 +89,18 @@ func TestSettingsReadOnly(t *testing.T) {
 	if s.Overview == nil || s.Overview.UptimeSeconds == nil || *s.Overview.UptimeSeconds < 7000 || len(s.Overview.WAN) != 1 || s.Overview.WAN[0].IPv4 != "41.20.30.40" {
 		t.Fatalf("unexpected overview: %+v", s.Overview)
 	}
-	if s.Reservations != nil || s.PortForwards != nil || s.WiFi != nil {
-		t.Fatalf("the read-only driver must not report write-side data: %+v", s)
+	if len(s.Reservations) != 0 || len(s.PortForwards) != 0 || s.WiFi != nil {
+		t.Fatalf("a router without DHCP pools or NAT reports none: %+v", s)
 	}
 	raw, _ := json.Marshal(s)
 	if strings.Contains(string(raw), cxPassword) {
 		t.Fatal("Settings leaked the password")
 	}
-
-	// Read-only by design: no write interface, every write capability refused with a reason, and
-	// nothing but GET requests reach the router.
+	// No Wi-Fi and no reboot by design; on a release without the interface model every write
+	// capability is refused with that reason, and nothing but GET requests reach the router.
 	for name, ok := range map[string]bool{
-		"ReservationManager": func() bool { _, ok := any(d).(router.ReservationManager); return ok }(),
-		"PortForwarder":      func() bool { _, ok := any(d).(router.PortForwarder); return ok }(),
-		"WiFiController":     func() bool { _, ok := any(d).(router.WiFiController); return ok }(),
-		"Rebooter":           func() bool { _, ok := any(d).(router.Rebooter); return ok }(),
-		"Renamer":            func() bool { _, ok := any(d).(router.Renamer); return ok }(),
+		"WiFiController": func() bool { _, ok := any(d).(router.WiFiController); return ok }(),
+		"Rebooter":       func() bool { _, ok := any(d).(router.Rebooter); return ok }(),
 	} {
 		if ok {
 			t.Errorf("the IOS XE driver must not implement %s", name)
@@ -116,17 +112,17 @@ func TestSettingsReadOnly(t *testing.T) {
 	}
 	for _, c := range caps {
 		switch c.Capability {
-		case router.CapReservations, router.CapPortForward, router.CapWiFi, router.CapReboot, router.CapRename, router.CapBlock:
+		case router.CapReservations, router.CapPortForward, router.CapWiFi, router.CapReboot, router.CapRename, router.CapBlock, router.CapRateLimit, router.CapSchedule:
 			if c.Supported || c.Note == "" {
 				t.Errorf("%s must be unsupported with a reason, got %+v", c.Capability, c)
 			}
 		}
 	}
-	if _, err := d.Block(context.Background(), "aa:bb:cc:00:00:01"); !errors.Is(err, router.ErrUnsupported) {
-		t.Fatalf("Block: want ErrUnsupported, got %v", err)
+	if _, err := d.Block(context.Background(), "aa:bb:cc:00:00:01"); !errors.Is(err, router.ErrUnsupported) && !errors.Is(err, router.ErrNotFound) {
+		t.Fatalf("Block: want ErrUnsupported/ErrNotFound, got %v", err)
 	}
 	if f.writes.Load() != 0 {
-		t.Fatalf("the read-only driver sent %d write requests", f.writes.Load())
+		t.Fatalf("the driver sent %d write requests", f.writes.Load())
 	}
 }
 
