@@ -1043,8 +1043,8 @@ export interface ToolRun {
 // ── Phase 3 & 4: Universal Endpoint Management & Remote Administration ──────
 
 export type EndpointStatus = 'pending' | 'active' | 'revoked';
-/** Platforms the Nigafiy endpoint agent runs on. iOS/Android are not supported. */
-export type EndpointPlatform = 'windows' | 'linux' | 'macos';
+/** Platforms a Nigafiy agent runs on (Android: agents/android-agent, migration 045). iOS is not supported. */
+export type EndpointPlatform = 'windows' | 'linux' | 'macos' | 'android';
 export type EndpointComplianceStatus = 'compliant' | 'non_compliant' | 'attention' | 'unknown';
 export type EndpointCommandKind =
   | 'refresh_inventory'
@@ -1057,7 +1057,8 @@ export type EndpointCommandKind =
   | 'rd_input'
   | 'software_action'
   | 'fetch_logs'
-  | 'diagnostic_command';
+  | 'diagnostic_command'
+  | AndroidCommandKind;
 export type EndpointCommandStatus = 'pending' | 'delivered' | 'completed' | 'failed' | 'expired';
 
 export type CapabilityState =
@@ -1093,7 +1094,20 @@ export interface EndpointSecurityPosture {
   measured_at?: string;
 }
 
-export type EndpointComplianceCheck = 'firewall' | 'antivirus' | 'disk_encryption' | 'os_updates' | 'sip' | 'gatekeeper' | 'disk_space' | 'local_admins';
+export type EndpointComplianceCheck =
+  | 'firewall'
+  | 'antivirus'
+  | 'disk_encryption'
+  | 'os_updates'
+  | 'sip'
+  | 'gatekeeper'
+  | 'disk_space'
+  | 'local_admins'
+  // Android (migration 045)
+  | 'screen_lock'
+  | 'developer_options'
+  | 'usb_debugging'
+  | 'unknown_sources';
 /** pass / fail / warn judge one subject; unknown = could not be measured (reason given); info = context only. */
 export type EndpointEvidenceState = 'pass' | 'fail' | 'warn' | 'unknown' | 'info';
 
@@ -1632,6 +1646,8 @@ export interface EndpointSummary {
   user_sessions: FleetUserSession[];
   /** Safe mode and the safe-boot flag, as the agent reported them. */
   boot_state: FleetBootState;
+  /** Android only (migration 045): what the Android agent reported; null for other platforms or before the first heartbeat. */
+  android: EndpointAndroidState | null;
   /** The signed-in operator marked this computer as a favourite. */
   favourite?: boolean;
   /** The signed-in operator's last session with this computer. */
@@ -2874,4 +2890,88 @@ export interface FleetPatchCatalogItem extends FleetPatchUpdate {
   source: FleetPatchSource;
   missing_on: number;
   approvals: FleetPatchApproval[];
+}
+
+// ── Android (migration 045, docs/features/android.md) ──
+
+/** regular: an installed app (inventory and checks); device_owner: the phone's Device Policy Controller. */
+export type AndroidMode = 'regular' | 'device_owner';
+export type AndroidPasswordComplexity = 'none' | 'low' | 'medium' | 'high';
+
+/** endpoints.android: what the agent reported in its last heartbeat (absent keys were not measured). */
+export interface EndpointAndroidState {
+  mode: AndroidMode;
+  sdk_int: number;
+  release?: string;
+  security_patch?: string;
+  battery_pct?: number;
+  charging?: boolean;
+  network?: 'wifi' | 'cellular' | 'ethernet' | 'vpn' | 'none' | 'other';
+  camera_disabled?: boolean;
+  password_complexity?: AndroidPasswordComplexity;
+  battery_optimisation_exempt?: boolean;
+  notifications_allowed?: boolean;
+  apps_count?: number;
+  reported_at?: string;
+}
+
+export type AndroidCommandKind =
+  | 'android_lock'
+  | 'android_password_policy'
+  | 'android_camera'
+  | 'android_install_apk'
+  | 'android_uninstall'
+  | 'android_wipe'
+  | 'android_release';
+
+/** POST /endpoints/:id/android/actions */
+export type AndroidActionInput =
+  | { action: 'lock' }
+  | { action: 'password_policy'; complexity: AndroidPasswordComplexity }
+  | { action: 'camera'; disabled: boolean }
+  | { action: 'install_apk'; apk_id: string }
+  | { action: 'uninstall'; package: string }
+  | { action: 'wipe'; reason: string; step_up_token?: string }
+  | { action: 'release'; reason: string; step_up_token?: string };
+
+export type AndroidActionResult =
+  | { state: 'queued'; command: EndpointCommand }
+  | { state: 'waiting_approval'; request: AndroidActionRequest };
+
+export interface AndroidActionRequest {
+  id: string;
+  endpoint_id: string;
+  endpoint_name: string;
+  action: 'wipe';
+  reason: string;
+  requested_email: string;
+  requested_by: string | null;
+  state: 'pending' | 'approved' | 'denied' | 'expired';
+  approver_email: string | null;
+  decision_note: string | null;
+  decided_at: string | null;
+  expires_at: string;
+  mfa_verified: boolean;
+  command_id: string | null;
+  created_at: string;
+}
+
+export interface AndroidApk {
+  id: string;
+  name: string;
+  file_name: string;
+  size_bytes: number;
+  sha256: string;
+  uploaded_by_email: string;
+  created_at: string;
+}
+
+/** GET /fleet/android/provisioning: what the Device Owner QR needs (null fields: not available). */
+export interface AndroidProvisioningInfo {
+  component: string;
+  /** The agent APK this server serves (NIGAFIY_ANDROID_APK_PATH); null when none is configured. */
+  apk: { url: string; sha256: string; checksum_b64url: string; size_bytes: number } | null;
+  server_url: string;
+  server_url_source: 'configured' | 'request';
+  tls_pin_sha256: string | null;
 }
