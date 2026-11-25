@@ -66,8 +66,11 @@ type rtcPeer struct {
 type rtcManager struct {
 	l *live
 
-	mu       sync.Mutex
-	peers    map[string]*rtcPeer
+	mu    sync.Mutex
+	peers map[string]*rtcPeer
+	// pending: the browser's trickled candidates that arrive before its offer was answered (the
+	// offer is answered on its own goroutine); applied once the peer exists.
+	pending  map[string][]webrtc.ICECandidateInit
 	track    *webrtc.TrackLocalStaticSample
 	cancel   context.CancelFunc
 	done     chan struct{}
@@ -96,7 +99,7 @@ func newRTCManager(l *live) *rtcManager {
 	if s <= 0 || s > 1 {
 		s = 1
 	}
-	return &rtcManager{l: l, peers: map[string]*rtcPeer{}, bitrate: StartVideoBitrate, display: l.req.Display, scale: s, cursor: true}
+	return &rtcManager{l: l, peers: map[string]*rtcPeer{}, pending: map[string][]webrtc.ICECandidateInit{}, bitrate: StartVideoBitrate, display: l.req.Display, scale: s, cursor: true}
 }
 
 // rtc returns the session's manager (created on first use).
@@ -280,8 +283,13 @@ func (r *rtcManager) offer(m inMsg) {
 		return
 	}
 	r.peers[req] = p
+	early := r.pending[req]
+	delete(r.pending, req)
 	r.mu.Unlock()
 	r.send(map[string]any{"t": "rtc_answer", "req": req, "sdp": pc.LocalDescription().SDP})
+	for _, c := range early {
+		_ = pc.AddICECandidate(c)
+	}
 }
 
 func (r *rtcManager) newPeerConnection(ice []webrtc.ICEServer) (*webrtc.PeerConnection, error) {
@@ -388,14 +396,33 @@ func (r *rtcManager) perms(req string, control bool) {
 	}
 }
 
-func (r *rtcManager) ice(m inMsg) {
+// maxPendingICE bounds the candidates kept for an offer that is still being answered.
+const maxPendingICE = 32
+
+// newOffer forgets candidates of an earlier offer from the same viewer (called in socket order,
+// before the offer's goroutine starts, so the new offer's own candidates are kept).
+func (r *rtcManager) newOffer(req string) {
 	r.mu.Lock()
-	p := r.peers[m.Req]
+	delete(r.pending, req)
 	r.mu.Unlock()
-	if p == nil || m.Candidate == nil || len(m.Candidate.Candidate) > 1024 {
+}
+
+func (r *rtcManager) ice(m inMsg) {
+	if m.Candidate == nil || len(m.Candidate.Candidate) > 1024 {
 		return
 	}
-	_ = p.pc.AddICECandidate(webrtc.ICECandidateInit{Candidate: m.Candidate.Candidate, SDPMid: m.Candidate.SDPMid, SDPMLineIndex: m.Candidate.SDPMLineIndex})
+	c := webrtc.ICECandidateInit{Candidate: m.Candidate.Candidate, SDPMid: m.Candidate.SDPMid, SDPMLineIndex: m.Candidate.SDPMLineIndex}
+	r.mu.Lock()
+	p := r.peers[m.Req]
+	if p == nil {
+		if !r.closed && len(r.pending[m.Req]) < maxPendingICE && (len(r.pending) < MaxRTCPeers || r.pending[m.Req] != nil) {
+			r.pending[m.Req] = append(r.pending[m.Req], c)
+		}
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Unlock()
+	_ = p.pc.AddICECandidate(c)
 }
 
 // closePeer ends one viewer's peer connection; reason non-empty tells the browser.
@@ -403,6 +430,7 @@ func (r *rtcManager) closePeer(req, reason string) {
 	r.mu.Lock()
 	p := r.peers[req]
 	delete(r.peers, req)
+	delete(r.pending, req)
 	last := len(r.peers) == 0
 	r.mu.Unlock()
 	if p == nil {
@@ -422,6 +450,7 @@ func (r *rtcManager) closeAll(final bool) {
 	r.mu.Lock()
 	peers := r.peers
 	r.peers = map[string]*rtcPeer{}
+	r.pending = map[string][]webrtc.ICECandidateInit{}
 	if final {
 		r.closed = true
 	}
@@ -460,6 +489,16 @@ func (r *rtcManager) stopPump() {
 	if v, ok := r.video(); ok {
 		v.EndVideo(r.l.req.SessionID)
 	}
+}
+
+func (r *rtcManager) peerIDs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.peers))
+	for k := range r.peers {
+		out = append(out, k)
+	}
+	return out
 }
 
 func (r *rtcManager) connected() int {
@@ -532,13 +571,7 @@ func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
 			failures++
 			if failures >= maxGrabFailures {
 				// The encoder (or capture) is broken: every WebRTC viewer goes back to JPEG.
-				r.mu.Lock()
-				reqs := make([]string, 0, len(r.peers))
-				for k := range r.peers {
-					reqs = append(reqs, k)
-				}
-				r.mu.Unlock()
-				for _, k := range reqs {
+				for _, k := range r.peerIDs() {
 					r.fail(k, "encoder_failed", err.Error())
 				}
 				go r.closeAll(false)
@@ -565,7 +598,10 @@ func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
 			r.stats.encMs, r.stats.w, r.stats.h = frame.Header.EncMs, frame.Header.W, frame.Header.H
 			r.mu.Unlock()
 			if frame.Header.Fallback != "" {
-				r.send(map[string]any{"t": "rtc_state", "state": "encoder_changed", "encoder": frame.Header.Encoder, "reason": frame.Header.Fallback})
+				// The hardware encoder failed and the software one took over: every viewer is told.
+				for _, k := range r.peerIDs() {
+					r.send(map[string]any{"t": "rtc_state", "req": k, "state": "encoder_changed", "encoder": frame.Header.Encoder, "reason": frame.Header.Fallback})
+				}
 			}
 		}
 		r.maybeStats(time.Now())

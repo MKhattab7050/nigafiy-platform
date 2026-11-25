@@ -400,6 +400,7 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 			s.send(map[string]any{"t": "clipboard_set_ok", "req": req})
 		}(m.Req, m.Text)
 	case "rtc_offer":
+		s.l.rtc().newOffer(m.Req)
 		go s.l.rtc().offer(m)
 	case "rtc_ice":
 		s.l.rtc().ice(m)
