@@ -45,6 +45,7 @@ to see how it works, and [roadmap/status.md](roadmap/status.md) for what is buil
 - [operations/code-signing.md](operations/code-signing.md): free Authenticode signing with a self-signed certificate deployed by GPO.
 - [operations/updates.md](operations/updates.md): Ed25519-signed manifest, download, verification and admin-confirmed install.
 - [operations/backup-restore-and-key-rotation.md](operations/backup-restore-and-key-rotation.md): database backup and restore, `APP_ENCRYPTION_KEY` rotation.
+- [operations/real-hardware-checklist.md](operations/real-hardware-checklist.md): what the owner still has to run on real hardware (one PC, two PCs, phone, router, other gear, a real fault).
 
 ## Security
 
