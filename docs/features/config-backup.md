@@ -153,13 +153,21 @@ job). Not verified against configurations from real devices; vendor syntax not c
 
 ## Restore (migration 041)
 
-An administrator can write an earlier version back to the device. Only **Juniper Junos** is supported,
-because Junos can apply a configuration with `commit confirmed`: if the change is not confirmed in time,
-the device rolls it back by itself. Every other vendor shows **"Restore not supported"** with the reason;
-download the version and restore it by hand. No other vendor is attempted.
+An administrator can write an earlier version back to the device. Only vendors whose device rolls a
+change back by itself are supported: **Juniper Junos** (`commit confirmed`: if the change is not confirmed
+in time, the device rolls it back) and **Cisco IOS XE** (`configure replace … force revert trigger error
+timer N`: the device reverts at once when a command fails, and by itself when `configure confirm` does not
+come within N minutes; see "Cisco IOS XE restore" below). Every other vendor shows **"Restore not
+supported"** with the reason; download the version and restore it by hand. No other vendor is attempted.
 
 **Before anything is sent** (`restore.ts`, checked at preview and again at request):
-- the vendor is Junos (`driver`, or the detected driver);
+- the vendor is Junos or Cisco IOS XE (`driver`, or the detected driver; `RESTORE_METHODS` in `restore.ts`
+  must match the collector's `internal/configbackup/restore.go`);
+- the version belongs to this device: when its host name (IOS `hostname X`, Junos `host-name X;`) differs
+  from the latest backup's, the preview shows both names (`other_device`) and the request is refused with
+  409 `other_device` unless the administrator sets `force_other_device` **and** types the version's host
+  name as a second confirmation (`confirm_other_device`, otherwise 422 `confirm_other_device_mismatch`);
+  the forced case is recorded in the `config_backup.restore.request` audit row (`other_device`);
 - the target is ready (in an authorized scope, credentials set and accepted, host key not changed);
 - the SSH host key is pinned (a restore never trusts a key on first use);
 - a sealed raw copy of the version exists (versions stored before raw copies existed cannot be restored);
@@ -212,3 +220,40 @@ now" text. The **Restores** card lists every restore with its status, reason, fl
 
 **Not tested:** it has never run against a real Junos device. Junos output and prompt text were modelled
 from the documentation, not captured from a device.
+
+### Cisco IOS XE restore (`internal/configbackup/restore_iosxe.go`, method `iosxe_configure_replace`)
+
+Source: Cisco "Configuration Replace and Configuration Rollback" configuration guide (IOS XE 16.x/17.x) and
+the `configure replace`, `configure confirm`, `configure revert` and `archive` command references.
+
+Prerequisites on the device (each is checked, and nothing is changed when one is missing):
+- IOS XE ("show version" must say "Cisco IOS XE Software") and a privilege-15 account (the prompt must
+  reach `#`, after `enable` when the account logs in at `>`);
+- the configuration archive (`archive` with ` path …`): without it IOS XE refuses the rollback timer, so
+  Nigafiy refuses first;
+- `ip scp server enable` and exec authorization for the account (the file is copied over SCP).
+
+Steps (each one is reported in the restore's steps):
+1. checks above, on the host-key-pinned SSH connection;
+2. the version is copied to `bootflash:nigafiy-restore.cfg` (`flash:` when the device has no `bootflash:`)
+   over SCP on the same connection, and the device's own `verify /md5` must match the MD5 of what was sent;
+3. `configure replace bootflash:nigafiy-restore.cfg force revert trigger error timer N` (N = 1–10 minutes,
+   from the dialog); it must end with "Rollback Done";
+4. a **second**, fresh SSH session reads `show running-config`. Only when that works and equals the
+   restored text (ignoring `!` comment lines, the "Building configuration" / "Current configuration"
+   header and the measured `ntp clock-period`) is the change kept: `configure confirm`, then
+   `write memory` (only now, after the verified change), then the temporary file is deleted;
+5. otherwise `configure revert now` puts the previous configuration back at once, and the running
+   configuration is read again to prove it (status `rolled_back`). When the revert cannot be proven (or
+   the session ends during the replace, or `configure confirm` fails), the error says so and that the
+   device reverts by itself when its N-minute timer ends; nothing is saved with `write memory`.
+   A release that does not accept the `revert trigger error timer` syntax is refused with nothing changed.
+
+Tested only with the SSH/SCP protocol double in `restore_iosxe_test.go`: verified then saved, `flash:`
+fallback (and the default 5-minute timer), read-back differs or the second session is refused after the
+replace (reverted, nothing confirmed or saved), refusals with nothing changed (classic IOS, no archive
+path, a release without the timer syntax, SCP server off, an upload whose `verify /md5` differs), a
+command of the file failing (device reverts, proven by read-back, temporary file removed, no secret in
+the error), and the configuration comparison helpers. `tests/config-restore.test.ts` covers the API side (method offered,
+another device's configuration refused unless forced with the second typed confirmation).
+**Never run against a real IOS XE device**; prompts and messages were modelled from Cisco's documentation.

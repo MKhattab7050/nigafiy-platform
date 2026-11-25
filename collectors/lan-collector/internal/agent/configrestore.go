@@ -112,7 +112,11 @@ func (a *Agent) configRestore(ctx context.Context, cmd cloud.Command) {
 		if encoded, gzErr := gzipBase64(res.Config); gzErr == nil && len(encoded) <= maxConfigGzipB64 {
 			item["ok"] = true
 			item["config_gzip_b64"] = encoded
-			item["commands"] = []string{"show configuration | no-more"}
+			cmds := res.ReadBackCommands
+			if len(cmds) == 0 {
+				cmds = []string{"show configuration | no-more"}
+			}
+			item["commands"] = cmds
 		} else {
 			item["ok"] = false
 			item["error"] = map[string]any{"kind": configbackup.ErrOutputTooLarge, "message": "the configuration read back is too large to upload"}
