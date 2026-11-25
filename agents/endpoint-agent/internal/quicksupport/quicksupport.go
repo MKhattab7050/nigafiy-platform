@@ -211,12 +211,20 @@ func (s Status) Finished() bool {
 }
 
 // ScreenText is the window the person reads the code and PIN from.
-func ScreenText(b Binding, r Registration) string {
+func ScreenText(b Binding, r Registration) string { return ScreenTextFor(b, r, false) }
+
+// ScreenTextFor is ScreenText for the downloaded program (packaged = false: it removes itself) or the
+// Microsoft Store version (packaged = true: it stays installed until the person removes it).
+func ScreenTextFor(b Binding, r Registration, packaged bool) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Your Quick Support ID:   %s\nOne-time PIN:   %s\n\n", FormatCode(r.Code), r.PIN)
 	fmt.Fprintf(&sb, "Read both to your IT contact. They connect from Nigafiy at %s.\n", b.Server)
 	sb.WriteString("You will be asked to Accept before they can see your screen; a bar shows who is connected, and End session stops it at once.\n")
-	fmt.Fprintf(&sb, "The ID expires at %s if nobody connects. Nothing is installed: when the session ends this program removes itself.\n", r.ExpiresAt.Local().Format("15:04"))
+	if packaged {
+		fmt.Fprintf(&sb, "The ID expires at %s if nobody connects. Nothing keeps running after the session; remove Nigafiy Quick Support in Settings > Apps when you no longer need it.\n", r.ExpiresAt.Local().Format("15:04"))
+	} else {
+		fmt.Fprintf(&sb, "The ID expires at %s if nobody connects. Nothing is installed: when the session ends this program removes itself.\n", r.ExpiresAt.Local().Format("15:04"))
+	}
 	fmt.Fprintf(&sb, "Server key: %s\n\nClosing this window ends Quick Support.\n\n", b.Fingerprint())
 	fmt.Fprintf(&sb, "معرّف الدعم السريع: %s\nرمز PIN لمرة واحدة: %s\n", FormatCode(r.Code), r.PIN)
 	sb.WriteString("أعطِ الرقمين لفريق تقنية المعلومات. سيُطلب منك القبول قبل أن يروا شاشتك، ويظهر شريط يبيّن من المتصل مع زر إنهاء الجلسة. إغلاق هذه النافذة ينهي الدعم السريع.")

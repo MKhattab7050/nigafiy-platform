@@ -23,14 +23,18 @@ const { readEnv } = require('./env-compat.cjs');
 const { CHOICES, readInstallSettings, selectedIds, writePrograms } = require('./install-settings.cjs');
 const { MOVE_FLAG, findLegacyInstalls, moveProfile, offerText, planProfileMove, prefsStore, shouldOffer } = require('./legacy-import.cjs');
 const { resolveDataDir, DEV_PROFILE_NAME, LEGACY_DEV_PROFILE_NAME } = require('./data-dir.cjs');
+const { NOTICE_FILE, noticeText, otherInstallFolders, storeDataDir, storeRuntime } = require('./store-package.cjs');
 const { PROTOCOL, PROGRAM_HOME, PROGRAM_IDS, PROGRAM_NAME, ProgramWindows, launchRequest, parseNigafiyUrl, programUrl, windowDetails } = require('./programs.cjs');
 
 // An explicit --user-data-dir (tests, a second profile) is never moved, imported or asked about.
 const EXPLICIT_DATA_DIR = app.commandLine.hasSwitch('user-data-dir');
+// The Microsoft Store package (src/store-package.cjs): its own profile folder, no profile move, the
+// link handler from the package manifest, updates from the Store.
+const STORE = app.isPackaged && process.platform === 'win32' ? storeRuntime({ windowsStore: process.windowsStore, execPath: process.execPath }) : null;
 // "Move my data" (src/legacy-import.cjs) relaunches with --move-legacy-profile: the rename happens
 // here, before the profile is chosen or opened. On any failure the old folder stays in use.
 let legacyMoveResult = null;
-if (!EXPLICIT_DATA_DIR && app.isPackaged && process.argv.includes(MOVE_FLAG)) {
+if (!EXPLICIT_DATA_DIR && !STORE && app.isPackaged && process.argv.includes(MOVE_FLAG)) {
   const plan = planProfileMove({ appData: app.getPath('appData'), exists: (p) => fs.existsSync(p) });
   legacyMoveResult = plan ? moveProfile(plan) : { ok: false, error: 'there was nothing to move' };
   console.info(legacyMoveResult.ok ? `[profile] moved ${plan.from} to ${plan.to}` : `[profile] not moved: ${legacyMoveResult.error}`);
@@ -39,7 +43,12 @@ if (!EXPLICIT_DATA_DIR && app.isPackaged && process.argv.includes(MOVE_FLAG)) {
 // The profile folder, before anything reads userData (or takes the single-instance lock, which is
 // per profile): the legacy one from before the rename while only that exists (src/data-dir.cjs). An explicit
 // --user-data-dir always wins.
-if (!app.commandLine.hasSwitch('user-data-dir')) {
+if (!app.commandLine.hasSwitch('user-data-dir') && STORE) {
+  const profile = storeDataDir({ localAppData: process.env.LOCALAPPDATA, appData: app.getPath('appData'), familyName: STORE.familyName });
+  fs.mkdirSync(profile.dir, { recursive: true });
+  app.setPath('userData', profile.dir);
+  console.info(`[profile] Microsoft Store package ${STORE.fullName ?? '(development registration)'}: profile ${profile.dir}`);
+} else if (!app.commandLine.hasSwitch('user-data-dir')) {
   const profile = resolveDataDir({
     appData: app.getPath('appData'),
     exists: (p) => fs.existsSync(p),
@@ -208,6 +217,7 @@ function openPending() {
 // ── an install from before the rename (src/legacy-import.cjs) ────────────────
 async function offerLegacyImport() {
   const locale = app.getLocale().toLowerCase().startsWith('ar') ? 'ar' : 'en';
+  if (STORE) return storeNotice(locale);
   if (legacyMoveResult && !legacyMoveResult.ok) {
     const t = require('./legacy-import.cjs').STRINGS[locale];
     await dialog.showMessageBox({ type: 'warning', title: t.title, message: t.moveFailed(legacyMoveResult.error) });
@@ -233,6 +243,27 @@ async function offerLegacyImport() {
   }
 }
 
+/**
+ * Store package: says once where another installation's data is (nothing is moved, imported or
+ * removed from inside the package; src/store-package.cjs).
+ */
+async function storeNotice(locale) {
+  if (EXPLICIT_DATA_DIR || SMOKE || LOCAL_SMOKE || CHOOSE_PROGRAMS) return;
+  const file = path.join(app.getPath('userData'), NOTICE_FILE);
+  try {
+    if (JSON.parse(fs.readFileSync(file, 'utf8')).neverShow === true) return;
+  } catch {
+    /* not shown yet */
+  }
+  const exists = (p) => fs.existsSync(p);
+  const installs = findLegacyInstalls({ localAppData: process.env.LOCALAPPDATA, programFiles: process.env.ProgramW6432 || process.env.ProgramFiles, installDir: path.dirname(process.execPath), exists });
+  const folders = otherInstallFolders({ appData: app.getPath('appData'), exists, legacyInstalls: installs });
+  if (folders.length === 0) return;
+  const text = noticeText({ locale, folders });
+  const { response } = await dialog.showMessageBox({ type: 'info', title: text.title, message: text.message, buttons: text.buttons, cancelId: 0, noLink: true });
+  if (response === 1) fs.writeFileSync(file, JSON.stringify({ neverShow: true }));
+}
+
 // ── program chooser (docs/operations/installers.md, "Choose programs") ──────
 let chooser = null;
 let chooserIpc = false;
@@ -250,13 +281,13 @@ function showProgramChooser() {
     const installDir = path.dirname(process.execPath);
     ipcMain.handle('programs:load', async (event) => {
       allow(event);
-      const s = app.isPackaged ? await readInstallSettings({ installDir }) : { scope: 'unknown', programs: 'all', writable: false };
+      const s = app.isPackaged ? await readInstallSettings({ installDir, store: Boolean(STORE) }) : { scope: 'unknown', programs: 'all', writable: false };
       return { ...s, selected: selectedIds(s.programs), choices: CHOICES, locale: app.getLocale().toLowerCase().startsWith('ar') ? 'ar' : 'en' };
     });
     ipcMain.handle('programs:save', async (event, ids) => {
       allow(event);
       if (!app.isPackaged) return { ok: false, error: 'unknown install' };
-      const s = await readInstallSettings({ installDir });
+      const s = await readInstallSettings({ installDir, store: Boolean(STORE) });
       const r = await writePrograms({ scope: s.scope, ids: Array.isArray(ids) ? ids : [] });
       // The value only (program ids), never anything typed: the choice goes to the app log.
       console.info(r.ok ? `[programs] saved ${r.programs} (${s.scope})` : `[programs] not saved: ${r.error}`);
@@ -392,6 +423,8 @@ function refreshTray() {
       { label: 'Open dashboard', click: () => showDashboard() },
       { label: 'Collector on this computer…', click: () => showPanel() },
       { label: 'Open program', submenu: PROGRAM_IDS.map((id) => ({ label: PROGRAM_NAME[id], click: () => openProgram(id) })) },
+      // The Store package has no Apps & features "Modify" entry, so the chooser is offered here.
+      ...(STORE ? [{ label: app.getLocale().toLowerCase().startsWith('ar') ? 'اختيار البرامج…' : 'Choose programs…', click: () => void showProgramChooser() }] : []),
       { type: 'separator' },
       { label: modeLabel, enabled: false },
       { label: summary, enabled: false },
@@ -660,7 +693,8 @@ if (!app.requestSingleInstanceLock()) {
     if (CHOOSE_PROGRAMS) return void showProgramChooser();
     void offerLegacyImport().catch((err) => console.warn(`[legacy] ${err?.message ?? err}`));
     // nigafiy:// is registered by the installed app only; a source checkout or a test run never writes HKCU\Software\Classes\nigafiy.
-    if (app.isPackaged) app.setAsDefaultProtocolClient(PROTOCOL);
+    // The Store package declares nigafiy:// in its manifest (a packaged app's HKCU writes are private).
+    if (app.isPackaged && !STORE) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({
       binaryPath: collectorBinary(),
       // In a source checkout the collector identity is shared with `pnpm local`.
@@ -773,7 +807,7 @@ if (!app.requestSingleInstanceLock()) {
       // Start-up self-check used by `pnpm smoke`: prints what the app sees, then exits.
       setTimeout(async () => {
         const state = collector.getState();
-        console.log(JSON.stringify({ smoke: 'ok', binaryAvailable: state.binaryAvailable, enrolled: state.enrolled, status: state.status, hasServer: Boolean(state.settings.serverUrl), windows: BrowserWindow.getAllWindows().length, tray: Boolean(tray), program: startProgram, protocolRegistered: app.isPackaged }));
+        console.log(JSON.stringify({ smoke: 'ok', binaryAvailable: state.binaryAvailable, enrolled: state.enrolled, status: state.status, hasServer: Boolean(state.settings.serverUrl), windows: BrowserWindow.getAllWindows().length, tray: Boolean(tray), program: startProgram, protocolRegistered: app.isPackaged, store: STORE ? (STORE.fullName ?? 'development registration') : null }));
         await quit();
       }, 2500);
     }

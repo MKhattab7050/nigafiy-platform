@@ -10,7 +10,7 @@ import { defineModule } from '../../infrastructure/module.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { engineStatus } from './engine.ts';
-import { configuredEngine, configuredUpdate, engineInstallKind, installStatus, prepareDownload, refuseIfMsiManaged, requestInstall, startDownload } from './install.ts';
+import { configuredEngine, configuredUpdate, installStatus, managedElsewhere, prepareDownload, refuseIfMsiManaged, requestInstall, startDownload } from './install.ts';
 import { cachedUpdateCheck, configuredSource } from './updates.ts';
 
 /**
@@ -29,6 +29,7 @@ import { cachedUpdateCheck, configuredSource } from './updates.ts';
  *
  * An installation the engine reports as MSI-managed (Windows Installer, deployed by GPO/Intune) is
  * updated by its administrator: the check answers `msi_managed`, download and install are refused.
+ * The Microsoft Store package (MSIX) is updated by the Store: `store_managed`, refused the same way.
  */
 const VERSION = (() => {
   try {
@@ -65,9 +66,10 @@ router.get('/platform/engine', async (req, res) => {
   res.json(await engineStatus());
 });
 
-/** The update check, or `msi_managed` when the administrator updates this installation. */
+/** The update check, or `msi_managed` / `store_managed` when the administrator or the Microsoft Store updates this installation. */
 async function updateCheck(force: boolean): Promise<PlatformUpdatesResponse> {
-  if ((await engineInstallKind(configuredEngine())) === 'msi') return { configured: false, reason: 'msi_managed', current_version: VERSION };
+  const elsewhere = await managedElsewhere(configuredEngine());
+  if (elsewhere) return { configured: false, reason: elsewhere, current_version: VERSION };
   return cachedUpdateCheck(configuredSource(VERSION), force);
 }
 
@@ -91,7 +93,7 @@ router.post('/platform/updates/download', requireRole('admin'), async (req, res)
   try {
     await refuseIfMsiManaged(configuredEngine());
   } catch (err) {
-    await withTenant(ctx.organizationId, (db) => audit(db, req, 'platform.update.download_refused', { type: 'update', id: 'msi' }, { error: (err as Error).message.slice(0, 500) }));
+    await withTenant(ctx.organizationId, (db) => audit(db, req, 'platform.update.download_refused', { type: 'update', id: (err as { code?: string }).code === 'store_managed' ? 'msix' : 'msi' }, { error: (err as Error).message.slice(0, 500) }));
     throw err;
   }
   const release = await prepareDownload(cfg);

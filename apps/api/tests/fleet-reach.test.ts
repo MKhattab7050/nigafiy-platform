@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { endpointsModule } from '../src/modules/endpoints/index.ts';
-import { MAX_PIN_FAILURES, buildTrailer, issueLink, proofFor, quickSupportKey, runQuickSupportSweep, verifyLink } from '../src/modules/endpoints/fleet-reach/quick-support.ts';
+import { MAX_PIN_FAILURES, STORE_LINK_PREFIX, bindingLink, buildTrailer, issueLink, proofFor, quickSupportKey, runQuickSupportSweep, verifyLink } from '../src/modules/endpoints/fleet-reach/quick-support.ts';
 import { runRestartTimeouts } from '../src/modules/endpoints/fleet-reach/restarts.ts';
 import { onlineEndpoint } from './fleet-helpers.ts';
 import { CSRF, app, newAccount, type TestAccount } from './helpers.ts';
@@ -360,5 +360,25 @@ describe('fleet: reaching computers', () => {
       expect(bytes.subarray(-10).toString()).toBe('NIGAFIYQS1');
     }
     expect((await audits(a.organizationId, 'fleet.quick_support_downloaded')).length).toBe(dl.status === 200 ? 1 : 0);
+
+    // The Microsoft Store version reads the same signed binding from a link (no file to append to).
+    expect(bindingLink(trailer)).toBe(`${STORE_LINK_PREFIX}${Buffer.from(JSON.stringify(json)).toString('base64url')}`);
+    const ln = await tech.agent.get(`/api/v1/fleet/quick-support/link?site_id=${a.siteId}`);
+    expect(ln.status).toBe(200);
+    expect(ln.headers['cache-control']).toBe('no-store');
+    expect(ln.body.fingerprint).toBe(quickSupportKey().fingerprint);
+    expect(ln.body.expires_in_seconds).toBe(7 * 24 * 3600);
+    expect(ln.body.link.startsWith(STORE_LINK_PREFIX)).toBe(true);
+    const fromLink = JSON.parse(Buffer.from(ln.body.link.slice(STORE_LINK_PREFIX.length), 'base64url').toString());
+    const linkPayload = Buffer.from(fromLink.payload, 'base64');
+    expect(verify(null, Buffer.concat([Buffer.from('nigafiy-qs1\n'), linkPayload]), key, Buffer.from(fromLink.sig, 'base64'))).toBe(true);
+    const bound = JSON.parse(linkPayload.toString());
+    expect(verifyLink(bound.link)).toEqual({ orgId: a.organizationId, siteId: a.siteId });
+    expect((await audits(a.organizationId, 'fleet.quick_support_link_issued')).length).toBe(1);
+    expect((await tech.agent.get(`/api/v1/fleet/quick-support/link?site_id=${a.organizationId}`)).status).toBe(404);
+    expect((await tech.agent.get('/api/v1/fleet/quick-support/link?site_id=nope')).status).toBe(400);
+    const viewer = await addMember(a, 'viewer');
+    expect((await viewer.agent.get(`/api/v1/fleet/quick-support/link?site_id=${a.siteId}`)).status).toBe(403);
+    expect((await request(app).get(`/api/v1/fleet/quick-support/link?site_id=${a.siteId}`)).status).toBe(401);
   });
 });

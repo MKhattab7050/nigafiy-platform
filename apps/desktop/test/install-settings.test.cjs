@@ -92,6 +92,23 @@ test('an MSI install is read-only, an unknown one too, and a bad id is never wri
   assert.deepEqual(bad, { scope: 'unknown', programs: 'all', raw: 'nope', writable: false });
 });
 
+test('the Store package reads and writes HKCU (its private copy) and never HKLM, whatever the registry says', async () => {
+  const tree = {
+    [`hklm\\software\\classes\\installer\\upgradecodes\\${MSI_UPGRADE_CODE_PACKED}`.toLowerCase()]: {},
+    'hklm\\software\\nigafiy\\hub': { Programs: 'hub,watch' },
+    'hkcu\\software\\nigafiy\\hub': { Programs: 'hub,radar' },
+  };
+  const s = await readInstallSettings({ installDir: 'C:\\Program Files\\WindowsApps\\X_1.0.0.0_x64__abcdefghijklm\\app', store: true, reader: makeReader(fakeReg(tree)) });
+  assert.deepEqual(s, { scope: 'store', programs: 'hub,radar', raw: 'hub,radar', writable: true });
+  const seen = [];
+  const r = await writePrograms({ scope: 'store', ids: ['guard'], run: async (args) => {
+      seen.push(args);
+      return { code: 0, stdout: '' };
+    }, runElevated: async () => assert.fail('no elevation in the Store package') });
+  assert.deepEqual(r, { ok: true, programs: 'hub,guard' });
+  assert.equal(seen[0][1], 'HKCU\\Software\\Nigafiy\\Hub');
+});
+
 const WXS = `<?xml version="1.0"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" UpgradeCode="{6DA7D862-27E7-4AC8-809D-89B4128FB3AE}">

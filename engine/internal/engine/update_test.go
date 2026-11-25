@@ -213,3 +213,32 @@ func TestStatusSaysNSISForAnNSISInstall(t *testing.T) {
 		t.Fatalf("status install %+v", doc.Update.Install)
 	}
 }
+
+func TestUpdateApplyIsRefusedOnTheStorePackage(t *testing.T) {
+	calls := fakeDetached(t)
+	install := filepath.Join(t.TempDir(), "Nigafiy")
+	bundle := filepath.Join(install, "resources", "backend")
+	os.MkdirAll(bundle, 0o700)
+	oldReg, oldPkg := installRegistry, installPackage
+	// An NSIS registration of the same folder too: the package identity wins.
+	installRegistry = func() update.Registry {
+		return update.MapRegistry{`HKCU\SOFTWARE\` + update.NSISGUID: {"InstallLocation": install}}
+	}
+	installPackage = func() (update.PackageIdentity, bool, error) {
+		return update.PackageIdentity{FullName: "Nigafiy.Hub_1.2.3.0_x64__8wekyb3d8bbwe", FamilyName: "Nigafiy.Hub_8wekyb3d8bbwe"}, true, nil
+	}
+	t.Cleanup(func() { installRegistry, installPackage = oldReg, oldPkg })
+	r := startEngine(t, "stack", func(c *Config) { c.NoSensor = true; c.BundleDir = bundle })
+	doc := r.waitStatus(t, "install kind", func(d control.StatusDoc) bool { return d.Update != nil && d.Update.Install != nil })
+	if in := doc.Update.Install; in.Kind != update.KindMSIX || in.Scope != "user" || in.PackageFamilyName != "Nigafiy.Hub_8wekyb3d8bbwe" {
+		t.Fatalf("status install %+v", in)
+	}
+	p, sum := stage(t, r.cfg.DataDir, "Nigafiy-Setup-1.2.4.exe", []byte("installer"))
+	code, body := r.apply(t, update.Request{Installer: p, SHA256: sum, Version: "1.2.4"})
+	if code != http.StatusConflict || !strings.Contains(body, "Microsoft Store") {
+		t.Fatalf("apply on the Store package: %d %s", code, body)
+	}
+	if len(*calls) != 0 {
+		t.Fatal("helper started on the Store package")
+	}
+}

@@ -13,6 +13,8 @@
     "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
     "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
     "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
+    "dist:msix": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop",
+    "dist:msix:local-test": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop --local-test",
     "bundle": "node scripts/bundle-backend.mjs",
     "release": "node ../../scripts/release/release.mjs"
   },
