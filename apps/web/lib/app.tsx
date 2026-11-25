@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Me, Role, Site } from '@nigafiy/shared-types';
 import { ApiError, api } from './api';
 import { useI18n } from './i18n';
+import { isRetryable, retryDelayMs } from './retry';
 
 export type Topic = 'events' | 'devices' | 'checks' | 'collectors';
 type Listener = (topic: Topic) => void;
@@ -47,7 +48,14 @@ export function useApp(): AppState {
 }
 
 /** Loads the session, keeps one Server-Sent-Events connection, and exposes the site filter. */
-export function AppProvider({ children, fallback }: { children: React.ReactNode; fallback: React.ReactNode }) {
+export interface Unreachable {
+  error: ApiError;
+  /** Epoch ms of the next automatic attempt; null when the failure will not fix itself by retrying. */
+  retryAt: number | null;
+  retryNow: () => void;
+}
+
+export function AppProvider({ children, fallback, unreachable: renderUnreachable }: { children: React.ReactNode; fallback: React.ReactNode; unreachable: (state: Unreachable) => React.ReactNode }) {
   const router = useRouter();
   const { setLocale, locale } = useI18n();
   const [me, setMe] = useState<Me | null>(null);
@@ -68,29 +76,43 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
       .catch(() => undefined);
   }, []);
 
+  // Boot: read the session. While the server cannot be reached, retry with a capped exponential
+  // backoff (lib/retry.ts) and show why, instead of reloading the page in a loop.
+  const [unreachable, setUnreachable] = useState<{ error: ApiError; retryAt: number | null } | null>(null);
+  const [bootAttempt, setBootAttempt] = useState(0);
+  const failures = useRef(0);
   useEffect(() => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     api<Me>('/auth/me')
       .then((m) => {
         if (cancelled) return;
+        failures.current = 0;
+        setUnreachable(null);
         setMe(m);
         if (m.user.locale !== locale && !document.cookie.includes('ld_locale=')) setLocale(m.user.locale);
         reloadSites();
         const saved = window.localStorage.getItem('ld_site');
         if (saved) setSiteIdState(saved);
       })
-      .catch((err) => {
+      .catch((err: unknown) => {
         if (cancelled) return;
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) router.replace('/login');
-        else retryTimer = setTimeout(() => window.location.reload(), 5000); // server unreachable: retry
+        const error = err instanceof ApiError ? err : new ApiError(0, 'network_error', String(err));
+        if (error.status === 401 || error.status === 403) {
+          router.replace('/login');
+          return;
+        }
+        const delay = isRetryable(error.status) ? retryDelayMs(failures.current++) : null;
+        setUnreachable({ error, retryAt: delay === null ? null : Date.now() + delay });
+        if (delay !== null) retryTimer = setTimeout(() => setBootAttempt((a) => a + 1), delay);
       });
     return () => {
       cancelled = true;
       clearTimeout(retryTimer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [bootAttempt]);
+  const retryNow = useCallback(() => setBootAttempt((a) => a + 1), []);
 
   // A saved site filter may point at a site that no longer exists.
   useEffect(() => {
@@ -140,7 +162,7 @@ export function AppProvider({ children, fallback }: { children: React.ReactNode;
     };
   }, [me, reloadMe, sites, siteId, live, reloadSites]);
 
-  if (!value) return <>{fallback}</>;
+  if (!value) return <>{unreachable ? renderUnreachable({ ...unreachable, retryNow }) : fallback}</>;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
