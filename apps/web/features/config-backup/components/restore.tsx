@@ -94,7 +94,10 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
           const diff: Diff | null = p.current ? { from: p.current, to: p.version, identical: p.identical, added: p.added, removed: p.removed, approximate: p.approximate, truncated: p.truncated, hunks: p.hunks } : null;
           const vyos = p.method === 'vyos_commit_confirm';
           const owrt = p.method === 'openwrt_uci_apply_rollback';
-          const mismatch = p.identity.check !== 'match';
+          const iosxe = p.method === 'iosxe_configure_replace';
+          // The server decides whether a second, typed confirmation is needed (another or an
+          // unidentified device by model / serial, or a version naming another host).
+          const mismatch = p.other_device_confirm_text !== null;
           const forcedOk = !mismatch || (otherDevice && otherConfirm.trim() === p.other_device_confirm_text);
           const ok = confirm.trim() === p.confirm_text && reason.trim().length >= 10 && forcedOk;
           return (
@@ -105,26 +108,33 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
                 if (ok) void submit(mismatch);
               }}
             >
-              <Notice>{fill(t(owrt ? 'cb.r.introOpenwrt' : vyos ? 'cb.r.introVyos' : 'cb.r.intro'), { n: p.version.number })}</Notice>
+              <Notice>{fill(t(iosxe ? 'cb.r.introIosxe' : owrt ? 'cb.r.introOpenwrt' : vyos ? 'cb.r.introVyos' : 'cb.r.intro'), { n: p.version.number })}</Notice>
               <div className="space-y-1.5">
-                <p className="text-xs font-medium text-fg/85">{t('cb.r.identity')}</p>
-                <p className="text-[13px] text-muted">{fill(t('cb.r.identityVersion'), { n: ltr(p.version.number), id: identityText(p.identity.version, t) })}</p>
-                <p className="text-[13px] text-muted">{fill(t('cb.r.identityDevice'), { id: identityText(p.identity.device, t) })}</p>
+                {!iosxe && (
+                  <>
+                    <p className="text-xs font-medium text-fg/85">{t('cb.r.identity')}</p>
+                    <p className="text-[13px] text-muted">{fill(t('cb.r.identityVersion'), { n: ltr(p.version.number), id: identityText(p.identity.version, t) })}</p>
+                    <p className="text-[13px] text-muted">{fill(t('cb.r.identityDevice'), { id: identityText(p.identity.device, t) })}</p>
+                  </>
+                )}
                 {mismatch ? (
                   <div className="space-y-2 rounded-[var(--radius-control)] border border-crit/40 p-3">
-                    <p className="text-[13px] text-crit">{p.other_device_block ? blockText(p.other_device_block, t) : ''}</p>
+                    {p.other_device_block && p.other_device_block.code !== 'other_device' && <p className="text-[13px] text-crit">{blockText(p.other_device_block, t)}</p>}
+                    {p.other_device && (
+                      <p className="text-[13px] font-medium">{fill(t('cb.r.otherHost'), { version: ltr(p.other_device.version), current: ltr(p.other_device.current) })}</p>
+                    )}
                     <label className="inline-flex items-center gap-2 text-[13px]">
                       <input type="checkbox" className="size-3.5 accent-[var(--color-accent)]" checked={otherDevice} onChange={(e) => setOtherDevice(e.target.checked)} />
                       {t('cb.r.otherDevice')}
                     </label>
                     {otherDevice && (
-                      <Field label={t('cb.r.otherDeviceConfirm')} hint={fill(t('cb.r.confirmHint'), { name: ltr(p.other_device_confirm_text ?? '') })}>
+                      <Field label={t(p.other_device_block?.code === 'other_device' ? 'cb.r.otherConfirm' : 'cb.r.otherDeviceConfirm')} hint={fill(t('cb.r.confirmHint'), { name: ltr(p.other_device_confirm_text ?? '') })}>
                         {(id) => <Input id={id} dir="ltr" autoComplete="off" value={otherConfirm} onChange={(e) => setOtherConfirm(e.target.value)} />}
                       </Field>
                     )}
                   </div>
                 ) : (
-                  <p className="text-[13px] text-ok">{t('cb.r.identityMatch')}</p>
+                  !iosxe && <p className="text-[13px] text-ok">{t('cb.r.identityMatch')}</p>
                 )}
               </div>
               <div className="space-y-2">

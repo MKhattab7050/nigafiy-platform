@@ -24,27 +24,39 @@ import { expireStale, loadTarget, loadVersion, onlineCollector, queueRun, READIN
 //      (verify run); the restore is `verified` only when that version is the restored one.
 //
 // Only vendors that replace the configuration as a whole and roll it back by themselves are
-// supported: Juniper Junos (`commit confirmed`), VyOS / Ubiquiti EdgeOS (`commit-confirm`, which
-// reboots into the saved configuration; the collector saves the running one first) and OpenWrt (rpcd
-// `uci apply` with rollback: the changes are staged in a ubus session, rpcd puts the snapshot of the
-// previous packages back unless `uci confirm` follows). Every other
-// vendor gets an honest "restore not supported" with the vendor-specific reason (UNSUPPORTED_REASONS).
+// supported: Juniper Junos (`commit confirmed`), Cisco IOS XE (`configure replace … revert trigger
+// error timer N`, then `configure confirm` and `write memory` only after the read-back matched;
+// restore_iosxe.go), VyOS / Ubiquiti EdgeOS (`commit-confirm`, which reboots into the saved
+// configuration; the collector saves the running one first) and OpenWrt (rpcd `uci apply` with
+// rollback: the changes are staged in a ubus session, rpcd puts the snapshot of the previous packages
+// back unless `uci confirm` follows). Every other vendor gets an honest "restore not supported" with
+// the vendor-specific reason (UNSUPPORTED_REASONS).
 //
-// The device identity (model / serial, read by the collector next to every backup of these vendors)
-// is compared with the version's at preview, at request, after the backup before the restore, and by
-// the collector on the device itself: a different or unknown device needs `allow_other_device` and a
-// second typed confirmation.
+// Restoring another device's configuration needs a second, typed confirmation (`allow_other_device`,
+// or its alias `force_other_device`, plus `confirm_other_device`). Two checks decide it:
+//   - the hardware identity (model / serial, read by the collector next to every backup of Junos,
+//     VyOS / EdgeOS and OpenWrt; IDENTITY_DRIVERS) of the version against the device's, compared at
+//     preview, at request, after the backup before the restore, and by the collector on the device;
+//     a different or unknown device needs the confirmation (typed: the device's serial, model or
+//     address);
+//   - the host name the configuration declares (IOS `hostname`, Junos `host-name`) of the version
+//     against the latest backup; another host name needs the confirmation (typed: the version's host
+//     name) when the hardware identity does not already require it.
 
 /** Driver → restore method. Must match the collector (internal/configbackup/restore.go). */
 export const RESTORE_METHODS: Readonly<Record<string, string>> = {
   juniper_junos: 'junos_commit_confirmed',
+  cisco_ios: 'iosxe_configure_replace',
   vyos_edgeos: 'vyos_commit_confirm',
   openwrt: 'openwrt_uci_apply_rollback',
 };
 
+/** Drivers whose backups record the device's hardware identity (collector identity.go). */
+export const IDENTITY_DRIVERS: ReadonlySet<string> = new Set(['juniper_junos', 'vyos_edgeos', 'openwrt']);
+
 /**
  * Why each other driver cannot be restored safely (the web shows the same reasons in EN and AR).
- * Cisco IOS / IOS-XE is left to its own driver work and gets the generic text.
+ * Cisco IOS XE is restorable (restore_iosxe.go) and has no entry here.
  */
 export const UNSUPPORTED_REASONS: Readonly<Record<string, string>> = {
   cisco_nxos:
@@ -68,6 +80,20 @@ export const UNSUPPORTED_REASONS: Readonly<Record<string, string>> = {
   paloalto_panos:
     'PAN-OS loads a full configuration only from a saved file ("load config from") imported by SCP / TFTP, and its commit has no confirmed mode or automatic rollback timer.',
 };
+
+/** The host name a configuration declares (IOS `hostname X`, Junos `host-name X;`), or null. */
+export function configHostname(text: string): string | null {
+  const m = /^hostname\s+(\S+)\s*$/m.exec(text) ?? /^\s*host-name\s+"?([^";\s]+)"?;\s*$/m.exec(text);
+  return m?.[1] ?? null;
+}
+
+/** Both host names when the version names another device than the latest backup does, else null. */
+function otherDevice(current: string | null | undefined, version: string): { current: string; version: string } | null {
+  if (!current) return null;
+  const a = configHostname(current);
+  const b = configHostname(version);
+  return a && b && a !== b ? { current: a, version: b } : null;
+}
 
 const effectiveDriver = (t: TargetRow) => t.driver ?? t.detected_driver;
 const driverName = (id: string | null) => CONFIG_BACKUP_DRIVERS.find((d) => d.id === id)?.name ?? null;
@@ -93,7 +119,7 @@ function unsupported(t: TargetRow): RestoreBlocker | null {
     const why = UNSUPPORTED_REASONS[driver] ?? 'This vendor has no safe way to replace the configuration as a whole with an automatic rollback.';
     return {
       code: 'restore_unsupported',
-      message: `Restore is not supported for ${driverName(driver) ?? driver}. ${why} Nigafiy restores only Juniper Junos ("commit confirmed"), VyOS / EdgeOS ("commit-confirm") and OpenWrt (rpcd "uci apply" with rollback), which roll back by themselves when the restore is not confirmed. Download the version and restore it by hand.`,
+      message: `Restore is not supported for ${driverName(driver) ?? driver}. ${why} Nigafiy restores only Juniper Junos ("commit confirmed"), Cisco IOS XE ("configure replace" with a rollback timer), VyOS / EdgeOS ("commit-confirm") and OpenWrt (rpcd "uci apply" with rollback), which roll back by themselves when the restore is not confirmed. Download the version and restore it by hand.`,
     };
   }
   return null;
@@ -147,6 +173,30 @@ const IDENTITY_BLOCKS: Record<Exclude<IdentityCheck, 'match'>, RestoreBlocker> =
   },
 };
 
+/** Whether restoring needs the second confirmation, why, and the text to type; null when not. */
+function otherDeviceNeed(
+  t: TargetRow,
+  check: IdentityCheck,
+  device: Identity,
+  other: { current: string; version: string } | null,
+): { block: RestoreBlocker; confirmText: string; mismatch: string } | null {
+  const driver = effectiveDriver(t);
+  if (driver && IDENTITY_DRIVERS.has(driver) && check !== 'match') {
+    return { block: IDENTITY_BLOCKS[check], confirmText: otherDeviceConfirmText(t, device), mismatch: 'Type the device identifier exactly as shown to confirm restoring onto this device' };
+  }
+  if (other) {
+    return {
+      block: {
+        code: 'other_device',
+        message: `This version is the configuration of "${other.version}", but the device is now "${other.current}". Restore it only if that is intended: force it and type "${other.version}" as the second confirmation.`,
+      },
+      confirmText: other.version,
+      mismatch: `Type the host name of the version ("${other.version}") exactly to confirm restoring another device's configuration`,
+    };
+  }
+  return null;
+}
+
 /** The first reason a restore of this version cannot start now, or null. */
 async function blocker(db: Db, t: TargetRow, version: { id: string; sha256: string }): Promise<RestoreBlocker | null> {
   const u = unsupported(t);
@@ -186,6 +236,8 @@ export function restorePreview(req: Request, ctx: AuthContext, targetId: string,
     const vid = await versionIdentity(db, v.id);
     const did = await deviceIdentity(db, t.id);
     const check = compareIdentity(vid, did);
+    const other = otherDevice(current?.content, v.content);
+    const need = otherDeviceNeed(t, check, did, other);
     await audit(db, req, 'config_backup.restore.preview', { type: 'config_backup_target', id: t.id }, { version: v.number, current: current?.number ?? null, identity_check: check });
     const side = (x: { id: string; number: number; captured_at: Date; sha256: string }) => ({ id: x.id, number: x.number, captured_at: x.captured_at, sha256: x.sha256 });
     const driver = effectiveDriver(t);
@@ -197,13 +249,14 @@ export function restorePreview(req: Request, ctx: AuthContext, targetId: string,
       method: driver ? (RESTORE_METHODS[driver] ?? null) : null,
       supported: !unsupported(t),
       identity: { version: vid, device: did, check },
-      // Needed only when check is not 'match': restoring onto a different or unidentified device.
-      other_device_block: check === 'match' ? null : IDENTITY_BLOCKS[check],
-      other_device_confirm_text: check === 'match' ? null : otherDeviceConfirmText(t, did),
+      // Set when restoring needs the second, typed confirmation (another or an unidentified device).
+      other_device_block: need?.block ?? null,
+      other_device_confirm_text: need?.confirmText ?? null,
       possible: !block,
       blocker: block,
       confirm_text: t.name,
       confirm_minutes_default: 5,
+      other_device: other,
       ...diff,
     };
   });
@@ -221,13 +274,14 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
     if (body.confirm.trim() !== t.name) throw new AppError(422, 'confirm_mismatch', 'Type the device name exactly as shown to confirm the restore');
     const did = await deviceIdentity(db, t.id);
     const check = compareIdentity(await versionIdentity(db, v.id), did);
-    if (check !== 'match') {
-      if (!body.allow_other_device) throw new AppError(409, IDENTITY_BLOCKS[check].code, IDENTITY_BLOCKS[check].message);
-      if ((body.confirm_other_device ?? '').trim() !== otherDeviceConfirmText(t, did)) {
-        throw new AppError(422, 'confirm_other_device_mismatch', 'Type the device identifier exactly as shown to confirm restoring onto this device');
-      }
+    const versionText = (await loadVersion(db, v.id)).content;
+    const other = otherDevice(t.latest_version_id ? (await loadVersion(db, t.latest_version_id)).content : null, versionText);
+    const need = otherDeviceNeed(t, check, did, other);
+    if (need) {
+      if (!body.allow_other_device && !body.force_other_device) throw new AppError(409, need.block.code, need.block.message);
+      if ((body.confirm_other_device ?? '').trim() !== need.confirmText) throw new AppError(422, 'confirm_other_device_mismatch', need.mismatch);
     }
-    const forced = check !== 'match';
+    const forced = !!need;
     const collector = await onlineCollector(db, t.site_id);
     if (!collector) throw new AppError(409, 'no_collector', 'No collector of this site is online to reach the device');
     const method = RESTORE_METHODS[effectiveDriver(t)!]!;
@@ -248,6 +302,7 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
       method,
       reason: body.reason,
       confirm_minutes: body.confirm_minutes,
+      other_device: other,
       pre_run_id: run.run_id,
       collector: collector.name,
       identity_check: check,
@@ -388,7 +443,7 @@ export async function continueAfterBackup(db: Db, c: CollectorContext, runId: st
   // (or one never identified) is refused unless the administrator forced it.
   const check = compareIdentity(await versionIdentity(db, r.version_id), await deviceIdentity(db, r.target_id, runId));
   await db.query(`UPDATE config_backup_restores SET identity_check = $2 WHERE id = $1`, [r.id, check]);
-  if (check !== 'match' && !r.forced_other_device) {
+  if (IDENTITY_DRIVERS.has(effectiveDriver(t) ?? '') && check !== 'match' && !r.forced_other_device) {
     await finish(db, c, r, { status: 'failed', errorKind: 'device_mismatch', error: `${IDENTITY_BLOCKS[check].message} Nothing was changed on the device.` }, t);
     return;
   }

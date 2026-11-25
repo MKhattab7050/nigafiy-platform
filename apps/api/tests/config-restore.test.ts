@@ -64,7 +64,61 @@ async function backup(c: TestCollector, runId: string, targetId: string, config:
 
 const restoreOf = (a: { agent: import('supertest').Agent }, id: string) => a.agent.get(`/api/v1/config-backup/restores/${id}`);
 
+const ios = (hostname: string, desc: string) => `version 17.9
+hostname ${hostname}
+!
+enable secret 9 ${ROOT_HASH}
+!
+archive
+ path bootflash:archive
+!
+interface GigabitEthernet1
+ description ${desc}
+!
+end
+`;
+
 describe('configuration restore', () => {
+  it('offers Cisco IOS XE configure replace and refuses the configuration of another device unless forced with a second confirmation', async () => {
+    const a = await newAccount('cb-restore-ios');
+    await addScope(a, '192.168.71.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({ site_id: a.siteId, targets: [{ address: '192.168.71.1', name: 'edge-isr', driver: 'cisco_ios' }], credentials: { username: 'netops', password: PASSWORD } });
+    expect(added.status).toBe(201);
+    const id = added.body.items[0].id as string;
+    await backup(c, added.body.queued[0].run_id, id, ios('old-branch-rtr', 'uplink'));
+    const run2 = await a.agent.post(`/api/v1/config-backup/targets/${id}/run`).set(CSRF).send({});
+    await backup(c, run2.body.run_id, id, ios('edge-isr', 'uplink'));
+    const versions = (await a.agent.get(`/api/v1/config-backup/targets/${id}/versions`)).body.items as { id: string; number: number }[];
+    const v1 = versions.find((v) => v.number === 1)!;
+
+    const preview = await a.agent.get(`/api/v1/config-backup/targets/${id}/restore-preview?version_id=${v1.id}`);
+    expect(preview.body).toMatchObject({ supported: true, possible: true, method: 'iosxe_configure_replace', other_device: { current: 'edge-isr', version: 'old-branch-rtr' } });
+
+    const req = (body: Record<string, unknown>) => a.agent.post(`/api/v1/config-backup/targets/${id}/restore`).set(CSRF).send({ version_id: v1.id, confirm: 'edge-isr', reason: 'Back to the branch router configuration', ...body });
+    const refused = await req({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('other_device');
+    const wrong = await req({ force_other_device: true, confirm_other_device: 'edge-isr' });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error.code).toBe('confirm_other_device_mismatch');
+    expect(await commands(c, 'config_backup')).toHaveLength(0);
+
+    const ok = await req({ force_other_device: true, confirm_other_device: 'old-branch-rtr', confirm_minutes: 2 });
+    expect(ok.status).toBe(202);
+    expect(ok.body).toMatchObject({ status: 'pre_backup', method: 'iosxe_configure_replace', confirm_minutes: 2 });
+    await backup(c, ok.body.pre_run_id, id, ios('edge-isr', 'uplink'));
+    const [cmd] = await commands(c, 'config_restore');
+    expect(cmd!.payload).toMatchObject({ driver: 'cisco_ios', confirm_minutes: 2 });
+    expect(gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8')).toContain('hostname old-branch-rtr');
+    const audit = (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'config_backup.restore.request'`, [a.organizationId])).rows[0];
+    expect(audit.metadata.other_device).toEqual({ current: 'edge-isr', version: 'old-branch-rtr' });
+  });
+
   it('restores a Junos version after a fresh backup, verifies it by the read-back, and audits every step', async () => {
     const a = await newAccount('cb-restore');
     await addScope(a, '192.168.70.0/24');
@@ -78,7 +132,7 @@ describe('configuration restore', () => {
         site_id: a.siteId,
         targets: [
           { address: '192.168.70.1', name: 'edge-srx', driver: 'juniper_junos' },
-          { address: '192.168.70.2', name: 'core-sw', driver: 'cisco_ios' },
+          { address: '192.168.70.2', name: 'core-sw', driver: 'cisco_asa' },
         ],
         credentials: { username: 'netops', password: PASSWORD },
       });
@@ -121,7 +175,7 @@ describe('configuration restore', () => {
     const swPreview = await a.agent.get(`/api/v1/config-backup/targets/${sw}/restore-preview?version_id=${swVersion}`);
     expect(swPreview.body).toMatchObject({ supported: false, possible: false, method: null });
     expect(swPreview.body.blocker.code).toBe('restore_unsupported');
-    expect(swPreview.body.blocker.message).toContain('Cisco IOS');
+    expect(swPreview.body.blocker.message).toContain('Cisco ASA');
     const swRestore = await a.agent.post(`/api/v1/config-backup/targets/${sw}/restore`).set(CSRF).send({ version_id: swVersion, confirm: 'core-sw', reason: 'Roll back the change' });
     expect(swRestore.status).toBe(409);
     expect(swRestore.body.error.code).toBe('restore_unsupported');

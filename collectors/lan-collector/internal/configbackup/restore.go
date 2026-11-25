@@ -50,6 +50,8 @@ func RestoreMethod(driver string) string {
 	switch driver {
 	case junosDriverID:
 		return RestoreMethodJunos
+	case iosxeDriverID:
+		return RestoreMethodIOSXE
 	case vyosDriverID:
 		return RestoreMethodVyOS
 	case openwrtDriverID:
@@ -85,6 +87,8 @@ type RestoreResult struct {
 	Config        string
 	// Identity is what the device reported in the restore session before anything was changed.
 	Identity *DeviceIdentity
+	// ReadBackCommands are the commands that read Config back (reported with the verification backup).
+	ReadBackCommands []string
 }
 
 func (r *RestoreResult) step(s string) { r.Steps = append(r.Steps, s) }
@@ -151,7 +155,7 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	}
 	res.Method = RestoreMethod(driver)
 	if res.Method == "" {
-		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed, VyOS / EdgeOS with commit-confirm and OpenWrt with uci apply rollback)")
+		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed, Cisco IOS XE with configure replace and a rollback timer, VyOS / EdgeOS with commit-confirm and OpenWrt with uci apply rollback)")
 	}
 	cfg := strings.TrimSpace(strings.ReplaceAll(spec.Config, "\r\n", "\n"))
 	if cfg == "" || len(cfg) > maxRestoreConfigLength || !validRestoreText(cfg) {
@@ -168,12 +172,19 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	if port <= 0 || port > 65535 {
 		port = defaultPort
 	}
+	if res.Method == RestoreMethodIOSXE {
+		res.ReadBackCommands = []string{iosxeReadBack}
+		return restoreIOSXE(ctx, addr, port, t, cfg, minutes, opts, res)
+	}
+	res.ReadBackCommands = []string{"show configuration | no-more"}
 	ctx, cancel := context.WithTimeout(ctx, opts.Budget+opts.Budget/2)
 	defer cancel()
 	if res.Method == RestoreMethodVyOS {
+		res.ReadBackCommands = []string{vyosShowConfig}
 		return res, restoreVyOS(ctx, addr, port, t, spec, cfg, minutes, opts, res)
 	}
 	if res.Method == RestoreMethodOpenWrt {
+		res.ReadBackCommands = []string{openwrtExport}
 		return res, restoreOpenWrt(ctx, addr, port, t, spec, cfg, minutes, opts, res)
 	}
 

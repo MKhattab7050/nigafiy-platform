@@ -31,15 +31,15 @@ type device struct {
 	commands     map[string]string // command → output (privileged commands only after enable)
 	privileged   map[string]bool
 	exec         map[string]string // exec channel command → output (MikroTik)
-	// execFn replaces the exec table (restore tests emulate OpenWrt's ubus): stdin is the channel,
-	// the return value the exit status.
-	execFn func(cmd string, stdin io.Reader, out io.Writer) uint32
 	noShell      bool
 	auth         string // "password" | "keyboard" | "publickey"
 	password     string
 	pubKey       ssh.PublicKey
 	// cliFn replaces the generic CLI (restore tests emulate Junos configuration mode).
 	cliFn func(ch ssh.Channel)
+	// execFn handles exec channels itself (the IOS XE restore test emulates the SCP sink, the OpenWrt
+	// restore test ubus); it returns the exit status.
+	execFn func(cmd string, ch ssh.Channel) uint32
 
 	authCalls atomic.Int32
 	execSeen  []string
@@ -157,7 +157,7 @@ func (s *server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			s.dev.mu.Unlock()
 			if s.dev.execFn != nil {
 				_ = req.Reply(true, nil)
-				status := s.dev.execFn(p.Cmd, ch, ch)
+				status := s.dev.execFn(p.Cmd, ch)
 				_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 				return
 			}

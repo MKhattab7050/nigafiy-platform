@@ -210,11 +210,13 @@ export interface RestorePreview {
   possible: boolean;
   blocker: { code: string; message: string } | null;
   identity: { version: DeviceIdentity; device: DeviceIdentity; check: IdentityCheck };
-  /** Set when the identity does not match: the restore then needs allow_other_device + this text typed. */
+  /** Set when restoring needs the second confirmation (another or unidentified device, or another host name): allow_other_device + this text typed. */
   other_device_block: { code: string; message: string } | null;
   other_device_confirm_text: string | null;
   confirm_text: string;
   confirm_minutes_default: number;
+  /** Set when the version names another host than the latest backup: a second, typed confirmation is needed. */
+  other_device: { current: string; version: string } | null;
   identical: boolean;
   added: number;
   removed: number;

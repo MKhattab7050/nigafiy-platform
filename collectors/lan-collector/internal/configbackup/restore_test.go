@@ -251,10 +251,10 @@ func TestRestoreRefusals(t *testing.T) {
 		if _, err := Restore(ctx, unpinned, RestoreSpec{Config: junosRestore}, o); KindOf(err) != ErrInvalidArgument {
 			t.Fatalf("unpinned host key: want ErrInvalidArgument, got %v", err)
 		}
-		cisco := tg
-		cisco.Driver = "cisco_ios"
-		if _, err := Restore(ctx, cisco, RestoreSpec{Config: junosRestore}, o); KindOf(err) != ErrUnsupported {
-			t.Fatalf("Cisco: want ErrUnsupported, got %v", err)
+		nexus := tg
+		nexus.Driver = "cisco_nxos"
+		if _, err := Restore(ctx, nexus, RestoreSpec{Config: junosRestore}, o); KindOf(err) != ErrUnsupported {
+			t.Fatalf("NX-OS: want ErrUnsupported, got %v", err)
 		}
 		if _, err := Restore(ctx, tg, RestoreSpec{Config: "system {\x1b[2J}"}, o); KindOf(err) != ErrInvalidArgument {
 			t.Fatalf("control characters: want ErrInvalidArgument, got %v", err)
@@ -280,10 +280,10 @@ func TestRestoreRefusals(t *testing.T) {
 	})
 }
 
-func TestRestoreMethodOnlyJunosVyOSAndOpenWrt(t *testing.T) {
+func TestRestoreMethodOnlyJunosIOSXEVyOSAndOpenWrt(t *testing.T) {
 	for _, d := range Drivers() {
 		m := RestoreMethod(d.ID)
-		if (d.ID == junosDriverID || d.ID == vyosDriverID || d.ID == openwrtDriverID) != (m != "") {
+		if (d.ID == junosDriverID || d.ID == iosxeDriverID || d.ID == vyosDriverID || d.ID == openwrtDriverID) != (m != "") {
 			t.Errorf("%s: restore method %q", d.ID, m)
 		}
 	}

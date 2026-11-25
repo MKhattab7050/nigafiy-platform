@@ -368,7 +368,7 @@ func startOpenWrt(t *testing.T, d *owrtDevice) (*server, Target) {
 		d.load(owrtRunning)
 	}
 	d.staged, d.granted = map[string]map[string]*owrtPkg{}, map[string]bool{}
-	dev := &device{version: "SSH-2.0-dropbear_2022.83", password: "s3cret-Pass", noShell: true, execFn: d.exec}
+	dev := &device{version: "SSH-2.0-dropbear_2022.83", password: "s3cret-Pass", noShell: true, execFn: func(cmd string, ch ssh.Channel) uint32 { return d.exec(cmd, ch, ch) }}
 	key := newHostKey(t)
 	srv := startServer(t, dev, key)
 	tg := target(srv)

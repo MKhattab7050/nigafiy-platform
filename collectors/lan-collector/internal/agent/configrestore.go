@@ -142,7 +142,11 @@ func (a *Agent) configRestore(ctx context.Context, cmd cloud.Command) {
 		if encoded, gzErr := gzipBase64(res.Config); gzErr == nil && len(encoded) <= maxConfigGzipB64 {
 			item["ok"] = true
 			item["config_gzip_b64"] = encoded
-			item["commands"] = []string{readBackCommand(res.Method)}
+			cmds := res.ReadBackCommands
+			if len(cmds) == 0 {
+				cmds = []string{readBackCommand(res.Method)}
+			}
+			item["commands"] = cmds
 			if res.Identity.Known() {
 				item["device_identity"] = identityItem(res.Identity)
 			}
