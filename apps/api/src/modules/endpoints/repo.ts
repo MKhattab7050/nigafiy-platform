@@ -5,7 +5,7 @@ import { randomToken, sha256 } from '../../common/crypto.ts';
 import { normalizeMac } from '../../common/net.ts';
 import type { Db } from '../../infrastructure/db.ts';
 import { holdFrame, publishFrame } from './remote-desktop/frames.ts';
-import { applySessionOpenResult } from './remote-desktop/sessions.ts';
+import { applySessionOpenResult, auditEndpointEvent } from './remote-desktop/sessions.ts';
 import { applyRestartResult } from './fleet-reach/restarts.ts';
 import { applyScriptResult, type ScriptRunData } from './fleet-jobs/jobs.ts';
 import { applyShellOpenFailure } from './fleet-shell/shells.ts';
@@ -133,6 +133,20 @@ export async function applyCommandResults(
     if (row?.kind === 'patch_install' || row?.kind === 'patch_reboot_prompt' || row?.kind === 'patch_reboot') {
       // Patches: install results, the person's answer to the restart question, the restart itself.
       await applyPatchResult(db, row.organization_id, endpointId, row.kind, row.payload, resItem.ok, (resItem.data ?? null) as Record<string, unknown> | null, resItem.error ?? null);
+    }
+    if (row?.kind === 'android_release' && resItem.ok) {
+      // The phone confirmed it stopped management and forgot its credential: that credential must
+      // stop working too (before this fix the endpoint stayed "active" with a live credential; seen
+      // on the emulator run). Enrolling again needs a new token. A wipe keeps the credential: if
+      // Android does not erase the phone after all, its next heartbeat shows it (recordHeartbeat).
+      const revoked = await db.query(
+        `UPDATE endpoints SET status = 'revoked', connection_state = 'offline', revoked_at = $2, credential_hash = NULL, enrollment_token_hash = NULL, rd_session = NULL
+          WHERE id = $1 AND status <> 'revoked'`,
+        [endpointId, now],
+      );
+      if (revoked.rowCount) {
+        await auditEndpointEvent(db, row.organization_id, endpointId, 'endpoint.revoked', { reason: 'android_management_stopped', command_id: resItem.id });
+      }
     }
     if (row?.kind === 'shell_open' && !resItem.ok) {
       // The agent could not start the shell: the shell session ends here.

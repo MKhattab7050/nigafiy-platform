@@ -145,8 +145,10 @@ export const softwareSchema = z
     version: cleanText(120).optional(),
     publisher: cleanText(160).optional(),
     install_date: cleanText(40).optional(),
-    // Android: the app's package name (the uninstall action names it).
-    package_id: z.string().max(200).regex(/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/).optional(),
+    // Android: the app's package name (the uninstall action names it). One segment is allowed: every
+    // phone has the framework package "android" (seen on the first emulator run, where it made
+    // every heartbeat fail); the uninstall action still asks for a dotted name.
+    package_id: z.string().max(200).regex(/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/).optional(),
   })
   .strict();
 
