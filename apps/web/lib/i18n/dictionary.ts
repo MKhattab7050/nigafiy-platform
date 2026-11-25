@@ -1,4 +1,4 @@
-import type { messages } from './messages-en';
+import type { messages } from './messages-en.ts';
 
 /**
  * Every feature keeps its `t(key)` strings in its own `strings.ts` (a leaf module with no imports);
