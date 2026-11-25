@@ -78,7 +78,7 @@ there, and `%APPDATA%\LAN Detective` is still the profile in use.
 
 ## Allow-list of `pnpm check:brand`
 
-Whole files: `docs/superpowers/**` and `docs/roadmap/status.md` (history), this file, the check and
+Whole files: `docs/superpowers/**`, `docs/roadmap/status.md` and the website's changelog `apps/site/content/changelog.json` (history: commit subjects from git), this file, the check and
 its test, and the compatibility code that names the legacy values (`env-compat.ts`,
 `data-dir.cjs` and its test, `installer-identity.test.cjs`, the engine's `compat.go`,
 `engine_test.go`, `update.go`, `update_test.go`), and the import of an install from before the

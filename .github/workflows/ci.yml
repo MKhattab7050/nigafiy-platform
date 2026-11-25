@@ -91,6 +91,14 @@ jobs:
       - name: Web browser smoke tests (EN + AR/RTL, CSP)
         run: pnpm test:web
 
+      # The website (apps/site): static export, unit tests and browser tests of the export. Build and
+      # test only: nothing is deployed (hosting is not decided, docs/website.md).
+      - name: Website static build
+        run: pnpm build:site
+
+      - name: Website tests (unit + browser, EN light / AR dark, links, downloads)
+        run: pnpm test:site
+
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v6
@@ -99,4 +107,6 @@ jobs:
           path: |
             apps/web/playwright-report
             apps/web/test-results
+            apps/site/playwright-report
+            apps/site/test-results
           retention-days: 7

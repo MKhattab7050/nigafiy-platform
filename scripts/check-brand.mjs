@@ -20,6 +20,8 @@ export const FILES = [
   // History: plans, specs and the status log describe what happened under the old name.
   'docs/superpowers/**',
   'docs/roadmap/status.md',
+  // The website's changelog: commit subjects from the git history, written by apps/site/scripts/changelog.ts.
+  'apps/site/content/changelog.json',
   // The decision table itself, and this check.
   'docs/architecture/naming.md',
   'scripts/check-brand.mjs',
