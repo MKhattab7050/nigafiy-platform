@@ -3,7 +3,7 @@
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import { useState } from 'react';
 import type { AccessPage } from '@nigafiy/shared-types';
-import { Button, Card, ErrorNote, Modal } from '@/components/ui';
+import { Button, Card, ErrorNote, Modal, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { accessText } from '../text';
@@ -12,6 +12,7 @@ const ADS_MALWARE = 'ads_malware';
 
 export function MasterSwitch({ data, site, admin, onChanged }: { data: AccessPage; site: string; admin: boolean; onChanged: () => void }) {
   const { locale, t } = useI18n();
+  const confirm = useConfirm();
   const tx = accessText(locale);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -36,9 +37,9 @@ export function MasterSwitch({ data, site, admin, onChanged }: { data: AccessPag
     }
   }
 
-  function toggle() {
+  async function toggle() {
     if (on) {
-      if (window.confirm(tx.disableConfirm)) void put({ enabled: false });
+      if (await confirm(tx.disableConfirm, { destructive: true })) void put({ enabled: false });
       return;
     }
     setAdsMalware(true);

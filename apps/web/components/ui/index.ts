@@ -5,4 +5,5 @@ export { Card, PageHeader, SectionLabel } from './layout';
 export { BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Button, FIELD, Field, Input, Segmented, Select, Switch, Tabs, Textarea } from './controls';
 export { Async, EmptyState, ErrorNote, Notice, Skeleton, SkeletonBlock, Spinner } from './feedback';
 export { Drawer, Modal, Tooltip } from './overlay';
+export { type ConfirmOptions, ConfirmProvider, useConfirm } from './confirm';
 export { CopyBlock, DataTable, Evidence, Fact } from './data';

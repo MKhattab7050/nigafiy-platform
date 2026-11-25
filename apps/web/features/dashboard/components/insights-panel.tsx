@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { DeviceMonitorBulk, DeviceMonitorResult, Insight, InsightAction, InsightsReport } from '@nigafiy/shared-types';
 import { AllClearArt } from '@/components/illustrations';
-import { BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, InferredBadge, Notice, SkeletonBlock, ToneIcon, severityTone } from '@/components/ui';
+import { BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, InferredBadge, Notice, SkeletonBlock, ToneIcon, severityTone, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { type Query, useApp } from '@/lib/app';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';
@@ -19,6 +19,7 @@ export const INITIAL = 4;
 
 /** With `onResult`, the API response goes to the caller (which shows the outcome) instead of `onDone` being called. */
 export function Action({ action, onDone, onResult }: { action: InsightAction; onDone: () => void; onResult?: (data: unknown) => void }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const { can } = useApp();
   const [busy, setBusy] = useState(false);
@@ -48,7 +49,7 @@ export function Action({ action, onDone, onResult }: { action: InsightAction; on
         variant="primary"
         busy={busy}
         onClick={async () => {
-          if (text.confirm && !window.confirm(text.confirm)) return;
+          if (text.confirm && !(await confirm(text.confirm))) return;
           setBusy(true);
           setError(null);
           try {

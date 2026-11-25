@@ -3,6 +3,7 @@ import { IBM_Plex_Mono, IBM_Plex_Sans, IBM_Plex_Sans_Arabic } from 'next/font/go
 import { cookies, headers } from 'next/headers';
 import { ThemeProvider } from '@/lib/theme';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme-boot';
+import { ConfirmProvider } from '@/components/ui/confirm';
 import { I18nProvider } from '@/lib/i18n';
 import { getMessages } from '@/lib/i18n/server';
 import './globals.css';
@@ -39,7 +40,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       </head>
       <body className="min-h-dvh text-sm">
         <ThemeProvider>
-          <I18nProvider locale={locale} messages={getMessages(locale)}>{children}</I18nProvider>
+          <I18nProvider locale={locale} messages={getMessages(locale)}>
+            <ConfirmProvider>{children}</ConfirmProvider>
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

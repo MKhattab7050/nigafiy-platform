@@ -3,7 +3,7 @@
 import { KeyRound, Plus } from 'lucide-react';
 import { useState } from 'react';
 import type { IdentityProvider, IdentityProviderKind, IdentityProviderRoleMapping, SsoAssignableRole } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Field, Input, Modal, Select, Textarea } from '@/components/ui';
+import { Async, Badge, Button, Card, CopyBlock, EmptyState, ErrorNote, Field, Input, Modal, Select, Textarea, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { type Key, fill, useI18n } from '@/lib/i18n';
@@ -17,6 +17,7 @@ interface CheckResult {
 
 /** Settings → Single sign-on: the organization's OIDC / SAML identity providers (owner and admin). */
 export function SsoProviders() {
+  const confirm = useConfirm();
   const { t, tn } = useI18n();
   const query = useQuery<{ items: IdentityProvider[] }>('/sso/providers', [], 60_000);
   const [editing, setEditing] = useState<IdentityProvider | 'new-oidc' | 'new-saml' | null>(null);
@@ -36,7 +37,7 @@ export function SsoProviders() {
   }
 
   async function remove(p: IdentityProvider) {
-    if (!window.confirm(fill(t('settings.sso.deleteConfirm'), { name: p.name }))) return;
+    if (!(await confirm(fill(t('settings.sso.deleteConfirm'), { name: p.name }), { destructive: true }))) return;
     setBusy(p.id);
     try {
       await api(`/sso/providers/${p.id}`, { method: 'DELETE' });

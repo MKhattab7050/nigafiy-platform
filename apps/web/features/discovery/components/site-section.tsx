@@ -3,7 +3,7 @@
 import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { Collector, CollectorCreated, NetworkScope, Site } from '@nigafiy/shared-types';
-import { Button, Card, ErrorNote, Field, Input } from '@/components/ui';
+import { Button, Card, ErrorNote, Field, Input, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { absoluteTime, browserTimeZone, relativeTime } from '@/lib/format';
@@ -22,6 +22,7 @@ function localizeScopeError(error: ApiError, t: ReturnType<typeof useI18n>['t'])
 }
 
 export function SiteSection({ site, scopes, collectors, reload, onToken }: { site: Site; scopes: NetworkScope[]; collectors: Collector[]; reload: () => void; onToken: (c: CollectorCreated) => void }) {
+  const confirm = useConfirm();
   const { t, locale } = useI18n();
   const { can } = useApp();
   const admin = can('admin');
@@ -146,7 +147,7 @@ export function SiteSection({ site, scopes, collectors, reload, onToken }: { sit
                         size="sm"
                         variant="ghost"
                         aria-label={`${t('common.delete')}: ${s.cidr}`}
-                        onClick={() => window.confirm(t('discovery.confirmRemoveScope')) && void act(s.id, () => api(`/scopes/${s.id}`, { method: 'DELETE' }), suggestions.reload)}
+                        onClick={async () => (await confirm(t('discovery.confirmRemoveScope'), { destructive: true, confirmLabel: t('common.delete') })) && void act(s.id, () => api(`/scopes/${s.id}`, { method: 'DELETE' }), suggestions.reload)}
                       >
                         <Trash2 className="size-3.5" aria-hidden />
                       </Button>

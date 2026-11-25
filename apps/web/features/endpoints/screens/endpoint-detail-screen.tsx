@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint } from '@nigafiy/shared-types';
 import clsx from 'clsx';
 import { PlatformIcon } from '@/components/device-icon';
-import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, Notice, PageHeader, SkeletonBlock, Tabs, type Tone } from '@/components/ui';
+import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, Notice, PageHeader, SkeletonBlock, Tabs, type Tone, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
@@ -32,6 +32,7 @@ import { endpointsText } from '../text';
 import { DeviceLink } from '@/components/device-link';
 
 export function EndpointDetailScreen({ id }: { id: string }) {
+  const confirm = useConfirm();
   const { locale, t } = useI18n();
   const isAr = locale === 'ar';
   const tx = endpointsText(locale);
@@ -224,8 +225,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                   search={procSearch}
                   setSearch={setProcSearch}
                   busy={busy}
-                  onKill={(pid, name) => {
-                    if (!window.confirm(`${tx.killConfirm} ${name} (PID ${pid})?`)) return;
+                  onKill={async (pid, name) => {
+                    if (!(await confirm(`${tx.killConfirm} ${name} (PID ${pid})?`, { destructive: true }))) return;
                     void sendCommand(`kill-${pid}`, { kind: 'kill_process', pid, name });
                   }}
                 />

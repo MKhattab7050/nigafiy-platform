@@ -3,7 +3,7 @@
 import type { NotificationChannel } from '@nigafiy/shared-types';
 import { Bell, Mail, MessageSquare, Plus, Send, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Async, Badge, Button, Card, CopyBlock, ErrorNote, Input, Modal, Select } from '@/components/ui';
+import { Async, Badge, Button, Card, CopyBlock, ErrorNote, Input, Modal, Select, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
@@ -24,6 +24,7 @@ function channelDestination(c: NotificationChannel): string {
 }
 
 export function Notifications() {
+  const confirm = useConfirm();
   const { t, locale } = useI18n();
   const query = useQuery<{ items: NotificationChannel[] }>('/notification-channels', ['events'], 15_000);
   const [name, setName] = useState('');
@@ -151,7 +152,7 @@ export function Notifications() {
                         size="sm"
                         variant="ghost"
                         aria-label={`${t('common.delete')}: ${c.name}`}
-                        onClick={() => window.confirm(`${t('common.delete')}?`) && void act(c.id, () => api(`/notification-channels/${c.id}`, { method: 'DELETE' }))}
+                        onClick={async () => (await confirm(`${t('common.delete')}?`, { destructive: true, confirmLabel: t('common.delete') })) && void act(c.id, () => api(`/notification-channels/${c.id}`, { method: 'DELETE' }))}
                       >
                         <Trash2 className="size-3.5" aria-hidden />
                       </Button>

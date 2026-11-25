@@ -3,7 +3,7 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { AccessPage, AccessProfile } from '@nigafiy/shared-types';
-import { Badge, Button, Card, ErrorNote } from '@/components/ui';
+import { Badge, Button, Card, ErrorNote, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { type Draft, TEMPLATES } from './profile-draft';
@@ -12,6 +12,7 @@ import { PauseControl } from './pause-control';
 import { accessText } from '../text';
 
 export function Profiles({ data, site, admin, canPause, onChanged }: { data: AccessPage; site: string; admin: boolean; canPause: boolean; onChanged: () => void }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = accessText(locale);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -25,7 +26,7 @@ export function Profiles({ data, site, admin, canPause, onChanged }: { data: Acc
     schedule: p.schedule,
   });
   async function remove(p: AccessProfile) {
-    if (!window.confirm(tx.deleteConfirm)) return;
+    if (!(await confirm(tx.deleteConfirm, { destructive: true }))) return;
     setError(null);
     try {
       await api(`/access/profiles/${p.id}`, { method: 'DELETE' });
