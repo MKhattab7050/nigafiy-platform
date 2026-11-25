@@ -320,6 +320,13 @@ func TestShellRelaysBothWaysAndShowsTheOperatorOnTheBanner(t *testing.T) {
 	if r.term.typed() != "Get-Date\r" {
 		t.Fatalf("input %q", r.term.typed())
 	}
+	// The resize follows the keystrokes on the socket, so it is applied a moment later: wait for
+	// it before the shell exits (the exit closes the socket, and a resize still unread is dropped).
+	waitFor(t, "the resize", func() bool {
+		r.term.mu.Lock()
+		defer r.term.mu.Unlock()
+		return len(r.term.sizes) > 0
+	})
 
 	// The shell exits: the API hears the exit code on the socket, the banner line goes.
 	r.term.exit <- 3
