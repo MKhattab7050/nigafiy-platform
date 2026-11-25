@@ -199,7 +199,7 @@ func TestReadOnlyCredentialsAndIgnoredWritesAreReported(t *testing.T) {
 	if strings.Contains(err.Error(), "ro-community") {
 		t.Fatal("error leaks the community")
 	}
-	a.IgnoreSets = true
+	a.SetIgnoreSets(true)
 	res, err := ApplyPortChange(context.Background(), tg, write, PortChange{IfIndex: 103, Op: "admin_status"}, 2*time.Second)
 	if ErrKind(err) != "readback_mismatch" || res == nil || res.Verified {
 		t.Fatalf("ignored write must not verify: %v %+v", err, res)

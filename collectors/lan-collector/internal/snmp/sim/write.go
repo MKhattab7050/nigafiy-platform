@@ -16,6 +16,27 @@ func (a *Agent) Writable(prefixes ...string) {
 	}
 }
 
+// SetMangle changes MangleSet while the agent serves (under the lock its SET handler holds).
+func (a *Agent) SetMangle(f func(oid string, value any) any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.MangleSet = f
+}
+
+// SetIgnoreSets changes IgnoreSets while the agent serves.
+func (a *Agent) SetIgnoreSets(on bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.IgnoreSets = on
+}
+
+// SetRejectSet changes RejectSet while the agent serves.
+func (a *Agent) SetRejectSet(f func(oid string) gosnmp.SNMPError) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.RejectSet = f
+}
+
 // Sets returns the OIDs written so far, in order (one entry per varbind applied).
 func (a *Agent) Sets() []string {
 	a.mu.Lock()

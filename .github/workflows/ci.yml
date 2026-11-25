@@ -193,6 +193,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          # setup-node v5 caches the pnpm store by itself (package.json names pnpm); this job installs
+          # nothing, so the store never exists and the post step failed the job ("Path Validation Error").
+          package-manager-cache: false
 
       - name: pnpm audit (production dependencies, high and critical)
         run: pnpm audit --audit-level=high --prod

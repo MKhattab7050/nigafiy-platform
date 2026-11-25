@@ -18,12 +18,12 @@ func TestAliasMismatchIsRolledBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A switch that truncates descriptions to 4 characters.
-	a.MangleSet = func(oid string, v any) any {
+	a.SetMangle(func(oid string, v any) any {
 		if b, ok := v.([]byte); ok && strings.HasPrefix(oid, oidIfAlias+".") && len(b) > 4 {
 			return b[:4]
 		}
 		return v
-	}
+	})
 	res, err := ApplyPortChange(context.Background(), tg, write, PortChange{IfIndex: 101, Op: "alias", Alias: "Storage server"}, 2*time.Second)
 	if ErrKind(err) != "readback_mismatch" || res == nil || res.Verified || !res.RolledBack {
 		t.Fatalf("want a rolled-back mismatch: %v %+v", err, res)
@@ -43,12 +43,12 @@ func TestAdminStatusMismatchIsRolledBack(t *testing.T) {
 	a := qSwitch()
 	tg := start(t, a)
 	// A switch that refuses to shut ports down but answers success, then stores "testing" (3).
-	a.MangleSet = func(oid string, v any) any {
+	a.SetMangle(func(oid string, v any) any {
 		if strings.HasPrefix(oid, oidIfAdminStatus+".") && v == 2 {
 			return 3
 		}
 		return v
-	}
+	})
 	res, err := ApplyPortChange(context.Background(), tg, write, PortChange{IfIndex: 103, Op: "admin_status", AdminUp: false}, 2*time.Second)
 	if ErrKind(err) != "readback_mismatch" || res == nil || !res.RolledBack {
 		t.Fatalf("want a rolled-back mismatch: %v %+v", err, res)
@@ -65,12 +65,12 @@ func TestCiscoVLANMismatchIsRolledBack(t *testing.T) {
 	a := ciscoSwitch()
 	tg := start(t, a)
 	// The switch puts the port into VLAN 1 instead of the requested one.
-	a.MangleSet = func(oid string, v any) any {
+	a.SetMangle(func(oid string, v any) any {
 		if strings.HasPrefix(oid, oidVmVlan+".") && v == 666 {
 			return 1
 		}
 		return v
-	}
+	})
 	res, err := ApplyPortChange(context.Background(), tg, write, PortChange{IfIndex: 101, Op: "access_vlan", VLAN: 666, Method: "cisco"}, 2*time.Second)
 	if ErrKind(err) != "readback_mismatch" || res == nil || !res.RolledBack {
 		t.Fatalf("want a rolled-back mismatch: %v %+v", err, res)
@@ -84,12 +84,12 @@ func TestRollbackThatDoesNotStickIsReported(t *testing.T) {
 	a := qSwitch()
 	tg := start(t, a)
 	// Every description write ends up as "????": the rollback cannot restore the old value either.
-	a.MangleSet = func(oid string, v any) any {
+	a.SetMangle(func(oid string, v any) any {
 		if strings.HasPrefix(oid, oidIfAlias+".") {
 			return []byte("????")
 		}
 		return v
-	}
+	})
 	res, err := ApplyPortChange(context.Background(), tg, write, PortChange{IfIndex: 102, Op: "alias", Alias: "Printer"}, 2*time.Second)
 	if ErrKind(err) != "readback_mismatch" || res == nil || res.RolledBack {
 		t.Fatalf("a rollback that did not stick must not be reported as done: %v %+v", err, res)
