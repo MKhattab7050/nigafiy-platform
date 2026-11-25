@@ -218,11 +218,12 @@ install, importing an old LAN Detective install. What is left:
 - **NSIS 3.0.4 cannot sign the uninstaller it writes at install time.** `uninstall.exe` of the agent
   is unsigned; the setup and `nigafiy-agent.exe` are signed. (The desktop NSIS build signs its
   uninstaller through electron-builder; checked on the real install below.)
-- **The agent installer, the agent's install/upgrade/rollback and the MSI were never run on a real
-  machine.** By the owner's rule nothing here installs a service, elevates, installs for all users or
-  installs the MSI. The agent's upgrade and rollback are covered by unit tests with a fake service
-  manager; the MSI was built and its tables read (below). All three need a run on a disposable
-  Windows VM before the first release.
+- **The agent installer and the agent's install/upgrade/rollback were never run on a real
+  machine.** By the owner's rule no build session installs a service, elevates or installs for all
+  users. The agent's upgrade and rollback are covered by unit tests with a fake service manager; they
+  need a run on a disposable Windows VM before the first release. The MSI's install and uninstall
+  ran once for real, started by the owner as administrator ("Real install test" below); an MSI
+  upgrade (0.1.0 → 0.1.1) and a GPO/Intune deployment have not run.
 - **Test builds carry the engine's development version.** `pnpm --filter @nigafiy/desktop dist`
   builds `nigafiy-engine.exe` without `main.Version` (it reports `0.1.0-dev`); `pnpm release` stamps
   it with the release version. (Before the engine and the Sensor became one executable the engine
@@ -277,12 +278,43 @@ every step and were never touched. Nothing ran on the owner's ports.
 47100/47130/47133 and the engine's 47140, which belong to the owner's install, and asks to scan the
 network) — only `--smoke`; the interactive installer pages (Choose programs, the old-copy question)
 and the Modify chooser — only silent mode; the first-run "move my data" dialog (an explicit
-`--user-data-dir` never asks); an all-users NSIS install; the MSI install, upgrade and `PROGRAMS=`;
+`--user-data-dir` never asks); an all-users NSIS install; the MSI install, upgrade and `PROGRAMS=`
+(install and uninstall later ran once with the owner, "Real install test" below; the upgrade has not);
 the agent installer and the agent's install/upgrade/rollback on a real service.
 
 **Microsoft Store packages (Builder S1, 2026-11-25, worktree `worktree-store-msix`):** both MSIX
 packages (desktop 213.4 MB, Quick Support 7.2 MB) were built with the `--local-test` identity, signed
 with the same test certificate and inspected (manifest, capabilities, firewall rules, files, English
 and Arabic strings). Installing them was refused (`0x800B0109`, certificate not trusted; Developer
-Mode off), and the Windows App Certification Kit needs administrator rights, so neither ran. Details
-and the owner's steps: [microsoft-store.md](microsoft-store.md), "What ran here vs never ran".
+Mode off), and the Windows App Certification Kit needs administrator rights, so neither ran in that
+session; both ran later with the owner ("Real install test" below). Details and the owner's steps:
+[microsoft-store.md](microsoft-store.md), "What ran here vs never ran".
+
+## Real install test (owner, elevated, 2026-11-25)
+
+The owner ran `scripts\install-test\run-elevated.ps1` once in an administrator PowerShell on this PC
+(Windows 11 Pro 10.0.26200, worktree `worktree-install-test`). Run `20261125-095600`; logs, msiexec
+logs, WACK XML and `summary.md` (from `node scripts/install-test/read-results.mjs <run folder>`) are in
+`.data\install-test\20261125-095600\`. Two earlier attempts stopped early: `20261125-035950` ended the
+MSI part on a missing-registry-key error from `reg.exe` under Windows PowerShell 5.1 (a script bug,
+fixed in `97a1c9b`; its MSIX checks ran), `20261125-095552` was started without elevation and changed
+nothing. Packages: `Nigafiy 0.1.0.msi`, `Nigafiy-0.1.0-x64-local-test.msix`,
+`Nigafiy-Quick-Support-0.1.0-x64-local-test.msix`, all signed with the test certificate
+`76B9582BE34D0E972BB6B7A37ABF318CCE2A7DCA`, which the script put into
+`LocalMachine\TrustedPeople` only and removed again at the end.
+
+Result: 61 PASS, 2 FAIL, 1 SKIP, 1 WARNING, 6 INFO. Both FAILs were bugs in the test script, not in
+the MSI (the programs printed the right output); the WARNING was a real Quick Support defect, fixed.
+
+| Area | Checks | Result |
+| --- | --- | --- |
+| MSI install (`msiexec /i /qn PROGRAMS=radar,watch`) | exit 0; registered `{82D6A004-C3DA-42AE-8D3E-DAAF64C1802F}`; `Nigafiy.exe`, `app.asar`, `nigafiy-engine.exe`, `local.mjs`, backend api and web present; no `resources\collector`; all 5 `.exe` signed by the test certificate; 10 724 files; no Windows service; all-users Start-menu and public-desktop shortcuts; Programs entry "Nigafiy" 0.1.0.0, `WindowsInstaller=1`, publisher Nigafiy; `HKLM\Software\Nigafiy\Hub` `Programs` = `radar,watch` | PASS |
+| MSI `nigafiy-engine install-info` | printed `install.kind` `msi`, scope `machine`, the product code and programs `hub,radar,watch` from HKLM | FAIL in the run, **check bug**: `Start-Process -PassThru` without `-Wait` gives an empty `ExitCode` in Windows PowerShell 5.1 unless the process handle is opened while it runs, and the match was a regex over the text. Fixed in `2b54f16` (`Invoke-Logged` opens the handle; the check reads `install.kind` from the JSON), with a regression test that runs the script's own `Invoke-Logged` in `powershell.exe`. |
+| MSI `Nigafiy.exe --smoke` (scratch profile) | printed `{"smoke":"ok", …, "windows":1,"tray":true,"protocolRegistered":true,"store":null}` | FAIL in the run, same **check bug** (empty exit code), fixed in `2b54f16`. |
+| MSI uninstall (`msiexec /x /qn`) | exit 0; no longer registered; `C:\Program Files\Nigafiy` gone (0 items); Programs entry, shortcuts and `HKLM\Software\Nigafiy\Hub` `Programs` removed | PASS |
+| MSIX desktop, MSIX Quick Support | see [microsoft-store.md](microsoft-store.md), "Real install test" | PASS (Quick Support launch SKIP) |
+| WACK desktop / Quick Support | | PASS / WARNING → fixed, see microsoft-store.md |
+| cleanup | certificate, MSI, packages and registry back as before | PASS |
+
+The two fixed MSI checks and the Quick Support WACK fix have not been run again elevated: that needs
+the owner to run `run-elevated.ps1` once more.

@@ -19,6 +19,8 @@
 //	                             (how the Microsoft Store version is opened; it never deletes itself)
 package main
 
+//go:generate go run ../../tools/winres -manifest nigafiy-support.manifest -o rsrc_windows_amd64.syso
+
 import (
 	"context"
 	"encoding/json"
