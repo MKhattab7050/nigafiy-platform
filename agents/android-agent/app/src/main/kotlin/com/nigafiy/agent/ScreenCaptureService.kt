@@ -42,6 +42,8 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
     private var vdWidth = 0
     private var vdHeight = 0
     private var last: Bitmap? = null
+    private var padded: Bitmap? = null
+    private var contentWidth = 0
     private var lastSentDigest: String? = null
     private var lastSentKey: String? = null
     private var sessionId: String? = null
@@ -139,6 +141,57 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
         reader?.close()
         reader = r
         last = null
+        padded?.recycle()
+        padded = null
+    }
+
+    /** Takes the newest image of the reader into [last]; false when the screen has not drawn since. */
+    private fun takeLatest(): Boolean {
+        val r = reader ?: throw IllegalStateException("the screen is not being shared")
+        val img = r.acquireLatestImage() ?: return false
+        img.use {
+            val plane = it.planes[0]
+            val pixelStride = plane.pixelStride
+            val rowPadding = plane.rowStride - pixelStride * it.width
+            val bw = it.width + rowPadding / pixelStride
+            // The bitmap is reused while the size stays the same (no allocation per frame).
+            val reuse = padded?.takeIf { b -> b.width == bw && b.height == it.height }
+            val b = reuse ?: Bitmap.createBitmap(bw, it.height, Bitmap.Config.ARGB_8888).also { nb -> padded?.recycle(); padded = nb }
+            plane.buffer.rewind()
+            b.copyPixelsFromBuffer(plane.buffer)
+            contentWidth = it.width
+        }
+        last = padded
+        return true
+    }
+
+    private fun encode(src: Bitmap, quality: Int, scale: Double): Triple<ByteArray, Int, Int> {
+        val (sw, _) = screenSize()
+        val cw = contentWidth.takeIf { it in 1..src.width } ?: src.width
+        val outW = minOf(cw, (sw * scale).roundToInt()).coerceAtLeast(2)
+        val outH = (outW.toDouble() * src.height / cw).roundToInt().coerceAtLeast(2)
+        val scaled = if (outW == src.width && cw == src.width) src else {
+            val m = android.graphics.Matrix().apply { setScale(outW.toFloat() / cw, outH.toFloat() / src.height) }
+            Bitmap.createBitmap(src, 0, 0, cw, src.height, m, true)
+        }
+        val buf = ByteArrayOutputStream(64 * 1024)
+        scaled.compress(Bitmap.CompressFormat.JPEG, quality, buf)
+        if (scaled !== src) scaled.recycle()
+        return Triple(buf.toByteArray(), outW, outH)
+    }
+
+    @Synchronized
+    override fun grab(quality: Int, scale: Double, full: Boolean): ScreenShare.Grabbed? {
+        if (projection == null) throw IllegalStateException("the screen is not being shared")
+        val t0 = System.currentTimeMillis()
+        followRotation()
+        val fresh = takeLatest()
+        if (!fresh && !full) return null
+        val src = last ?: return null
+        val t1 = System.currentTimeMillis()
+        val (bytes, w, h) = encode(src, quality, scale)
+        val (sw, sh) = screenSize()
+        return ScreenShare.Grabbed(bytes, w, h, sw, sh, t1 - t0, System.currentTimeMillis() - t1)
     }
 
     @Synchronized
@@ -146,27 +199,10 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
         val t0 = System.currentTimeMillis()
         if (projection == null) throw IllegalStateException("the screen is not being shared")
         followRotation()
-        val r = reader ?: throw IllegalStateException("the screen is not being shared")
-        val img = r.acquireLatestImage()
-        if (img != null) {
-            img.use {
-                val plane = it.planes[0]
-                val pixelStride = plane.pixelStride
-                val rowPadding = plane.rowStride - pixelStride * it.width
-                val padded = Bitmap.createBitmap(it.width + rowPadding / pixelStride, it.height, Bitmap.Config.ARGB_8888)
-                padded.copyPixelsFromBuffer(plane.buffer)
-                last = if (rowPadding == 0) padded else Bitmap.createBitmap(padded, 0, 0, it.width, it.height).also { padded.recycle() }
-            }
-        }
+        takeLatest()
         val src = last ?: throw IllegalStateException("no picture yet: the screen has not drawn since sharing started")
         val (sw, sh) = screenSize()
-        val outW = minOf(src.width, (sw * scale).roundToInt()).coerceAtLeast(2)
-        val outH = (outW.toDouble() * src.height / src.width).roundToInt().coerceAtLeast(2)
-        val scaled = if (outW == src.width) src else Bitmap.createScaledBitmap(src, outW, outH, true)
-        val buf = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, quality, buf)
-        if (scaled !== src) scaled.recycle()
-        val bytes = buf.toByteArray()
+        val (bytes, outW, outH) = encode(src, quality, scale)
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         val key = "$quality/$outW"
         // The same picture again: no image travels (the viewer keeps the one it has).
@@ -198,6 +234,8 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
         projection = null
         try { p?.stop() } catch (_: Exception) { }
         last = null
+        padded?.recycle()
+        padded = null
     }
 
     override fun onDestroy() {

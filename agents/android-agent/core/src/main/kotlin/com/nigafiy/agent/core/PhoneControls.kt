@@ -45,6 +45,8 @@ data class ScreenSessionRequest(
     /** The session's permission profile allows input (the accessibility service must also be on). */
     val control: Boolean,
     val operators: List<String>,
+    /** The server's hub takes this phone's live stream (and checks its taps); older servers: HTTP only. */
+    val liveStream: Boolean = false,
 ) {
     companion object {
         fun parse(p: Map<String, Any?>): ScreenSessionRequest {
@@ -57,6 +59,7 @@ data class ScreenSessionRequest(
                 consentTimeoutS = (p.long("consent_timeout_s") ?: 60L).toInt().coerceIn(15, 300),
                 control = p.bool("control") ?: false,
                 operators = AgentCommand.operators(p).ifEmpty { listOf(operator) },
+                liveStream = p.bool("phone_stream") ?: false,
             )
         }
     }

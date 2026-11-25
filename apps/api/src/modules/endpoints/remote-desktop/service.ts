@@ -377,6 +377,9 @@ export async function openOnAgent(
         operators: session.operators ?? [o.operator.email],
         recording: Boolean(session.recording_id),
         stream: true,
+        // A phone (agents/android-agent 1.0.3+) opens the live stream only when the hub checks its
+        // taps against what it reports (stream-hub.ts); an older server keeps it on the HTTP path.
+        phone_stream: true,
         // The Windows session the helper attaches to (absent: the console's; "winlogon": sign-in screen).
         user_session: session.user_session ?? null,
         display_index: session.display_index,

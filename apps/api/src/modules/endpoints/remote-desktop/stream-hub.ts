@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { STATUS_CODES, type IncomingMessage, type Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import type { EndpointPlatform, FleetPermissions, RemoteDesktopSession, Role } from '@nigafiy/shared-types';
+import type { EndpointAndroidState, EndpointPlatform, FleetPermissions, RemoteDesktopSession, Role } from '@nigafiy/shared-types';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';
@@ -338,6 +338,8 @@ interface Room {
   orgId: string;
   sessionId: string;
   platform: EndpointPlatform | null;
+  /** A phone's reported controls (agents/android-agent): what its live input is checked against. */
+  android: EndpointAndroidState | null;
   /** The agent's socket, when it is connected to this instance. */
   agent: WebSocket | null;
   /** Session state as last read or announced: frames flow only when 'active'. */
@@ -477,10 +479,16 @@ export class StreamHub {
     );
   }
 
-  private async currentSession(orgId: string, endpointId: string): Promise<{ session: RemoteDesktopSession | null; platform: EndpointPlatform } | null> {
+  private async currentSession(
+    orgId: string,
+    endpointId: string,
+  ): Promise<{ session: RemoteDesktopSession | null; platform: EndpointPlatform; android: EndpointAndroidState | null } | null> {
     return withTenant(orgId, async (db) => {
-      const r = await db.query<{ rd_session: RemoteDesktopSession | null; platform: EndpointPlatform }>(`SELECT rd_session, platform FROM endpoints WHERE id = $1`, [endpointId]);
-      return r.rows[0] ? { session: r.rows[0].rd_session, platform: r.rows[0].platform } : null;
+      const r = await db.query<{ rd_session: RemoteDesktopSession | null; platform: EndpointPlatform; android: EndpointAndroidState | null }>(
+        `SELECT rd_session, platform, android FROM endpoints WHERE id = $1`,
+        [endpointId],
+      );
+      return r.rows[0] ? { session: r.rows[0].rd_session, platform: r.rows[0].platform, android: r.rows[0].android } : null;
     });
   }
 
@@ -496,6 +504,7 @@ export class StreamHub {
         orgId,
         sessionId,
         platform,
+        android: null,
         agent: null,
         active: false,
         upstream: null,
@@ -546,6 +555,7 @@ export class StreamHub {
     if (cur.session.id !== sessionId) throw new AppError(409, 'session_mismatch', 'This is not the open session');
     const ws = await this.upgrade(req, socket, head);
     const r = this.room(ep.id, ep.organizationId, sessionId, cur.platform, cur.session);
+    r.android = cur.android;
     if (r.agent) r.agent.close(CLOSE_SUPERSEDED, 'replaced by a newer connection');
     r.agent = ws;
     r.active = (cur.session.state ?? 'active') === 'active';
@@ -804,6 +814,7 @@ export class StreamHub {
     socket.once('close', releaseUser);
     const ws = await this.upgrade(req, socket, head, this.viewerWss);
     const r = this.room(endpointId, who.organizationId, sessionId, cur.platform, cur.session);
+    r.android = cur.android;
     if (!r.agent) r.active = (cur.session.state ?? 'active') === 'active';
     const sink: Sink = {
       id: randomUUID().replaceAll('-', ''),
@@ -923,7 +934,7 @@ export class StreamHub {
           return;
         }
         try {
-          if (r.platform) validateCommandForPlatform(r.platform, parsedEv.data, user.role);
+          if (r.platform) validateCommandForPlatform(r.platform, parsedEv.data, user.role, r.android);
         } catch (err) {
           this.sendJson(sink, { t: 'input_error', error: err instanceof Error ? err.message : 'Input refused' });
           return;

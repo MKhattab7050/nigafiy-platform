@@ -44,7 +44,8 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
   const waitingConsent = rd.state === 'waiting_consent';
   const refuseWindow = waitingConsent && fsRefuse(rd.fleetSession);
   const fs = rd.fleetSession;
-  const policyPrompt = ep.policy?.remote_desktop_consent === 'prompt';
+  // A phone always asks the person (sessions on Android are attended, whatever the group's policy says).
+  const policyPrompt = ep.policy?.remote_desktop_consent === 'prompt' || ep.platform === 'android';
   const deniedPermissions = Object.entries(rd.hello?.desktop?.permissions ?? {}).filter(([, v]) => v === 'denied');
 
   const endedText = (() => {
@@ -72,7 +73,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
           <span className="flex items-start gap-1.5 text-muted">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
-              {tx.transparency} {policyPrompt ? tx.promptPolicy : tx.unattendedPolicy}
+              {tx.transparency} {ep.platform === 'android' ? tx.phonePolicy : policyPrompt ? tx.promptPolicy : tx.unattendedPolicy}
             </span>
           </span>
         </div>

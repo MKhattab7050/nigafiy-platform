@@ -51,6 +51,7 @@ class AgentService : Service() {
         executor = Executor(this, store, facts)
         seen = SeenCommands(store.seenCommands)
         ScreenShare.endReporter = { id -> pool.execute { try { gateway()?.endSession(id) } catch (e: Exception) { store.lastError = e.message } } }
+        ScreenShare.streamStarter = { req -> store.server?.let { srv -> LiveStream.start(srv, store.pin, { store.credential }, req) } }
         channel(this)
         showManagementNotification()
         startInForeground(getString(R.string.notif_enrolling, store.server ?: store.pendingEnrollment?.server ?: "…"))

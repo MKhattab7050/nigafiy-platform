@@ -1,14 +1,17 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 import { env } from '../src/config/env.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { LocalFileStore, filesRoot } from '../src/infrastructure/file-store.ts';
 import { base32Decode, totp } from '../src/modules/auth/totp.ts';
+import { StreamHub } from '../src/modules/endpoints/remote-desktop/stream-hub.ts';
 import { runApkFileSweep } from '../src/modules/endpoints/fleet-android/apks.ts';
 import { measure } from '../src/modules/endpoints/fleet-monitoring/evaluate.ts';
 import { CSRF, app, newAccount, type TestAccount } from './helpers.ts';
@@ -546,6 +549,75 @@ describe('Android phone controls in regular app mode (screen, control, files, ri
       .send({ command_results: [{ id: open2.id, ok: true, data: { consent: 'denied', banner: 'shown' } }] });
     const ep = await a.agent.get(`/api/v1/endpoints/${epId}`);
     expect(ep.body.rd_session).toBeNull();
+  });
+  it('live stream: the phone streams over the hub socket and taps, swipes and Back reach it at once (no command round trip)', async () => {
+    const a = await newAccount('android-ctl-live');
+    const { epId, cred } = await phone(a, 'regular');
+    expect((await hbWith(cred, 'Pixel-Reception', controls)).status).toBe(200);
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'live look' });
+    expect(start.status).toBe(200);
+    const session = start.body.session.id as string;
+    const open = (await poll(cred)).find((c) => c.kind === 'rd_session_open')!;
+    await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({ command_results: [{ id: open.id, ok: true, data: { consent: 'accepted', banner: 'shown', desktop: { mode: 'android' }, stream: 'ws' } }] });
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const base = `ws://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const hub = new StreamHub({ peerUrl: base.replace('ws:', 'http:') });
+    hub.attach(server);
+    hub.start();
+    const sockets: WebSocket[] = [];
+    const connect = (url: string, headers: Record<string, string>) =>
+      new Promise<{ ws: WebSocket; texts: Array<Record<string, unknown>>; frames: Buffer[] }>((resolve, reject) => {
+        const ws = new WebSocket(url, { headers });
+        sockets.push(ws);
+        const texts: Array<Record<string, unknown>> = [];
+        const frames: Buffer[] = [];
+        ws.on('message', (d, bin) => (bin ? frames.push(d as Buffer) : texts.push(JSON.parse(d.toString()))));
+        ws.once('open', () => resolve({ ws, texts, frames }));
+        ws.once('error', reject);
+      });
+    const until = async <T>(f: () => T | undefined, what: string): Promise<T> => {
+      for (let i = 0; i < 100; i++) {
+        const v = f();
+        if (v) return v;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error(`timed out waiting for ${what}`);
+    };
+    try {
+      const login = await request(app).post('/api/v1/auth/login').set(CSRF).send({ email: a.email, password: 'correct horse battery' });
+      const cookie = ((login.headers['set-cookie'] as unknown as string[]) ?? []).find((c) => c.startsWith('ld_session='))!.split(';')[0]!;
+      const agent = await connect(`${base}/api/v1/agent/stream?session=${session}`, { Authorization: `Bearer ${cred}` });
+      agent.ws.send(JSON.stringify({ t: 'hello', session_id: session, displays: [{ index: 0, name: 'Phone screen', width: 1080, height: 2340, primary: true }], desktop: { mode: 'android', input_supported: true }, encoder: 'jpeg' }));
+      const viewer = await connect(`${base}/api/v1/endpoints/${epId}/remote-desktop/stream?session=${session}`, { Cookie: cookie, Origin: 'http://localhost:3100' });
+      await until(() => agent.texts.find((m) => m.t === 'viewers' && m.count === 1), 'one viewer');
+      // The packet the app builds (WsClient.framePacket): one tile, the whole JPEG.
+      const jpeg = Buffer.from([0xff, 0xd8, 9, 9, 0xff, 0xd9]);
+      const header = Buffer.from(JSON.stringify({ t: 'frame', seq: 1, full: true, display: 0, w: 738, h: 1600, sw: 1080, sh: 2340, q: 60, s: 0.68, fmt: 'jpeg', tiles: [{ x: 0, y: 0, w: 738, h: 1600, n: jpeg.length }], mode: 'android' }));
+      const len = Buffer.alloc(4);
+      len.writeUInt32BE(header.length);
+      agent.ws.send(Buffer.concat([Buffer.from([0x4e, 1]), len, header, jpeg]), { binary: true });
+      await until(() => viewer.frames[0], 'the phone frame');
+
+      viewer.ws.send(JSON.stringify({ t: 'input', ev: { kind: 'mouse_click', x: 0.5, y: 0.5 } }));
+      viewer.ws.send(JSON.stringify({ t: 'input', ev: { kind: 'swipe', x: 0.5, y: 0.8, x2: 0.5, y2: 0.2, duration_ms: 250 } }));
+      viewer.ws.send(JSON.stringify({ t: 'input', ev: { kind: 'nav', nav: 'back' } }));
+      viewer.ws.send(JSON.stringify({ t: 'input', ev: { kind: 'key_press', key: 'a' } }));
+      await until(() => agent.texts.filter((m) => m.t === 'input').length === 3 && viewer.texts.find((m) => m.t === 'input_error'), 'three inputs and one refusal');
+      expect(agent.texts.filter((m) => m.t === 'input').map((m) => (m.ev as { kind: string }).kind)).toEqual(['mouse_click', 'swipe', 'nav']);
+      await new Promise((r) => setTimeout(r, 200));
+      const inputs = await audits(a.organizationId, 'endpoint.rd_input');
+      expect(inputs.map((x) => x.metadata.via)).toEqual(['live_stream', 'live_stream', 'live_stream']);
+    } finally {
+      for (const s of sockets) s.close();
+      await hub.stop();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 

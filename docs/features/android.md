@@ -339,3 +339,23 @@ The phone app's screens were redesigned in 1.0.2 (header with the connection sta
 controls" card with a coloured state and a button per control, light and dark), drawn in code
 (`Ui.kt`) without new libraries.
 
+
+### Live stream (app 1.0.3)
+
+On 1.0.2 a phone's picture travelled one `rd_capture` command per frame (poll, capture, post the result,
+then a 750 ms pause in the viewer): about one picture a second, and every tap waited for the same round trip.
+From 1.0.3 the app opens the same live socket the Windows agent uses (`/api/v1/agent/stream`, `stream-hub.ts`)
+once the person accepted, when the server's `rd_session_open` says `phone_stream: true` (older servers do not, and
+the phone stays on the HTTP path there). Over it:
+
+- a JPEG (one tile, `WsClient.framePacket`) is sent only when the screen drew something new (the ImageReader
+  gives no image otherwise), at most 15 a second, at most 3 unacknowledged; the quality drops when acks are slow;
+- taps, long presses, swipes and Back / Home / Recents come back as `input` messages; the hub checks them
+  against what the phone reports (`validateCommandForPlatform(..., android)`), audits them (`via: live_stream`),
+  and the app checks the session's control permission and the accessibility service again before acting;
+- nothing is sent before consent (the hub reports zero viewers until the session is active) and the socket
+  closes when the session ends here or in Fleet.
+
+Code: `core/.../WsClient.kt` (a small RFC 6455 client, same TLS pin as the gateway), `app/.../LiveStream.kt`,
+`ScreenCaptureService.grab`. Tests: `WsClientTest` (6), `PhoneControlsTest`, and
+`fleet-android.test.ts` "live stream".

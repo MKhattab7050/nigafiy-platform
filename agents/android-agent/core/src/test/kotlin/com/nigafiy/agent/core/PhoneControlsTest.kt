@@ -23,6 +23,9 @@ class PhoneCommandsTest {
         assertEquals(90, open.session.consentTimeoutS)
         assertTrue(open.session.control)
         assertEquals(listOf("it@example.com"), open.session.operators)
+        // Only a server that says so gets the live stream (older ones keep the HTTP path).
+        assertEquals(false, open.session.liveStream)
+        assertTrue((cmd("rd_session_open", mapOf("session_id" to "s2", "phone_stream" to true)) as AgentCommand.SessionOpen).session.liveStream)
         assertEquals("abcDEF123_-x", (cmd("rd_session_close", mapOf("session_id" to "abcDEF123_-x")) as AgentCommand.SessionClose).sessionId)
         val cap = cmd("rd_capture", mapOf("quality" to 200L, "scale" to 0.1)) as AgentCommand.Capture
         assertEquals(95, cap.quality)

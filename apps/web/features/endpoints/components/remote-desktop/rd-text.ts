@@ -16,6 +16,7 @@ const en = {
   reasonPlaceholder: 'e.g. Printer driver ticket #42',
   transparency:
     'The person at this computer sees a banner with your name for the whole session and can end it at any time. Every session, input and clipboard transfer is in the audit log.',
+  phonePolicy: 'A phone always asks the person first: nothing is shown or controlled until they accept on the phone.',
   promptPolicy: 'This computer’s policy asks the user for consent first: nothing is shown or controlled until they accept.',
   unattendedPolicy: 'Unattended policy: the session starts at once; the user is notified and sees the banner.',
   waitingTitle: (name: string) => `Waiting for the person at ${name} to accept`,
@@ -164,6 +165,7 @@ const ar: Text = {
   reasonPlaceholder: 'مثال: تذكرة تعريف الطابعة رقم 42',
   transparency:
     'يرى الشخص أمام هذا الحاسوب شريطًا باسمك طوال الجلسة ويمكنه إنهاؤها في أي وقت. كل جلسة وكل إدخال وكل نقل للحافظة مسجَّل في سجل التدقيق.',
+  phonePolicy: 'الهاتف يسأل صاحبه أولًا دائمًا: لا يُعرض شيء ولا يُتحكَّم بشيء قبل أن يوافق على الهاتف.',
   promptPolicy: 'سياسة هذا الحاسوب تطلب موافقة المستخدم أولًا: لا يُعرض شيء ولا يُتحكَّم بشيء قبل أن يوافق.',
   unattendedPolicy: 'سياسة دون حضور: تبدأ الجلسة فورًا، ويُبلَّغ المستخدم ويظهر له الشريط.',
   waitingTitle: (name: string) => `بانتظار موافقة الشخص أمام ${name}`,

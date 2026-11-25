@@ -31,7 +31,14 @@ object ScreenShare {
         fun frame(quality: Int, scale: Double, full: Boolean): Map<String, Any?>
         /** The real screen size in pixels (gestures are mapped onto it). */
         fun screenSize(): Pair<Int, Int>
+        /**
+         * A live-stream picture: null when the screen has not drawn since the last one (and [full] is
+         * false), so a still screen costs no encoding and no bytes.
+         */
+        fun grab(quality: Int, scale: Double, full: Boolean): Grabbed?
     }
+
+    class Grabbed(val jpeg: ByteArray, val width: Int, val height: Int, val sourceWidth: Int, val sourceHeight: Int, val captureMs: Long, val encodeMs: Long)
 
     @Volatile var pending: Pending? = null
         private set
@@ -40,6 +47,8 @@ object ScreenShare {
         private set
     @Volatile var capturer: Capturer? = null
         private set
+    /** Opens the live stream of an accepted session (set by [AgentService]). */
+    @Volatile var streamStarter: ((ScreenSessionRequest) -> Unit)? = null
     /** Posts "the person ended the session" to Fleet (set by [AgentService]). */
     @Volatile var endReporter: ((String) -> Unit)? = null
 
@@ -55,7 +64,7 @@ object ScreenShare {
         stopAll(ctx, notifyFleet = false)
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (!nm.areNotificationsEnabled()) {
-            return result(Answer.UNAVAILABLE, "Notifications for the Nigafiy app are turned off on this phone, so the person could not be asked", banner = "unavailable")
+            return result(req, Answer.UNAVAILABLE, "Notifications for the Nigafiy app are turned off on this phone, so the person could not be asked", banner = "unavailable")
         }
         val p = Pending(req)
         pending = p
@@ -70,14 +79,14 @@ object ScreenShare {
             if (active?.sessionId == req.sessionId) stopAll(ctx, notifyFleet = false)
             ShareRequestActivity.finishOpen()
         }
-        return result(answer, p.error, banner = "shown")
+        return result(req, answer, p.error, banner = "shown")
     }
 
-    private fun result(answer: Answer, error: String?, banner: String): Map<String, Any?> = linkedMapOf<String, Any?>(
+    private fun result(req: ScreenSessionRequest, answer: Answer, error: String?, banner: String): Map<String, Any?> = linkedMapOf<String, Any?>(
         "consent" to answer.wire,
         "banner" to banner,
         "desktop" to mapOf("mode" to "android"),
-        "stream" to "http",
+        "stream" to if (req.liveStream) "ws" else "http",
     ).also { m -> error?.let { m["consent_error"] = it.take(300) } }
 
     /** The person's answer (activity, notification action) or the capture service's. */
@@ -96,6 +105,7 @@ object ScreenShare {
         capturer = c
         active = p.request
         answer(sessionId, Answer.ACCEPTED)
+        if (p.request.liveStream) streamStarter?.invoke(p.request)
         ControlService.refreshIndicator(ctx)
         return true
     }
@@ -129,6 +139,7 @@ object ScreenShare {
         val was = active
         active = null
         capturer = null
+        LiveStream.stopAll()
         ScreenCaptureService.stop(ctx)
         ControlService.refreshIndicator(ctx)
         if (notifyFleet && was != null && ended != null) endReporter?.invoke(ended.sessionId)
