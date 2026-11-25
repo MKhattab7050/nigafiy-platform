@@ -495,11 +495,10 @@ describe('endpoint management and remote administration (Phases 3 & 4)', () => {
   it('supports only agent platforms, refuses option-like arguments, and keeps unmeasured security unknown', async () => {
     const a = await newAccount('ep-harden');
 
-    // iOS/Android "MDM" was removed: neither the platforms nor the MDM routes exist.
-    for (const platform of ['android', 'ios']) {
-      const res = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Phone', platform });
-      expect(res.status).toBe(400);
-    }
+    // The old iOS/Android "MDM" (no app on the phone) was removed. Android came back with the
+    // Nigafiy agent app (migration 045, tests/fleet-android.test.ts); iOS stays out (paid Apple account).
+    const ios = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Phone', platform: 'ios' });
+    expect(ios.status).toBe(400);
     const mdm = await request(app).post('/api/v1/agent/mdm/connect').send({ enrollment_token: 'x'.repeat(30) });
     expect([403, 404]).toContain(mdm.status);
 

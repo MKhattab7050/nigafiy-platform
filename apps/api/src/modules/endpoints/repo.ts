@@ -48,7 +48,8 @@ export const ENDPOINT_SUMMARY_SELECT = `
          e.last_heartbeat_at, e.inventory_updated_at,
          CASE WHEN e.status = 'pending' THEN e.enrollment_expires_at END AS enrollment_expires_at,
          e.created_at, e.fleet_group_id, fg.name AS fleet_group_name,
-         e.nigafiy_id, e.tags, e.user_sessions, e.boot_state
+         e.nigafiy_id, e.tags, e.user_sessions, e.boot_state,
+         CASE WHEN e.platform = 'android' THEN e.android END AS android
     FROM endpoints e
     JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id
     LEFT JOIN fleet_groups fg ON fg.organization_id = e.organization_id AND fg.id = e.fleet_group_id`;

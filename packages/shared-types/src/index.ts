@@ -2924,15 +2924,16 @@ export type AndroidCommandKind =
   | 'android_wipe'
   | 'android_release';
 
-/** POST /endpoints/:id/android/actions */
-export type AndroidActionInput =
+/** POST /endpoints/:id/android/actions (step_up_token: from POST /fleet/step-up; always needed for wipe and release). */
+export type AndroidActionInput = { step_up_token?: string } & (
   | { action: 'lock' }
   | { action: 'password_policy'; complexity: AndroidPasswordComplexity }
   | { action: 'camera'; disabled: boolean }
   | { action: 'install_apk'; apk_id: string }
   | { action: 'uninstall'; package: string }
-  | { action: 'wipe'; reason: string; step_up_token?: string }
-  | { action: 'release'; reason: string; step_up_token?: string };
+  | { action: 'wipe'; reason: string }
+  | { action: 'release'; reason: string }
+);
 
 export type AndroidActionResult =
   | { state: 'queued'; command: EndpointCommand }
@@ -2942,7 +2943,7 @@ export interface AndroidActionRequest {
   id: string;
   endpoint_id: string;
   endpoint_name: string;
-  action: 'wipe';
+  action: 'wipe' | 'release';
   reason: string;
   requested_email: string;
   requested_by: string | null;

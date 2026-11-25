@@ -49,6 +49,12 @@ const schema = z.object({
    */
   QUICK_SUPPORT_EXE: optionalNonEmpty,
   /**
+   * Fleet Android: path of the signed Nigafiy agent APK that Device Owner QR provisioning downloads
+   * (GET /api/v1/agent/android/agent.apk). Unset: the release build in this checkout
+   * (agents/android-agent/app/build/outputs/apk/release/app-release.apk, pnpm build:android).
+   */
+  NIGAFIY_ANDROID_APK: optionalNonEmpty,
+  /**
    * Address collectors and endpoint agents should use to reach this server (e.g. https://lan.example.com),
    * returned as `server_url` with enrollment tokens. Unset: the origin each request arrived at is used.
    */

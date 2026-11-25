@@ -184,7 +184,8 @@ export const agentHeartbeatSchema = z
     logged_in_users: z.array(cleanText(120)).max(32).default([]),
     primary_ip: ipv4.optional(),
     primary_mac: mac.optional(),
-    cpu_pct: z.number().min(0).max(100).default(0),
+    // Absent from the Android agent: Android gives apps no CPU load (stored as null, not 0).
+    cpu_pct: z.number().min(0).max(100).optional(),
     ram_used_mb: z.number().int().min(0).max(16_777_216).default(0),
     ram_pct: z.number().min(0).max(100).default(0),
     disk_used_pct: z.number().min(0).max(100).optional(),

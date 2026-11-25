@@ -10,9 +10,12 @@
 --  * fleet_android_apks           APKs an admin uploaded to push to Device Owner phones: name, size,
 --                                 SHA-256 and the bytes (≤ 100 MiB). The agent downloads one only for
 --                                 an install command it was given, and checks size and SHA-256.
---  * fleet_android_requests       an Android action that waits for a second admin (wipe, when the
---                                 endpoint's Fleet group asks for approvals). Approving queues the
---                                 command; the requester can never approve their own request.
+--  * fleet_android_requests       an Android action that waits for a second admin (wipe or stop
+--                                 management, when the endpoint's Fleet group asks for approvals).
+--                                 Approving queues the command; the requester can never approve
+--                                 their own request.
+--  * endpoint_commands.kind       the Android agent's commands (android_*).
+--  * endpoint_samples.cpu_pct     nullable: Android gives apps no CPU load, and a 0 would be a guess.
 
 ALTER TABLE endpoints DROP CONSTRAINT IF EXISTS endpoints_platform_check;
 ALTER TABLE endpoints ADD CONSTRAINT endpoints_platform_check CHECK (platform IN ('windows', 'linux', 'macos', 'android'));
@@ -42,7 +45,7 @@ CREATE TABLE fleet_android_requests (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id  uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
   endpoint_id      uuid NOT NULL,
-  action           text NOT NULL CHECK (action IN ('wipe')),
+  action           text NOT NULL CHECK (action IN ('wipe', 'release')),
   payload          jsonb NOT NULL DEFAULT '{}'::jsonb,
   reason           text NOT NULL CHECK (length(reason) BETWEEN 3 AND 200),
   requested_by     uuid REFERENCES users (id) ON DELETE SET NULL,
@@ -67,3 +70,20 @@ CREATE POLICY tenant_isolation ON fleet_android_requests FOR ALL TO lan_app
   USING (organization_id = app_current_org()) WITH CHECK (organization_id = app_current_org());
 -- No DELETE: a request and its decision are evidence.
 GRANT SELECT, INSERT, UPDATE ON fleet_android_requests TO lan_app;
+
+-- ── Agent commands: Android ─────────────────────────────────────────────────────────────────────
+ALTER TABLE endpoint_commands DROP CONSTRAINT endpoint_commands_kind_check;
+ALTER TABLE endpoint_commands ADD CONSTRAINT endpoint_commands_kind_check CHECK (
+  kind IN (
+    'refresh_inventory', 'kill_process', 'service_action', 'power_action', 'notify_user',
+    'fs_op', 'rd_capture', 'rd_input', 'software_action', 'fetch_logs', 'diagnostic_command',
+    'rd_session_open', 'rd_session_close', 'rd_session_update',
+    'fleet_restart', 'fleet_safe_boot_clear',
+    'shell_open', 'shell_close', 'script_run', 'script_cancel',
+    'patch_scan', 'patch_install', 'patch_reboot_prompt', 'patch_reboot',
+    'android_lock', 'android_password_policy', 'android_camera', 'android_install_apk',
+    'android_uninstall', 'android_wipe', 'android_release'
+  )
+);
+
+ALTER TABLE endpoint_samples ALTER COLUMN cpu_pct DROP NOT NULL;

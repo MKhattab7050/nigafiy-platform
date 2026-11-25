@@ -57,7 +57,8 @@ export async function monitorSpec(db: Db, endpointId: string) {
 }
 
 export interface MonitorInput {
-  cpuPct: number;
+  /** null: the agent cannot measure CPU load (Android gives apps none). */
+  cpuPct: number | null;
   ramPct: number;
   disks: { mount: string; free_gb?: number | undefined; total_gb?: number | undefined; used_pct: number }[] | null;
   monitor: AgentMonitor | undefined;
@@ -74,6 +75,7 @@ const pct = (n: number) => `${Math.round(n * 10) / 10}%`;
 export function measure(r: RuleRow, m: MonitorInput): Measurement {
   switch (r.kind) {
     case 'cpu':
+      if (m.cpuPct === null) return { breach: null, value: 'CPU load is not available on this platform (Android gives apps none)' };
       return { breach: m.cpuPct > r.threshold!, value: `CPU ${pct(m.cpuPct)} (alert above ${pct(r.threshold!)})` };
     case 'memory':
       return { breach: m.ramPct > r.threshold!, value: `Memory ${pct(m.ramPct)} used (alert above ${pct(r.threshold!)})` };
