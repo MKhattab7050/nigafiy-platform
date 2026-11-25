@@ -88,8 +88,9 @@ your port, find it by port and stop that PID only. Never stop processes by image
 
 ## Windows notes
 
-- `pnpm build` regenerates `packages/brand/svg/*` with LF line endings. `.gitattributes` keeps those
-  files LF; if they still show as changed, run `git checkout -- packages/brand` before committing.
+- `pnpm build` regenerates `packages/brand` with LF line endings. `.gitattributes` checks those files
+  out with LF, so the build changes nothing. In a working copy from before `.gitattributes`, run
+  `git checkout -- packages/brand` once; if they ever show as changed, do the same before committing.
 - Go code is pure Go (`CGO_ENABLED=0`); there is no C compiler on the build machines.
 - Do not install services, elevate, or change firewall rules and system settings from a test.
 - Never scan or touch a real network, router or device from tests; router and switch protocols are

@@ -139,8 +139,10 @@ applies them at start.
 | `pnpm --filter @nigafiy/desktop dist` / `dist:msi` / `dist:msix` | Desktop NSIS installer / MSI / MSIX package |
 | `pnpm release` | Every installer signed, plus the signed update manifest ([operations/updates.md](operations/updates.md)) |
 
-`pnpm build` rewrites `packages/brand/svg/*` with LF line endings: run `git checkout -- packages/brand`
-before committing.
+`pnpm build` regenerates `packages/brand` (SVGs and `src/wordmark.ts`) with LF line endings. `.gitattributes`
+checks those files out with LF, so a fresh clone sees no change. A working copy checked out before
+`.gitattributes` existed has them with CRLF: run `git checkout -- packages/brand` once, after which the
+build leaves them untouched.
 
 ## Tests
 
