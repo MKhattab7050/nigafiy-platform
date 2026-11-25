@@ -123,7 +123,7 @@ system image were downloaded.
   encrypted with an Android Keystore AES-GCM key), `Provisioning` (Device Owner admin extras),
   `MainActivity` (enroll by link or by hand, status, battery exemption), `BootReceiver`.
 
-**API** (migration `045_android_endpoints.sql`):
+**API** (migrations `045_android_endpoints.sql`, `048_android_apk_files.sql`):
 - `endpoints.platform` accepts `android`; the phone's own state is kept in `endpoints.android`.
 - Android has no CPU load for apps: `cpu_pct` is stored as NULL (never 0), and a CPU monitoring rule on a
   phone reads "not measured", never a breach.
@@ -135,9 +135,41 @@ system image were downloaded.
   `fleet.policy_refused`). The step-up code never reaches the audit log.
 - Approvals: `GET /api/v1/fleet/android/requests`, `POST /api/v1/fleet/android/requests/:id/approve|deny`
   (not by the requester; requests expire; rows cannot be deleted).
-- APKs pushed from Fleet: `GET|POST /api/v1/fleet/android/apks`, `DELETE /api/v1/fleet/android/apks/:id`
-  (100 MiB max, must be a zip/APK, de-duplicated by SHA-256). A phone may download an APK
-  (`/api/v1/agent/android/apks/:id`) only while it has an open install command for it.
+- APKs pushed from Fleet: `GET /api/v1/fleet/android/apks` (technician+), `POST /api/v1/fleet/android/apks`,
+  `GET /api/v1/fleet/android/apks/:id/file` and `DELETE /api/v1/fleet/android/apks/:id` (admin; 100 MiB
+  max, must be a zip/APK, de-duplicated by SHA-256 per organization; download and delete are audited).
+  A phone may download an APK (`/api/v1/agent/android/apks/:id`) only while it has an open install
+  command for it.
+
+**Where APK files live** (migration 048, `apps/api/src/infrastructure/file-store.ts`): not in
+PostgreSQL. Each APK is a file `<NIGAFIY_FILES_DIR>/apks/<organization id>/<sha256>`; `NIGAFIY_FILES_DIR`
+defaults to `<NIGAFIY_DATA_DIR>/files` (else `<repo>/.data/files`). The row keeps `storage_key`
+(`apks/<organization id>/<sha256>`), `size_bytes` and `sha256`.
+- Upload streams the request body into `.tmp-<random>` in the organization's folder (never the whole APK
+  in memory), fsyncs it, reads it back to check size and SHA-256, then renames it to its SHA-256. Paths
+  are built only from the organization's UUID and the hex digest; no user text reaches the file system.
+  One folder per organization, so the tenant boundary also holds on disk.
+- Downloads (phone and admin) check the size before the first byte and the SHA-256 while streaming; the
+  last chunk is held back until the digest matches, so a damaged file is never delivered complete.
+  A missing or wrong-sized file is `409 apk_file_missing` / `apk_file_corrupt` (EN/AR in the phone
+  panel); `install_apk` is refused the same way. Each case writes a `fleet.android_apk_file_problem`
+  audit row. Uploading the same APK again repairs a missing or damaged copy
+  (`fleet.android_apk_file_repaired`, HTTP 200 with `repaired: true`).
+- Delete removes the file when no row references it (an advisory lock per file key serialises upload,
+  delete and sweep). The job `fleet-apk-file-sweep` (right after start, then every 6 hours) removes
+  stored files no row references (older than 1 hour) and temporary files of interrupted uploads (older
+  than 6 hours), never a referenced file and never a file it does not recognise, and writes one
+  `fleet.android_apk_files_swept` audit row per organization with what it removed.
+- Existing installs: the migrator copies every `content` row to the store inside migration 048's
+  transaction (`apps/api/src/database/apk-file-mover.ts`), one row at a time, and checks each against its
+  recorded size and SHA-256; the SQL then refuses to continue unless every row was moved, and drops
+  `content`. A failure rolls back with `content` untouched and the move runs again on the next start
+  (files are content-addressed, so a second run reuses them). Applying 048 with `psql` while APKs exist
+  is refused. Restoring an older backup that still has `content` runs the same move.
+- Backups: `db:backup` no longer contains APKs; back up the files folder too
+  (`docs/operations/backup-restore-and-key-rotation.md`).
+- Object storage (S3-compatible) can plug in behind the `FileStore` interface later; no S3 client is
+  included today (feature freeze).
 - `GET /api/v1/agent/android/agent.apk` serves the Nigafiy agent itself for QR provisioning (with its
   SHA-256 in `X-Content-SHA256`); `GET /api/v1/fleet/android/provisioning` gives the web what the
   Device Owner QR needs.
@@ -187,8 +219,10 @@ Ran on this PC, for real:
 - The debug and release APK builds (Gradle 9.9.2, AGP, build-tools 36.0.0), inspected with
   `aapt2 dump badging` (package, version, SDK levels, permissions) and `apksigner verify --print-certs`
   (signature v2 verifies; release signer is the local key).
-- The API tests for Android (`apps/api/tests/fleet-android.test.ts`, 13 tests on a real PostgreSQL: the
-  phone side is played by the test through the real agent protocol) and the full API suite.
+- The API tests for Android (`apps/api/tests/fleet-android.test.ts`, 16 tests on a real PostgreSQL: the
+  phone side is played by the test through the real agent protocol), the file store and migration 048
+  tests (`apps/api/tests/apk-files.test.ts`: real disk, a real pre-048 database moved) and the full API
+  suite. The APK file store has only run in these tests, never with a phone.
 - Web unit tests (the QR encoder read back by a decoder; the enrollment codes) and a Playwright walk of
   the phone's page and the enroll dialog in English (light) and Arabic (RTL, dark), with a phone seeded
   through the agent protocol.
