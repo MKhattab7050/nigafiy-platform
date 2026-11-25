@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -534,7 +534,17 @@ describe('APK files in the file store (migration 048)', () => {
       ['missing', 'agent_download'],
     ]);
 
+    // Uploading the same bytes again repairs the stored copy (audited); installing works again.
+    const repair = await up(a, bytes, 'name=Repair&file_name=repair.apk');
+    expect(repair.status, JSON.stringify(repair.body)).toBe(200);
+    expect(repair.body).toMatchObject({ repaired: true, apk: { id, name: 'Store app' } });
+    expect(readFileSync(file).equals(bytes)).toBe(true);
+    expect((await audits(a.organizationId, 'fleet.android_apk_file_repaired'))[0]?.metadata).toEqual({ name: 'Store app', sha256: sha, was: 'missing' });
+    expect((await act(a, epId, { action: 'install_apk', apk_id: id })).status).toBe(202);
+    expect((await up(a, bytes)).body.error.code).toBe('apk_exists');
+
     // Deleting an APK whose file is already gone still works (nothing to remove).
+    rmSync(file);
     expect((await a.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(200);
     expect((await audits(a.organizationId, 'fleet.android_apk_deleted'))[0]?.metadata).toMatchObject({ file_removed: false });
   });

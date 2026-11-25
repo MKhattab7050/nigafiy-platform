@@ -19,8 +19,8 @@ export const MAX_APK_BYTES = 100 * 1024 * 1024;
 const APK_COLUMNS = 'id, name, file_name, size_bytes::float8 AS size_bytes, sha256, uploaded_by_email, created_at';
 
 export const APK_FILE_MESSAGES = {
-  apk_file_missing: 'The stored APK file is missing on the server; delete this APK and upload it again',
-  apk_file_corrupt: 'The stored APK file is damaged (its size or SHA-256 does not match); delete this APK and upload it again',
+  apk_file_missing: 'The stored APK file is missing on the server; upload the same APK file again to repair it',
+  apk_file_corrupt: 'The stored APK file is damaged (its size or SHA-256 does not match); upload the same APK file again to repair it',
 } as const;
 
 /** An APK is a ZIP archive: it starts with the local file header "PK\x03\x04". */
@@ -40,8 +40,18 @@ async function referenced(db: Db, key: string): Promise<boolean> {
   return Boolean((await db.query(`SELECT 1 FROM fleet_android_apks WHERE storage_key = $1 LIMIT 1`, [key])).rowCount);
 }
 
-/** POST /fleet/android/apks: the body is streamed to a temporary file, checked, then stored by content. */
-export async function uploadApk(req: Request, ctx: AuthContext, meta: { name: string; file_name: string }, body: Readable, store: FileStore = fileStore()): Promise<AndroidApk> {
+/**
+ * POST /fleet/android/apks: the body is streamed to a temporary file, checked, then stored by content.
+ * The same bytes again are refused (apk_exists), unless the stored copy is missing or damaged: then
+ * the upload repairs it (same SHA-256, so the very same bytes) and the existing APK is returned.
+ */
+export async function uploadApk(
+  req: Request,
+  ctx: AuthContext,
+  meta: { name: string; file_name: string },
+  body: Readable,
+  store: FileStore = fileStore(),
+): Promise<{ apk: AndroidApk; repaired: boolean }> {
   let staged: StagedFile;
   try {
     staged = await store.stage('apks', ctx.organizationId, body, { maxBytes: MAX_APK_BYTES });
@@ -53,10 +63,17 @@ export async function uploadApk(req: Request, ctx: AuthContext, meta: { name: st
   try {
     if (!looksLikeApk(staged.head)) throw new AppError(422, 'apk_invalid', 'The file is not an APK (an APK is a ZIP archive)');
     return await withTenant(ctx.organizationId, async (db) => {
-      const existing = (await db.query<AndroidApk>(`SELECT ${APK_COLUMNS} FROM fleet_android_apks WHERE sha256 = $1`, [staged.sha256])).rows[0];
-      if (existing) throw new AppError(409, 'apk_exists', `This APK is already uploaded as "${existing.name}"`);
       const key = storageKey('apks', ctx.organizationId, staged.sha256);
       await lockStorageKey(db, key);
+      const existing = (await db.query<AndroidApk & { storage_key: string }>(`SELECT ${APK_COLUMNS}, storage_key FROM fleet_android_apks WHERE sha256 = $1`, [staged.sha256])).rows[0];
+      if (existing) {
+        const { storage_key: existingKey, ...apk } = existing;
+        const state = await store.verify(existingKey, { sha256: apk.sha256, size: Number(apk.size_bytes) });
+        if (state === 'ok') throw new AppError(409, 'apk_exists', `This APK is already uploaded as "${apk.name}"`);
+        await staged.commit();
+        await audit(db, req, 'fleet.android_apk_file_repaired', { type: 'android_apk', id: apk.id }, { name: apk.name, sha256: apk.sha256, was: state });
+        return { apk, repaired: true };
+      }
       await staged.commit();
       try {
         const apk = (
@@ -67,7 +84,7 @@ export async function uploadApk(req: Request, ctx: AuthContext, meta: { name: st
           )
         ).rows[0]!;
         await audit(db, req, 'fleet.android_apk_uploaded', { type: 'android_apk', id: apk.id }, { name: apk.name, file_name: apk.file_name, size_bytes: apk.size_bytes, sha256: staged.sha256 });
-        return apk;
+        return { apk, repaired: false };
       } catch (err) {
         // Still under the key's lock and nothing references the file: take it back out.
         if (!(await referenced(db, key).catch(() => true))) await store.remove(key).catch(() => undefined);

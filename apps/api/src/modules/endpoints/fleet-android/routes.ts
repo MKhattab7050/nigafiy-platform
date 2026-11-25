@@ -67,7 +67,8 @@ fleetAndroidRouter.post('/fleet/android/apks', requireRole('admin'), async (req,
   const meta = parse(apkUploadQuery, req.query);
   if (!req.is(APK_TYPES)) throw new AppError(422, 'apk_empty', 'Send the APK file as the request body (Content-Type: application/vnd.android.package-archive)');
   if (Number(req.headers['content-length'] ?? 0) > MAX_APK_BYTES) throw new AppError(413, 'apk_too_large', 'An APK can be at most 100 MiB');
-  res.status(201).json({ apk: await uploadApk(req, auth(req), meta, req) });
+  const { apk, repaired } = await uploadApk(req, auth(req), meta, req);
+  res.status(repaired ? 200 : 201).json({ apk, repaired });
 });
 
 fleetAndroidRouter.get('/fleet/android/apks/:id/file', requireRole('admin'), async (req, res) => {
