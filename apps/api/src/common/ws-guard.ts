@@ -56,11 +56,15 @@ export class MessageRate {
   private windowStart = 0;
   private count = 0;
 
-  constructor(
-    private readonly soft: number,
-    private readonly hard: number,
-    private readonly now: () => number = Date.now,
-  ) {}
+  private readonly soft: number;
+  private readonly hard: number;
+  private readonly now: () => number;
+
+  constructor(soft: number, hard: number, now: () => number = Date.now) {
+    this.soft = soft;
+    this.hard = hard;
+    this.now = now;
+  }
 
   /** 'ok' to handle the message, 'drop' to ignore it, 'close' to end the socket. */
   take(): 'ok' | 'drop' | 'close' {
