@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in Nigafiy does not work as documented.
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here; see SECURITY.md. Never paste passwords, tokens,
+        enrollment tokens, router credentials or captures from a real customer network.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Program or component
+      options:
+        - Hub
+        - Radar
+        - Watch
+        - Guard
+        - Fleet
+        - Mind
+        - Toolbox
+        - Sensor (nigafiy-engine sensor)
+        - Agent or Quick Support
+        - Engine or desktop app
+        - Installers, updates or Microsoft Store package
+        - API
+        - Docs
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "0.1.0, or the commit hash"
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - Real hardware or a real network
+        - Tests only (doubles, fixtures, loopback)
+        - Development stack (pnpm local or pnpm dev)
+        - Installed app (NSIS, MSI or MSIX)
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Interface language
+      options:
+        - English
+        - Arabic (RTL)
+        - Both
+        - Not applicable
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs (redacted), screenshots, the event or audit row id. Remove secrets first.

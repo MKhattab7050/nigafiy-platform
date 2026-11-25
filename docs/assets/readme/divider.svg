@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 20" width="1200" height="20" role="img" aria-label="Section divider">
+<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0.000" stop-color="#1466E6"/><stop offset="0.167" stop-color="#0099BC"/><stop offset="0.333" stop-color="#C27C0E"/><stop offset="0.500" stop-color="#D13438"/><stop offset="0.667" stop-color="#7A4FD6"/><stop offset="0.833" stop-color="#C239B3"/><stop offset="1.000" stop-color="#2E8540"/></linearGradient>
+<linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".15" stop-color="#fff" stop-opacity="1"/><stop offset=".85" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="m"><rect width="1200" height="20" fill="url(#fade)"/></mask></defs>
+<style>.spark{animation:run 6s ease-in-out infinite}@keyframes run{0%{transform:translateX(0)}50%{transform:translateX(1080px)}100%{transform:translateX(0)}}@media (prefers-reduced-motion: reduce){.spark{animation:none!important}}</style>
+<g mask="url(#m)"><rect x="0" y="9" width="1200" height="2" rx="1" fill="url(#g)" opacity="0.75"/>
+<circle class="spark" cx="60" cy="10" r="4" fill="#0B1F5C" opacity="0.85"/></g>
+</svg>
