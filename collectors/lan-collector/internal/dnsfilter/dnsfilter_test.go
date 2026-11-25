@@ -84,7 +84,9 @@ func TestDecide(t *testing.T) {
 }
 
 func TestParseHosts(t *testing.T) {
-	in := "# comment\n127.0.0.1 localhost\n0.0.0.0 0.0.0.0\n0.0.0.0 Ads.Example.com # trailing\n0.0.0.0 tracker.net\nplain-domain.org\n::1 ip6-localhost\n10.0.0.1\n"
+	in := "# comment\n127.0.0.1 localhost\n0.0.0.0 0.0.0.0\n0.0.0.0 Ads.Example.com # trailing\n0.0.0.0 tracker.net\nplain-domain.org\n::1 ip6-localhost\n10.0.0.1\n" +
+		// Empty labels can never match a question (found by FuzzParseHosts): dropped.
+		"0.0.0.0 double-dot.example..\n0.0.0.0 .leading.example\n0.0.0.0 mid..dot.example\n"
 	set := ParseHosts(strings.NewReader(in))
 	for _, want := range []string{"ads.example.com", "tracker.net", "plain-domain.org"} {
 		if _, ok := set[want]; !ok {

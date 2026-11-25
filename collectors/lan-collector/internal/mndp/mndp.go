@@ -80,6 +80,8 @@ func cleanText(b []byte, max int) string {
 		for !utf8.ValidString(s) {
 			s = s[:len(s)-1]
 		}
+		// The cut can land after a space: trim again (regression seed in testdata/fuzz/FuzzParse).
+		s = strings.TrimSpace(s)
 	}
 	return s
 }

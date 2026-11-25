@@ -167,3 +167,33 @@ the product.
 
 The API suite skips the pg_dump/pg_restore tests when the PostgreSQL client tools are not installed, the
 real-Redis test when no Redis answers, and the real-agent tests until `pnpm build:agent` has run.
+
+### Go tests in CI
+
+CI (`.github/workflows/ci.yml`) runs the Go modules (agent `agents/endpoint-agent`, Sensor
+`collectors/lan-collector`, engine `engine`) in two places:
+
+| Job | Runner | What |
+| --- | --- | --- |
+| `verify` | Windows | `go vet ./...` and `go test ./...` in each module (`pnpm test:collector`, `test:agent`, `test:engine`) |
+| `go-race` | Linux | `go test -race -count=1 ./...` in each module with `CGO_ENABLED=1` and `GOFLAGS=-mod=readonly` (the race detector needs cgo) |
+| `go-fuzz` | Linux | `bash scripts/go-fuzz-smoke.sh 30s`: every native fuzz target for 30 s; a failing input is uploaded as the `go-fuzz-failures` artifact |
+| `vulnerability-scans` | Linux | `pnpm audit --audit-level=high --prod`, then `govulncheck` v1.10.0 (pinned) in each module |
+
+The fuzz targets (`func FuzzXxx` in `*_test.go`) cover what other devices or servers can send: the
+Sensor's DNS filter (queries, TCP framing, downloaded block lists), mDNS, SSDP, UPnP descriptions and
+SOAP answers, NetBIOS, DHCP client broadcasts and offers, MikroTik MNDP, Wi-Fi beacon IEs, and the
+agent's WebSocket client (handshake and frames). They use test doubles only and never open a network
+connection. Their seeds, including every input that once failed (`testdata/fuzz/<Target>/`), also run in
+plain `go test`. The script refuses to run when a fuzz target exists that it does not list. Locally:
+`bash scripts/go-fuzz-smoke.sh 2m` (Go 1.18+; no cgo needed). `-race` needs a C compiler, so on a
+Windows machine without one it runs only in CI.
+
+The Go tests do not depend on the machine they run on: they pass with an empty temporary `HOME`,
+`USERPROFILE`, `APPDATA`, `LOCALAPPDATA` and `TMP`, `GOFLAGS=-mod=readonly` and `GOPROXY=off` (module
+cache already filled), which is how they were checked before this was written. Tests that need a server
+start one on loopback (`127.0.0.1`, port 0) inside the test. They do not write into the developer's
+profile either: the real-terminal test of the agent's remote shell runs PowerShell (Windows) or the
+login shell (Linux) with a throw-away profile, so its typed commands do not land in the real
+PSReadLine or shell history. Tests that change the computer (a real Windows service) are opt-in
+(`NIGAFIY_TEST_SERVICE_INSTALL=1`, elevated) and skipped otherwise.

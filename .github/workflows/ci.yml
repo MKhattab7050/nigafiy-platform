@@ -110,3 +110,96 @@ jobs:
             apps/site/playwright-report
             apps/site/test-results
           retention-days: 7
+
+  # Go checks that need Linux or cgo (the race detector), the fuzz smoke and the Go and npm
+  # vulnerability scans: three Linux jobs in parallel with the Windows gate (Linux minutes count 1x).
+  # How the Go tests run here and locally: docs/getting-started.md ("Go tests in CI").
+  go-race:
+    name: Go tests with the race detector (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: collectors/lan-collector/go.mod
+          cache-dependency-path: |
+            collectors/lan-collector/go.sum
+            agents/endpoint-agent/go.sum
+            engine/go.sum
+
+      - name: go test -race (agent, Sensor, engine)
+        shell: bash
+        env:
+          CGO_ENABLED: '1'
+          GOFLAGS: -mod=readonly
+        run: |
+          (cd agents/endpoint-agent && go test -race -count=1 ./...)
+          (cd collectors/lan-collector && go test -race -count=1 ./...)
+          (cd engine && go test -race -count=1 ./...)
+
+  go-fuzz:
+    name: Go fuzz smoke (Linux, 30 s per target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: collectors/lan-collector/go.mod
+          cache-dependency-path: |
+            collectors/lan-collector/go.sum
+            agents/endpoint-agent/go.sum
+            engine/go.sum
+
+      - name: Fuzz smoke
+        shell: bash
+        env:
+          GOFLAGS: -mod=readonly
+        run: bash scripts/go-fuzz-smoke.sh 30s
+
+      - name: Upload failing fuzz inputs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: go-fuzz-failures
+          path: |
+            collectors/lan-collector/internal/*/testdata/fuzz
+            agents/endpoint-agent/internal/*/testdata/fuzz
+          retention-days: 7
+
+  vulnerability-scans:
+    name: govulncheck and pnpm audit (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: collectors/lan-collector/go.mod
+          cache-dependency-path: |
+            collectors/lan-collector/go.sum
+            agents/endpoint-agent/go.sum
+            engine/go.sum
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: pnpm audit (production dependencies, high and critical)
+        run: pnpm audit --audit-level=high --prod
+
+      - name: govulncheck v1.10.0 (agent, Sensor, engine)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.10.0
+          vc="$(go env GOPATH)/bin/govulncheck"
+          (cd agents/endpoint-agent && "$vc" ./...)
+          (cd collectors/lan-collector && "$vc" ./...)
+          (cd engine && "$vc" ./...)
