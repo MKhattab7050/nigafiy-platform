@@ -101,7 +101,7 @@ export function RouterSettingsPanel({
 
           <Card title={t('routers.wifi.title')} description={t('routers.wifi.hint')} padded={false}>
             {!supported('wifi') ? (
-              <NotOffered note={capNote('wifi')} />
+              <NotOffered note={r.vendor === 'cisco_xe' ? t('routers.wifi.ciscoXeNote') : capNote('wifi')} />
             ) : !s.wifi ? (
               <EmptyState title={t('routers.settings.notRead')} />
             ) : s.wifi.length === 0 ? (
