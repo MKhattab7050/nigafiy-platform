@@ -43,8 +43,10 @@ keeps working; SSO is an additional way in, per organization.
 - **Sign-in page**: typing an email shows "Sign in with <provider>" buttons for providers whose
   allowed domains match (`GET /auth/sso/discover`, returns name and kind only). Errors come back as
   `/login?sso_error=<code>` with a localized message.
-- **Settings → Identity providers** (owner / admin only, EN + AR): create, edit, enable/disable,
-  delete, and "Check" (OIDC: fetches the discovery document; SAML: certificate validity and the
+- **Settings → Identity providers** (EN + AR): admins see the list and run "Check"; only the
+  **owner** may create, edit, enable/disable or delete a provider (a provider can sign in as any
+  member by email, so controlling one is controlling every account; see
+  docs/security/review-2026-11.md SEC-01). "Check" (OIDC: fetches the discovery document; SAML: certificate validity and the
   sign-in URL; audited as `sso.provider_checked`). Shows the
   redirect URI / ACS URL / SP entity ID and SP metadata URL to give to the IdP administrator.
 
