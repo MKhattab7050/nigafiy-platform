@@ -1,6 +1,7 @@
 // Package engine is the Nigafiy Engine: it supervises the local database, API and web server as
 // separate children (each one started through scripts/local.mjs --component=<name>), and the local
-// Sensor, and serves the control API.
+// Sensor (a child process of the same executable, `nigafiy-engine sensor`), and serves the control
+// API.
 //
 // Start order: database → API → web, and the Sensor once the API runs. Stop order is the reverse.
 // Each child has its own restart backoff, ready check, health check, rotated and redacted log and
@@ -165,6 +166,9 @@ func Run(ctx context.Context, cfg Config) error {
 		members = append(members, member{name: comp.Name, u: c, deps: comp.Deps})
 	}
 	if !cfg.NoSensor {
+		if cfg.SensorNote != "" {
+			e.log.Printf("sensor: %s", cfg.SensorNote)
+		}
 		sensorOut, err := logs.OpenRotating(logPath(cfg.DataDir, "sensor"), logs.DefaultMaxSize, logs.DefaultKeep)
 		if err != nil {
 			listener.Close()
@@ -321,11 +325,24 @@ func httpHealth(u string, timeout time.Duration, good func(int) bool) error {
 	return nil
 }
 
+// SensorArgs are the arguments the Sensor child is started with: this executable runs it as
+// `sensor -config <file>`; another program (an old standalone Sensor) gets `-config <file>`.
+func SensorArgs(cfg Config) []string {
+	args := []string{"-config", cfg.SensorConfig}
+	if cfg.SensorSelf {
+		args = append([]string{"sensor"}, args...)
+	}
+	return args
+}
+
+// sensorSpec: the Sensor is a child PROCESS (of this same executable by default), never a goroutine
+// of the engine, so a panic or fatal error in it cannot stop the supervision of db/api/web
+// (docs/architecture/engine-sensor.md). It gets its own restart backoff, log and Job Object.
 func (e *engine) sensorSpec(out io.Writer) supervisor.Spec {
 	return supervisor.Spec{
 		Name:   "sensor",
 		Path:   e.cfg.SensorExe,
-		Args:   []string{"-config", e.cfg.SensorConfig},
+		Args:   SensorArgs(e.cfg),
 		Env:    withoutEnv(os.Environ(), "NIGAFIY_SENSOR_ENROLLMENT_TOKEN", "LAN_COLLECTOR_ENROLLMENT_TOKEN"),
 		Dir:    filepath.Dir(e.cfg.SensorConfig),
 		Output: out,
