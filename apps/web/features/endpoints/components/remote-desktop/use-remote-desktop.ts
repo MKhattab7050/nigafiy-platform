@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import type { ConnectChoice } from '../fleet-policy/connect-dialog';
 import { policyText } from '../fleet-policy/policy-text';
 import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';
+import { useWebRtcVideo } from './use-webrtc-video';
 
 export interface RemoteDesktopConsoleProps {
   ep: EndpointDetail;
@@ -62,6 +63,11 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const [hasPicture, setHasPicture] = useState(false);
   const [rttMs, setRttMs] = useState<number | null>(null);
   const [streamNote, setStreamNote] = useState<string | null>(null);
+  /** What the API's session message says about WebRTC video, and whether the session is recorded. */
+  const [rtcAllowed, setRtcAllowed] = useState(false);
+  const [iceServers, setIceServers] = useState<string[]>([]);
+  const [recording, setRecording] = useState(false);
+  const rtcActiveRef = useRef(false);
 
   const [textToType, setTextToType] = useState('');
   const [clipOut, setClipOut] = useState('');
@@ -167,6 +173,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
           for (const l of toolListeners.current) l(ev.data as ArrayBuffer);
           return;
         }
+        // While the picture plays over WebRTC the canvas belongs to the video.
+        if (rtcActiveRef.current) return;
         const parsed = parsePacket(ev.data as ArrayBuffer);
         if (!parsed) return;
         const { header, tiles } = parsed;
@@ -195,7 +203,13 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
           waitingSince.current = m.path === 'waiting' ? Date.now() : null;
           break;
         case 'session':
+          if (typeof m.webrtc === 'boolean') setRtcAllowed(m.webrtc);
+          if (Array.isArray(m.ice_servers)) setIceServers((m.ice_servers as unknown[]).filter((u): u is string => typeof u === 'string'));
+          if (typeof m.recording === 'boolean') setRecording(m.recording);
           void loadStatus();
+          break;
+        case 'recording':
+          setRecording(m.on === true);
           break;
         case 'hello':
           setHello(m as unknown as StreamHello);
@@ -256,6 +270,19 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   }, [live, displayIndex, quality, scale, adaptive, sendWs, path]);
 
   const wsLive = path === 'direct' || path === 'relay';
+
+  // ── WebRTC video (smooth H.264 on the LAN), with the JPEG stream as the automatic fallback ──
+  const onRtcPicture = useCallback(() => setHasPicture(true), []);
+  const rtc = useWebRtcVideo({
+    wsLive: wsLive && live && online,
+    available: rtcAllowed && hello?.webrtc?.supported === true && !recording,
+    iceServers,
+    sendWs,
+    listeners: toolListeners,
+    canvasRef,
+    onPicture: onRtcPicture,
+  });
+  rtcActiveRef.current = rtc.active;
   const useHttp = live && online && (path === 'http' || (path === 'waiting' && waitingSince.current !== null && Date.now() - waitingSince.current >= WAITING_FALLBACK_MS));
 
   // ── HTTP fallback: one rd_capture command per frame ──
@@ -319,6 +346,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     setHasPicture(false);
     setStats(null);
     setHello(null);
+    setRtcAllowed(false);
+    setRecording(false);
     setClipIn(null);
     setClipNote(null);
     const c = canvasRef.current;
@@ -370,6 +399,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   async function sendInput(ev: Record<string, unknown>) {
     if (!mayControl) return;
     const full: Record<string, unknown> = { display_index: displayIndex, ...ev };
+    // WebRTC: the data channel (the agent applies the same checks and reports it for the audit).
+    if (rtc.sendInput(full)) return;
     if (wsLive && sendWs({ t: 'input', ev: full })) return;
     if (full.kind === 'mouse_move' || full.kind === 'mouse_down' || full.kind === 'mouse_up' || full.kind === 'mouse_wheel') return; // live stream only
     const { kind, ...rest } = full;
@@ -468,6 +499,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   }
 
   function requestFull() {
+    if (rtc.active) return;
     if (wsLive) sendWs({ t: 'full' });
     else void captureNextFrame();
   }
@@ -507,6 +539,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     setConnectOpen,
     path: useHttp && path === 'waiting' ? ('http' as RdPath) : path,
     wsLive,
+    rtc,
+    recording,
     hello,
     displays,
     stats,
