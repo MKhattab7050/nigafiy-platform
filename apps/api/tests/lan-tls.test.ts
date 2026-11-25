@@ -9,7 +9,8 @@ import tls from 'node:tls';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { CA_RENEW_DAYS, ensureLanTls, LEAF_RENEW_DAYS, LEAF_VALIDITY_DAYS, newSerialHex, setTlsStatus, statusFromMaterial, tlsStatus } from '../src/infrastructure/lan-tls.ts';
-import { app, newAccount, setRole } from './helpers.ts';
+import { lanAddress } from '../src/common/http.ts';
+import { app, CSRF, newAccount, setRole } from './helpers.ts';
 
 const DAY = 86_400_000;
 const dirs: string[] = [];
@@ -187,5 +188,30 @@ describe('built-in LAN TLS', () => {
     } finally {
       setTlsStatus(before);
     }
+  });
+
+  it('hands phones and other computers the LAN HTTPS address, not localhost, when the page is opened on this computer', async () => {
+    const dir = tempDir();
+    const m = ensureLanTls(dir, id);
+    const before = tlsStatus();
+    setTlsStatus(statusFromMaterial(m, 4443, '0.0.0.0', null));
+    try {
+      const acct = await newAccount('lanurl');
+      const r = await acct.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: acct.siteId, name: 'Owner phone', platform: 'android' });
+      expect(r.status).toBe(201);
+      expect(r.body).toMatchObject({ server_url: 'https://192.168.50.10:4443', server_url_source: 'lan', tls_pin_sha256: m.caFingerprint256 });
+      // Reached through a real LAN name: that address is kept.
+      const proxied = await acct.agent.post('/api/v1/endpoints').set(CSRF).set('Host', 'nigafiy-box:4100').send({ site_id: acct.siteId, name: 'Phone 2', platform: 'android' });
+      expect(proxied.body).toMatchObject({ server_url: 'http://nigafiy-box:4100', server_url_source: 'request' });
+    } finally {
+      setTlsStatus(before);
+    }
+  });
+
+  it('picks a home-network IPv4 over virtual adapters, link-local and loopback', () => {
+    expect(lanAddress(['127.0.0.1', '169.254.3.4', '172.20.0.1', '10.0.0.7', '192.168.1.147', '::1'])).toBe('192.168.1.147');
+    expect(lanAddress(['172.20.0.1', '10.0.0.7'])).toBe('10.0.0.7');
+    expect(lanAddress(['::1', 'fe80::1', 'fd00::5'])).toBe('fd00::5');
+    expect(lanAddress(['127.0.0.1', '::1'])).toBeNull();
   });
 });

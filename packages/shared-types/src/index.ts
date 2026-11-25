@@ -171,7 +171,7 @@ export interface CollectorCreated {
   enrollment_token: string;
   /** Server address for the install command: PUBLIC_URL when configured, else the origin the request reached. */
   server_url: string;
-  server_url_source: 'configured' | 'request';
+  server_url_source: 'configured' | 'request' | 'lan';
   tls_pin_sha256?: string | null;
 }
 
@@ -1742,7 +1742,7 @@ export interface EndpointCreated {
   enrollment_token: string;
   /** Server address for the agent's -server flag: PUBLIC_URL when configured, else the origin the request reached. */
   server_url: string;
-  server_url_source: 'configured' | 'request';
+  server_url_source: 'configured' | 'request' | 'lan';
   tls_pin_sha256: string | null;
 }
 
@@ -1925,7 +1925,7 @@ export interface EndpointEnrollmentSuggestion {
   /** Already enrolled / pending endpoint for this device, if any. */
   existing_endpoint_id: string | null;
   server_url: string;
-  server_url_source: 'configured' | 'request';
+  server_url_source: 'configured' | 'request' | 'lan';
   tls_pin_sha256: string | null;
 }
 
@@ -2977,6 +2977,6 @@ export interface AndroidProvisioningInfo {
   /** The agent APK this server serves (NIGAFIY_ANDROID_APK_PATH); null when none is configured. */
   apk: { url: string; sha256: string; checksum_b64url: string; size_bytes: number } | null;
   server_url: string;
-  server_url_source: 'configured' | 'request';
+  server_url_source: 'configured' | 'request' | 'lan';
   tls_pin_sha256: string | null;
 }

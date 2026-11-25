@@ -166,6 +166,16 @@ if (!existsSync(envPath)) {
   writeFileSync(envPath, env, { mode: 0o600 });
   ok('Created .env with new secrets');
 }
+if (bundleDir) {
+  // Phones (the Android agent refuses plain http) and agents on other computers need HTTPS on the
+  // network: the installed app turns on the built-in LAN certificate on its own port. Added once to
+  // older installs too; `HTTPS_PORT=` (empty) in the data folder's .env turns it off and stays off.
+  const cur = readFileSync(envPath, 'utf8');
+  if (!/^HTTPS_PORT=/m.test(cur)) {
+    writeFileSync(envPath, `${cur.replace(/\s*$/, '\n')}\n# LAN HTTPS for phones and agents (built-in certificate). Empty HTTPS_PORT= turns it off.\nHTTPS_PORT=47143\nHTTPS_HOST=0.0.0.0\n`, { mode: 0o600 });
+    ok('Turned on HTTPS for this network (port 47143)');
+  }
+}
 const env = Object.fromEntries(
   readFileSync(envPath, 'utf8')
     .split(/\r?\n/)

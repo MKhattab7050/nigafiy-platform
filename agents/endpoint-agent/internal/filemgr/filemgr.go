@@ -275,8 +275,15 @@ var dpapiSegments = []string{
 	"/system32/microsoft/protect",
 }
 
+// guardPath is the form the path guards compare: lower case, '/' separators. Backslashes count as
+// separators on every OS (filepath.ToSlash converts them only on Windows), so a Windows-style path
+// cannot slip past a guard elsewhere: stricter, never looser.
+func guardPath(clean string) string {
+	return strings.ToLower(strings.ReplaceAll(filepath.ToSlash(clean), `\`, "/"))
+}
+
 func isForbiddenCredentialPath(clean string) bool {
-	lower := strings.ToLower(filepath.ToSlash(clean))
+	lower := guardPath(clean)
 	if strings.HasSuffix(lower, "/.ssh") || strings.Contains(lower, "/.ssh/") ||
 		strings.HasSuffix(lower, "/credential.json") || lower == "credential.json" {
 		return true
@@ -307,7 +314,7 @@ func isForbiddenCredentialPath(clean string) bool {
 }
 
 func isProtectedSystemPath(clean string) bool {
-	lower := strings.ToLower(filepath.ToSlash(clean))
+	lower := guardPath(clean)
 	// Root drives / mount roots can never be deleted or overwritten directly.
 	if lower == "/" || (len(lower) == 3 && lower[1] == ':' && lower[2] == '/') {
 		return true

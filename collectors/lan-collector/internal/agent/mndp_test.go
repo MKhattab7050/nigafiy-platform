@@ -67,6 +67,19 @@ func TestMNDPListenerFollowsSiteAndScopes(t *testing.T) {
 	// 1. Port in use: reported, not fatal, retried only after mndpRetry.
 	a.applyMNDP(ctx)
 	waitFor(t, "bind failure", func() bool { return a.mndpStatus().(mndp.Status).State == "bind_failed" })
+	// The status changes before the listener goroutine returns: wait for it to end, or the next
+	// applyMNDP may notice the end later (in step 2) and set failedAt again after the test reset it.
+	waitFor(t, "the failed listener to end", func() bool {
+		a.mndp.mu.Lock()
+		done := a.mndp.done
+		a.mndp.mu.Unlock()
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	})
 	a.applyMNDP(ctx) // notices the ended listener; does not retry immediately
 	if st := a.mndpStatus().(mndp.Status); st.State != "bind_failed" || st.Error == "" {
 		t.Fatalf("status: %+v", st)

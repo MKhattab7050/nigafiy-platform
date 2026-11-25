@@ -57,12 +57,28 @@ export function auth(req: Request): AuthContext {
  * configured, otherwise the origin the request reached. Behind the web app's /api proxy that is the
  * browser's origin (X-Forwarded-Host / -Proto, honoured per TRUST_PROXY), which also serves /api/v1/*.
  */
-export function publicServerUrl(req: Request): { server_url: string; server_url_source: 'configured' | 'request'; tls_pin_sha256: string | null } {
+export function publicServerUrl(req: Request): { server_url: string; server_url_source: 'configured' | 'request' | 'lan'; tls_pin_sha256: string | null } {
   // Explicit pin / certificate files first; otherwise the built-in LAN TLS CA (when it is serving).
-  const tls_pin_sha256 = tlsPinSha256() ?? tlsStatus().pin_sha256;
+  const tls = tlsStatus();
+  const tls_pin_sha256 = tlsPinSha256() ?? tls.pin_sha256;
   if (env.PUBLIC_URL) return { server_url: env.PUBLIC_URL, server_url_source: 'configured', tls_pin_sha256 };
   const host = req.host || req.get('host') || 'localhost';
+  // Opened on this computer (the desktop app, or localhost in a browser): that address means nothing to
+  // a phone or another computer, so hand out the HTTPS listener on this computer's LAN address.
+  const lan = LOOPBACK_HOST.test(host.replace(/:\d+$/, '')) && tls.mode !== 'off' && tls.https_port ? lanAddress(tls.ip_addresses) : null;
+  if (lan) return { server_url: `https://${lan.includes(':') ? `[${lan}]` : lan}:${tls.https_port}`, server_url_source: 'lan', tls_pin_sha256 };
   return { server_url: `${req.protocol}://${host}`, server_url_source: 'request', tls_pin_sha256 };
+}
+
+const LOOPBACK_HOST = /^(localhost|127\.\d+\.\d+\.\d+|::1|\[::1\])$/i;
+
+/** The address other devices most likely reach: a private IPv4 (home ranges first), then any other. */
+export function lanAddress(ips: string[]): string | null {
+  const v4 = ips.filter((ip) => /^\d+\.\d+\.\d+\.\d+$/.test(ip) && !ip.startsWith('127.') && !ip.startsWith('169.254.'));
+  const rank = (ip: string) => (ip.startsWith('192.168.') ? 0 : ip.startsWith('10.') ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3);
+  const best = [...v4].sort((a, b) => rank(a) - rank(b))[0];
+  if (best) return best;
+  return ips.find((ip) => ip.includes(':') && !/^(::1|fe80:)/i.test(ip)) ?? null;
 }
 
 const ROLE_RANK: Record<Role, number> = { viewer: 0, technician: 1, admin: 2, owner: 3 };

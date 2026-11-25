@@ -57,7 +57,8 @@ func TestControlValidationAndExecution(t *testing.T) {
 
 	// Remote desktop capture via rd_capture
 	res = r.Execute(ctx, Command{ID: "7", Kind: "rd_capture", Payload: json.RawMessage(`{"display_index":0,"quality":60,"scale":0.5}`)})
-	if (!res.OK || len(res.Data) == 0) && !strings.Contains(res.Error, "interactive desktop session") {
+	// A machine without a desktop (CI) has no session or no screenshot tool: the refusal must say so.
+	if (!res.OK || len(res.Data) == 0) && !strings.Contains(res.Error, "interactive desktop session") && !strings.Contains(res.Error, "no screenshot tool found") {
 		t.Fatalf("expected rd_capture to succeed with JPEG frame data, got %+v", res)
 	}
 
