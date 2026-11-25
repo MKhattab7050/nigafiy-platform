@@ -1,7 +1,6 @@
 package update
 
 import (
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -31,7 +30,8 @@ var packageDirRE = regexp.MustCompile(`^([A-Za-z0-9.-]{3,50})_(\d+\.\d+\.\d+\.\d
 // name>\app, as the desktop package lays it out). It works when the process itself has no package
 // identity (a program started from the package folder by something outside it).
 func PackageFromPath(installDir string) (PackageIdentity, bool) {
-	parts := strings.Split(filepath.ToSlash(filepath.Clean(installDir)), "/")
+	// Split on both separators ourselves: this is always a Windows path, and the tests run on Linux too.
+	parts := strings.FieldsFunc(installDir, func(r rune) bool { return r == '\\' || r == '/' })
 	for i := 1; i < len(parts); i++ {
 		if !strings.EqualFold(parts[i-1], "WindowsApps") {
 			continue

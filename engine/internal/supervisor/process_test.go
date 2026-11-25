@@ -6,9 +6,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -33,6 +35,8 @@ func helperMain(mode string) int {
 		fmt.Println("helper exiting with", code)
 		return code
 	case mode == "hang":
+		// A child that ignores the stop request (SIGTERM too, on POSIX): only the kill ends it.
+		signal.Ignore(syscall.SIGTERM)
 		time.Sleep(time.Hour)
 		return 0
 	case mode == "token":
@@ -44,8 +48,8 @@ func helperMain(mode string) int {
 		return 0
 	case mode == "stdin":
 		// Stops cleanly when stdin is closed, like scripts/local.mjs in engine mode.
-		io.Copy(io.Discard, os.Stdin)
-		fmt.Println("stdin closed, stopping")
+		waitForStop()
+		fmt.Println("stop requested, stopping")
 		return 0
 	case mode == "tree":
 		exe, _ := os.Executable()
@@ -61,6 +65,22 @@ func helperMain(mode string) int {
 	}
 	fmt.Println("unknown helper mode", mode)
 	return 2
+}
+
+// waitForStop returns when the engine asks the child to stop: stdin closed (Windows and POSIX) or,
+// on POSIX, SIGTERM, which the supervisor sends as well (process_other.go requestStop).
+func waitForStop() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM)
+	closed := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, os.Stdin)
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-sig:
+	}
 }
 
 func helperSpec(t *testing.T, mode string) Spec {
@@ -133,7 +153,7 @@ func TestRealProcessStopsGracefullyOnStdinClose(t *testing.T) {
 		t.Fatalf("graceful stop took %s", took)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "child.log"))
-	if !strings.Contains(string(data), "stdin closed, stopping") {
+	if !strings.Contains(string(data), "stop requested, stopping") {
 		t.Fatalf("child did not stop on its own; log: %q", data)
 	}
 }

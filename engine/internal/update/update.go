@@ -329,7 +329,7 @@ func Apply(p Plan, d Deps) Result {
 	if err := Verify(p.Request, p.Publisher, d.CheckSig); err != nil {
 		return fail(err)
 	}
-	if p.InstallDir == "" || !filepath.IsAbs(p.InstallDir) {
+	if p.InstallDir == "" || !isAbsWindows(p.InstallDir) {
 		return fail(errors.New("no installation folder"))
 	}
 	args := InstallerArgs(p.InstallDir, p.PerMachine)
@@ -345,4 +345,16 @@ func Apply(p Plan, d Deps) Result {
 	res.OK = true
 	d.Logf("update %s installed", p.Request.Version)
 	return finish()
+}
+
+// isAbsWindows: an absolute Windows path (C:\… or \\server\share), whatever OS runs the check
+// (filepath.IsAbs on Linux, where the tests also run, does not know drive letters).
+func isAbsWindows(p string) bool {
+	if filepath.IsAbs(p) {
+		return true
+	}
+	if len(p) >= 3 && p[1] == ':' && (p[2] == '\\' || p[2] == '/') && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) {
+		return true
+	}
+	return strings.HasPrefix(p, `\\`)
 }

@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -112,9 +114,25 @@ func helperMain(mode string) int {
 	default:
 		return 4
 	}
-	io.Copy(io.Discard, os.Stdin)
-	fmt.Println("helper: stdin closed, stopping cleanly")
+	waitForStop()
+	fmt.Println("helper: stop requested, stopping cleanly")
 	return 0
+}
+
+// waitForStop returns when the engine asks the child to stop: stdin closed (Windows and POSIX) or,
+// on POSIX, SIGTERM, which the supervisor sends as well (process_other.go requestStop).
+func waitForStop() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM)
+	closed := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, os.Stdin)
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-sig:
+	}
 }
 
 type running struct {
@@ -291,7 +309,7 @@ func TestComponentsReadyInOrderSensorNotEnrolledAndShutdown(t *testing.T) {
 		if !strings.Contains(string(out), "--component="+name+" --engine-status-file=") {
 			t.Fatalf("%s not started with the engine arguments: %q", name, out)
 		}
-		if !strings.Contains(string(out), "stdin closed, stopping cleanly") {
+		if !strings.Contains(string(out), "stop requested, stopping cleanly") {
 			t.Fatalf("%s was not stopped gracefully: %q", name, out)
 		}
 	}
