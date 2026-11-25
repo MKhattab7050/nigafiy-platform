@@ -369,7 +369,8 @@ func Execute(req Request) (Response, error) {
 		if err != nil {
 			return Response{}, err
 		}
-		return listDir(clean, req.ShowHidden)
+		afterValidate(clean)
+		return listDir(clean, req.ShowHidden, req.AllowedRoots)
 
 	case "search":
 		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, false)
@@ -380,14 +381,20 @@ func Execute(req Request) (Response, error) {
 		if q == "" {
 			return Response{}, errors.New("search query is required")
 		}
-		return searchDir(clean, q, req.ShowHidden)
+		afterValidate(clean)
+		hits, err := searchChecked(clean, q, req.ShowHidden, req.AllowedRoots)
+		if err != nil {
+			return Response{}, fmt.Errorf("search failed: %w", err)
+		}
+		return Response{Op: "search", Path: clean, Entries: hits}, nil
 
 	case "mkdir":
 		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, true)
 		if err != nil {
 			return Response{}, err
 		}
-		if err := os.MkdirAll(clean, 0o755); err != nil {
+		afterValidate(clean)
+		if err := mkdirChecked(clean, guard{req.AllowedRoots, true}); err != nil {
 			return Response{}, fmt.Errorf("mkdir failed: %w", err)
 		}
 		return Response{Op: "mkdir", Path: clean, Message: "Created folder " + filepath.Base(clean)}, nil
@@ -438,7 +445,11 @@ func Execute(req Request) (Response, error) {
 		if err := mustNotExist(dest); err != nil {
 			return Response{}, err
 		}
-		if err := os.Rename(clean, dest); err != nil {
+		afterValidate(clean)
+		if err := renameChecked(clean, newName, guard{req.AllowedRoots, true}); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return Response{}, fmt.Errorf("%s already exists at the destination", newName)
+			}
 			return Response{}, fmt.Errorf("rename failed: %w", err)
 		}
 		return Response{Op: "rename", Path: dest, Message: "Renamed to " + newName}, nil
@@ -492,7 +503,11 @@ func Execute(req Request) (Response, error) {
 			if err := mustNotExist(dst); err != nil {
 				return Response{}, err
 			}
-			if err := moveItem(src, dst, req.AllowedRoots); err != nil {
+			afterValidate(src)
+			if err := moveChecked(src, dst, req.AllowedRoots); err != nil {
+				if errors.Is(err, fs.ErrExist) {
+					return Response{}, fmt.Errorf("%s already exists at the destination", filepath.Base(dst))
+				}
 				return Response{}, fmt.Errorf("move %s failed: %w", filepath.Base(src), err)
 			}
 		}
@@ -514,7 +529,8 @@ func Execute(req Request) (Response, error) {
 			if err != nil {
 				return Response{}, err
 			}
-			if err := os.RemoveAll(clean); err != nil {
+			afterValidate(clean)
+			if err := removeChecked(clean, guard{req.AllowedRoots, true}); err != nil {
 				return Response{}, fmt.Errorf("delete %s failed: %w", filepath.Base(clean), err)
 			}
 		}
@@ -549,37 +565,21 @@ func Execute(req Request) (Response, error) {
 	}
 }
 
-func listDir(clean string, showHidden bool) (Response, error) {
-	dirEntries, err := os.ReadDir(clean)
+// listDir reads the folder through its checked handle (R-7): names and details come from the
+// handle, never from a path looked up again after the check.
+func listDir(clean string, showHidden bool, roots []string) (Response, error) {
+	infos, err := readDirChecked(clean, roots)
 	if err != nil {
 		return Response{}, fmt.Errorf("read directory failed: %w", err)
 	}
-	entries := make([]FileEntry, 0, len(dirEntries))
-	for _, de := range dirEntries {
-		info, err := de.Info()
-		if err != nil {
-			continue
-		}
-		full := filepath.Join(clean, de.Name())
+	entries := make([]FileEntry, 0, len(infos))
+	for _, info := range infos {
+		full := filepath.Join(clean, info.Name())
 		hidden, sys := isHiddenOrSystem(full, info)
 		if !showHidden && (hidden || sys) {
 			continue
 		}
-		ext := ""
-		if !info.IsDir() {
-			ext = strings.TrimPrefix(strings.ToLower(filepath.Ext(de.Name())), ".")
-		}
-		entries = append(entries, FileEntry{
-			Name:     de.Name(),
-			Path:     full,
-			IsDir:    info.IsDir(),
-			Ext:      ext,
-			Size:     info.Size(),
-			Mode:     info.Mode().String(),
-			ModTime:  info.ModTime().UTC().Format(time.RFC3339),
-			IsHidden: hidden,
-			IsSystem: sys,
-		})
+		entries = append(entries, fileEntry(full, info, hidden, sys))
 		if len(entries) >= MaxListEntries {
 			break
 		}
@@ -599,70 +599,6 @@ func listDir(clean string, showHidden bool) (Response, error) {
 		Path:       clean,
 		ParentPath: parent,
 		Entries:    entries,
-	}, nil
-}
-
-func searchDir(rootClean, queryLower string, showHidden bool) (Response, error) {
-	var hits []FileEntry
-	rootDepth := strings.Count(filepath.ToSlash(rootClean), "/")
-	_ = filepath.WalkDir(rootClean, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if path == rootClean {
-			return nil
-		}
-		// Never walk into (or name the files of) a credential store.
-		if isForbiddenCredentialPath(path) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		depth := strings.Count(filepath.ToSlash(path), "/") - rootDepth
-		if depth > MaxSearchDepth {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		hidden, sys := isHiddenOrSystem(path, info)
-		if !showHidden && (hidden || sys) {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.Contains(strings.ToLower(d.Name()), queryLower) {
-			ext := ""
-			if !info.IsDir() {
-				ext = strings.TrimPrefix(strings.ToLower(filepath.Ext(d.Name())), ".")
-			}
-			hits = append(hits, FileEntry{
-				Name:     d.Name(),
-				Path:     path,
-				IsDir:    info.IsDir(),
-				Ext:      ext,
-				Size:     info.Size(),
-				Mode:     info.Mode().String(),
-				ModTime:  info.ModTime().UTC().Format(time.RFC3339),
-				IsHidden: hidden,
-				IsSystem: sys,
-			})
-			if len(hits) >= MaxSearchHits {
-				return io.EOF
-			}
-		}
-		return nil
-	})
-	return Response{
-		Op:      "search",
-		Path:    rootClean,
-		Entries: hits,
 	}, nil
 }
 
@@ -932,15 +868,24 @@ func copyRecursive(src, dst string, roots []string) error {
 		if isSameOrSubpath(dst, src) {
 			return errors.New("cannot copy a directory into itself")
 		}
-		if err := os.MkdirAll(dst, info.Mode().Perm()); err != nil {
-			return err
-		}
-		entries, err := os.ReadDir(src)
+		// The folder is listed through its checked handle and the copy is created through checked
+		// handles (R-7): a swapped folder can neither show an outside folder's names nor create
+		// folders outside the allowed roots.
+		sd, _, err := openListedDir(src, roots)
 		if err != nil {
 			return err
 		}
-		for _, e := range entries {
-			if err := copyRecursive(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()), roots); err != nil {
+		names, err := sd.names()
+		sd.close()
+		if err != nil {
+			return err
+		}
+		sort.Strings(names)
+		if err := mkdirChecked(dst, guard{roots, true}); err != nil {
+			return err
+		}
+		for _, name := range names {
+			if err := copyRecursive(filepath.Join(src, name), filepath.Join(dst, name), roots); err != nil {
 				return err
 			}
 		}
@@ -963,17 +908,4 @@ func copyRecursive(src, dst string, roots []string) error {
 
 	_, err = io.Copy(out, in)
 	return err
-}
-
-func moveItem(src, dst string, roots []string) error {
-	if isSameOrSubpath(dst, src) {
-		return errors.New("cannot move a directory into itself")
-	}
-	if err := os.Rename(src, dst); err == nil {
-		return nil
-	}
-	if err := copyRecursive(src, dst, roots); err != nil {
-		return err
-	}
-	return os.RemoveAll(src)
 }
