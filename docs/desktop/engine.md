@@ -292,6 +292,8 @@ Not verified:
 - The web console's health check against a development server under heavy first-compile load
   (it has 3 s per check and three tries, 45 s in all; the production server answers in milliseconds).
 - The POSIX code paths are compiled and vetted, not run.
-- The embedded database is still stopped by `embedded-postgres` itself with `taskkill /f` on
-  Windows (pre-existing behaviour of `apps/api/scripts/dev-db.ts`), so `postmaster.pid` is left
-  behind and PostgreSQL recovers on the next start; the engine does not change that.
+- On Windows `apps/api/scripts/dev-db.ts` starts and stops the embedded database with PostgreSQL's
+  `pg_ctl` (as the API tests do), so it also runs from an elevated prompt, and stops it cleanly
+  (`-m fast` for 8 s, then `-m immediate`): no `postmaster.pid` is left behind. Run for real only
+  from a non-elevated prompt on the development PC so far; the elevated case is the one the API
+  test server (`apps/api/tests/pg-server.ts`) already covers with the same `pg_ctl` calls.
