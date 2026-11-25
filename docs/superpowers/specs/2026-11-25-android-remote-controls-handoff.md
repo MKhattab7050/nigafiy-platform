@@ -3,6 +3,16 @@
 Paused at the owner's request ("save its progress and stop; when I say continue, continue from the same point"). The work is
 committed as work in progress. **The Android app does not build at this commit** (see "State").
 
+## Owner decision 2026-11-26: no per-session consent on managed phones
+
+The owner rejected the per-session consent message for devices under IT management. A phone must follow the
+**Fleet group access policy**, the same as a computer: *unattended* (admin connects with **no per-session
+prompt**) is allowed on a **Device Owner (managed/enrolled)** phone, where the management relationship is the
+one-time consent. **Regular-app** phones stay attended — Android itself forces the MediaProjection dialog and
+the accessibility switch each session, and no app can remove them. The "Managed by Nigafiy" notification and
+Android's cast indicator always stay on (no stealth). Target model is in [android.md](../../features/android.md)
+§2 "Access model for phones". The original per-session scope below is kept for the record.
+
 ## What the owner asked for
 
 After enrolling their real Samsung A36 (Android 16, regular app mode, not Device Owner) into the

@@ -37,13 +37,27 @@ URL-safe base64 of the APK's SHA-256).
 | Disable / enable camera | no | yes |
 | Install an APK pushed from Fleet / uninstall an app | no | yes (silent) |
 | Wipe (factory reset) | no | yes, admin only, MFA step-up always, second-admin approval when the endpoint's Fleet group asks for approvals |
-| Screen view (MediaProjection; the person accepts every session, then Android asks again) | yes (app 1.0.2+, §12) | yes |
-| Remote control: taps, swipes, Back / Home / Recents (accessibility service the person turns on) | yes, during an accepted screen session only (§12) | yes, same rule |
+| Screen view (MediaProjection) | yes — the person accepts every session (Android's own dialog, §12); regular-app phones cannot be unattended | yes — **unattended allowed**: when the Fleet group policy is unattended the admin connects with **no per-session prompt**; Android's cast indicator stays on |
+| Remote control: taps, swipes, Back / Home / Recents | yes — during an accepted screen session only, the person turns the service on (§12) | yes — follows the group policy, same as screen view: unattended allowed |
 | File manager on shared storage (All files access, granted by the person) | yes, Android 11+ (§12) | yes |
 | Ring the phone / show a message | yes (§12) | yes |
 | Persistent notification "Managed by Nigafiy" | yes | yes (cannot be hidden; there is no stealth mode) |
 
 The web shows each action only where the agent's reported mode allows it, and the API checks again.
+
+### Access model for phones — no per-session consent on managed devices (2026-11-26)
+
+Owner decision: a phone under IT management must not ask the person every time. A phone therefore
+follows the **Fleet group access policy**, exactly like a Windows / Linux / macOS computer: *attended*
+(the person accepts each session) or *unattended* (the admin connects with no per-session prompt). The
+standing grant for an unattended session is the management relationship itself — the one-time consent
+given at enrollment — so **unattended is offered only on a Device Owner (managed) phone**. A **regular-app**
+phone can never be unattended: Android itself forces the MediaProjection dialog and the person's own
+accessibility switch each session, and no app (ours included) can remove them. On every phone, managed or
+not, the persistent **"Managed by Nigafiy"** notification and **Android's own screen-cast indicator** stay
+on while a session is possible or running. There is no stealth mode and no silent capture: the admin is not
+asked each time on a managed device, but the person at the phone can always see that it is managed and when
+the screen is being viewed.
 
 ## 3. Enrollment flow
 
@@ -319,7 +333,7 @@ nothing reads messages or window text, and nothing logs keystrokes.
 
 | Control | On the phone | In Fleet | Rules |
 | --- | --- | --- | --- |
-| Screen view | A high-priority notification "IT asks to see your screen" → a screen with who, why and what they will see → Android's own MediaProjection dialog → foreground service of type `mediaProjection` with a Stop button; Android shows its cast icon | Remote desktop tab (shown only when the phone reports `screen`). Sessions on a phone are always attended (`consent_mode = prompt`), whatever the group's policy says | Frames only after the person accepted (`consent_pending` before). Refusing, ignoring or closing Android's dialog ends the session. Stop on the phone ends it in Fleet (`/agent/rd-session/end`) |
+| Screen view | A high-priority notification "IT asks to see your screen" → a screen with who, why and what they will see → Android's own MediaProjection dialog → foreground service of type `mediaProjection` with a Stop button; Android shows its cast icon | Remote desktop tab (shown only when the phone reports `screen`). In **regular app mode** sessions are always attended (`consent_mode = prompt`) because Android forces its own dialog — the group's unattended policy does not apply here. A managed / Device Owner phone follows the group policy and may be unattended (§2, "Access model for phones") | Frames only after the person accepted (`consent_pending` before). Refusing, ignoring or closing Android's dialog ends the session. Stop on the phone ends it in Fleet (`/agent/rd-session/end`) |
 | Remote control | Settings → Accessibility → Nigafiy (the person's own switch). A bar "Nigafiy: … is controlling this phone" stays on top while control is possible | Click = tap, hold = long press, drag = swipe, buttons Back / Home / Recent apps | Only inside an accepted session whose profile allows control. The service has no event types and `canRetrieveWindowContent=false`. Keys, text, wheel and mouse moves are refused for phones (`unsupported_by_platform`) |
 | File manager | Settings → All files access → Nigafiy (the person's switch, from the app's button) | Files tab (shown when the phone reports `files` and the access is granted) | Shared storage only (`SharedStorage.kt` confines paths); the usual file-manager roles: upload and delete are admin only, delete needs confirmation |
 | Ring | Alarm sound at full alarm volume (the person's volume is put back), notification with Stop | Android panel → Phone controls → Ring / Stop ringing | technician and above, 5–120 s, audited (`endpoint.android_ring`) |

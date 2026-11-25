@@ -101,9 +101,21 @@ instances relaying through pg_notify.
   countdown, then accepted, declined, no answer or unavailable. This replaces the old
   `consent_unavailable` refusal. **The earlier version of this document listed the consent policy as
   built. It was not: `prompt` sessions were refused.**
-- **Banner.** Every session shows an always-on-top banner with the operator's name, the reason and an
-  End session button, whatever the policy. Ending from the banner closes the session
-  (`POST /api/v1/agent/rd-session/end`) and is audited as ended by the endpoint user.
+- **Banner (configurable per group — 2026-11-26).** The session banner is set by the group's
+  `banner_mode`:
+  - `shown` (default): an always-on-top banner with the operator's name, the reason and an End session
+    button. Ending from the banner closes the session (`POST /api/v1/agent/rd-session/end`), audited as
+    ended by the endpoint user.
+  - `minimized`: a small, unobtrusive indicator (tray/status only), no large bar.
+  - `off`: **no on-screen banner** — the operator connects, views and controls without the signed-in user
+    being interrupted, matching how an internal IT tool (SCCM-style) works on company machines. Allowed
+    **only** on a managed endpoint whose group is `unattended`; refused for `attended`, for Quick Support
+    and for help-request sessions (those stay `shown`). The one-time consent is the enrollment / company
+    monitoring policy, not a per-session prompt.
+  - **The server-side audit log is written in every mode**, including `off` (operator, reason, start/end,
+    permissions used, files moved). `banner_mode` is recorded on the session and in `fleet.session_banner`.
+    The point of `off` is "the user is not interrupted each time," not hiding the fact of management — the
+    endpoint still carries the agent and the IT-activity record the organization configures.
 
 ### Service mode and session helper
 `nigafiy-agent install | uninstall | run | session-helper`. Running it with flags only, as before,
@@ -210,6 +222,8 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
   - Names are unique per organization, case-insensitive.
 - **`fleet_groups`** stores the access policy:
   - `access_mode` (attended / unattended) and `consent_timeout_s` (10–300)
+  - `banner_mode` (`shown` / `minimized` / `off`; default `shown`). `off` is accepted only with
+    `access_mode = unattended` on a managed endpoint — see "Consent and the session banner"
   - `refuse_window_s` (0, or 10–300)
   - `allowed_hours`: up to 14 weekly windows in the site's time zone; an end before the start crosses
     midnight
@@ -222,6 +236,7 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
 - **No group means the organization default:**
   - attended (60 s) when the endpoint's `policy.remote_desktop_consent` is `prompt`, otherwise
     unattended without a refuse window
+  - `banner_mode = shown` (the admin opts a managed group into `off` deliberately)
   - all operator roles, any time and any address
   - Support by default, Full admin at most
   - no code and no approval
