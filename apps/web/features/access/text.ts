@@ -102,6 +102,10 @@ const en = {
     deviceRouterBlocked: 'Blocked on router',
     deviceRouterScheduled: 'Router schedule',
     deviceDohBadge: '{n} DoH bypass attempts (24 h)',
+    pauseRouterPending: 'Blocking this device on the router…',
+    pauseRouterError: 'The router could not block this device: {error}. Nigafiy tries again every minute.',
+    pauseNoEffect:
+      'This pause has no effect yet: the device does not use the DNS filter, and no router that can block it is connected. Connect your router so a pause blocks the device on the router itself.',
   },
   cat: {
     ads_malware: 'Ads & malware',
@@ -220,6 +224,10 @@ const ar: Dict = {
     deviceRouterBlocked: 'محظور من الراوتر',
     deviceRouterScheduled: 'جدول على الراوتر',
     deviceDohBadge: '{n} محاولة تخطّي DoH (24 س)',
+    pauseRouterPending: 'جارٍ حظر الجهاز من الراوتر…',
+    pauseRouterError: 'لم يتمكن الراوتر من حظر هذا الجهاز: {error}. يعيد Nigafiy المحاولة كل دقيقة.',
+    pauseNoEffect:
+      'هذا الإيقاف ليس له تأثير بعد: الجهاز لا يستخدم فلتر DNS، ولا يوجد راوتر متصل يمكنه حظره. اربط الراوتر ليقوم الإيقاف بحظر الجهاز من الراوتر نفسه.',
   },
   cat: {
     ads_malware: 'الإعلانات والبرمجيات الضارة',

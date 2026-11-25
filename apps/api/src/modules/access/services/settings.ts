@@ -4,6 +4,7 @@ import { audit } from '../../../common/audit.ts';
 import { type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
+import { pauseBlockStates } from '../../routers/pause-block.ts';
 import { ACCESS_CATEGORIES, internetOff, mergeRules } from '../policy.ts';
 import { type DeviceAccessRow, type ProfileRow, deviceLayer, siteAccess } from '../repo.ts';
 import type { SettingsBody } from '../schema.ts';
@@ -146,6 +147,7 @@ export function getSiteAccess(organizationId: string, site_id: string) {
       )
     ).rows;
     const profileById = new Map(profiles.map((p) => [p.id, p]));
+    const pauseBlocks = await pauseBlockStates(db, site_id);
     const protectedSince = now.getTime() - PROTECTED_WITHIN_MINUTES * 60_000;
     const dnsListening = Boolean(settings.enabled && collector?.online && (collector.access_status as { listening?: boolean } | null)?.listening);
     const hasRouter = activeRouterCount > 0;
@@ -207,6 +209,7 @@ export function getSiteAccess(organizationId: string, site_id: string) {
           enforcement_mode: enforcementMode,
           router_blocked: routerBlocked,
           router_scheduled: routerScheduled,
+          router_pause: pauseBlocks.get(d.id) ?? null,
           doh_bypass_24h: doh?.count ?? 0,
           doh_domains_24h: doh?.domains ?? [],
         };

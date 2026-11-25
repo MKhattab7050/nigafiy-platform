@@ -30,6 +30,7 @@ describe('module registry', () => {
         ['playbook-engine', 5_000, 727140, 'playbooks'],
         ['quarantine-auto-release', 60_000, 727161, 'ports'],
         ['retention', 3_600_000, 727103, 'system'],
+        ['router-pauses', 30_000, 727151, 'routers'],
         ['router-schedules', 30_000, 727150, 'routers'],
         ['rollup', 600_000, 727104, 'monitoring'],
         ['sso-cleanup', 3_600_000, 727142, 'auth'],
@@ -95,6 +96,7 @@ describe('GET /api/v1/system/modules', () => {
       'quarantine-auto-release',
       'retention',
       'rollup',
+      'router-pauses',
       'router-schedules',
       'sso-cleanup',
     ]);

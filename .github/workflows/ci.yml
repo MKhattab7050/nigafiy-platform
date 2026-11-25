@@ -53,6 +53,9 @@ jobs:
       - name: Brand check (old product name)
         run: pnpm check:brand
 
+      - name: Release script checks
+        run: pnpm test:scripts
+
       - name: Go vet
         shell: bash
         run: |

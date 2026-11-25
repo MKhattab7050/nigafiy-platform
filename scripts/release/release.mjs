@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Builds a signed Nigafiy release (docs/operations/updates.md, docs/operations/installers.md).
 //
-//   node scripts/release/release.mjs [--version 1.2.3] [--out <folder>] [--no-msi] [--no-agent]
+//   node scripts/release/release.mjs [--version 1.2.3] [--out <folder>] [--no-msi] [--no-agent] [--no-android]
+//       [--android-cert-sha256 <hex>]
 //       [--key <manifest key .pem> --base-url https://downloads.example.com/1.2.3/ [--notes-url https://...]
 //        [--expect-public-key <base64>]]
 //
@@ -11,12 +12,15 @@
 //
 // Steps: go build the engine (which is also the Sensor, `nigafiy-engine sensor`) and (unless --no-agent) the endpoint agent installer; sign the Go
 // binaries; electron-builder NSIS (and MSI unless --no-msi; the app, its uninstaller and both
-// installers go through the signing hook); check every signature; copy the artefacts with SHA256SUMS
+// installers go through the signing hook); check every signature; (unless --no-android) build the
+// Android agent and check its APK (release key, not debug; versionName = the release; not debuggable;
+// --android-cert-sha256 or NIGAFIY_ANDROID_CERT_SHA256 pins the certificate); copy the artefacts with SHA256SUMS
 // into --out (default dist/release/<version>); with --key, sign the update manifest for them.
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { checkReleaseApk, releaseApkName } from '../android/release-apk.mjs';
 import { buildPayload, insideRepo, publicKeyOfPem, sha256File, signPayload } from './manifest-lib.mjs';
 
 const require = createRequire(import.meta.url);
@@ -118,12 +122,24 @@ try {
   }
   if (bad.length) fail(`unsigned or invalid signatures (is the certificate trusted on this computer? scripts/signing/Install-NigafiyTrust.ps1):\n  ${bad.join('\n  ')}`);
 
+  // The Android agent: built and checked here, so a release never goes out without it (or with a debug build).
+  let androidApk = null;
+  if (!has('--no-android')) {
+    run('node', [path.join(ROOT, 'scripts', 'android', 'build.mjs')], ROOT);
+    const apk = checkReleaseApk({ version, expectCertSha256: opt('--android-cert-sha256') ?? process.env.NIGAFIY_ANDROID_CERT_SHA256 });
+    if (apk.problems.length) fail(`the Android APK cannot ship:\n  ${apk.problems.join('\n  ')}`);
+    console.log(`[release] Android ok  ${apk.signer.sha256}  ${apk.signer.dn}  versionName ${apk.badging.versionName}`);
+    androidApk = apk.apk;
+  }
+
   mkdirSync(outDir, { recursive: true });
   const sums = [];
-  for (const f of artefacts) {
-    const dest = path.join(outDir, path.basename(f));
+  const copies = artefacts.map((f) => [f, path.basename(f)]);
+  if (androidApk) copies.push([androidApk, releaseApkName(version)]);
+  for (const [f, name] of copies) {
+    const dest = path.join(outDir, name);
     copyFileSync(f, dest);
-    sums.push(`${await sha256File(dest)}  ${path.basename(f)}`);
+    sums.push(`${await sha256File(dest)}  ${name}`);
   }
   writeFileSync(path.join(outDir, 'SHA256SUMS'), `${sums.join('\n')}\n`);
 

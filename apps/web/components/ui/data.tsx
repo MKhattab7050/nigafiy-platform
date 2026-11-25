@@ -94,7 +94,8 @@ export function Evidence({ details }: { details: Record<string, unknown> }) {
 export function DataTable({ children, stack, minWidth, className }: { children: React.ReactNode; stack?: boolean; minWidth?: number; className?: string }) {
   return (
     // A stacked table never needs to scroll, so its header can stay pinned under the top bar.
-    <div className={clsx(!stack && 'overflow-x-auto', className)}>
+    // A scrolling one becomes its own scroll box, so a pinned header would sit 3.5rem down inside it, on top of the first row.
+    <div className={clsx(!stack && 'data-table-scroll overflow-x-auto', className)}>
       <table className={clsx('data-table', stack && 'stack')} style={minWidth ? { minWidth: stack ? undefined : minWidth } : undefined}>
         {children}
       </table>

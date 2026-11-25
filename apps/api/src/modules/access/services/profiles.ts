@@ -3,6 +3,7 @@ import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
+import { syncRouterPauses } from '../../routers/pause-block.ts';
 import type { ProfileBody, ProfilePatchBody } from '../schema.ts';
 
 // Access profiles: named rule sets (categories, domains, schedule) shared by several devices of a
@@ -57,6 +58,8 @@ export async function pauseProfile(req: Request, ctx: AuthContext, id: string, m
     const r = await db.query(`UPDATE access_profiles SET paused_until = $2, updated_at = now() WHERE id = $1`, [id, until]);
     if (!r.rowCount) throw notFound('Profile');
     await audit(db, req, minutes === null ? 'access.profile.resume' : 'access.profile.pause', { type: 'access_profile', id }, { until });
+    const members = (await db.query<{ id: string }>(`SELECT id FROM devices WHERE access_profile_id = $1`, [id])).rows.map((d) => d.id);
+    await syncRouterPauses(db, members, { id: ctx.userId, email: ctx.userEmail });
     await notifyRealtime(db, ctx.organizationId, 'devices');
   });
 }

@@ -86,6 +86,7 @@ function DeviceAccessCardBody({ deviceId, siteId }: { deviceId: string; siteId: 
         {!d.internet_off && !d.paused_until && !d.router_blocked && <Badge tone="ok">{tx.internetOn}</Badge>}
       </div>
       <PauseControl path={`/devices/${deviceId}/pause`} pausedUntil={d.paused_until} internetOff={d.internet_off} canPause={can('technician')} onChanged={page.reload} />
+      {d.internet_off === 'paused' && <PauseEnforcement d={d} />}
       <label className="block text-xs text-muted">
         {tx.profile}
         <Select value={d.profile_id ?? ''} disabled={!can('admin') || saving} onChange={(e) => setProfile(e.target.value)} className="mt-1 !h-8 text-xs">
@@ -226,6 +227,25 @@ function DeviceOwnRules({ device, admin, onChanged }: { device: AccessDevice; ad
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Whether the pause is actually enforced: router block on its way or failed, or nothing enforces it at all. */
+function PauseEnforcement({ d }: { d: AccessDevice }) {
+  const { locale } = useI18n();
+  const tx = accessText(locale);
+  if (d.router_pause?.pending) return <p className="text-xs text-muted">{tx.enforcement.pauseRouterPending}</p>;
+  if (d.router_pause?.error && !d.router_blocked) {
+    return <p className="rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-fg">{fill(tx.enforcement.pauseRouterError, { error: d.router_pause.error })}</p>;
+  }
+  if (d.enforcement_mode !== 'unprotected') return null;
+  return (
+    <div className="space-y-1.5 rounded-md border border-warn/40 bg-warn/10 px-2.5 py-2 text-xs text-fg">
+      <p>{tx.enforcement.pauseNoEffect}</p>
+      <Link href="/guard/routers" className="font-medium text-accent hover:underline">
+        {tx.enforcement.routerCta}
+      </Link>
     </div>
   );
 }

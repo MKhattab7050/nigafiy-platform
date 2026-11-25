@@ -117,8 +117,14 @@ before building anything. It builds `nigafiy-engine.exe`, which is the engine an
 executable (docs/architecture/engine-sensor.md), with `main.Version`, signs it,
 builds the desktop NSIS installer and the MSI (`--no-msi` to skip), the endpoint-agent installer
 (`--no-agent` to skip), checks that every installer and the programs inside the app report a `Valid`
-Authenticode signature, and copies the files with `SHA256SUMS` (and, with `--key`, `manifest.json`)
-to `dist/release/<version>`. `--version` must equal `apps/desktop/package.json`'s version (bump it
+Authenticode signature, builds the Android agent (`--no-android` to skip) and refuses its APK unless it
+is signed with the release key (not the Android debug key), not debuggable, and its `versionName` is the
+release version (`--android-cert-sha256 <hex>` or `NIGAFIY_ANDROID_CERT_SHA256` also pins the signing
+certificate; `scripts/android/release-apk.mjs`), and copies the files, the APK as
+`Nigafiy-Android-Agent-<version>.apk`, with `SHA256SUMS` (and, with `--key`, `manifest.json`)
+to `dist/release/<version>`. The Android build needs the JDK, SDK and Gradle of `pnpm build:android`
+and the release key in `.data/android` (`pnpm android:keystore`). The APK is not in the update
+manifest: phones get it through the fleet's APK upload (docs/features/android.md). `--version` must equal `apps/desktop/package.json`'s version (bump it
 first). Upload the folder's files to `--base-url`, then the manifest to `NIGAFIY_UPDATE_MANIFEST_URL`
 last, so no install sees a manifest whose files are not there yet.
 

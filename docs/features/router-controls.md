@@ -125,6 +125,29 @@ All POST/DELETE answer `202 {request_id, collector}` and are followed with
 (`rename`, `reserve`, `unreserve`, `port_forward`) to each router item, with the device's current
 reservation and port forwards on that router.
 
+## Pause on the router
+
+"Pause internet" (a device's own pause, or its access profile's) is a DNS-filter rule first, and a
+device that does not use the filter as its DNS server never sees it. So when the device's site has a
+router whose driver reports `block` and that Nigafiy can reach, the pause also blocks the device's
+MAC address on that router (`router_pause_blocks`, migration 049; `routers/pause-block.ts`):
+
+- On pause/resume the API brings the router in line at once (`syncRouterPauses`, inside the pause
+  request; a router failure never undoes the DNS pause). The `router-pauses` job (every 30 s) starts
+  blocks for pauses made by automations, lifts blocks when a pause runs out, and retries failures
+  once a minute.
+- Only the pause's own block is ever lifted. A block that was already on the router, or that an
+  administrator made, stays. If the pause's block is lifted by hand during the pause, it is not
+  blocked again until that pause ends.
+- Protected devices (the collector host, the router, the requester) are never blocked; the refusal
+  is shown on the device card.
+- Requests are made on behalf of whoever paused (technician or above can pause), and audited as
+  `router.pause.block` / `router.pause.unblock` / `router.pause.overridden`.
+- The device card says whether the router block is on its way, why it failed, or that nothing
+  enforces the pause (no DNS use and no router that can block).
+
+Bedtime windows of access profiles are still DNS-only.
+
 ## Storage
 
 Migration adds to `site_routers`: `settings jsonb` and `settings_at timestamptz`, and extends the

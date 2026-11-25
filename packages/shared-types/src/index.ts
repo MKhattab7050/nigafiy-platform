@@ -696,6 +696,8 @@ export interface AccessDevice {
   enforcement_mode: DeviceEnforcementMode;
   router_blocked: boolean;
   router_scheduled: boolean;
+  /** The router block that enforces this device's pause: on its way (pending), or why it failed. Null when none is managed. */
+  router_pause: { pending: boolean; error: string | null } | null;
   doh_bypass_24h: number;
   doh_domains_24h: string[];
 }

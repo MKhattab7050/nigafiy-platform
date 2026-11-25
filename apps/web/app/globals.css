@@ -257,6 +257,9 @@ html[lang='ar'] body {
   color: var(--color-muted);
   white-space: nowrap;
 }
+.data-table-scroll > .data-table thead th {
+  position: static;
+}
 .data-table tbody td {
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid var(--color-line);

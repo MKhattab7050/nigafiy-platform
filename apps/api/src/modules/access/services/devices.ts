@@ -3,6 +3,7 @@ import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
+import { syncRouterPauses } from '../../routers/pause-block.ts';
 import type { DeviceAccessBody } from '../schema.ts';
 
 // Per-device access control: pause, the device's own rule layer, and its DNS activity.
@@ -13,6 +14,8 @@ export async function pauseDevice(req: Request, ctx: AuthContext, id: string, mi
     const r = await db.query(`UPDATE devices SET internet_paused_until = $2 WHERE id = $1`, [id, until]);
     if (!r.rowCount) throw notFound('Device');
     await audit(db, req, minutes === null ? 'device.internet.resume' : 'device.internet.pause', { type: 'device', id }, { until });
+    // Also block (or unblock) the device on the site's router, where one is connected and can block.
+    await syncRouterPauses(db, [id], { id: ctx.userId, email: ctx.userEmail });
     await notifyRealtime(db, ctx.organizationId, 'devices');
   });
 }
