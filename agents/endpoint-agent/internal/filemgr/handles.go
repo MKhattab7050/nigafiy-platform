@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"time"
 )
 
 // Handle-relative changes (R-7, the rest of EXT-8). mkdir, rename, move and delete no longer act on a
@@ -185,6 +187,105 @@ func removeChecked(clean string, g guard) error {
 		return err
 	}
 	return nil
+}
+
+// openListedDir opens the folder clean for reading (list, search, copy) and checks its real
+// location against the read guards, so a folder swapped for a link after the path check cannot
+// show or hand out the contents of a place outside the allowed roots.
+func openListedDir(clean string, roots []string) (*dirHandle, string, error) {
+	d, real, err := openCheckedDir(clean)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := checkReal(real, guard{roots, false}); err != nil {
+		d.close()
+		return nil, "", err
+	}
+	return d, real, nil
+}
+
+// readDirChecked lists the folder clean through its checked handle, sorted by name.
+func readDirChecked(clean string, roots []string) ([]fs.FileInfo, error) {
+	d, _, err := openListedDir(clean, roots)
+	if err != nil {
+		return nil, err
+	}
+	defer d.close()
+	infos, err := d.readDir()
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Name() < infos[j].Name() })
+	return infos, nil
+}
+
+// searchChecked walks the folder clean through handles: each subfolder is opened relative to the
+// folder above it and never through a link (links are listed, not entered), like WalkDir did.
+func searchChecked(clean, queryLower string, showHidden bool, roots []string) ([]FileEntry, error) {
+	d, real, err := openListedDir(clean, roots)
+	if err != nil {
+		return nil, err
+	}
+	defer d.close()
+	var hits []FileEntry
+	var walk func(d *dirHandle, shown, real string, depth int) bool
+	walk = func(d *dirHandle, shown, real string, depth int) bool {
+		infos, err := d.readDir()
+		if err != nil {
+			return true
+		}
+		sort.Slice(infos, func(i, j int) bool { return infos[i].Name() < infos[j].Name() })
+		for _, info := range infos {
+			name := info.Name()
+			full, fullReal := filepath.Join(shown, name), filepath.Join(real, name)
+			// Never walk into (or name the files of) a credential store.
+			if isForbiddenCredentialPath(full) || isForbiddenCredentialPath(fullReal) || depth > MaxSearchDepth {
+				continue
+			}
+			hidden, sys := isHiddenOrSystem(full, info)
+			if !showHidden && (hidden || sys) {
+				continue
+			}
+			if strings.Contains(strings.ToLower(name), queryLower) {
+				hits = append(hits, fileEntry(full, info, hidden, sys))
+				if len(hits) >= MaxSearchHits {
+					return false
+				}
+			}
+			if info.IsDir() && info.Mode()&fs.ModeSymlink == 0 {
+				sub, err := d.child(name, false)
+				if err != nil {
+					continue
+				}
+				more := walk(sub, full, fullReal, depth+1)
+				sub.close()
+				if !more {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	walk(d, clean, real, 1)
+	return hits, nil
+}
+
+func fileEntry(full string, info fs.FileInfo, hidden, sys bool) FileEntry {
+	ext := ""
+	if !info.IsDir() {
+		ext = strings.TrimPrefix(strings.ToLower(filepath.Ext(info.Name())), ".")
+	}
+	return FileEntry{
+		Name:     info.Name(),
+		Path:     full,
+		IsDir:    info.IsDir(),
+		Ext:      ext,
+		Size:     info.Size(),
+		Mode:     info.Mode().String(),
+		ModTime:  info.ModTime().UTC().Format(time.RFC3339),
+		IsHidden: hidden,
+		IsSystem: sys,
+	}
 }
 
 // moveChecked moves src into the folder of dst (dst's name is src's name) by a handle-relative

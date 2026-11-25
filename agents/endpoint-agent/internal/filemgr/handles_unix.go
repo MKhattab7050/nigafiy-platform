@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -100,6 +101,68 @@ func (d *dirHandle) names() ([]string, error) {
 	return f.Readdirnames(-1)
 }
 
+// readDir lists the folder with each entry's information, read with fstatat relative to the
+// handle (never following a link, never looking the entry up again by path).
+func (d *dirHandle) readDir() ([]fs.FileInfo, error) {
+	names, err := d.names()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]fs.FileInfo, 0, len(names))
+	for _, n := range names {
+		var st unix.Stat_t
+		if err := unix.Fstatat(d.fd, n, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+			continue // removed since the listing
+		}
+		out = append(out, &statInfo{name: n, st: st})
+	}
+	return out, nil
+}
+
+// statInfo is an fs.FileInfo built from an fstatat result.
+type statInfo struct {
+	name string
+	st   unix.Stat_t
+}
+
+func (s *statInfo) Name() string { return s.name }
+func (s *statInfo) Size() int64  { return s.st.Size }
+func (s *statInfo) IsDir() bool  { return s.Mode().IsDir() }
+func (s *statInfo) Sys() any     { return &s.st }
+func (s *statInfo) ModTime() time.Time {
+	sec, nsec := s.st.Mtim.Unix()
+	return time.Unix(sec, nsec)
+}
+
+func (s *statInfo) Mode() fs.FileMode {
+	m := uint32(s.st.Mode)
+	mode := fs.FileMode(m & 0o777)
+	switch m & unix.S_IFMT {
+	case unix.S_IFDIR:
+		mode |= fs.ModeDir
+	case unix.S_IFLNK:
+		mode |= fs.ModeSymlink
+	case unix.S_IFIFO:
+		mode |= fs.ModeNamedPipe
+	case unix.S_IFSOCK:
+		mode |= fs.ModeSocket
+	case unix.S_IFCHR:
+		mode |= fs.ModeDevice | fs.ModeCharDevice
+	case unix.S_IFBLK:
+		mode |= fs.ModeDevice
+	}
+	if m&unix.S_ISUID != 0 {
+		mode |= fs.ModeSetuid
+	}
+	if m&unix.S_ISGID != 0 {
+		mode |= fs.ModeSetgid
+	}
+	if m&unix.S_ISVTX != 0 {
+		mode |= fs.ModeSticky
+	}
+	return mode
+}
+
 // removeAll deletes the entry name with unlinkat. A folder is opened with O_NOFOLLOW and emptied
 // through its own handle first; a symbolic link is unlinked itself and never followed.
 func (d *dirHandle) removeAll(name string) error {
@@ -118,8 +181,17 @@ func (d *dirHandle) removeAll(name string) error {
 		}
 		return nil
 	}
-	// A link put here since the stat makes this open fail (ELOOP / ENOTDIR): nothing is followed.
+	// A link put here since the stat makes this open fail (ELOOP / ENOTDIR): nothing is followed,
+	// and the link itself is what gets deleted.
 	fd, err := unix.Openat(d.fd, name, dirFlags, 0)
+	if errors.Is(err, unix.ELOOP) || errors.Is(err, unix.ENOTDIR) {
+		if serr := unix.Fstatat(d.fd, name, &st, unix.AT_SYMLINK_NOFOLLOW); serr == nil && uint32(st.Mode)&unix.S_IFMT != unix.S_IFDIR {
+			if uerr := unix.Unlinkat(d.fd, name, 0); uerr != nil {
+				return &fs.PathError{Op: "delete", Path: p, Err: uerr}
+			}
+			return nil
+		}
+	}
 	if err != nil {
 		return &fs.PathError{Op: "delete", Path: p, Err: err}
 	}

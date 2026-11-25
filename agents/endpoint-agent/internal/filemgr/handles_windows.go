@@ -3,9 +3,10 @@
 package filemgr
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -141,41 +142,36 @@ func (d *dirHandle) child(name string, create bool) (*dirHandle, error) {
 	return c, nil
 }
 
-// names lists the folder through its handle (FileFullDirectoryInfo).
-func (d *dirHandle) names() ([]string, error) {
-	return listNames(d.h)
+// osFile wraps a duplicate of the folder handle in an *os.File, whose directory reading works on
+// the handle alone (GetFileInformationByHandleEx, restarting at the first entry): names, sizes,
+// times and attributes come from the listing, and nothing is looked up again by path.
+func (d *dirHandle) osFile() (*os.File, error) {
+	var dup windows.Handle
+	p := windows.CurrentProcess()
+	if err := windows.DuplicateHandle(p, d.h, p, &dup, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(dup), d.path), nil
 }
 
-func listNames(h windows.Handle) ([]string, error) {
-	backing := make([]uint64, 8192) // 64 KiB, 8-byte aligned as the call requires
-	buf := unsafe.Slice((*byte)(unsafe.Pointer(&backing[0])), len(backing)*8)
-	var out []string
-	for {
-		err := windows.GetFileInformationByHandleEx(h, windows.FileFullDirectoryInfo, &buf[0], uint32(len(buf)))
-		if errors.Is(err, windows.ERROR_NO_MORE_FILES) {
-			return out, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		// FILE_FULL_DIR_INFO: NextEntryOffset @0, FileNameLength @60, FileName @68.
-		off := 0
-		for {
-			next := int(binary.LittleEndian.Uint32(buf[off:]))
-			n := int(binary.LittleEndian.Uint32(buf[off+60:]))
-			if off+68+n > len(buf) {
-				return nil, errors.New("malformed directory listing")
-			}
-			u := unsafe.Slice((*uint16)(unsafe.Pointer(&buf[off+68])), n/2)
-			if name := string(utf16.Decode(u)); name != "." && name != ".." {
-				out = append(out, name)
-			}
-			if next == 0 {
-				break
-			}
-			off += next
-		}
+// names lists the folder through its handle.
+func (d *dirHandle) names() ([]string, error) {
+	f, err := d.osFile()
+	if err != nil {
+		return nil, err
 	}
+	defer f.Close()
+	return f.Readdirnames(-1)
+}
+
+// readDir lists the folder with each entry's information, through its handle.
+func (d *dirHandle) readDir() ([]fs.FileInfo, error) {
+	f, err := d.osFile()
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdir(-1)
 }
 
 // removeAll deletes the entry name. A folder is emptied through its own handle first; a link or
