@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -466,6 +467,14 @@ func TestServerCloseAndRefusals(t *testing.T) {
 
 // The real terminal of this platform: a command typed into it runs, its exit code comes back.
 func TestRealTerminal(t *testing.T) {
+	// The shell is interactive: it would append the typed test commands to the developer's own
+	// history (PSReadLine under the profile, ~/.bash_history). Give it a throw-away profile.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
+	t.Setenv("HISTFILE", filepath.Join(home, ".sh_history"))
 	term, err := Start(100, 30)
 	if err != nil {
 		if runtime.GOOS == "windows" && strings.Contains(err.Error(), "pseudo console") {
