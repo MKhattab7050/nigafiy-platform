@@ -4,6 +4,11 @@ Each diagram shows a flow that exists in the code today, with links to where it 
 only been exercised by tests, the section says so; [../roadmap/status.md](../roadmap/status.md) has the
 full "real hardware versus tests only" table.
 
+The illustrated figures at the top of sections 1, 2, 4 and 9 are drawn by
+[scripts/make-readme-art.mjs](../../scripts/make-readme-art.mjs) (light and dark, with motion that stops under
+"reduce motion"); the Mermaid diagrams under them are the code-level detail, in the brand colours:
+blue steps, amber decisions, teal data, red refusals, green outcomes, dashed outside actors.
+
 Contents:
 
 1. [System components and ports](#1-system-components-and-ports)
@@ -26,7 +31,15 @@ the desktop app has to start the engine itself, it starts `nigafiy-engine run --
 Sensor on its own, as before. Sensors and Agents always dial out to the API; the API never connects
 into them. Port numbers shown are the installed app; the dev stack (`pnpm dev:*`) uses 3100 / 4100 / 5433.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/architecture-dark.svg">
+  <img alt="Architecture overview: the engine supervises the web console, API, PostgreSQL and local Sensor on loopback; remote Sensors and Agents dial out to the API." src="../assets/readme/architecture.svg" width="100%">
+</picture>
+
+Every process, port and connection:
+
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart LR
   subgraph PC["Admin's Windows PC, loopback only"]
     DESK["Desktop app, Electron"]
@@ -55,6 +68,14 @@ flowchart LR
   AG -->|"HTTPS poll and results, WebSocket stream"| API
   SEN -->|"ICMP, ARP, SNMP, SSH, DNS 53 if on, MNDP UDP 5678, DHCP 67 listen"| LAN
   BR -.->|"WebRTC video, LAN only, Windows agents"| AG
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class DB data
+  class BR,RS,AG,LAN external
 ```
 
 Code: [engine supervisor](../../engine/internal/supervisor), [engine control API](../../engine/internal/control),
@@ -75,7 +96,15 @@ maintenance windows, stores the event with its evidence, queues a delivery per m
 during maintenance), hands the event to correlation (incidents) and pings the SSE stream. Background
 jobs, each single-runner through a PostgreSQL advisory lock, send the notifications and escalations.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/how-it-works-dark.svg">
+  <img alt="Discover, watch, alert, act." src="../assets/readme/how-it-works.svg" width="100%">
+</picture>
+
+The same path, step by step in the code:
+
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   CFG["Heartbeat answer: scopes, checks, commands"] --> SWEEP
   SWEEP["Sensor sweep: ICMP, neighbour table, rDNS, mDNS, SSDP, NetBIOS, passive DHCP"] --> SPOOL["On-disk spool"]
@@ -95,6 +124,13 @@ flowchart TD
   DISP --> CH["Email, webhook, Telegram, Slack, Discord, ntfy, with retry"]
   INC --> ESC["notification-escalation job every 60 s"]
   EMIT --> SSE["pg_notify to SSE: the web console refreshes"]
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class RULES,MW decision
 ```
 
 Code: [Sensor discovery](../../collectors/lan-collector/internal/discovery),
@@ -123,6 +159,7 @@ again (a repeated "restart this computer" would be a reboot loop), and the Agent
 id it has already seen.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 sequenceDiagram
   autonumber
   actor Admin
@@ -154,6 +191,7 @@ Remote sessions add an access policy on top. `POST /remote-desktop/start` evalua
 and every refusal is audited as `fleet.policy_refused` in its own transaction:
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   REQ["Operator: reason, profile, optional TOTP"] --> STEP{"Policy asks for MFA?"}
   STEP -->|yes| SU["POST /fleet/step-up: TOTP to a 5-minute token, 5 wrong codes lock 15 min"]
@@ -173,6 +211,15 @@ flowchart TD
   APPR -->|yes| WAIT["waiting_approval: another admin decides, or it expires"]
   APPR -->|no| UNATT["Refuse window or notice, then start"]
   WAIT -->|approved| UNATT
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class STEP,ROLE,IP,HRS,MFA,MODE,APPR decision
+  class REF refused
+  class USER,UNATT good
 ```
 
 Code: [enrollment](../../apps/api/src/modules/endpoints/enrollment/service.ts),
@@ -197,7 +244,15 @@ or stays waiting for more than 6 s, the console falls back to one JPEG per HTTP 
 agents the browser can offer WebRTC (H.264, direct on the LAN, no TURN), signalled over the existing
 sockets; any failure falls back to JPEG. Recorded sessions always stay on the server path.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/fleet-remote-desktop-dark.svg">
+  <img alt="Remote desktop: start with a reason, policy check, the Agent dials out, user consent, WebSocket JPEG or WebRTC H.264, audit and optional recording." src="../assets/readme/fleet-remote-desktop.svg" width="100%">
+</picture>
+
+The detailed sequence:
+
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 sequenceDiagram
   autonumber
   actor Op as Operator browser
@@ -231,6 +286,7 @@ sequenceDiagram
 Recording, when the group rule is `required` or the holder switches it on:
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart LR
   RULE{"Group rule"} -->|off| NOREC["No recording"]
   RULE -->|optional| CHOICE{"Profile allows record and the holder turns it on?"}
@@ -245,6 +301,14 @@ flowchart LR
   FILE --> RET["fleet-recording-retention job deletes expired files"]
   FILE --> PLAY["Playback decrypts one part at a time, audited fleet.recording_viewed"]
   REC --> MARK["Recording mark on the person's session bar, cannot be hidden"]
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class RULE,CHOICE,REQP decision
+  class REFUSE refused
 ```
 
 Code: [stream-hub.ts](../../apps/api/src/modules/endpoints/remote-desktop/stream-hub.ts),
@@ -268,6 +332,7 @@ does not report as supported is refused before anything is queued, and the Senso
 it ever arrives.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   ADM["Admin: POST /routers/:id/wifi, rename, reservations, port-forwards or reboot"] --> ROLE{"Role admin?"}
   ROLE -->|no| R403["403"]
@@ -287,6 +352,14 @@ flowchart TD
   ACK --> POLL["UI follows GET /router-requests/:id"]
   STORE --> POLL
   RFAIL --> POLL
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class ROLE,CAP,SAFE,RULES decision
+  class R403,RSAFE,RFAIL refused
 ```
 
 Code: [routers/control.ts](../../apps/api/src/modules/routers/control.ts),
@@ -311,6 +384,7 @@ typing the device name, and the version's own host name, which must match the la
 the admin forces it with a second typed confirmation.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   ASK["Admin: restore version V, typed device name, reason, timer 1 to 10 min"] --> PRE{"Junos or IOS XE, host key pinned, credentials accepted, sealed raw copy, Sensor online, nothing else running?"}
   PRE -->|no| NOT["Restore not supported or not possible now, with the reason"]
@@ -332,6 +406,15 @@ flowchart TD
   HASH -->|no| BAD["failed verify_mismatch, config_restore_failed event"]
   ROLL --> BAD2["rolled_back, audited"]
   APPLY -.->|"never confirmed in time"| SELF["Device reverts by itself when timer N ends"]
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class PRE,NAME,HOST,MATCH,HASH decision
+  class NOT,F1,ROLL,BAD refused
+  class OK good
 ```
 
 Code: [configbackup/restore.ts](../../apps/api/src/modules/configbackup/restore.ts),
@@ -350,6 +433,7 @@ checked for size, SHA-256 and (when `NIGAFIY_UPDATE_PUBLISHER_THUMBPRINT` is set
 publisher, again at each step. An owner or admin confirms the install.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 sequenceDiagram
   autonumber
   participant Rel as Release host, HTTPS
@@ -383,6 +467,7 @@ installs by the Store.
 ## 8. Distribution channels
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   SRC["Release build: pnpm release"] --> MSIX["MSIX packages: desktop app, Quick Support"]
   SRC --> MSI["Desktop MSI, per machine"]
@@ -397,6 +482,14 @@ flowchart TD
   NSIS --> DIRECT["Direct download"]
   DIRECT --> WARN["SmartScreen and Unknown publisher warnings"]
   NSIS --> UPD["In-app updater, flow 7"]
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class WARN refused
+  class PUB,ORGPC good
 ```
 
 Code: [apps/desktop/scripts/build-msix.cjs](../../apps/desktop/scripts/build-msix.cjs),
@@ -416,7 +509,15 @@ account exists. Credential routes are limited per client IP (10 a minute; counte
 when `REDIS_URL` is set). MFA failures are counted **per account**: 5 wrong codes lock the account's MFA
 for 15 minutes. SSO is an extra way in per organization, not a replacement.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/readme/security-dark.svg">
+  <img alt="Security layers: sign-in, roles, tenant isolation, sealed secrets, audit; Sensors and Agents only dial out." src="../assets/readme/security.svg" width="100%">
+</picture>
+
+Every branch of sign-in:
+
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, Segoe UI, Noto Sans, Helvetica, Arial, sans-serif", "fontSize": "14px", "primaryColor": "#EEF4FF", "primaryTextColor": "#0B1F5C", "primaryBorderColor": "#1A73FF", "secondaryColor": "#F3F6FC", "tertiaryColor": "#FFFFFF", "lineColor": "#6B7FA8", "textColor": "#6B7FA8", "titleColor": "#6B7FA8", "clusterBkg": "#F7F9FE", "clusterBorder": "#9DB4E8", "edgeLabelBackground": "#F3F6FC", "actorBkg": "#EEF4FF", "actorBorder": "#1A73FF", "actorTextColor": "#0B1F5C", "actorLineColor": "#9DB4E8", "signalColor": "#6B7FA8", "signalTextColor": "#6B7FA8", "labelBoxBkgColor": "#EEF4FF", "labelBoxBorderColor": "#1A73FF", "labelTextColor": "#0B1F5C", "loopTextColor": "#6B7FA8", "noteBkgColor": "#FFF6E5", "noteBorderColor": "#C27C0E", "noteTextColor": "#5A3A05", "activationBkgColor": "#DCE8FF", "activationBorderColor": "#1A73FF", "sequenceNumberColor": "#FFFFFF"}, "flowchart": {"curve": "basis", "padding": 12}}}%%
 flowchart TD
   START["Sign-in page"] --> KIND{"Local password or SSO button?"}
   KIND -->|local| LIM{"Under 10 attempts a minute from this IP?"}
@@ -439,6 +540,15 @@ flowchart TD
   VER -->|yes| TRUST{"Provider trusts IdP MFA?"}
   TRUST -->|yes| PIN["Session pinned to the provider's organization"]
   TRUST -->|no| HAS
+  classDef default fill:#EEF4FF,stroke:#1A73FF,stroke-width:1.2px,color:#0B1F5C
+  classDef decision fill:#FFF6E5,stroke:#C27C0E,stroke-width:1.2px,color:#5A3A05
+  classDef data fill:#E3F5F9,stroke:#0099BC,stroke-width:1.2px,color:#053F4D
+  classDef external fill:#F3F6FC,stroke:#6B7FA8,stroke-width:1.2px,stroke-dasharray:4 3,color:#0B1F5C
+  classDef refused fill:#FDECEC,stroke:#D13438,stroke-width:1.2px,color:#7A1C1F
+  classDef good fill:#E8F5EA,stroke:#2E8540,stroke-width:1.2px,color:#17461F
+  class KIND,LIM,PW,MEM,HAS,CODE,VER,TRUST decision
+  class R429,R401,R403,CNT,ERR refused
+  class SESS,PIN good
 ```
 
 Code: [auth/routes.ts](../../apps/api/src/modules/auth/routes.ts),
