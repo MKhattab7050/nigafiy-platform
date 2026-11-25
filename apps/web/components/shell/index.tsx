@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { useApp } from '@/lib/app';
+import { useSession } from '@/lib/app';
 import { useProgramId } from '@/lib/programs-context';
 import { useTheme } from '@/lib/theme';
 import { Sidebar } from './sidebar';
@@ -11,7 +11,7 @@ import { TopBar } from './top-bar';
 /** One screen: one sidebar (fixed on desktop, collapsible to an icon rail; a drawer on phones), one top bar, and the page. */
 export function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { me } = useApp();
+  const { me } = useSession();
   const { bindUser } = useTheme();
   const [open, setOpen] = useState(false);
   const program = useProgramId();

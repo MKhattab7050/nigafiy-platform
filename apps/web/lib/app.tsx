@@ -9,6 +9,7 @@ import { isRetryable, retryDelayMs } from './retry';
 
 export type Topic = 'events' | 'devices' | 'checks' | 'collectors';
 type Listener = (topic: Topic) => void;
+const ALL_TOPICS: readonly Topic[] = ['events', 'devices', 'checks', 'collectors'];
 
 interface AppState {
   me: Me;
@@ -39,12 +40,44 @@ function sharedGet<T>(path: string): Promise<T> {
   }
   return p as Promise<T>;
 }
-const Ctx = createContext<AppState | null>(null);
+// Four contexts so a change in one part does not re-render (or re-fetch) consumers of another:
+// the SSE connection flag flips often, the stream subscription never changes identity.
+interface SessionState {
+  me: Me;
+  reloadMe: () => void;
+  can: (min: Role) => boolean;
+  signOut: () => Promise<void>;
+}
+interface SitesState {
+  sites: Site[];
+  reloadSites: () => void;
+  siteId: string | null;
+  setSiteId: (id: string | null) => void;
+}
+type Subscribe = (listener: Listener) => () => void;
+const SessionCtx = createContext<SessionState | null>(null);
+const SitesCtx = createContext<SitesState | null>(null);
+const LiveCtx = createContext(false);
+const StreamCtx = createContext<Subscribe | null>(null);
 
+function need<T>(value: T | null, name: string): T {
+  if (value === null) throw new Error(`${name} outside AppProvider`);
+  return value;
+}
+export const useSession = (): SessionState => need(useContext(SessionCtx), 'useSession');
+export const useSites = (): SitesState => need(useContext(SitesCtx), 'useSites');
+/** True while the live stream is connected. */
+export const useLive = (): boolean => useContext(LiveCtx);
+/** Stable for the whole session: listen for "topic changed" frames from the server. */
+export const useSubscribe = (): Subscribe => need(useContext(StreamCtx), 'useSubscribe');
+
+/** Everything at once (re-renders on any change). Prefer the narrower hooks in hot paths. */
 export function useApp(): AppState {
-  const ctx = useContext(Ctx);
-  if (!ctx) throw new Error('useApp outside AppProvider');
-  return ctx;
+  const session = useSession();
+  const sites = useSites();
+  const live = useLive();
+  const subscribe = useSubscribe();
+  return useMemo(() => ({ ...session, ...sites, live, subscribe }), [session, sites, live, subscribe]);
 }
 
 /** Loads the session, keeps one Server-Sent-Events connection, and exposes the site filter. */
@@ -119,51 +152,62 @@ export function AppProvider({ children, fallback, unreachable: renderUnreachable
     if (siteId && sites.length && !sites.some((s) => s.id === siteId)) setSiteIdState(null);
   }, [siteId, sites]);
 
+  const signedIn = me !== null;
   useEffect(() => {
-    if (!me) return;
+    if (!signedIn) return;
     // The stream only says "topic X changed"; data is always re-fetched through the authorized REST API.
     const source = new EventSource('/api/v1/stream');
-    source.addEventListener('ready', () => setLive(true));
+    const emit = (topic: Topic) => {
+      for (const listener of listeners.current) listener(topic);
+    };
+    let dropped = false;
+    source.addEventListener('ready', () => {
+      setLive(true);
+      // Frames sent while the stream was down are lost: refresh every topic once after a reconnect.
+      if (dropped) for (const topic of ALL_TOPICS) emit(topic);
+      dropped = false;
+    });
     source.addEventListener('change', (e) => {
       try {
         const { topic } = JSON.parse((e as MessageEvent).data) as { topic: Topic };
-        for (const listener of listeners.current) listener(topic);
+        emit(topic);
       } catch {
         /* ignore malformed frame */
       }
     });
-    source.onerror = () => setLive(false); // EventSource reconnects by itself
-    return () => source.close();
-  }, [me]);
-
-  const value = useMemo<AppState | null>(() => {
-    if (!me) return null;
-    return {
-      me,
-      reloadMe,
-      sites,
-      reloadSites,
-      siteId,
-      setSiteId: (id) => {
-        setSiteIdState(id);
-        if (id) window.localStorage.setItem('ld_site', id);
-        else window.localStorage.removeItem('ld_site');
-      },
-      live,
-      subscribe: (listener) => {
-        listeners.current.add(listener);
-        return () => void listeners.current.delete(listener);
-      },
-      can: (min) => hasRole(me.role, min),
-      signOut: async () => {
-        await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
-        window.location.href = '/login';
-      },
+    source.onerror = () => {
+      dropped = true;
+      setLive(false); // EventSource reconnects by itself
     };
-  }, [me, reloadMe, sites, siteId, live, reloadSites]);
+    return () => source.close();
+  }, [signedIn]);
 
-  if (!value) return <>{unreachable ? renderUnreachable({ ...unreachable, retryNow }) : fallback}</>;
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const subscribe = useCallback<Subscribe>((listener) => {
+    listeners.current.add(listener);
+    return () => void listeners.current.delete(listener);
+  }, []);
+  const signOut = useCallback(async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    window.location.href = '/login';
+  }, []);
+  const setSiteId = useCallback((id: string | null) => {
+    setSiteIdState(id);
+    if (id) window.localStorage.setItem('ld_site', id);
+    else window.localStorage.removeItem('ld_site');
+  }, []);
+  const session = useMemo<SessionState | null>(() => (me ? { me, reloadMe, can: (min) => hasRole(me.role, min), signOut } : null), [me, reloadMe, signOut]);
+  const sitesValue = useMemo<SitesState>(() => ({ sites, reloadSites, siteId, setSiteId }), [sites, reloadSites, siteId, setSiteId]);
+
+  if (!session) return <>{unreachable ? renderUnreachable({ ...unreachable, retryNow }) : fallback}</>;
+  return (
+    <SessionCtx.Provider value={session}>
+      <SitesCtx.Provider value={sitesValue}>
+        <StreamCtx.Provider value={subscribe}>
+          <LiveCtx.Provider value={live}>{children}</LiveCtx.Provider>
+        </StreamCtx.Provider>
+      </SitesCtx.Provider>
+    </SessionCtx.Provider>
+  );
 }
 
 export interface Query<T> {
@@ -178,7 +222,7 @@ export interface Query<T> {
  * (debounced), and on a slow interval as a safety net when the live stream is down.
  */
 export function useQuery<T>(path: string | null, topics: Topic[] = [], refreshMs = 30_000): Query<T> {
-  const { subscribe } = useApp();
+  const subscribe = useSubscribe();
   const [state, setState] = useState<{ data?: T; error: ApiError | null; loading: boolean; path: string | null }>({ error: null, loading: Boolean(path), path });
   const seq = useRef(0);
   const topicKey = topics.join(',');
