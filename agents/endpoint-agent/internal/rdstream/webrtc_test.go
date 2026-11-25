@@ -102,7 +102,7 @@ func newRTCHarness(t *testing.T, cfg Config, perms userui.Permissions, control b
 // next waits for the next message of type typ (others are skipped, except those collected).
 func (h *rtcHarness) next(typ string, skip func(map[string]any)) map[string]any {
 	h.t.Helper()
-	deadline := time.After(10 * time.Second)
+	deadline := time.After(hangGuard)
 	for {
 		select {
 		case m := <-h.out:
@@ -267,7 +267,7 @@ func TestRTCLoopbackVideoAndInput(t *testing.T) {
 		select {
 		case au := <-nals:
 			seen = append(seen, videoenc.NALTypes(au)...)
-		case <-time.After(10 * time.Second):
+		case <-time.After(hangGuard):
 			t.Fatalf("no key frame reached the browser (NAL types so far %v)", seen)
 		}
 	}
@@ -277,7 +277,7 @@ func TestRTCLoopbackVideoAndInput(t *testing.T) {
 
 	select {
 	case <-dcOpen:
-	case <-time.After(10 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("data channel did not open")
 	}
 	send := func(ev map[string]any) {
@@ -305,7 +305,7 @@ func TestRTCLoopbackVideoAndInput(t *testing.T) {
 			if m["t"] != "input_error" || m["code"] != "bad_input" {
 				t.Fatalf("bad input %v answered %v", bad, m)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(hangGuard):
 			t.Fatalf("no answer to bad input %v", bad)
 		}
 	}
@@ -328,7 +328,7 @@ func TestRTCLoopbackVideoAndInput(t *testing.T) {
 		if m["code"] != "profile_forbids_control" {
 			t.Fatalf("view-only answer %v", m)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("no refusal on the data channel")
 	}
 	h.f.mu.Lock()
@@ -358,7 +358,7 @@ func TestRTCLoopbackVideoAndInput(t *testing.T) {
 	h.r.closeAll(true)
 	select {
 	case <-closed:
-	case <-time.After(15 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("the browser's peer connection stayed up after the session ended")
 	}
 	if h.r.connected() != 0 {
@@ -454,7 +454,7 @@ func TestRTCEncoderFailureEndsPeers(t *testing.T) {
 	if m["state"] != "failed" || m["code"] != "encoder_failed" || m["req"] != "v9.rtc" {
 		t.Fatalf("got %v", m)
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(hangGuard)
 	for h.r.connected() != 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the peer stayed after the encoder failed")

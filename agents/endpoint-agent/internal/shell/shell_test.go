@@ -78,7 +78,44 @@ type frame struct {
 	data []byte
 }
 
+// hangGuard bounds every wait for something the code under test does in this process. Waits
+// return as soon as it happens; the guard only turns a hang into a failure. It is long because
+// a loaded machine (several test suites at once) can stall these goroutines for seconds, and
+// nothing here asserts how fast anything is.
+const hangGuard = 30 * time.Second
+
+// waitFor polls a condition the code under test exposes no signal for.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(hangGuard)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func server(t *testing.T, conns chan<- *srv, frames chan<- frame) *httptest.Server {
+	// Several agents may connect to one test server (TestServerCloseAndRefusals): the first socket
+	// to end closes frames, once; what later sockets send is dropped (no send on a closed channel).
+	var mu sync.Mutex
+	closed := false
+	deliver := func(f frame) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !closed {
+			frames <- f
+		}
+	}
+	end := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !closed {
+			closed = true
+			close(frames)
+		}
+	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/agent/shell" || r.URL.Query().Get("shell") != shellID || r.Header.Get("Authorization") != "Bearer cred" {
 			http.Error(w, "no", http.StatusUnauthorized)
@@ -93,10 +130,10 @@ func server(t *testing.T, conns chan<- *srv, frames chan<- frame) *httptest.Serv
 		for {
 			op, p, err := c.read()
 			if err != nil || op == wsclient.OpClose {
-				close(frames)
+				end()
 				return
 			}
-			frames <- frame{op, p}
+			deliver(frame{op, p})
 		}
 	}))
 }
@@ -199,10 +236,13 @@ func newRig(t *testing.T, ts *httptest.Server, conns chan *srv, frames chan fram
 	mux := desktop.NewBannerMux(ui)
 	r := &rig{term: newFake(), conns: conns, frames: frames, ended: make(chan ended, 4), mux: mux, ui: ui}
 	r.m = NewManager(Config{
-		ServerURL:     ts.URL,
-		Credential:    func() string { return "cred" },
-		Banner:        mux.SetShells,
-		NotifyEnded:   func(_ context.Context, id, reason string, code *int) error { r.ended <- ended{reason, code}; return nil },
+		ServerURL:  ts.URL,
+		Credential: func() string { return "cred" },
+		Banner:     mux.SetShells,
+		NotifyEnded: func(_ context.Context, id, reason string, code *int) error {
+			r.ended <- ended{reason, code}
+			return nil
+		},
 		StartTerminal: func(int, int) (Terminal, error) { return r.term, nil },
 		CheckEvery:    50 * time.Millisecond,
 	})
@@ -211,7 +251,7 @@ func newRig(t *testing.T, ts *httptest.Server, conns chan *srv, frames chan fram
 
 func nextFrame(t *testing.T, frames <-chan frame, op int) frame {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(hangGuard)
 	for {
 		select {
 		case f, ok := <-frames:
@@ -232,7 +272,7 @@ func waitEnded(t *testing.T, r *rig) ended {
 	select {
 	case e := <-r.ended:
 		return e
-	case <-time.After(5 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("the shell did not end")
 	}
 	return ended{}
@@ -276,10 +316,7 @@ func TestShellRelaysBothWaysAndShowsTheOperatorOnTheBanner(t *testing.T) {
 	}
 	c.write(wsclient.OpBinary, []byte("Get-Date\r"))
 	c.write(wsclient.OpText, []byte(`{"t":"resize","cols":150,"rows":50}`))
-	deadline := time.Now().Add(3 * time.Second)
-	for r.term.typed() != "Get-Date\r" && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, "the typed input", func() bool { return len(r.term.typed()) >= len("Get-Date\r") })
 	if r.term.typed() != "Get-Date\r" {
 		t.Fatalf("input %q", r.term.typed())
 	}
@@ -291,10 +328,7 @@ func TestShellRelaysBothWaysAndShowsTheOperatorOnTheBanner(t *testing.T) {
 	if exit["t"] != "exit" || exit["code"] != float64(3) {
 		t.Fatalf("exit %v", exit)
 	}
-	deadline = time.Now().Add(3 * time.Second)
-	for r.m.Count() != 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, "the shell to close", func() bool { info, _ := r.ui.banner(); return r.m.Count() == 0 && info == nil })
 	if info, _ := r.ui.banner(); info != nil || r.m.Count() != 0 {
 		t.Fatalf("banner still up: %+v", info)
 	}
@@ -397,10 +431,7 @@ func TestServerCloseAndRefusals(t *testing.T) {
 	}
 	// The API ends it (operator End, idle there, revoked): the close frame stops it here, no notice back.
 	c.write(wsclient.OpText, []byte(`{"t":"end","reason":"operator"}`))
-	deadline := time.Now().Add(3 * time.Second)
-	for r.m.Count() != 0 && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitFor(t, "the shell to close", func() bool { return r.m.Count() == 0 })
 	if r.m.Count() != 0 || len(r.ended) != 0 {
 		t.Fatalf("open %d, notices %d", r.m.Count(), len(r.ended))
 	}

@@ -97,7 +97,7 @@ func runToolSession(t *testing.T, perms userui.Permissions, cfg Config, script f
 	}
 	select {
 	case <-finished:
-	case <-time.After(20 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("tool session did not finish")
 	}
 	return d, ui, m
@@ -203,10 +203,10 @@ func TestToolsAllowedRunShowOnTheBannerAndEndWithTheSession(t *testing.T) {
 		if s != "sess-t" {
 			t.Fatalf("notified %s", s)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("Ctrl+Alt+Shift+E did not end the session")
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(hangGuard)
 	for (m.Active() != "" || !has(d.opsSeen(), desktop.ToolEndAllForSess)) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
