@@ -31,7 +31,7 @@ How to use it:
   **Expect:** each switch shows the right user's desktop (this was fixed blind; never seen working).
 - [ ] **A4. MSI upgrade.** Install `Nigafiy 0.1.0.msi`, then install a newer build over it.
   **Expect:** one entry in Programs, your data and settings kept.
-- [ ] **A5. Upgrade over an old LAN Detective install** (only if you still have one).
+- [ ] **A5. Upgrade over an install from before the rename** (only if you still have one).
   **Expect:** devices, history and settings are still there after the upgrade.
 - [ ] **A6. Backup and restore with real PostgreSQL tools.** Install the PostgreSQL 17 client tools,
   then follow [`backup-restore-and-key-rotation.md`](backup-restore-and-key-rotation.md):
