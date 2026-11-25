@@ -89,6 +89,11 @@ function detailScreens(s: Seeded): Screen[] {
     { path: `/fleet/endpoints/${s.endpointId}?tab=patches`, name: 'Endpoint, patches', program: 'fleet' },
     { path: `/fleet/endpoints/${s.endpointId}?tab=commands`, name: 'Endpoint, commands', program: 'fleet' },
     { path: `/fleet/endpoints/${s.endpointId}?tab=shell`, name: 'Endpoint, remote shell', program: 'fleet' },
+    // The Android phone: its own panel (actions, apps, wipe) and the tabs a phone has.
+    { path: `/fleet/endpoints/${s.androidEndpointId}`, name: 'Android endpoint', program: 'fleet', sections: ['[data-testid="android-panel"]'] },
+    { path: `/fleet/endpoints/${s.androidEndpointId}?tab=security`, name: 'Android endpoint, security and compliance', program: 'fleet' },
+    { path: `/fleet/endpoints/${s.androidEndpointId}?tab=software`, name: 'Android endpoint, apps', program: 'fleet' },
+    { path: `/fleet/endpoints/${s.androidEndpointId}?tab=commands`, name: 'Android endpoint, commands', program: 'fleet' },
     { path: `/mind/knowledge/${s.knowledgeId}`, name: 'Knowledge article', program: 'mind' },
     { path: `/mind/playbooks/${s.playbookId}`, name: 'Playbook editor', program: 'mind' },
     { path: `/mind/playbooks/new`, name: 'New playbook', program: 'mind' },
@@ -344,4 +349,55 @@ test('every page carries a nonce-based Content-Security-Policy', async ({ reques
   // A fresh nonce per request.
   const again = (await request.get('/login')).headers()['content-security-policy'];
   expect(again).not.toEqual(csp);
+});
+
+test('Android: the phone page and the enrollment codes, in English (light) and Arabic (RTL, dark)', async ({ page }) => {
+  test.setTimeout(300_000);
+  const problems = watchForProblems(page);
+  countApi(page);
+  await register(page, 'android');
+  const s = await seedRecords(page);
+
+  await setTheme(page, 'light');
+  await paceApi();
+  await page.goto(`/fleet/endpoints/${s.androidEndpointId}`);
+  const panel = page.getByTestId('android-panel');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('main')).toContainText('E2E-Phone-01');
+  await expect(panel.getByRole('button', { name: 'Erase phone' })).toBeVisible();
+  // A phone has no hardware, patches or shell tab, and no CPU load.
+  await expect(page.getByRole('tab', { name: /shell/i })).toHaveCount(0);
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await page.screenshot({ path: test.info().outputPath('android-endpoint-en-light.png'), fullPage: true });
+
+  // Enrolling a phone: the app link QR and the Device Owner section.
+  await paceApi();
+  await page.goto('/fleet/endpoints');
+  await page.getByRole('button', { name: 'Enroll endpoint' }).click();
+  await page.getByLabel('Device label').fill('E2E-Phone-02');
+  await page.getByRole('dialog').getByRole('combobox').last().selectOption('android');
+  await page.getByRole('button', { name: 'Create & generate enrollment credentials' }).click();
+  const enroll = page.getByTestId('android-enroll');
+  await expect(enroll).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Enroll an Android phone');
+  await expect(enroll.getByRole('img', { name: /^QR code: / }).first()).toBeVisible();
+  await expect(enroll).toContainText('Device Owner');
+  await expect(enroll).toContainText('adb shell dpm set-device-owner');
+  await page.screenshot({ path: test.info().outputPath('android-enroll-en-light.png'), fullPage: true });
+
+  await page.context().addCookies([localeCookie(page, 'ar')]);
+  await setTheme(page, 'dark');
+  await paceApi();
+  await page.goto(`/fleet/endpoints/${s.androidEndpointId}`);
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('dir', 'rtl');
+  await expect(html).toHaveAttribute('lang', 'ar');
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await expect(page.getByTestId('android-panel')).toBeVisible();
+  await expect(page.getByTestId('android-panel').getByRole('button', { name: 'مسح الهاتف' })).toBeVisible();
+  await expect(page.locator('main')).not.toContainText(ERROR_BOUNDARY);
+  await page.waitForLoadState('networkidle').catch(() => undefined);
+  await page.screenshot({ path: test.info().outputPath('android-endpoint-ar-dark.png'), fullPage: true });
+  await page.context().addCookies([localeCookie(page, 'en')]);
+  expect(problems).toEqual([]);
 });
