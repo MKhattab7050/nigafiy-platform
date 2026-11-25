@@ -7,6 +7,8 @@ import type { SearchHit, SearchHitKind, SearchResponse } from '@nigafiy/shared-t
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';
+// The component file, not the feature index: the top bar must not pull the guide's content into every page.
+import { HelpButton } from '@/features/guide/components/help-button';
 import { Logo } from '../logo';
 import { SummaryReportView } from '../summary-report';
 import { Badge, Button, ErrorNote, Input, Modal, Select, SkeletonBlock } from '../ui';
@@ -109,6 +111,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </span>
           <span className="max-sm:sr-only">{live ? t('top.live') : t('top.reconnecting')}</span>
         </span>
+        <HelpButton />
         <ThemeSwitch />
         <button
           type="button"
