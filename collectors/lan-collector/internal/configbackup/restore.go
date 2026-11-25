@@ -10,34 +10,45 @@ import (
 // Administrator-confirmed configuration restore. This is the only code path in this package that
 // changes a device, and it is deliberately narrow:
 //
-//   - only vendors with an atomic replace AND an automatic rollback timer are supported. Today that is
-//     Juniper Junos: "load override terminal" replaces the candidate configuration as a whole, and
-//     "commit confirmed N" activates it with a timer — unless it is confirmed within N minutes the
-//     device itself returns to the previous configuration. Every other vendor is refused
-//     (ErrUnsupported); the server shows "restore not supported" for them;
+//   - only vendors that replace the configuration as a whole AND roll it back by themselves when it
+//     is not confirmed are supported:
+//       Juniper Junos: "load override terminal" replaces the candidate configuration as a whole and
+//       "commit confirmed N" activates it with a timer — unless it is confirmed within N minutes the
+//       device itself returns to the previous configuration;
+//       VyOS / Ubiquiti EdgeOS (restore_vyos.go): the candidate is rebuilt from the version's "set"
+//       commands and activated with "commit-confirm N" — unless "confirm" follows within N minutes
+//       the device reboots into its saved boot configuration, which Nigafiy saves just before;
+//     every other vendor is refused (ErrUnsupported); the server shows "restore not supported" with
+//     the vendor-specific reason;
 //   - the SSH host key must already be pinned (no trust on first use for a write);
-//   - the configuration database is locked for the duration ("configure exclusive");
+//   - the device identity (model / serial, identity.go) is compared with the one recorded with the
+//     version before anything is changed; a different device is refused unless the administrator
+//     forced it (AllowOtherDevice);
 //   - after the commit a SECOND, fresh SSH session logs in and reads the configuration back. Only when
 //     that works (the device is still reachable and manageable) and the text read back equals the
-//     restored one is the commit confirmed. Otherwise the previous configuration is put back at once
-//     ("rollback 1" + "commit"), or — if even the first session is gone — the device rolls back by
-//     itself when the timer runs out;
+//     restored one is the commit confirmed. Otherwise the previous configuration is put back at once,
+//     or — if even the first session is gone — the device rolls back by itself when the timer runs out;
 //   - the configuration text is used only in memory for this one restore, never logged or reported.
 
 // Restore methods (mirrored by the server, modules/configbackup/restore.ts).
 const (
 	RestoreMethodJunos     = "junos_commit_confirmed"
+	RestoreMethodVyOS      = "vyos_commit_confirm"
 	defaultConfirmMinutes  = 5
 	maxConfirmMinutes      = 10
 	junosLoadPromptMarker  = "[Type ^D at a new line to end input]"
 	junosDriverID          = "juniper_junos"
+	vyosDriverID           = "vyos_edgeos"
 	maxRestoreConfigLength = defaultMaxOutput
 )
 
 // RestoreMethod returns the restore method for a driver, or "" when restore is not supported.
 func RestoreMethod(driver string) string {
-	if driver == junosDriverID {
+	switch driver {
+	case junosDriverID:
 		return RestoreMethodJunos
+	case vyosDriverID:
+		return RestoreMethodVyOS
 	}
 	return ""
 }
@@ -48,6 +59,10 @@ type RestoreSpec struct {
 	Config string
 	// ConfirmMinutes is the automatic rollback timer (1–10, default 5).
 	ConfirmMinutes int
+	// ExpectedIdentity is the device identity recorded with the version (nil = not recorded).
+	ExpectedIdentity *DeviceIdentity
+	// AllowOtherDevice: the administrator confirmed restoring onto a device whose identity differs.
+	AllowOtherDevice bool
 }
 
 // RestoreResult reports what happened, step by step. Config is the configuration read back from the
@@ -63,6 +78,8 @@ type RestoreResult struct {
 	Confirmed     bool
 	RolledBack    bool
 	Config        string
+	// Identity is what the device reported in the restore session before anything was changed.
+	Identity *DeviceIdentity
 }
 
 func (r *RestoreResult) step(s string) { r.Steps = append(r.Steps, s) }
@@ -129,7 +146,7 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	}
 	res.Method = RestoreMethod(driver)
 	if res.Method == "" {
-		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos, with commit confirmed)")
+		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed and VyOS / EdgeOS with commit-confirm)")
 	}
 	cfg := strings.TrimSpace(strings.ReplaceAll(spec.Config, "\r\n", "\n"))
 	if cfg == "" || len(cfg) > maxRestoreConfigLength || !validRestoreText(cfg) {
@@ -148,6 +165,9 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	}
 	ctx, cancel := context.WithTimeout(ctx, opts.Budget+opts.Budget/2)
 	defer cancel()
+	if res.Method == RestoreMethodVyOS {
+		return res, restoreVyOS(ctx, addr, port, t, spec, cfg, minutes, opts, res)
+	}
 
 	// ── session A: lock, load, commit confirmed ──
 	hk := &Result{}
@@ -176,6 +196,9 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 		if _, err := sh.run(ctx, c, prompt); err != nil {
 			return res, ctxErr(ctx, err)
 		}
+	}
+	if err := checkIdentity(res, spec, readIdentity(ctx, sh, junosDriverID, prompt)); err != nil {
+		return res, err
 	}
 	cfgPrompt := strings.TrimSuffix(prompt, ">") + "#"
 	// A refused "configure exclusive" (database locked by someone else) leaves the operational prompt.

@@ -29,6 +29,7 @@ type junosDevice struct {
 	mangleOnCommit  bool // the device stores something else than what was loaded
 	refuseReconnect bool // after the confirmed commit, new SSH sessions get no CLI (lost management)
 	loadedText      string
+	model, serial   string // reported by "show version" / "show chassis hardware" when set
 }
 
 const junosRunning = "## Last commit: 2026-11-20 10:00:00 UTC by netops\nversion 21.4R3.15;\nsystem {\n    host-name srx;\n}\ninterfaces {\n    ge-0/0/0 {\n        unit 0 {\n            family inet {\n                address 192.168.20.1/24;\n            }\n        }\n    }\n}"
@@ -81,6 +82,10 @@ func (j *junosDevice) cli(ch ssh.Channel) {
 			w("Screen length set to 0\n")
 		case cmd == "set cli screen-width 0":
 			w("Screen width set to 0\n")
+		case cmd == "show version | no-more" && j.model != "":
+			w("Hostname: srx\nModel: " + j.model + "\nJunos: 21.4R3.15\n")
+		case cmd == "show chassis hardware | no-more" && j.serial != "":
+			w("Hardware inventory:\nItem             Version  Part number  Serial number     Description\nChassis                                " + j.serial + "      SRX300\n")
 		case cmd == "show configuration | no-more" && !inConfig, cmd == "run show configuration | no-more" && inConfig:
 			w(j.running + "\n")
 		case cmd == "configure exclusive" && !inConfig:
@@ -275,14 +280,28 @@ func TestRestoreRefusals(t *testing.T) {
 	})
 }
 
-func TestRestoreMethodOnlyJunos(t *testing.T) {
+func TestRestoreMethodOnlyJunosAndVyOS(t *testing.T) {
 	for _, d := range Drivers() {
 		m := RestoreMethod(d.ID)
-		if (d.ID == junosDriverID) != (m != "") {
+		if (d.ID == junosDriverID || d.ID == vyosDriverID) != (m != "") {
 			t.Errorf("%s: restore method %q", d.ID, m)
 		}
 	}
 	if !sameConfig("## Last commit: x\nsystem {\n    host-name a;  \n}\n\n", "system {\n    host-name a;\n}") || sameConfig("a;", "b;") {
 		t.Fatal("sameConfig must ignore commit headers, trailing spaces and blank lines only")
+	}
+}
+
+func TestRestoreJunosRefusesAnotherDeviceUnlessForced(t *testing.T) {
+	j := &junosDevice{running: junosRunning, model: "srx300", serial: "CV0000NEW001"}
+	srv, tg := startJunos(t, j)
+	spec := RestoreSpec{Config: junosRestore, ExpectedIdentity: &DeviceIdentity{Model: "srx300", Serial: "CV0000OLD001"}}
+	res, err := Restore(context.Background(), tg, spec, opts(srv.addr))
+	if KindOf(err) != ErrDeviceMismatch || j.locked || len(j.commits) != 0 || res.Identity == nil || res.Identity.Serial != "CV0000NEW001" {
+		t.Fatalf("want ErrDeviceMismatch before the lock, got %v (%+v, commits %v)", err, res, j.commits)
+	}
+	spec.AllowOtherDevice = true
+	if res, err = Restore(context.Background(), tg, spec, opts(srv.addr)); err != nil || !res.Confirmed {
+		t.Fatalf("forced: %v %+v", err, res)
 	}
 }

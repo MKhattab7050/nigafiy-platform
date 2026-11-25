@@ -177,6 +177,9 @@ func (a *Agent) configBackup(ctx context.Context, cmd cloud.Command) {
 			item["ok"] = true
 			item["config_gzip_b64"] = encoded
 			item["commands"] = res.Commands
+			if res.Identity.Known() {
+				item["device_identity"] = identityItem(res.Identity)
+			}
 		}
 	}
 	if err != nil {
