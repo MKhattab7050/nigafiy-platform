@@ -23,11 +23,47 @@ import { expireStale, loadTarget, loadVersion, onlineCollector, queueRun, READIN
 //      configuration back over a new SSH session. The read-back is stored as a normal version
 //      (verify run); the restore is `verified` only when that version is the restored one.
 //
-// Only vendors with an automatic device-side rollback are supported: Juniper Junos
-// (`commit confirmed`). Every other vendor gets an honest "restore not supported".
+// Only vendors that replace the configuration as a whole and roll it back by themselves are
+// supported: Juniper Junos (`commit confirmed`) and VyOS / Ubiquiti EdgeOS (`commit-confirm`, which
+// reboots into the saved configuration; the collector saves the running one first). Every other
+// vendor gets an honest "restore not supported" with the vendor-specific reason (UNSUPPORTED_REASONS).
+//
+// The device identity (model / serial, read by the collector next to every backup of these vendors)
+// is compared with the version's at preview, at request, after the backup before the restore, and by
+// the collector on the device itself: a different or unknown device needs `allow_other_device` and a
+// second typed confirmation.
 
 /** Driver → restore method. Must match the collector (internal/configbackup/restore.go). */
-export const RESTORE_METHODS: Readonly<Record<string, string>> = { juniper_junos: 'junos_commit_confirmed' };
+export const RESTORE_METHODS: Readonly<Record<string, string>> = { juniper_junos: 'junos_commit_confirmed', vyos_edgeos: 'vyos_commit_confirm' };
+
+/**
+ * Why each other driver cannot be restored safely (the web shows the same reasons in EN and AR).
+ * Cisco IOS / IOS-XE is left to its own driver work and gets the generic text.
+ */
+export const UNSUPPORTED_REASONS: Readonly<Record<string, string>> = {
+  cisco_nxos:
+    'NX-OS replaces a configuration as a whole only with "configure replace bootflash:<file> commit-timeout" (NX-OS 9.3(1) and later), which needs the file copied to bootflash first. The Nigafiy collector does not transfer files to devices, and lines pasted into the CLI merge into the running configuration without a rollback timer.',
+  cisco_asa:
+    'Cisco ASA has no commit-confirmed and no automatic rollback: pasted lines and "copy … running-config" merge into the running configuration, and a full replace means erasing the configuration and reloading.',
+  aruba_procurve:
+    'ArubaOS-Switch applies every CLI line at once (no candidate configuration, no rollback timer); replacing the whole configuration needs a file uploaded by TFTP / SFTP and a reboot.',
+  aruba_aoscx:
+    'AOS-CX can roll back by itself ("checkpoint auto"), but pasted CLI lines merge into the running configuration; replacing it as a whole needs "copy <checkpoint or file> running-config" from a file on the switch or a TFTP / SFTP server, which the Nigafiy collector does not transfer.',
+  mikrotik_routeros:
+    'RouterOS has no atomic replace with a rollback timer: an /export script merges into the running configuration when imported, a full replace needs "/system reset-configuration run-after-reset=" with a reboot and no automatic way back, and Safe Mode only undoes a limited history of one interactive session.',
+  fortinet_fortios:
+    'FortiOS replaces the whole configuration only with "execute restore config", which reboots and keeps the restored file without a revert timer; its revert mode ("set cfg-save revert") covers CLI edits only, and pasted "show" output merges instead of replacing.',
+  huawei_vrp:
+    'Huawei VRP V8 can try a configuration with "commit trial" and replace it with "configuration replace file", but only from a file on the device’s flash copied there by SFTP / FTP, which the Nigafiy collector does not transfer; VRP V5 has neither. Pasted lines merge without a rollback timer.',
+  dell_os10:
+    'Dell OS10 replaces the running configuration only from a file ("copy <file> running-configuration") on a server or in the switch’s home directory, which the Nigafiy collector does not transfer, and documents no automatic rollback timer.',
+  dell_os6:
+    'Dell OS6 applies every CLI line at once; replacing the configuration needs a file copied to the startup configuration and a reload, without an automatic rollback.',
+  openwrt:
+    'OpenWrt’s apply-with-rollback (rpcd "uci apply" with rollback, used by LuCI) works only on changes staged through an authenticated ubus session; "uci import" from the shell writes /etc/config directly without a rollback timer.',
+  paloalto_panos:
+    'PAN-OS loads a full configuration only from a saved file ("load config from") imported by SCP / TFTP, and its commit has no confirmed mode or automatic rollback timer.',
+};
 
 const effectiveDriver = (t: TargetRow) => t.driver ?? t.detected_driver;
 const driverName = (id: string | null) => CONFIG_BACKUP_DRIVERS.find((d) => d.id === id)?.name ?? null;
@@ -39,7 +75,7 @@ export interface RestoreBlocker {
 
 const RESTORE_COLUMNS = `r.id, r.target_id, r.version_id, r.version_number, r.sha256, r.method, r.status, r.reason, r.confirm_minutes, r.pre_run_id,
   r.verify_run_id, r.after_version_id, r.committed, r.confirmed, r.rolled_back, r.steps, r.error_kind, r.error, r.requested_by_email,
-  r.created_at, r.expires_at, r.completed_at, (SELECT c.name FROM collectors c WHERE c.id = r.collector_id) AS collector_name`;
+  r.created_at, r.expires_at, r.completed_at, r.forced_other_device, r.identity_check, r.device_model, r.device_serial, (SELECT c.name FROM collectors c WHERE c.id = r.collector_id) AS collector_name`;
 
 function unsupported(t: TargetRow): RestoreBlocker | null {
   const driver = effectiveDriver(t);
@@ -50,13 +86,62 @@ function unsupported(t: TargetRow): RestoreBlocker | null {
     };
   }
   if (!RESTORE_METHODS[driver]) {
+    const why = UNSUPPORTED_REASONS[driver] ?? 'This vendor has no safe way to replace the configuration as a whole with an automatic rollback.';
     return {
       code: 'restore_unsupported',
-      message: `Restore is not supported for ${driverName(driver) ?? driver}. Nigafiy restores only Juniper Junos devices, which apply a configuration with "commit confirmed" and roll it back by themselves when it is not confirmed. Other vendors have no safe automatic rollback: download the version and restore it by hand.`,
+      message: `Restore is not supported for ${driverName(driver) ?? driver}. ${why} Nigafiy restores only Juniper Junos ("commit confirmed") and VyOS / EdgeOS ("commit-confirm"), which roll back by themselves when the restore is not confirmed. Download the version and restore it by hand.`,
     };
   }
   return null;
 }
+
+export interface Identity {
+  model: string | null;
+  serial: string | null;
+}
+export type IdentityCheck = 'match' | 'mismatch' | 'unknown';
+
+const same = (a: string | null, b: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/** The version's identity against the device's: a field both sides know that differs is a mismatch. */
+export function compareIdentity(version: Identity, device: Identity): IdentityCheck {
+  if (version.serial && device.serial && !same(version.serial, device.serial)) return 'mismatch';
+  if (version.model && device.model && !same(version.model, device.model)) return 'mismatch';
+  if (same(version.serial, device.serial) || same(version.model, device.model)) return 'match';
+  return 'unknown';
+}
+
+async function versionIdentity(db: Db, versionId: string): Promise<Identity> {
+  const r = (await db.query<{ device_model: string | null; device_serial: string | null }>(`SELECT device_model, device_serial FROM config_backup_versions WHERE id = $1`, [versionId])).rows[0];
+  return { model: r?.device_model ?? null, serial: r?.device_serial ?? null };
+}
+
+/** The identity the device reported in its latest successful backup. */
+async function deviceIdentity(db: Db, targetId: string, runId?: string): Promise<Identity> {
+  const r = (
+    await db.query<{ device_model: string | null; device_serial: string | null }>(
+      runId
+        ? `SELECT device_model, device_serial FROM config_backup_runs WHERE id = $2 AND target_id = $1`
+        : `SELECT device_model, device_serial FROM config_backup_runs WHERE target_id = $1 AND status = 'ok' ORDER BY completed_at DESC NULLS LAST LIMIT 1`,
+      runId ? [targetId, runId] : [targetId],
+    )
+  ).rows[0];
+  return { model: r?.device_model ?? null, serial: r?.device_serial ?? null };
+}
+
+/** The text an administrator types to restore onto a different or unidentified device. */
+const otherDeviceConfirmText = (t: TargetRow, device: Identity) => device.serial ?? device.model ?? t.address;
+
+const IDENTITY_BLOCKS: Record<Exclude<IdentityCheck, 'match'>, RestoreBlocker> = {
+  mismatch: {
+    code: 'device_identity_mismatch',
+    message: 'This version was taken from a different device (the model or serial number recorded with it differs from the device now). Confirm restoring onto this device explicitly to continue.',
+  },
+  unknown: {
+    code: 'device_identity_unknown',
+    message: 'Nigafiy cannot tell whether this version was taken from this device (no model or serial number was recorded with the version or reported by the device). Confirm restoring onto this device explicitly to continue.',
+  },
+};
 
 /** The first reason a restore of this version cannot start now, or null. */
 async function blocker(db: Db, t: TargetRow, version: { id: string; sha256: string }): Promise<RestoreBlocker | null> {
@@ -94,15 +179,23 @@ export function restorePreview(req: Request, ctx: AuthContext, targetId: string,
     const diff = diffLines(current?.content ?? '', v.content, 3);
     let block = await blocker(db, t, v);
     if (!block && !(await onlineCollector(db, t.site_id))) block = { code: 'no_collector', message: 'No collector of this site is online to reach the device.' };
-    await audit(db, req, 'config_backup.restore.preview', { type: 'config_backup_target', id: t.id }, { version: v.number, current: current?.number ?? null });
+    const vid = await versionIdentity(db, v.id);
+    const did = await deviceIdentity(db, t.id);
+    const check = compareIdentity(vid, did);
+    await audit(db, req, 'config_backup.restore.preview', { type: 'config_backup_target', id: t.id }, { version: v.number, current: current?.number ?? null, identity_check: check });
     const side = (x: { id: string; number: number; captured_at: Date; sha256: string }) => ({ id: x.id, number: x.number, captured_at: x.captured_at, sha256: x.sha256 });
     const driver = effectiveDriver(t);
     return {
       target: { id: t.id, name: t.name, address: t.address },
       version: side(v),
       current: current ? side(current) : null,
+      driver: driver ?? null,
       method: driver ? (RESTORE_METHODS[driver] ?? null) : null,
       supported: !unsupported(t),
+      identity: { version: vid, device: did, check },
+      // Needed only when check is not 'match': restoring onto a different or unidentified device.
+      other_device_block: check === 'match' ? null : IDENTITY_BLOCKS[check],
+      other_device_confirm_text: check === 'match' ? null : otherDeviceConfirmText(t, did),
       possible: !block,
       blocker: block,
       confirm_text: t.name,
@@ -122,15 +215,24 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
     const block = await blocker(db, t, v);
     if (block) throw new AppError(409, block.code, block.message);
     if (body.confirm.trim() !== t.name) throw new AppError(422, 'confirm_mismatch', 'Type the device name exactly as shown to confirm the restore');
+    const did = await deviceIdentity(db, t.id);
+    const check = compareIdentity(await versionIdentity(db, v.id), did);
+    if (check !== 'match') {
+      if (!body.allow_other_device) throw new AppError(409, IDENTITY_BLOCKS[check].code, IDENTITY_BLOCKS[check].message);
+      if ((body.confirm_other_device ?? '').trim() !== otherDeviceConfirmText(t, did)) {
+        throw new AppError(422, 'confirm_other_device_mismatch', 'Type the device identifier exactly as shown to confirm restoring onto this device');
+      }
+    }
+    const forced = check !== 'match';
     const collector = await onlineCollector(db, t.site_id);
     if (!collector) throw new AppError(409, 'no_collector', 'No collector of this site is online to reach the device');
     const method = RESTORE_METHODS[effectiveDriver(t)!]!;
     const restore = (
       await db.query<{ id: string }>(
         `INSERT INTO config_backup_restores (organization_id, site_id, target_id, version_id, version_number, sha256, method, status, reason, confirm_minutes,
-                                             collector_id, requested_by, requested_by_email, expires_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,'pre_backup',$8,$9,$10,$11,$12, now() + make_interval(mins => $13)) RETURNING id`,
-        [ctx.organizationId, t.site_id, t.id, v.id, v.number, v.sha256, method, body.reason, body.confirm_minutes, collector.id, ctx.userId, ctx.userEmail, RESTORE_TTL_MINUTES],
+                                             collector_id, requested_by, requested_by_email, expires_at, forced_other_device, identity_check)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'pre_backup',$8,$9,$10,$11,$12, now() + make_interval(mins => $13), $14, $15) RETURNING id`,
+        [ctx.organizationId, t.site_id, t.id, v.id, v.number, v.sha256, method, body.reason, body.confirm_minutes, collector.id, ctx.userId, ctx.userEmail, RESTORE_TTL_MINUTES, forced, check],
       )
     ).rows[0]!;
     const run = await queueRun(db, ctx.organizationId, t, 'restore', collector, { id: ctx.userId, email: ctx.userEmail });
@@ -144,6 +246,8 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
       confirm_minutes: body.confirm_minutes,
       pre_run_id: run.run_id,
       collector: collector.name,
+      identity_check: check,
+      forced_other_device: forced,
     });
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return restoreRow(db, restore.id);
@@ -187,6 +291,7 @@ interface OpenRestore {
   verify_run_id: string | null;
   command_id: string | null;
   requested_by: string | null;
+  forced_other_device: boolean;
 }
 
 async function finish(
@@ -250,6 +355,7 @@ async function finish(
       rolled_back: flags.rolled_back ?? false,
       error: outcome.error ?? null,
       verified_by: 'the configuration read back over a new SSH session after the commit, compared with the restored version',
+      forced_other_device: r.forced_other_device,
     },
     source: 'collector',
     occurredAt: new Date(),
@@ -272,6 +378,14 @@ export async function continueAfterBackup(db: Db, c: CollectorContext, runId: st
   const current = run.version_id ? (await db.query<{ sha256: string }>(`SELECT sha256 FROM config_backup_versions WHERE id = $1`, [run.version_id])).rows[0] : undefined;
   if (current?.sha256 === r.sha256) {
     await finish(db, c, r, { status: 'verified', steps: ['The backup before the restore shows the device already runs this configuration; nothing was applied.'] }, t, { after_version_id: run.version_id });
+    return;
+  }
+  // The device as it answered the backup just now, against the version: a device swapped in meanwhile
+  // (or one never identified) is refused unless the administrator forced it.
+  const check = compareIdentity(await versionIdentity(db, r.version_id), await deviceIdentity(db, r.target_id, runId));
+  await db.query(`UPDATE config_backup_restores SET identity_check = $2 WHERE id = $1`, [r.id, check]);
+  if (check !== 'match' && !r.forced_other_device) {
+    await finish(db, c, r, { status: 'failed', errorKind: 'device_mismatch', error: `${IDENTITY_BLOCKS[check].message} Nothing was changed on the device.` }, t);
     return;
   }
   const block = unsupported(t) ?? (readiness(t) !== 'ready' || t.host_key_status !== 'pinned' ? { code: 'not_ready', message: 'The device or its settings changed during the backup before the restore' } : null);
@@ -335,6 +449,9 @@ export async function processRestoreResult(db: Db, c: CollectorContext, item: Co
       errorKind = 'verify_mismatch';
       error = 'The device reported the restore as applied, but the configuration read back afterwards is not the restored version. Compare the latest versions.';
     }
+  }
+  if (item.device_identity) {
+    await db.query(`UPDATE config_backup_restores SET device_model = $2, device_serial = $3 WHERE id = $1`, [r.id, item.device_identity.model ?? null, item.device_identity.serial ?? null]);
   }
   if (r.command_id) await db.query(`UPDATE collector_commands SET status = 'completed', completed_at = now() WHERE id = $1 AND status <> 'completed'`, [r.command_id]);
   await finish(db, c, r, { status, errorKind, error, steps: item.steps ?? [] }, t, {

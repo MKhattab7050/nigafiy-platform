@@ -108,9 +108,20 @@ const credentialFields = (creds: NonNullable<ReturnType<typeof openCredentials>>
 async function withRestoreSecrets(db: Db, c: CollectorContext, cmd: Command): Promise<Command | null> {
   const restoreId = typeof cmd.payload.restore_id === 'string' ? cmd.payload.restore_id : '';
   const r = (
-    await db.query<{ id: string; target_id: string; sha256: string; verify_run_id: string | null; confirm_minutes: number; expires_at: Date }>(
-      `SELECT id, target_id, sha256, verify_run_id, confirm_minutes, expires_at FROM config_backup_restores
-        WHERE id::text = $1 AND collector_id = $2 AND status = 'pending' AND expires_at > now()`,
+    await db.query<{
+      id: string;
+      target_id: string;
+      sha256: string;
+      verify_run_id: string | null;
+      confirm_minutes: number;
+      expires_at: Date;
+      forced_other_device: boolean;
+      device_model: string | null;
+      device_serial: string | null;
+    }>(
+      `SELECT r.id, r.target_id, r.sha256, r.verify_run_id, r.confirm_minutes, r.expires_at, r.forced_other_device, v.device_model, v.device_serial
+         FROM config_backup_restores r JOIN config_backup_versions v ON v.id = r.version_id
+        WHERE r.id::text = $1 AND r.collector_id = $2 AND r.status = 'pending' AND r.expires_at > now()`,
       [restoreId, c.id],
     )
   ).rows[0];
@@ -162,6 +173,11 @@ async function withRestoreSecrets(db: Db, c: CollectorContext, cmd: Command): Pr
       driver,
       config_gzip_b64: gzipSync(Buffer.from(config, 'utf8')).toString('base64'),
       confirm_minutes: r.confirm_minutes,
+      // The collector compares these with what the device reports before it changes anything.
+      ...(r.device_model || r.device_serial
+        ? { expected_identity: { ...(r.device_model ? { model: r.device_model } : {}), ...(r.device_serial ? { serial: r.device_serial } : {}) } }
+        : {}),
+      allow_other_device: r.forced_other_device,
       expires_at: r.expires_at.toISOString(),
     },
   };

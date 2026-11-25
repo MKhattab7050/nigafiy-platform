@@ -107,8 +107,12 @@ export const restoreRequestSchema = z
     /** The device name, typed by the administrator. */
     confirm: z.string().max(200),
     reason: z.string().trim().min(10).max(500),
-    /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`). */
+    /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`, VyOS / EdgeOS `commit-confirm`). */
     confirm_minutes: z.number().int().min(1).max(10).default(5),
+    /** Restore although the version was taken from a different (or unidentified) device. */
+    allow_other_device: z.boolean().default(false),
+    /** With allow_other_device: the device identifier shown by the preview, typed. */
+    confirm_other_device: z.string().max(200).optional(),
   })
   .strict();
 export type RestoreRequest = z.infer<typeof restoreRequestSchema>;
