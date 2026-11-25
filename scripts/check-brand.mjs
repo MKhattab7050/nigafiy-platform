@@ -40,6 +40,7 @@ export const FILES = [
   'apps/desktop/src/legacy-import.cjs',
   'apps/desktop/test/legacy-import.test.cjs',
   'docs/operations/installers.md',
+  'docs/operations/real-hardware-checklist.md',
 ];
 
 /** Lines allowed anywhere: identifiers kept because they are persisted or on the wire. */

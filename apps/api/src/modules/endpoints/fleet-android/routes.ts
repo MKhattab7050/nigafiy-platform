@@ -1,10 +1,14 @@
 import { existsSync, createReadStream } from 'node:fs';
-import express, { Router } from 'express';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { type Request, type Response, Router } from 'express';
 import { z } from 'zod';
 import { AppError, auth, idParams, parse, requireRole } from '../../../common/http.ts';
 import { requireEndpointAgent } from '../agent/auth.ts';
 import { approveAndroidRequest, denyAndroidRequest, endpointAndroidRequests, listAndroidRequests, performAndroidAction } from './actions.ts';
-import { MAX_APK_BYTES, agentApk, deleteApk, listApks, uploadApk } from './apks.ts';
+import { FileStoreError, fileStore } from '../../../infrastructure/file-store.ts';
+import { logger } from '../../../infrastructure/logger.ts';
+import { type ApkFileRef, MAX_APK_BYTES, adminApk, agentApk, apkFileError, auditApkFileProblem, deleteApk, listApks, uploadApk } from './apks.ts';
 import { agentApkDigest, androidApkPath, provisioningInfo } from './provisioning.ts';
 import { androidActionSchema, androidRequestDecisionSchema, androidRequestListQuery, apkUploadQuery } from './schema.ts';
 
@@ -15,7 +19,8 @@ import { androidActionSchema, androidRequestDecisionSchema, androidRequestListQu
  *   GET    /fleet/android/requests               admin
  *   POST   /fleet/android/requests/:id/approve | deny   admin, never the requester
  *   GET    /fleet/android/apks                   technician+
- *   POST   /fleet/android/apks?name=&file_name=  admin (body: the APK, ≤ 100 MiB)
+ *   POST   /fleet/android/apks?name=&file_name=  admin (body: the APK, ≤ 100 MiB, streamed to the file store)
+ *   GET    /fleet/android/apks/:id/file          admin (the stored APK, SHA-256 checked while streaming)
  *   DELETE /fleet/android/apks/:id               admin
  *   GET    /fleet/android/provisioning           admin (what the enrollment QR codes need)
  */
@@ -55,11 +60,22 @@ fleetAndroidRouter.get('/fleet/android/apks', requireRole('technician'), async (
   res.json({ apks: await listApks(auth(req)) });
 });
 
-const apkBody = express.raw({ type: ['application/vnd.android.package-archive', 'application/octet-stream'], limit: MAX_APK_BYTES });
+const APK_TYPES = ['application/vnd.android.package-archive', 'application/octet-stream'];
 
-fleetAndroidRouter.post('/fleet/android/apks', requireRole('admin'), apkBody, async (req, res) => {
+// The body is not parsed: it streams straight into a temporary file of the file store (apks.ts).
+fleetAndroidRouter.post('/fleet/android/apks', requireRole('admin'), async (req, res) => {
   const meta = parse(apkUploadQuery, req.query);
-  res.status(201).json({ apk: await uploadApk(req, auth(req), meta, req.body as Buffer) });
+  if (!req.is(APK_TYPES)) throw new AppError(422, 'apk_empty', 'Send the APK file as the request body (Content-Type: application/vnd.android.package-archive)');
+  if (Number(req.headers['content-length'] ?? 0) > MAX_APK_BYTES) throw new AppError(413, 'apk_too_large', 'An APK can be at most 100 MiB');
+  const { apk, repaired } = await uploadApk(req, auth(req), meta, req);
+  res.status(repaired ? 200 : 201).json({ apk, repaired });
+});
+
+fleetAndroidRouter.get('/fleet/android/apks/:id/file', requireRole('admin'), async (req, res) => {
+  const { id } = parse(idParams, req.params);
+  const ctx = auth(req);
+  const apk = await adminApk(req, ctx, id);
+  await sendApkFile(req, res, ctx.organizationId, apk, 'admin_download', { by: ctx.userEmail });
 });
 
 fleetAndroidRouter.delete('/fleet/android/apks/:id', requireRole('admin'), async (req, res) => {
@@ -92,9 +108,39 @@ androidGatewayRouter.get('/android/agent.apk', (_req, res) => {
 // An APK pushed from Fleet, only for an open install command of this phone (apks.ts).
 androidGatewayRouter.get('/android/apks/:id', requireEndpointAgent, async (req, res) => {
   const { id } = parse(idParams, req.params);
-  const apk = await agentApk(req.endpoint!, id);
-  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-  res.setHeader('Content-Length', String(apk.bytes.length));
-  res.setHeader('X-Content-SHA256', apk.sha256);
-  res.end(apk.bytes);
+  const ep = req.endpoint!;
+  const apk = await agentApk(ep, id);
+  await sendApkFile(req, res, ep.organizationId, apk, 'agent_download', { endpoint_id: ep.id });
 });
+
+/**
+ * Streams a stored APK. A missing or wrong-sized file is a clear error before any byte; a SHA-256
+ * mismatch found while streaming aborts the connection before the last chunk, so the receiver never
+ * gets the whole announced length. Both are audited.
+ */
+async function sendApkFile(req: Request, res: Response, organizationId: string, apk: ApkFileRef, during: 'agent_download' | 'admin_download', extra: Record<string, unknown>): Promise<void> {
+  let stream: Readable;
+  try {
+    stream = await fileStore().openVerified(apk.storageKey, { sha256: apk.sha256, size: apk.size });
+  } catch (err) {
+    if (err instanceof FileStoreError && (err.problem === 'missing' || err.problem === 'corrupt')) {
+      await auditApkFileProblem(organizationId, apk, err.problem, during, extra);
+      throw apkFileError(err.problem);
+    }
+    throw err;
+  }
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+  res.setHeader('Content-Length', String(apk.size));
+  res.setHeader('Content-Disposition', `attachment; filename="${apk.fileName}"`);
+  res.setHeader('X-Content-SHA256', apk.sha256);
+  try {
+    await pipeline(stream, res);
+  } catch (err) {
+    res.destroy();
+    if (err instanceof FileStoreError && err.problem === 'corrupt') {
+      await auditApkFileProblem(organizationId, apk, 'corrupt', during, extra);
+    } else if (!req.destroyed) {
+      logger.warn({ err, apk_id: apk.id }, 'APK download interrupted');
+    }
+  }
+}

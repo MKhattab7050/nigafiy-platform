@@ -4,3 +4,7 @@ out/
 out-*/
 test-results/
 playwright-report/
+
+# Copied from packages/brand by scripts/copy-brand-icons.ts before each build and unit test run
+/public/icon.svg
+/public/favicon.ico

@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
+import { moveApkContentToFiles } from './apk-file-mover.ts';
 
 const MIGRATIONS_DIR = path.join(import.meta.dirname, 'migrations');
 
@@ -23,10 +24,25 @@ export async function ensureAppRole(client: pg.Client, appUrl: string): Promise<
 }
 
 /**
+ * Steps that need more than SQL. Each runs inside its migration's transaction, just before the SQL
+ * file, and must be idempotent (a failed migration rolls back and runs again on the next start).
+ */
+const BEFORE: Readonly<Record<string, (client: pg.Client, log: (msg: string) => void) => Promise<void>>> = {
+  // APK bytes leave the database for the file store (apk-file-mover.ts).
+  '048_android_apk_files.sql': moveApkContentToFiles,
+};
+
+/**
  * Applies pending SQL migrations as the owner role and makes sure the restricted
  * `lan_app` role exists with the password from APP_DATABASE_URL.
  */
-export async function migrate(ownerUrl: string, appUrl: string, log: (msg: string) => void = () => undefined): Promise<void> {
+export async function migrate(
+  ownerUrl: string,
+  appUrl: string,
+  log: (msg: string) => void = () => undefined,
+  /** Tests only: stop before this migration file (it and later ones are not applied). */
+  opts: { stopBefore?: string } = {},
+): Promise<void> {
   const client = new pg.Client({ connectionString: ownerUrl });
   await client.connect();
   try {
@@ -43,10 +59,12 @@ export async function migrate(ownerUrl: string, appUrl: string, log: (msg: strin
     const files = (await readdir(MIGRATIONS_DIR)).filter((f) => f.endsWith('.sql')).sort();
 
     for (const file of files) {
+      if (opts.stopBefore && file >= opts.stopBefore) break;
       if (applied.has(file)) continue;
       const sql = await readFile(path.join(MIGRATIONS_DIR, file), 'utf8');
       await client.query('BEGIN');
       try {
+        await BEFORE[file]?.(client, log);
         await client.query(sql);
         await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [file]);
         await client.query('COMMIT');

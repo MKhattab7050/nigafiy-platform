@@ -83,6 +83,6 @@ its test, and the compatibility code that names the legacy values (`env-compat.t
 `data-dir.cjs` and its test, `installer-identity.test.cjs`, the engine's `compat.go`,
 `engine_test.go`, `update.go`, `update_test.go`), and the import of an install from before the
 rename (`apps/desktop/installer/nigafiy.nsh`, `legacy-import.cjs` and its test,
-`docs/operations/installers.md`), which must name the old folders, uninstaller and profile. Lines: the kept identifiers in the first table
+`docs/operations/installers.md`, the owner's `docs/operations/real-hardware-checklist.md`), which must name the old folders, uninstaller and profile. Lines: the kept identifiers in the first table
 (router label and tags, the ownership value and its string keys, the webhook header, the old
 auto-start launcher name) and comments in SQL migrations.

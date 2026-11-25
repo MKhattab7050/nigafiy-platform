@@ -320,3 +320,9 @@ the MSI (the programs printed the right output); the WARNING was a real Quick Su
 1 skip (Quick Support launch without a Fleet link, by design).** `install-info` printed `install.kind` `msi` (exit 0),
 `Nigafiy.exe --smoke` exit 0, MSI install and uninstall, both MSIX, WACK desktop (23 of 24, optional
 "Blocked executables") and WACK Quick Support all PASS; cleanup PASS.
+
+**Rerun 2026-11-25 `20261125-155648` (owner, elevated, after the Electron 42 / Node 24 upgrade `d0414d6`, from the
+main checkout): overall PASS, 64 pass, 0 fail, 1 skip (same Quick Support launch skip).** MSI install, files, signatures,
+shortcuts, Programs entry, `install-info` (`msi`), `--smoke` and uninstall, both MSIX, WACK desktop and WACK Quick
+Support all PASS; cleanup PASS. Run `20261125-154544` before it stopped at setup: the test certificate had only been
+exported inside the install-test worktree, not in the main checkout (`.data\install-test\nigafiy-test-signing.cer`).
