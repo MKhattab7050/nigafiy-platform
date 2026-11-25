@@ -3,7 +3,8 @@
 ## Architecture
 
 ```
-cmd/nigafiy-sensor        flags, logging, signal handling
+sensorcmd                flags, logging, signal handling (run as `nigafiy-engine sensor`,
+                         docs/architecture/engine-sensor.md; cmd/nigafiy-sensor is a dev-only build)
 internal/config          YAML + env, strict validation, hard ceilings
 internal/scope           what may be probed (private only, ≤ /20, optional local allow-list)
 internal/discovery       rate/concurrency-limited ICMP sweep + neighbour table + rDNS

@@ -133,7 +133,33 @@ nigafiy-engine sensor [-config <file>] [-check-config] [-version]
 | **Docker** (Linux branch Sensors) | Rebuild or pull the new image; run it with the same `docker run` line (same volume, same env) | Same identity from the volume. `/usr/local/bin/nigafiy-sensor` and `/usr/local/bin/lan-collector` in the image are links to `nigafiy-engine`, so an `--entrypoint` override still works |
 | **systemd** (Linux branch Sensors) | `collectors/lan-collector/deploy/upgrade-to-engine.sh <path to new nigafiy-engine>` installs `/usr/local/bin/nigafiy-engine` and points `/usr/local/bin/nigafiy-sensor` at it (a link), then restarts the unit | The **old** unit file (`ExecStart=/usr/local/bin/nigafiy-sensor -config …`) keeps working unchanged through the name alias. The new unit file in the repository says `nigafiy-engine sensor -config …`; copying it in is optional |
 
-The upgrade has not been run against a real old install (the owner's installation is never
-touched). The Docker image and the systemd unit have not been run (no Docker, no Linux here).
-The parts that ran are listed in the docs that describe them (`docs/desktop/engine.md`,
-`docs/operations/installers.md`).
+## What ran here, what is tested only, what never ran
+
+Ran on the development PC (2026-11-25, scratch ports and a scratch data folder, loopback only):
+
+- `nigafiy-engine.exe run --data-dir=<scratch> --control-addr=127.0.0.1:47171` from a source
+  checkout with a scratch `.env` (API 4471, web 3471, database 5471): db, api and web became
+  ready and healthy; the Sensor waited as "not enrolled".
+- `nigafiy-engine.exe sensor -config <scratch>/collector/collector.yaml` with an enrollment token
+  from the scratch API (`http://localhost:4471`): logged `enrolled`, and the API listed the
+  collector `online`, version `0.1.0-dev`, os `windows`. No network range was authorized, so
+  nothing was probed (the smart checks found no authorized interface); the token never appeared
+  in the Sensor's log.
+- With that configuration in place, `POST /v1/children/sensor/start` made the engine start
+  `nigafiy-engine.exe sensor -config …` as its child (process list: parent = the engine). Killing
+  that child by its PID: the engine restarted it (restarts 1), db/api/web kept the same PIDs and
+  zero restarts. `POST /v1/shutdown` stopped sensor, web, api, db in that order.
+- The desktop's real-Sensor test (`collector-manager.test.cjs`) enrolls, runs, stops and restarts
+  `nigafiy-engine.exe sensor` against a stand-in server.
+
+Tested only (Go and Node tests): mode selection and the name alias; the old command line and the
+legacy `LAN_COLLECTOR_*` variables behind `sensor`; `--sensor-exe` resolution including the
+missing-old-path fallback; a Sensor that panics over and over is restarted while db/api/web keep
+running; a CGO-off build of the executable answers to the names `nigafiy-sensor` and
+`lan-collector`; cross-builds for windows, linux and darwin on amd64 and arm64; the packaging
+config (no `collector` resource, MSIX firewall rules for the engine exe).
+
+Never ran: the upgrade over a real old install (NSIS, MSI, MSIX; the owner's installation is
+never touched), the merged NSIS/MSI/MSIX packages (not rebuilt here), the Docker image (no
+Docker), the systemd unit and `deploy/upgrade-to-engine.sh` (no Linux machine), the Windows
+service path (no service is installed here).

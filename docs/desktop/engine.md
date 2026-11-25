@@ -3,7 +3,7 @@
 `nigafiy-engine.exe` is a small Go supervisor for everything that runs on this computer: the
 **database** (embedded PostgreSQL), the **API** and the **web console** (three separate children,
 each started through `scripts/local.mjs --component=<name>`) and the local **Sensor**
-(`nigafiy-sensor.exe`). It keeps them running, restarts them when they crash, writes
+(the same executable run as `nigafiy-engine sensor`, docs/architecture/engine-sensor.md). It keeps them running, restarts them when they crash, writes
 their logs, and answers a local control API that the Hub (desktop app) and the API use.
 
 It runs either in the foreground (`nigafiy-engine run`, used by the Hub when no service is
@@ -26,7 +26,8 @@ pnpm test:engine    # go test ./... in engine/
 | `uninstall` | Admin. Stops the service if running, then deletes it |
 | `start` / `stop` | Admin. Starts / stops the service (stop waits until it has stopped) |
 | `status [--control-addr=…]` | Prints the running engine's `GET /v1/status` (exit 1 if none answers) |
-| `version` | Prints the version (set with `-ldflags "-X main.version=…"`, default `0.1.0-dev`) |
+| `sensor [-config …] [-check-config] [-version]` | Runs the Sensor alone (a branch site with no local stack): the flags, `NIGAFIY_SENSOR_*` (and legacy `LAN_COLLECTOR_*`) environment, config file and exit codes of the old `nigafiy-sensor`. The executable does the same with every argument when its file is named `nigafiy-sensor` or `lan-collector` |
+| `version` | Prints the version (set with `-ldflags "-X main.Version=…"`, default `0.1.0-dev`; the Sensor reports the same version) |
 
 On non-Windows systems the service commands answer "not supported on this OS"; `run` works.
 
@@ -44,7 +45,7 @@ Both `--name value` and `--name=value` work. Each flag also has an environment v
 | `--node` | `NIGAFIY_ENGINE_NODE` | `node` from `PATH`, else `C:\Program Files\nodejs\node.exe` |
 | `--stack-script` | `NIGAFIY_ENGINE_STACK_SCRIPT` | `<repo>/scripts/local.mjs` (repo = first folder above the engine exe, then above the working directory, that has `scripts/local.mjs`) |
 | `--bundle-dir` | `NIGAFIY_ENGINE_BUNDLE_DIR` | none; passed to the stack as `NIGAFIY_BUNDLE_DIR` (installed app) |
-| `--sensor-exe` | `NIGAFIY_ENGINE_SENSOR_EXE` | `<repo>/collectors/lan-collector/bin/nigafiy-sensor.exe` |
+| `--sensor-exe` | `NIGAFIY_ENGINE_SENSOR_EXE` | this executable, started as `nigafiy-engine sensor -config <file>`. Another existing program gets the old `-config <file>`; a missing `nigafiy-sensor[.exe]`/`lan-collector[.exe]` (a service command line from before the merge) also means this executable |
 | `--sensor-config` | `NIGAFIY_ENGINE_SENSOR_CONFIG` | `<data-dir>/collector/collector.yaml` |
 | `--no-sensor` | — | off. With it the Sensor is not supervised at all (see below) |
 | `--control-addr` | `NIGAFIY_ENGINE_CONTROL_ADDR` | `127.0.0.1:47140`. Must be a loopback IP literal with a port; anything else is refused |

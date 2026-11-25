@@ -225,7 +225,16 @@ install, importing an old LAN Detective install. What is left:
   Windows VM before the first release.
 - **Test builds carry the engine's development version.** `pnpm --filter @nigafiy/desktop dist`
   builds `nigafiy-engine.exe` without `main.Version` (it reports `0.1.0-dev`); `pnpm release` stamps
-  every binary with the release version.
+  it with the release version. (Before the engine and the Sensor became one executable the engine
+  read `main.version`, which the release never set, so release builds of the engine also reported
+  `0.1.0-dev`.)
+- **One executable for the engine and the Sensor** (docs/architecture/engine-sensor.md). The NSIS
+  installer and the MSI ship `resources\engine\nigafiy-engine.exe` only; the desktop app runs its
+  Sensor as `nigafiy-engine.exe sensor -config …`. An update over an install from before removes the
+  old `resources\collector\nigafiy-sensor.exe`; the Sensor keeps its enrollment, and Windows may ask
+  once to allow `nigafiy-engine.exe` through the firewall (docs/operations/updates.md). The table of
+  results below is from before the merge (it lists the sensor among the signed files); the merged
+  package has not been built into an installer here.
 - **Signing covers every `.exe` in the package**, including the bundled embedded-postgres programs
   (`initdb.exe`, `pg_ctl.exe`, `postgres.exe`) and electron-builder's `elevate.exe`: they carry the
   organisation's signature, not their makers'.

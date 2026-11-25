@@ -30,7 +30,7 @@ appears outside the allow-list below.
 | Webhook signature header | `X-LAN-Detective-Signature` | Customers' webhook receivers verify it | Send `X-Nigafiy-Signature` as well, then retire the old one after notice |
 | Windows service of the Agent | `NigafiyEndpointAgent` (Linux `nigafiy-endpoint-agent`, macOS `com.nigafiy.endpoint-agent`) | Already Nigafiy; installed on endpoints, so not renamed again (the Agent's own name, "nigafiy-agent", is only the binary) | Keep |
 | Agent state and settings | `%ProgramData%\Nigafiy\EndpointAgent`, `HKLM\Software\Nigafiy\EndpointAgent`, install folder `%ProgramFiles%\Nigafiy\Endpoint Agent` | Hold the endpoint credential | Keep |
-| Docker volume / systemd paths | `/var/lib/lan-collector`, `/etc/lan-collector/`, unit `lan-collector.service`, user `lan-collector` | Existing Linux Sensors keep their state; only the binary inside is renamed | Rename with a move script |
+| Docker volume / systemd paths | `/var/lib/lan-collector`, `/etc/lan-collector/`, unit `lan-collector.service`, user `lan-collector` | Existing Linux Sensors keep their state; only the binary inside changes (now `nigafiy-engine sensor`; `deploy/upgrade-to-engine.sh` links the old `/usr/local/bin/nigafiy-sensor` to it, docs/architecture/engine-sensor.md) | Rename with a move script |
 | Folders in the repository | `collectors/lan-collector`, `agents/endpoint-agent` | Moving them churns every path and doc for no gain | Keep |
 | SQL migrations | comments mention LAN Detective | Applied migrations are never edited | Keep |
 
@@ -66,9 +66,9 @@ there, and `%APPDATA%\LAN Detective` is still the profile in use.
 | --- | --- |
 | npm scope `@lan-detective/*`, root package `lan-detective` | `@nigafiy/*`, `nigafiy` |
 | Go modules `github.com/lan-detective/lan-collector`, `github.com/lan-detective/endpoint-agent` | `github.com/nigafiy/sensor`, `github.com/nigafiy/agent` (engine already `github.com/nigafiy/engine`) |
-| `cmd/lan-collector`, `cmd/endpoint-agent` | `cmd/nigafiy-sensor`, `cmd/nigafiy-agent` |
-| Binaries `lan-collector(.exe)`, `endpoint-agent(.exe)` | `nigafiy-sensor(.exe)`, `nigafiy-agent(.exe)` (desktop resource `collector\nigafiy-sensor.exe`) |
-| `--version` output | `nigafiy-sensor <v>`, `nigafiy-agent <v>` |
+| `cmd/lan-collector`, `cmd/endpoint-agent` | `cmd/nigafiy-sensor` (now a development-only build; the shipped Sensor is `nigafiy-engine sensor`), `cmd/nigafiy-agent` |
+| Binaries `lan-collector(.exe)`, `endpoint-agent(.exe)` | `nigafiy-sensor(.exe)` → since 2026-11-25 the single `nigafiy-engine(.exe)`, run as `nigafiy-engine sensor` (desktop resource `engine\nigafiy-engine.exe`; the names `nigafiy-sensor` and `lan-collector` still run the Sensor when a link or copy of the executable has them, docs/architecture/engine-sensor.md); `nigafiy-agent(.exe)` |
+| `--version` output | `nigafiy-sensor <v>` (`nigafiy-engine sensor -version`), `nigafiy-agent <v>` |
 | User-Agents `lan-collector/<v>`, `lan-endpoint-agent/<v>`, `LAN-Detective-Webhook/1`, banner probe, SSH client string | `nigafiy-sensor/<v>`, `nigafiy-agent/<v>`, `Nigafiy-Webhook/1`, `nigafiy-sensor banner probe`, `SSH-2.0-Nigafiy_ConfigBackup` |
 | Log `service` fields | `nigafiy-api`, `nigafiy-sensor`, `nigafiy-agent` |
 | `Start LAN Detective.cmd` | `Start Nigafiy.cmd` |
