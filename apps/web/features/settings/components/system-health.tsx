@@ -60,11 +60,11 @@ function every(seconds: number): string {
 }
 
 function Summary({ jobs }: { jobs: JobHealth[] }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const problems = problemCount(jobs);
   return (
     <p className={`border-b border-line px-4 py-3 text-[13px] ${problems ? 'text-warn' : 'text-ok'}`}>
-      {jobs.length === 0 ? t('settings.system.noJobs') : problems ? fill(t('settings.system.problems'), { n: problems }) : t('settings.system.allOk')}
+      {jobs.length === 0 ? t('settings.system.noJobs') : problems ? fill(tn('settings.system.problems', problems), { n: problems }) : t('settings.system.allOk')}
     </p>
   );
 }
@@ -92,7 +92,7 @@ export function SystemHealth() {
 
 /** Hub page /system/modules: every registered module and every background job with last run, last error and overdue. */
 export function SystemModulesScreen() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const query = useQuery<Report>('/system/modules', [], 15_000);
   return (
     <>
@@ -103,7 +103,7 @@ export function SystemModulesScreen() {
             <Card title={t('settings.system.jobs')} padded={false}>
               <Jobs jobs={data.jobs} />
             </Card>
-            <Card title={t('settings.system.modules')} description={fill(t('settings.system.modulesCount'), { n: data.modules.length })} padded={false}>
+            <Card title={t('settings.system.modules')} description={fill(tn('settings.system.modulesCount', data.modules.length), { n: data.modules.length })} padded={false}>
               <Modules modules={data.modules} />
             </Card>
           </div>
@@ -114,7 +114,7 @@ export function SystemModulesScreen() {
 }
 
 function Jobs({ jobs }: { jobs: JobHealth[] }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const rows = jobs.map((j) => ({ job: j, verdict: verdictOf(j) }));
   return (
     <div>
@@ -155,7 +155,7 @@ function Jobs({ jobs }: { jobs: JobHealth[] }) {
                         {fill(t('settings.system.overdueAt'), { when: relativeTime(job.overdue_at, locale) })}
                       </p>
                     )}
-                    {verdict === 'failing' && <p className="max-w-xs text-xs text-muted">{fill(t('settings.system.failingHint'), { n: job.consecutive_failures })}</p>}
+                    {verdict === 'failing' && <p className="max-w-xs text-xs text-muted">{fill(tn('settings.system.failingHint', job.consecutive_failures), { n: job.consecutive_failures })}</p>}
                     {job.last_error && (
                       <p className="max-w-sm text-xs text-crit">
                         <span className="font-medium">{t('settings.system.lastError')}</span> ({relativeTime(job.last_error.at, locale)}):{' '}

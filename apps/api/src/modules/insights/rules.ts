@@ -22,6 +22,9 @@ export interface DeviceFact {
 /** Device types worth a monitoring check of their own: the network's infrastructure. */
 export const INFRASTRUCTURE_TYPES = ['router', 'printer', 'nas', 'camera', 'access_point', 'server'] as const;
 
+/** At most this many infrastructure devices are read and listed per request (the count stays exact). */
+export const INFRASTRUCTURE_LIMIT = 200;
+
 /** An infrastructure device whose type Nigafiy inferred (medium/high confidence) and that has no check. */
 export interface InfrastructureFact {
   id: string;
@@ -36,6 +39,8 @@ export interface InsightFacts {
   now: Date;
   /** Present only for sites where the `suggest.monitor_infrastructure` automation is enabled. */
   infrastructure?: InfrastructureFact[];
+  /** How many match in total (`infrastructure` holds at most INFRASTRUCTURE_LIMIT of them). Defaults to its length. */
+  infrastructureTotal?: number;
   devices: DeviceFact[];
   /** Collectors that are enrolled (active). */
   collectors: { id: string; name: string; last_heartbeat_at: Date | null; gateway_ip: string | null }[];
@@ -332,7 +337,10 @@ export function buildInsights(f: InsightFacts): InsightsReport {
 
   // Infrastructure that was classified automatically: proposed, never monitored without the user's click.
   const suggestedAlready = new Set(unmonitored.slice(0, 3).map((d) => d.id));
-  const infra = (f.infrastructure ?? []).filter((d) => !suggestedAlready.has(d.id));
+  const infraAll = f.infrastructure ?? [];
+  const infra = infraAll.filter((d) => !suggestedAlready.has(d.id));
+  // Exact count when the read was capped: the total minus the ones already suggested above.
+  const infraCount = Math.max(infra.length, (f.infrastructureTotal ?? infraAll.length) - (infraAll.length - infra.length));
   if (infra.length) {
     const TYPE_LABEL: Record<InfrastructureFact['device_type'], string> = {
       router: 'router',
@@ -345,10 +353,10 @@ export function buildInsights(f: InsightFacts): InsightsReport {
     add({
       id: 'monitor-infrastructure',
       code: 'suggest_monitor_infrastructure',
-      params: { count: infra.length, names: list(infra.map((d) => d.label)) },
+      params: { count: infraCount, names: list(infra.map((d) => d.label)) },
       severity: 'info',
       category: 'availability',
-      title: `Watch ${infra.length} infrastructure device(s) continuously`,
+      title: `Watch ${infraCount} infrastructure device(s) continuously`,
       detail:
         'These look like routers, printers, storage, cameras, access points or servers. They are only checked during discovery sweeps; a ping check measures each one every minute. Their type was worked out automatically: check it before you accept.',
       evidence: infra.slice(0, 8).map((d) => `${d.label} (${d.ip}): looks like a ${TYPE_LABEL[d.device_type]} — inferred, ${d.type_confidence} confidence${d.type_evidence ? `: ${d.type_evidence}` : ''}`),

@@ -3,7 +3,7 @@
 import { Lock, LogOut, MessageSquare, Power, RotateCcw } from 'lucide-react';
 import { Meter, TimeSeriesChart } from '@/components/charts';
 import type { EndpointDetail, EndpointSeriesPoint } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, Fact, Field, Input, Segmented, SkeletonBlock, Textarea } from '@/components/ui';
+import { Async, Badge, Button, Card, Fact, Field, Input, Segmented, SkeletonBlock, Textarea, useConfirm } from '@/components/ui';
 import { useApp, type Query } from '@/lib/app';
 import { pct, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -29,6 +29,7 @@ export function OverviewTab({
   seriesQuery: Query<{ points: EndpointSeriesPoint[] }>;
   message: { title: string; setTitle: (v: string) => void; body: string; setBody: (v: string) => void };
 }) {
+  const confirm = useConfirm();
   const { locale, t } = useI18n();
   const tx = endpointsText(locale);
   const { can } = useApp();
@@ -180,8 +181,8 @@ export function OverviewTab({
                           <Button
                             disabled={!online}
                             busy={busy === 'power-lock'}
-                            onClick={() =>
-                              window.confirm(tx.powerConfirm.lock) &&
+                            onClick={async () =>
+                              (await confirm(tx.powerConfirm.lock)) &&
                               void sendCommand('power-lock', { kind: 'power_action', action: 'lock' })
                             }
                           >
@@ -191,8 +192,8 @@ export function OverviewTab({
                           <Button
                             disabled={!online}
                             busy={busy === 'power-logoff'}
-                            onClick={() =>
-                              window.confirm(tx.powerConfirm.logoff) &&
+                            onClick={async () =>
+                              (await confirm(tx.powerConfirm.logoff, { destructive: true })) &&
                               void sendCommand('power-logoff', { kind: 'power_action', action: 'logoff' })
                             }
                           >
@@ -205,8 +206,8 @@ export function OverviewTab({
                                 variant="danger"
                                 disabled={!online}
                                 busy={busy === 'power-restart'}
-                                onClick={() =>
-                                  window.confirm(tx.powerConfirm.restart) &&
+                                onClick={async () =>
+                                  (await confirm(tx.powerConfirm.restart, { destructive: true })) &&
                                   void sendCommand('power-restart', { kind: 'power_action', action: 'restart' })
                                 }
                               >
@@ -217,8 +218,8 @@ export function OverviewTab({
                                 variant="danger"
                                 disabled={!online}
                                 busy={busy === 'power-shutdown'}
-                                onClick={() =>
-                                  window.confirm(tx.powerConfirm.shutdown) &&
+                                onClick={async () =>
+                                  (await confirm(tx.powerConfirm.shutdown, { destructive: true })) &&
                                   void sendCommand('power-shutdown', { kind: 'power_action', action: 'shutdown' })
                                 }
                               >

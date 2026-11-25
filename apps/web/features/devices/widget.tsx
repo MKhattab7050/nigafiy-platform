@@ -23,7 +23,7 @@ const TYPE_SAMPLE = 200;
  * GET /devices?page_size=200, shown only when that page holds every device.
  */
 export default function DevicesWidget() {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const { siteId } = useApp();
   const overview = useQuery<Overview>(`/overview${qs({ site_id: siteId })}`, ['events', 'devices', 'checks', 'collectors']);
   const unreviewed = useQuery<Paginated<Device>>(`/devices${qs({ site_id: siteId, trust: 'unreviewed', page_size: 1 })}`, ['devices']);
@@ -34,10 +34,10 @@ export default function DevicesWidget() {
     'devices',
     attentionFrom([unreviewed, unwanted], (rev, bad) => [
       ...(bad.total > 0
-        ? [{ id: 'devices-unwanted', tone: 'crit' as const, text: fill(t('devices.attn.unwanted'), { count: bad.total }), action: { label: t('devices.attn.unwantedAction'), href: '/radar/devices?trust=unwanted&status=online' } }]
+        ? [{ id: 'devices-unwanted', tone: 'crit' as const, text: fill(tn('devices.attn.unwanted', bad.total), { count: bad.total }), action: { label: t('devices.attn.unwantedAction'), href: '/radar/devices?trust=unwanted&status=online' } }]
         : []),
       ...(rev.total > 0
-        ? [{ id: 'devices-unreviewed', tone: 'warn' as const, text: fill(t('devices.attn.unreviewed'), { count: rev.total }), action: { label: t('devices.attn.review'), href: '/radar/devices?trust=unreviewed' } }]
+        ? [{ id: 'devices-unreviewed', tone: 'warn' as const, text: fill(tn('devices.attn.unreviewed', rev.total), { count: rev.total }), action: { label: t('devices.attn.review'), href: '/radar/devices?trust=unreviewed' } }]
         : []),
     ]),
   );

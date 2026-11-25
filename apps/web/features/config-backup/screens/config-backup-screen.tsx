@@ -22,7 +22,7 @@ const SOURCE_KEY = { observed: 'common.observed', inferred: 'common.inferred', m
 const CONF = ['high', 'medium', 'low'] as const;
 
 function SuggestionsCard({ siteId, onAdded }: { siteId: string; onAdded: (id: string) => void }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const { can } = useApp();
   const [pending, setPending] = useState<string | null>(null);
   const query = useQuery<Suggestions>(`/config-backup/suggestions${qs({ site_id: siteId })}`, ['devices'], pending ? 4000 : 60_000);
@@ -83,10 +83,10 @@ function SuggestionsCard({ siteId, onAdded }: { siteId: string; onAdded: (id: st
           {!last
             ? t('cb.probe.never')
             : last.status === 'pending'
-              ? fill(t('cb.probe.pending'), { n: last.address_count })
+              ? fill(tn('cb.probe.pending', last.address_count), { n: last.address_count })
               : last.status === 'expired'
                 ? fill(t('cb.probe.expired'), { when: relativeTime(last.created_at, locale) })
-                : fill(t('cb.probe.done'), { when: relativeTime(last.completed_at, locale), open: last.open_count ?? 0, n: last.address_count })}
+                : fill(tn('cb.probe.done', last.address_count), { when: relativeTime(last.completed_at, locale), open: last.open_count ?? 0, n: last.address_count })}
         </p>
       </div>
       {error && (

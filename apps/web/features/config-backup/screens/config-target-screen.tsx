@@ -148,7 +148,7 @@ function StatusCard({ target: x }: { target: TargetDetail }) {
 }
 
 function TargetView({ id }: { id: string }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const { can } = useApp();
   const router = useRouter();
   const params = useSearchParams();
@@ -242,7 +242,7 @@ function TargetView({ id }: { id: string }) {
             {confirmDelete && (
               <Modal title={t('cb.deleteTitle')} onClose={() => setConfirmDelete(false)}>
                 <div className="space-y-3">
-                  <p className="text-[13px]">{fill(t('cb.deleteBody'), { n: x.version_count })}</p>
+                  <p className="text-[13px]">{fill(tn('cb.deleteBody', x.version_count), { n: x.version_count })}</p>
                   <ErrorNote error={error} />
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" onClick={() => setConfirmDelete(false)}>

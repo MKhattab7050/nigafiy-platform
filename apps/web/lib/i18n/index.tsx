@@ -1,7 +1,9 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { type Key, type Locale, dictionaries } from './dictionary';
+import { useRouter } from 'next/navigation';
+import { createContext, startTransition, useCallback, useContext, useEffect, useMemo } from 'react';
+import type { Key, Locale, Messages } from './dictionary';
+import { selectPlural } from './plural';
 
 export type { Key, Locale };
 
@@ -9,28 +11,44 @@ interface I18n {
   locale: Locale;
   dir: 'ltr' | 'rtl';
   t: (key: Key) => string;
+  /** The plural form of `key` for `count` (CLDR rules of the active language); fill placeholders with `fill`. */
+  tn: (key: Key, count: number) => string;
   setLocale: (locale: Locale) => void;
 }
 
 const Ctx = createContext<I18n | null>(null);
 
-export function I18nProvider({ initialLocale, children }: { initialLocale: Locale; children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<Locale>(initialLocale);
+/**
+ * `messages` is the active language only, passed down by the root layout (a Server Component), so
+ * the dictionaries never ship as client JavaScript. Switching language sets the cookie and refreshes
+ * the server tree, which re-renders the root layout with the other language (client state is kept).
+ */
+export function I18nProvider({ locale, messages, children }: { locale: Locale; messages: Messages; children: React.ReactNode }) {
+  const router = useRouter();
 
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
   }, [locale]);
 
-  const setLocale = useCallback((next: Locale) => {
-    // Cookie so the server renders the right direction on the next full load (no flash of LTR).
-    document.cookie = `ld_locale=${next}; path=/; max-age=31536000; samesite=lax`;
-    setLocaleState(next);
-  }, []);
+  const setLocale = useCallback(
+    (next: Locale) => {
+      // Cookie so the server renders the right language and direction (no flash of LTR).
+      document.cookie = `ld_locale=${next}; path=/; max-age=31536000; samesite=lax`;
+      startTransition(() => router.refresh());
+    },
+    [router],
+  );
 
   const value = useMemo<I18n>(
-    () => ({ locale, dir: locale === 'ar' ? 'rtl' : 'ltr', setLocale, t: (key) => dictionaries[locale][key] ?? dictionaries.en[key] ?? key }),
-    [locale, setLocale],
+    () => ({
+      locale,
+      dir: locale === 'ar' ? 'rtl' : 'ltr',
+      setLocale,
+      t: (key) => messages[key] ?? key,
+      tn: (key, count) => selectPlural(messages[key] ?? key, count, locale),
+    }),
+    [locale, setLocale, messages],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

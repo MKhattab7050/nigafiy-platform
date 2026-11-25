@@ -6,7 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import { DEVICE_TRUSTS, DEVICE_TYPES, type Device, type Paginated } from '@nigafiy/shared-types';
 import { DeviceIcon } from '@/components/device-icon';
 import { EmptyPortsArt, SearchArt } from '@/components/illustrations';
-import { Async, Badge, Button, Card, DataTable, EmptyState, ErrorNote, Input, PageHeader, Select, SkeletonBlock, StatusBadge, Tag } from '@/components/ui';
+import { Async, Badge, Button, Card, DataTable, EmptyState, ErrorNote, Input, PageHeader, Select, SkeletonBlock, StatusBadge, Tag, useConfirm } from '@/components/ui';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
@@ -17,6 +17,7 @@ export const PAGE_SIZE = 50;
 export const SORTS = ['ip', 'name', 'status', 'last_seen', 'first_seen'] as const;
 
 export function DevicesView() {
+  const confirm = useConfirm();
   const { t, locale } = useI18n();
   const { siteId } = useApp();
   const router = useRouter();
@@ -63,7 +64,7 @@ export function DevicesView() {
   }, [siteId]);
 
   async function markAllKnown() {
-    if (!window.confirm(t('devices.markAllConfirm'))) return;
+    if (!(await confirm(t('devices.markAllConfirm')))) return;
     setMarking(true);
     setMarkError(null);
     try {

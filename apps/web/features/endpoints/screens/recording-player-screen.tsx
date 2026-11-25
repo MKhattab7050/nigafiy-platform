@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { FleetRecording, FleetRecordingTimelineItem } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, ErrorNote, Notice, PageHeader, Select } from '@/components/ui';
+import { Async, Badge, Button, Card, ErrorNote, Notice, PageHeader, Select, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime } from '@/lib/format';
@@ -61,6 +61,7 @@ const clock = (ms: number) => {
  * authorized viewer (and audits the viewing); frames are drawn exactly as they were streamed.
  */
 export function RecordingPlayerScreen({ id }: { id: string }) {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = toolsText(locale);
   const px = tx.player;
@@ -125,7 +126,7 @@ export function RecordingPlayerScreen({ id }: { id: string }) {
   }, [playing, segIndex, speed, id, detail]);
 
   async function remove() {
-    if (!window.confirm(px.deleteConfirm)) return;
+    if (!(await confirm(px.deleteConfirm, { destructive: true }))) return;
     setBusy(true);
     try {
       await api(`/fleet/recordings/${id}`, { method: 'DELETE' });

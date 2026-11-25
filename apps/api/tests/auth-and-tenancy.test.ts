@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { isPublicAddress, validateScope } from '../src/common/net.ts';
-import { appPool, closePools, systemPool, withTenant } from '../src/infrastructure/db.ts';
+import { appPool, closePools, systemPool, tenantBeginSql, withTenant } from '../src/infrastructure/db.ts';
 import { base32Decode, totp } from '../src/modules/auth/totp.ts';
 import { CSRF, addScope, app, heartbeat, newAccount, newCollector, setRole, sweep, telemetry } from './helpers.ts';
 
@@ -215,6 +215,36 @@ describe('tenant isolation', () => {
     // The tenant setting does not leak to the next user of a pooled connection.
     expect((await appPool.query(`SELECT current_setting('app.current_org', true) AS v`)).rows[0].v ?? '').toBe('');
     await withTenant(a.organizationId, async (db) => expect((await db.query(`SELECT 1 FROM devices`)).rowCount).toBe(1));
+  });
+
+  it('opens the tenant transaction in one round trip only for a canonical UUID, with the same isolation as the parameterized start', async () => {
+    const a = await newAccount('rls-one-trip');
+    const b = await newAccount('rls-one-trip-b');
+    const id = a.organizationId;
+    expect(tenantBeginSql(id)).toBe(`BEGIN; SELECT set_config('app.current_org', '${id}', true)`);
+    expect(tenantBeginSql(id.toUpperCase())).not.toBeNull();
+    // Anything that is not plain hex and hyphens never reaches the literal.
+    for (const bad of [`${id}'; SET ROLE postgres; --`, `${id}'`, `{${id}}`, id.replaceAll('-', ''), '', ' ', `${id} `, `${id}
+`]) {
+      expect(tenantBeginSql(bad), bad).toBeNull();
+    }
+    // Both starts see the same rows; the fallback still accepts every spelling PostgreSQL reads as this uuid.
+    const sites = async (org: string) => (await withTenant(org, (db) => db.query<{ id: string }>(`SELECT id FROM sites ORDER BY id`))).rows.map((r) => r.id);
+    const fast = await sites(id);
+    expect(fast).toContain(a.siteId);
+    expect(fast).not.toContain(b.siteId);
+    expect(await sites(`{${id}}`)).toEqual(fast);
+    expect(await sites(id.replaceAll('-', ''))).toEqual(fast);
+    // A rejected id (injection attempt) cannot run: the parameterized setting fails the uuid cast, nothing is read.
+    await expect(withTenant(`${id}'; SET ROLE postgres; --`, (db) => db.query(`SELECT 1 FROM sites`))).rejects.toThrow(/uuid/);
+    // The setting is transaction-local after a commit and after a rollback: no pooled connection keeps it.
+    await expect(withTenant(id, async (db) => { await db.query(`SELECT 1 FROM sites`); throw new Error('boom'); })).rejects.toThrow('boom');
+    const conns = await Promise.all(Array.from({ length: 16 }, () => appPool.connect()));
+    try {
+      for (const c of conns) expect((await c.query(`SELECT current_setting('app.current_org', true) AS v`)).rows[0].v ?? '').toBe('');
+    } finally {
+      for (const c of conns) c.release();
+    }
   });
 });
 

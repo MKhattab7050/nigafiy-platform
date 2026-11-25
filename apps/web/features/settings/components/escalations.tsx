@@ -3,13 +3,14 @@
 import type { NotificationChannel, NotificationEscalation } from '@nigafiy/shared-types';
 import { BellRing, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Async, Badge, Button, Card, ErrorNote, Field, Input, Select } from '@/components/ui';
+import { Async, Badge, Button, Card, ErrorNote, Field, Input, Select, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { fill, type Key, useI18n } from '@/lib/i18n';
 
 export function Escalations({ channels }: { channels: NotificationChannel[] }) {
-  const { t } = useI18n();
+  const confirm = useConfirm();
+  const { t, tn } = useI18n();
   const { sites } = useApp();
   const query = useQuery<{ items: NotificationEscalation[] }>('/notifications/escalations', ['events'], 15_000);
 
@@ -110,8 +111,8 @@ export function Escalations({ channels }: { channels: NotificationChannel[] }) {
                       size="sm"
                       variant="ghost"
                       aria-label={`${t('common.delete')}: ${p.name}`}
-                      onClick={() =>
-                        window.confirm(`${t('common.delete')}?`) &&
+                      onClick={async () =>
+                        (await confirm(`${t('common.delete')}?`, { destructive: true, confirmLabel: t('common.delete') })) &&
                         void act(`del-${p.id}`, () => api(`/notifications/escalations/${p.id}`, { method: 'DELETE' }))
                       }
                     >
@@ -212,7 +213,7 @@ export function Escalations({ channels }: { channels: NotificationChannel[] }) {
               <Select id={id} value={maxRepeats} onChange={(e) => setMaxRepeats(e.target.value)}>
                 {[1, 2, 3, 5, 10].map((n) => (
                   <option key={n} value={String(n)}>
-                    {n === 1 ? t('settings.escalation.once') : fill(t('settings.escalation.upToTimes'), { n })}
+                    {n === 1 ? t('settings.escalation.once') : fill(tn('settings.escalation.upToTimes', n), { n })}
                   </option>
                 ))}
               </Select>

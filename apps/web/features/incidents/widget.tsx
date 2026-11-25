@@ -19,7 +19,7 @@ const SHOWN = 4;
  * and how many were opened per day over the last two weeks (GET /incidents?status=all).
  */
 export default function IncidentsWidget() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const { siteId } = useApp();
   const query = useQuery<Paginated<Incident>>(`/incidents${qs({ status: 'active', site_id: siteId, page_size: SHOWN })}`, ['events', 'checks', 'collectors']);
 
@@ -33,7 +33,7 @@ export default function IncidentsWidget() {
         {
           id: 'incidents-open',
           tone: top.severity === 'critical' ? 'crit' : 'warn',
-          text: single ? fill(t('incident.attn.one'), { number: top.number, title: top.title }) : fill(t('incident.attn.many'), { count: page.total, title: top.title }),
+          text: single ? fill(t('incident.attn.one'), { number: top.number, title: top.title }) : fill(tn('incident.attn.many', page.total), { count: page.total, title: top.title }),
           action: single ? { label: t('incident.attn.openOne'), href: `/watch/incidents/${top.id}` } : { label: t('incident.attn.openAll'), href: '/watch/incidents' },
         },
       ];

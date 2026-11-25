@@ -25,7 +25,7 @@ function childLabel(name: string, t: (k: Key) => string): string {
 }
 
 function EngineStatus({ data }: { data: PlatformEngineResponse }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   if (!data.reachable) return <p className="text-[13px] leading-relaxed text-muted">{t(`platform.engine.${data.reason}`)}</p>;
   return (
     <div className="space-y-3">
@@ -48,7 +48,7 @@ function EngineStatus({ data }: { data: PlatformEngineResponse }) {
                 </p>
               )}
               {c.waiting_for && <p className="text-xs text-muted">{fill(t('platform.waitingFor'), { name: childLabel(c.waiting_for, t) })}</p>}
-              {c.restarts > 0 && <p className="text-xs text-muted">{fill(t('platform.restarts'), { n: c.restarts })}</p>}
+              {c.restarts > 0 && <p className="text-xs text-muted">{fill(tn('platform.restarts', c.restarts), { n: c.restarts })}</p>}
               {c.last_error && (
                 <p className="mt-0.5 break-words text-xs text-muted" dir="auto">
                   {fill(t('platform.lastError'), { e: c.last_error })}

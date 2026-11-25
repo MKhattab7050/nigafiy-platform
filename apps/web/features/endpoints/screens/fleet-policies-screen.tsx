@@ -3,7 +3,7 @@
 import { Check, Lock, LockKeyhole, Minus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { FLEET_PERMISSION_KEYS, type FleetGroup, type FleetPermissionProfile } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, DataTable, Notice, PageHeader, Tag } from '@/components/ui';
+import { Async, Badge, Button, Card, DataTable, Notice, PageHeader, Tag, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
@@ -17,6 +17,7 @@ import { ProfileEditor } from '../components/fleet-policy/profile-editor';
  * their access policy, and what no policy can turn off. Technicians read; admins change.
  */
 export function FleetPoliciesScreen() {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = policyText(locale);
   const { can } = useApp();
@@ -32,7 +33,7 @@ export function FleetPoliciesScreen() {
   };
 
   async function remove(path: string, confirmText: string) {
-    if (!window.confirm(confirmText)) return;
+    if (!(await confirm(confirmText, { destructive: true }))) return;
     setError(null);
     try {
       await api(path, { method: 'DELETE' });

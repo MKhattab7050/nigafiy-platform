@@ -4,7 +4,7 @@ import { Activity, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { FleetGroup, FleetMonitorKind, FleetMonitorRule, FleetMonitorState } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Switch } from '@/components/ui';
+import { Async, Badge, Button, Card, Field, Input, Modal, PageHeader, Select, Switch, useConfirm } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
@@ -137,6 +137,7 @@ function ruleSummary(r: FleetMonitorRule, tx: Text): string {
 }
 
 export function FleetMonitoringScreen() {
+  const confirm = useConfirm();
   const { locale } = useI18n();
   const tx = monitorText(locale);
   const { can } = useApp();
@@ -147,7 +148,7 @@ export function FleetMonitoringScreen() {
   const [error, setError] = useState<string | null>(null);
 
   async function remove(r: FleetMonitorRule) {
-    if (!window.confirm(tx.confirmDelete(r.name))) return;
+    if (!(await confirm(tx.confirmDelete(r.name), { destructive: true }))) return;
     setError(null);
     try {
       await api(`/fleet/monitoring/rules/${r.id}`, { method: 'DELETE' });
