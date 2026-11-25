@@ -31,7 +31,7 @@ const KNOWN_BLOCKS = new Set([
 ]);
 
 /** Drivers whose "not supported" reason is translated (cb.r.unsupported.<driver>). */
-const UNSUPPORTED_WHY = new Set(['cisco_nxos', 'cisco_asa', 'aruba_procurve', 'aruba_aoscx', 'mikrotik_routeros', 'fortinet_fortios', 'huawei_vrp', 'dell_os10', 'dell_os6', 'openwrt', 'paloalto_panos']);
+const UNSUPPORTED_WHY = new Set(['cisco_nxos', 'cisco_asa', 'aruba_procurve', 'aruba_aoscx', 'mikrotik_routeros', 'fortinet_fortios', 'huawei_vrp', 'dell_os10', 'dell_os6', 'paloalto_panos']);
 
 function blockText(b: { code: string; message: string }, t: (k: Key) => string): string {
   if (KNOWN_BLOCKS.has(b.code)) return t(`cb.r.block.${b.code}` as Key);
@@ -93,6 +93,7 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
           }
           const diff: Diff | null = p.current ? { from: p.current, to: p.version, identical: p.identical, added: p.added, removed: p.removed, approximate: p.approximate, truncated: p.truncated, hunks: p.hunks } : null;
           const vyos = p.method === 'vyos_commit_confirm';
+          const owrt = p.method === 'openwrt_uci_apply_rollback';
           const mismatch = p.identity.check !== 'match';
           const forcedOk = !mismatch || (otherDevice && otherConfirm.trim() === p.other_device_confirm_text);
           const ok = confirm.trim() === p.confirm_text && reason.trim().length >= 10 && forcedOk;
@@ -104,7 +105,7 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
                 if (ok) void submit(mismatch);
               }}
             >
-              <Notice>{fill(t(vyos ? 'cb.r.introVyos' : 'cb.r.intro'), { n: p.version.number })}</Notice>
+              <Notice>{fill(t(owrt ? 'cb.r.introOpenwrt' : vyos ? 'cb.r.introVyos' : 'cb.r.intro'), { n: p.version.number })}</Notice>
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-fg/85">{t('cb.r.identity')}</p>
                 <p className="text-[13px] text-muted">{fill(t('cb.r.identityVersion'), { n: ltr(p.version.number), id: identityText(p.identity.version, t) })}</p>
@@ -138,7 +139,7 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
                 <Field label={t('cb.r.confirm')} hint={fill(t('cb.r.confirmHint'), { name: ltr(p.confirm_text) })}>
                   {(id) => <Input id={id} dir="auto" autoComplete="off" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
                 </Field>
-                <Field label={t('cb.r.minutes')} hint={t(vyos ? 'cb.r.minutesHintVyos' : 'cb.r.minutesHint')}>
+                <Field label={t('cb.r.minutes')} hint={t(owrt ? 'cb.r.minutesHintOpenwrt' : vyos ? 'cb.r.minutesHintVyos' : 'cb.r.minutesHint')}>
                   {(id) => (
                     <Select id={id} value={String(minutes)} onChange={(e) => setMinutes(Number(e.target.value))}>
                       {MINUTES.map((m) => (
