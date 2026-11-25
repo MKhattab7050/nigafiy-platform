@@ -120,6 +120,9 @@ function Invoke-Logged([string]$file, [string[]]$arguments, [string]$logName, [i
   $err = Join-Path $LogDir "$logName.stderr.txt"
   Write-Host "> $file $($arguments -join ' ')"
   $p = Start-Process -FilePath $file -ArgumentList $arguments -PassThru -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err
+  # Open the process handle now: without -Wait, .NET keeps the exit code only when the handle was opened
+  # while the process ran, otherwise ExitCode stays empty (run 20261125-095600 failed two checks on that).
+  $null = $p.Handle
   if (-not $p.WaitForExit($timeoutSec * 1000)) {
     Write-Host "timed out after $timeoutSec s, stopping PID $($p.Id) (started by this script)"
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
@@ -318,7 +321,9 @@ function Test-Msi([string]$thumb) {
   if (Test-Path -LiteralPath $engine) {
     $r = Invoke-Logged $engine @('install-info') 'msi-engine-install-info' 60
     $txt = [string]$r.stdout
-    [void](Test-Check $area 'nigafiy-engine install-info says msi' ($r.code -eq 0 -and $txt -match '(?i)\bmsi\b') (($txt -replace '\s+', ' ').Trim()))
+    $kind = ''
+    try { $kind = [string](($txt | ConvertFrom-Json).install.kind) } catch { $kind = "unreadable JSON: $($_.Exception.Message)" }
+    [void](Test-Check $area 'nigafiy-engine install-info says msi' ($r.code -eq 0 -and $kind -eq 'msi') "exit $($r.code) install.kind=$kind $(($txt -replace '\s+', ' ').Trim())")
   }
 
   # Start-up self-check of the installed app: scratch profile, no local stack, no ports, then it quits.
