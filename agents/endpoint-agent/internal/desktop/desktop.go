@@ -19,6 +19,7 @@ import (
 	"github.com/nigafiy/agent/internal/clipboard"
 	"github.com/nigafiy/agent/internal/remotedesktop"
 	"github.com/nigafiy/agent/internal/userui"
+	"github.com/nigafiy/agent/internal/videoenc"
 )
 
 type Desktop interface {
@@ -64,8 +65,11 @@ type Local struct {
 	capture  remotedesktop.CaptureSource
 	mu       sync.Mutex
 	encoders map[string]*remotedesktop.Encoder
-	tools    localTools
-	tray     trayState
+	// video: the WebRTC H.264 grabbers per stream (video.go); videoOpen replaces the encoder.
+	video     map[string]*remotedesktop.VideoGrabber
+	videoOpen videoenc.Opener
+	tools     localTools
+	tray      trayState
 }
 
 func NewLocal() *Local {

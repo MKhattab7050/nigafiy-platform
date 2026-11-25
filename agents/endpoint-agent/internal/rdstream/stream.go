@@ -18,8 +18,12 @@ import (
 //
 //	server → agent: viewers{count} ack{seq} full settings{display,quality,scale,adaptive}
 //	                input{ev} clipboard_get{req} clipboard_set{req,text} displays end{reason}
+//	                rtc_offer{req,sdp,ice_servers,control} rtc_ice{req,candidate}
+//	                rtc_perms{req,control} rtc_close{req}
 //	agent → server: hello stats displays clipboard{req,text} clipboard_error{req,error}
 //	                clipboard_set_ok{req} input_error{error} error{where,error}
+//	                rtc_answer{req,sdp} rtc_ice{req,candidate} rtc_state{req,state,code,reason,encoder}
+//	                rtc_input{req,kind,…} rtc_stats
 type inMsg struct {
 	T        string                    `json:"t"`
 	Count    int                       `json:"count"`
@@ -45,6 +49,11 @@ type inMsg struct {
 	Paths    []string          `json:"paths"`
 	Cursor   *bool             `json:"cursor"`
 	Depth    *int              `json:"depth"`
+	// WebRTC signalling (webrtc.go); Req carries the viewer's routing id.
+	SDP        string        `json:"sdp"`
+	IceServers []string      `json:"ice_servers"`
+	Control    *bool         `json:"control"`
+	Candidate  *rtcCandidate `json:"candidate"`
 }
 
 // CloseSessionEnded is the close code the server uses when the session is over.
@@ -120,7 +129,8 @@ func (s *stream) serve(ctx context.Context) bool {
 	displays, _ := d.Displays()
 	s.send(map[string]any{"t": "hello", "session_id": s.l.req.SessionID, "displays": displays, "desktop": d.Info(),
 		"encoder": "jpeg", "webp": false, "tile": remotedesktop.TileSize, "control": s.l.req.Control, "max_fps": cfg.MaxFPS,
-		"features": Features(), "cursor_supported": remotedesktop.CursorSupported, "end_hotkey": "Ctrl+Alt+Shift+E"})
+		"features": Features(), "cursor_supported": remotedesktop.CursorSupported, "end_hotkey": "Ctrl+Alt+Shift+E",
+		"webrtc": s.l.m.rtcCapability()})
 	s.send(s.l.stateMsg())
 	s.l.setStream(s)
 	defer s.l.setStream(nil)
@@ -333,6 +343,7 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 		}
 		s.needFull = true
 		s.mu.Unlock()
+		s.l.rtc().settings(m.Display, m.Scale, m.Cursor)
 		s.signal()
 	case "displays":
 		list, err := d.Displays()
@@ -388,6 +399,14 @@ func (s *stream) handle(ctx context.Context, m inMsg) bool {
 			}
 			s.send(map[string]any{"t": "clipboard_set_ok", "req": req})
 		}(m.Req, m.Text)
+	case "rtc_offer":
+		go s.l.rtc().offer(m)
+	case "rtc_ice":
+		s.l.rtc().ice(m)
+	case "rtc_perms":
+		s.l.rtc().perms(m.Req, m.Control != nil && *m.Control)
+	case "rtc_close":
+		s.l.rtc().closePeer(m.Req, "")
 	case "privacy", "block_input", "sas", "chat", "ask", "annotate", "audio":
 		s.handleTool(ctx, m)
 	case "end":

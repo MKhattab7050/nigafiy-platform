@@ -187,6 +187,9 @@ func Serve(ctx context.Context, r io.Reader, w io.Writer, d Desktop) error {
 				_ = json.Unmarshal(m.Params, &s)
 				reply(m.ID, nil, nil, d.SetClipboardText(s))
 			default:
+				if serveVideo(d, m.Method, m.Params, func(v any, data []byte, err error) { reply(m.ID, v, data, err) }) {
+					return
+				}
 				reply(m.ID, nil, nil, fmt.Errorf("unknown helper method %q", m.Method))
 			}
 		}(m)

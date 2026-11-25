@@ -357,7 +357,9 @@ func TestClosingWhileTheConsentDialogIsUpWithdrawsIt(t *testing.T) {
 	ui := &waitingUI{up: make(chan struct{})}
 	m := NewManager(Config{ServerURL: "http://127.0.0.1:1", Credential: func() string { return "x" }, Desktop: newFakeDesktop(ui)})
 	done := make(chan OpenResult, 1)
-	go func() { done <- m.Open(context.Background(), OpenRequest{SessionID: "c1", ConsentRequired: true, Stream: true}) }()
+	go func() {
+		done <- m.Open(context.Background(), OpenRequest{SessionID: "c1", ConsentRequired: true, Stream: true})
+	}()
 	<-ui.up
 	if m.Close("other", "operator") {
 		t.Fatal("closed a session that is not the one asking")
