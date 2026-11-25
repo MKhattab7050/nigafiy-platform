@@ -63,6 +63,10 @@ const SCREENS: readonly Screen[] = [
   // Toolbox
   { path: '/toolbox', name: 'Toolbox, Tools', program: 'toolbox' },
   { path: '/toolbox/subnet', name: 'Toolbox, Subnet calculator', program: 'toolbox' },
+  // The user guide (Hub)
+  { path: '/guide', name: 'User guide', program: 'hub' },
+  { path: '/guide/routers', name: 'User guide, Reach your router', program: 'hub' },
+  { path: '/guide/fleet-enroll', name: 'User guide, Add a computer to Fleet', program: 'hub' },
 ];
 
 /** One of each detail page, on the seeded records. */
@@ -259,6 +263,74 @@ test('a program left out of the install reads "not installed" and leads to its i
   await expect(automation).toContainText('Available in Nigafiy Mind');
   await expect(automation.getByRole('link', { name: 'Install Nigafiy Mind' })).toHaveAttribute('href', '/programs#mind');
   await expect(page.locator('#notifications').getByRole('link')).toHaveAttribute('href', '/watch/notifications');
+  expect(problems).toEqual([]);
+});
+
+test('the help button opens the guide for the page, in English (light) and Arabic (RTL, dark); the guide searches and marks programs left out', async ({ page }) => {
+  test.setTimeout(240_000);
+  const problems = watchForProblems(page);
+  countApi(page);
+  await register(page, 'guide');
+
+  await test.step('English, light: keyboard to the help button on Devices', async () => {
+    await setTheme(page, 'light');
+    await paceApi();
+    await page.goto('/radar/devices');
+    const help = page.getByRole('link', { name: 'Help for this page' });
+    await expect(help).toHaveAttribute('href', '/guide/devices');
+    await help.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/guide\/devices$/);
+    await expect(page.locator('main').getByRole('heading', { level: 1 })).toHaveText('Add and organize devices');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
+
+    // The discovery page opens its sub-heading.
+    await paceApi();
+    await page.goto('/radar/discovery');
+    await expect(page.getByRole('link', { name: 'Help for this page' })).toHaveAttribute('href', '/guide/first-scan#scope');
+
+    // The guide's front page: Mind is left out of this test install (global-setup), so its section says so.
+    await page.getByRole('link', { name: 'User guide' }).first().click();
+    await expect(page).toHaveURL(/\/guide$/);
+    await expect(page.locator('[data-guide-section="mind"]')).toContainText('Not installed');
+    await expect(page.locator('[data-guide-section="radar"]')).not.toContainText('Not installed');
+    await page.getByLabel('Search the guide').fill('router credentials');
+    await page.locator('main').getByRole('link', { name: /Reach your router/ }).click();
+    await expect(page).toHaveURL(/\/guide\/routers/);
+    await expect(page.locator('#safety')).toBeVisible();
+
+    // The global search lists guide sections too.
+    await page.getByRole('button', { name: 'Global search' }).click();
+    await page.getByRole('dialog').getByRole('searchbox').fill('Quick Support');
+    await expect(page.locator('[data-search-guide]')).toContainText('Add a computer to Fleet');
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: test.info().outputPath('guide-en.png'), fullPage: true });
+  });
+
+  await test.step('Arabic, RTL, dark: the help button on Routers', async () => {
+    await page.context().addCookies([localeCookie(page, 'ar')]);
+    await setTheme(page, 'dark');
+    await paceApi();
+    await page.goto('/guard/routers');
+    await page.getByRole('link', { name: 'مساعدة لهذه الصفحة' }).click();
+    await expect(page).toHaveURL(/\/guide\/routers$/);
+    await expect(page.locator('main').getByRole('heading', { level: 1 })).toHaveText('الوصول إلى الراوتر');
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ar');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // Technical values stay left-to-right inside Arabic text.
+    await expect(page.locator('main bdi[dir="ltr"]').first()).toBeVisible();
+
+    await paceApi();
+    await page.goto('/guide');
+    await expect(page.locator('[data-guide-section="mind"]')).toContainText('غير مثبّت');
+    // An English word finds the section on the Arabic page, shown in Arabic.
+    await page.getByLabel('ابحث في الدليل').fill('router');
+    await expect(page.locator('main').getByRole('link', { name: /الوصول إلى الراوتر/ })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath('guide-ar.png'), fullPage: true });
+    await page.context().addCookies([localeCookie(page, 'en')]);
+  });
   expect(problems).toEqual([]);
 });
 
