@@ -568,7 +568,7 @@ function architecture(themeName, lang) {
   body.push(tile(G.engine, NAVY, eX, 92, 28));
   body.push(T(rtl ? eX - 10 : eX + 38, 111, L.engine, { size: 15, weight: 700, fill: t.ink, mono: true, rtl }));
   body.push(T(rtl ? eX - 150 : eX + 168, 111, L.engineSub, { size: 13, fill: t.muted, rtl }));
-  body.push(T(rtl ? 260 : 940, 111, ':47140', { size: 12.5, fill: t.muted, mono: true, anchor: 'end', rtl }));
+  body.push(T(rtl ? 260 : 940, 111, ':47140', { size: 12.5, fill: t.muted, mono: true, anchor: rtl ? 'start' : 'end' }));
 
   // Links first so cards sit on top of them.
   const yMid = r1 + ch / 2;
