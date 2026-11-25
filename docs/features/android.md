@@ -109,8 +109,15 @@ outside the build shell). Checksums are SHA-256 and matched the publisher's own 
 
 **License:** the SDK packages require Google's *Android Software Development Kit License Agreement*
 (`android-sdk-license`). The owner accepted it on 2026-11-25 ("Yes, accept it"), for these three packages
-only. `android-sdk-preview-license` and every other license were not accepted. No emulator and no
-system image were downloaded.
+only. `android-sdk-preview-license` and every other license were not accepted.
+
+**Emulator (later on 2026-11-25, builder EMU):** `emulator` 37.3.10 (1.1 GB installed) and
+`system-images;android-36;default;x86_64` revision 2 (AOSP Android 16 without Google APIs or Play,
+security patch 2025-07-05, 2.0 GB installed), through sdkmanager (SHA-1 checked by sdkmanager). Both
+packages name only `android-sdk-license` in their `package.xml`; no other license was asked for or
+accepted. `emulator -accel-check` reports "WHPX(10.0.26200) is installed and usable", so it runs
+accelerated without enabling any Windows feature. The AVD lives in `D:\nigafiy-tools\avd`
+(`ANDROID_AVD_HOME`), not in the user profile.
 
 ## 8. As built (2026-11-25)
 
@@ -227,10 +234,75 @@ Ran on this PC, for real:
   the phone's page and the enroll dialog in English (light) and Arabic (RTL, dark), with a phone seeded
   through the agent protocol.
 
+- The release APK on an Android 16 emulator as Device Owner, driven from Fleet's real API: see §11 for
+  each action and the bugs this found.
+
 Never ran:
-- The app on any Android phone or emulator (no real phone was touched; no emulator or system image
-  is approved). So nothing on the phone side has been seen working: enrollment from the app, the
-  foreground service and long poll under Doze, Keystore storage, TLS pinning on a device, any
-  Device Owner action (lock, password, camera, install, uninstall, wipe, release), QR provisioning by
-  Android's setup wizard, and the boot / update restart. Treat the first test-phone run as the first
-  real test.
+- The app on a **real phone** (none was touched). Not seen on any device: QR provisioning by
+  Android's setup wizard, the foreground service and long poll under Doze over hours, TLS pinning
+  against Nigafiy LAN TLS (the emulator talked plain `http://` to 127.0.0.1 through `adb reverse`),
+  a reboot (the boot receiver), and an erase that really resets a phone (the emulator cannot, §11).
+
+## 11. Emulator real run (2026-11-25, builder EMU)
+
+A scratch emulator (AOSP Android 16, API 36, x86_64, WHPX), the **signed release APK**, and the real
+API + web on 127.0.0.1 with a throwaway PostgreSQL. The phone reached the API only through
+`adb reverse tcp:3271 tcp:3271` (its own 127.0.0.1); nothing touched a LAN address. Device Owner was set
+with `dpm set-device-owner` on the fresh emulator. Every action was sent through Fleet's API as an
+admin with MFA (step-up for erase and stop management), exactly as the web sends it.
+
+| Action | Result on the emulator |
+| --- | --- |
+| Enroll (the `nigafiy://` link from Fleet) | Enrolled after fixes 1 and 2 below. The endpoint shows online. |
+| Heartbeat / facts | Android 16, API 36, patch 2025-07-05, 182 apps. Compliance flagged the old patch and USB debugging; "unknown sources" shows as not measured. CPU is stored as NULL, never 0. |
+| Lock | The screen went off and locked; the command completed. |
+| Camera off / on | logcat: "Camera disabled by device policy"; the camera app showed its error. Switching it on again worked. |
+| Screen-lock requirement (medium) | Reported as not met; after a PIN was set on the emulator, the screen-lock check passed. |
+| Install APK (a small test APK uploaded to Fleet) | Silent install; `pm` lists `com.nigafiy.emutest`; the download went through the install command only. |
+| Remove app | Removed. Removing the agent itself is refused (`409 android_self_uninstall`). |
+| Stop management | Device Owner cleared, the agent's service stopped, its notification removed, and the endpoint became revoked/offline (fix 5). The app showed the enroll form, and enrolling again worked without restarting the app (fix 6). |
+| APK update over an enrolled agent | The service came back by itself (`MY_PACKAGE_REPLACED`), and the Device Owner notification was visible (fix 7). |
+| Erase | Android accepted `wipeDevice` and the command reported done, **but the emulator did not reset**. Its kernel log says it cannot write the recovery command ("failed to find /misc partition"), so the emulator kept running. Fix 8 makes Fleet detect this. A real phone's erase was not tested. |
+
+**Bugs found and fixed** (each with tests: `apps/api/tests/fleet-android.test.ts`, now 20 tests, and
+the Kotlin JVM tests):
+1. Android refused plain `http://` to 127.0.0.1 (cleartext blocked by default). Now
+   `network_security_config.xml` allows cleartext only for `127.0.0.1` and `localhost`. Every other host
+   still needs HTTPS.
+2. On Android 15+ (edge-to-edge) the action bar and the system bars covered the app's content. The
+   content is now padded by the system-bar, cutout and keyboard insets.
+3. Every heartbeat failed with 400: the installed-app list contains the framework package `android`,
+   which the package-name check refused. One-segment names are now accepted for the inventory. The
+   uninstall check is unchanged (`android` cannot be removed).
+4. Light heartbeats (without the app list) erased the stored app count. It is now kept.
+5. After "Stop management" the phone kept a working credential. A confirmed release now revokes the
+   endpoint (credential and enrollment token cleared, `endpoint.revoked` audited with reason
+   `android_management_stopped`). A failed release revokes nothing.
+6. After release the agent's service kept running with no credential and ignored a new enrollment. It
+   now stops itself, and the app restarts it when a new enrollment is entered.
+7. The Device Owner's management notification was hidden (Android 13+ notification permission). A
+   Device Owner now grants its own `POST_NOTIFICATIONS`, so the user can always see that the phone is
+   managed.
+8. An erase that Android accepted but never carried out showed as done. Now, when the phone reports
+   again more than 3 minutes after the erase completed **and its uptime shows it did not restart**,
+   the erase becomes `failed` ("The phone is still running ...") with the audit row
+   `fleet.android_wipe_not_done`. A wipe does not revoke the credential, so this report can still arrive.
+   Verified live: the second erase on the emulator turned to failed.
+
+**Scripts** (`scripts/android-emu/`, Node, loopback only, nothing needs admin rights):
+
+| Script | What it does |
+| --- | --- |
+| `emulator.mjs create / start / prepare <apk> [port] / stop` | Creates the AVD `nigafiy-scratch`; boots it headless with its data wiped (port 5580); installs the APK, makes it Device Owner (retries while Android still says "accounts") and sets `adb reverse`; shuts it down. |
+| `stack.mjs [--web]` | Throwaway PostgreSQL (5426), the API (3271) and optionally the web dev server (3272), all on 127.0.0.1; `--stop-file` stops it. |
+| `fleet.mjs setup / show / act / upload / get / post` | A throwaway admin with MFA, an endpoint and its enrollment link; Android actions with step-up; APK upload; raw API calls. |
+| `make-test-apk.mjs` | Builds the code-free test APK `com.nigafiy.emutest` for install/remove. |
+| `web-shot.mjs` | A screenshot of a Fleet page, signed in as the throwaway admin. |
+| `webrtc-browser.mjs` | The WebRTC real-browser run (`webrtc-networking.md` §7). |
+
+A run: `emulator.mjs create` (once), `start`, `node scripts/android-emu/stack.mjs --web`,
+`fleet.mjs setup`, `emulator.mjs prepare agents/android-agent/app/build/outputs/apk/release/app-release.apk`.
+Then open the printed enrollment link on the emulator
+(`adb -s emulator-5580 shell am start -a android.intent.action.VIEW -d '<link>'`), and send actions
+with `fleet.mjs act '{"action":"lock"}'`. Erase only this scratch emulator; the next `start` wipes it
+anyway.
