@@ -49,7 +49,8 @@ export async function queueEndpointCommandFor(
   }
   const ep = (
     await db.query<{ id: string; site_id: string; device_id: string | null; name: string; platform: EndpointPlatform; status: string; last_heartbeat_at: Date | null }>(
-      `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at FROM endpoints WHERE id = $1`,
+      // Quick Support computers are attended only: automation never reaches them (SEC-02).
+      `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at FROM endpoints WHERE id = $1 AND kind = 'agent'`,
       [endpointId],
     )
   ).rows[0];
