@@ -19,6 +19,8 @@ apps/web/.next-*/
 release/
 # ...but the release scripts are source (docs/operations/updates.md)
 !scripts/release/
+# ...and the website's release file (apps/site/release/release.json, docs/website.md)
+!apps/site/release/
 *.tsbuildinfo
 next-env.d.ts
 

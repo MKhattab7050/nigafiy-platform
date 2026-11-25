@@ -1,0 +1,38 @@
+{
+  "name": "@nigafiy/site",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Nigafiy website: a static Next.js export in English and Arabic (docs/website.md)",
+  "scripts": {
+    "dev": "next dev -p 3291",
+    "build": "next build",
+    "build:fixture": "node scripts/build-fixture.ts",
+    "serve": "node scripts/serve.ts out 3290",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "pnpm run test:unit && pnpm run build:fixture && pnpm run test:e2e",
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/unit/*.test.ts",
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "release:from-dist": "node scripts/release-from-dist.ts",
+    "changelog": "node scripts/changelog.ts",
+    "og": "node scripts/make-og.ts",
+    "screenshots": "playwright test -c screenshots/playwright.config.ts"
+  },
+  "dependencies": {
+    "@nigafiy/brand": "workspace:*",
+    "@nigafiy/shared-types": "workspace:*",
+    "markdown-it": "^14.1.0",
+    "next": "^16.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.9.0"
+  }
+}

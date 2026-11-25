@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "product": "nigafiy",
+  "version": "9.8.7",
+  "released_at": "2026-11-25T10:00:00.000Z",
+  "manifest_url": "https://downloads.example.com/9.8.7/manifest.json",
+  "components": [
+    {
+      "id": "desktop-windows-x64",
+      "version": "9.8.7",
+      "url": "https://downloads.example.com/9.8.7/Nigafiy%20Setup%209.8.7.exe",
+      "size": 123456789,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "id": "endpoint-agent-windows-x64",
+      "version": "9.8.7",
+      "url": "https://downloads.example.com/9.8.7/Nigafiy-Endpoint-Agent-Setup-9.8.7.exe",
+      "size": 2860410,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+    }
+  ]
+}
