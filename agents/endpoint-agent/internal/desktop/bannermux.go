@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/nigafiy/agent/internal/remotedesktop"
@@ -133,4 +134,19 @@ func (m *BannerMux) EndVideo(stream string) {
 	if v, ok := m.Desktop.(Video); ok {
 		v.EndVideo(stream)
 	}
+}
+
+// TargetSession passes Windows user-session switching (rdstream.SessionTargeter) through to the
+// wrapped desktop (the service's Supervisor). Like the video source, it is not promoted from the
+// embedded Desktop interface, so without this the real agent could never switch to another user's
+// session or the sign-in screen. A desktop that cannot switch keeps the console's session and
+// refuses any other with the same code as before.
+func (m *BannerMux) TargetSession(session string) error {
+	if t, ok := m.Desktop.(interface{ TargetSession(string) error }); ok {
+		return t.TargetSession(session)
+	}
+	if session == "" {
+		return nil
+	}
+	return errors.New(ErrNeedsService)
 }

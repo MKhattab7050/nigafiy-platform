@@ -64,7 +64,7 @@ type SessionTargeter interface {
 }
 
 // ErrNeedsService: another Windows session or the sign-in screen without the LocalSystem service.
-const ErrNeedsService = "user_session_needs_service: another Windows session or the sign-in screen needs the Nigafiy agent installed as a service"
+const ErrNeedsService = desktop.ErrNeedsService
 
 // Effective returns the permissions this agent enforces for the request: the server's profile
 // flags (mouse and keyboard only when both Control and the profile allow it), or for an older

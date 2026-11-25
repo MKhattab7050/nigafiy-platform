@@ -328,6 +328,9 @@ type Targeter interface {
 	SetTarget(session string) (changed bool, err error)
 }
 
+// ErrNeedsService: another Windows session or the sign-in screen without the LocalSystem service.
+const ErrNeedsService = "user_session_needs_service: another Windows session or the sign-in screen needs the Nigafiy agent installed as a service"
+
 // TargetSession moves the session helper (rdstream.SessionTargeter). Only the service's launcher
 // can: anything else refuses a target other than the console's session.
 func (s *Supervisor) TargetSession(session string) error {
@@ -336,7 +339,7 @@ func (s *Supervisor) TargetSession(session string) error {
 		if session == "" {
 			return nil
 		}
-		return errors.New("user_session_needs_service: another Windows session or the sign-in screen needs the Nigafiy agent installed as a service")
+		return errors.New(ErrNeedsService)
 	}
 	changed, err := t.SetTarget(session)
 	if err != nil {
