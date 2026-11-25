@@ -19,7 +19,13 @@ function read(): Choice {
 /** System / Light / Dark. The choice is kept in this browser only (localStorage), never sent anywhere. */
 export function ThemeSwitch({ labels }: { labels: { group: string; system: string; light: string; dark: string } }) {
   const [choice, setChoice] = useState<Choice>('system');
-  useEffect(() => setChoice(read()), []);
+  useEffect(() => {
+    const c = read();
+    setChoice(c);
+    // THEME_SCRIPT set this before paint; set it again in case React re-rendered <html> since
+    // (a hydration error makes React rebuild the page and drop attributes it doesn't own).
+    if (c !== 'system') document.documentElement.setAttribute('data-theme', c);
+  }, []);
   const apply = (c: Choice) => {
     setChoice(c);
     const root = document.documentElement;

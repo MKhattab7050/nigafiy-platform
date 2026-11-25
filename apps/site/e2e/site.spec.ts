@@ -81,6 +81,53 @@ async function setTheme(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((t) => localStorage.setItem('nigafiy-site-theme', t), theme);
 }
 
+/**
+ * Records the first DOM changes on every page load (from document start), so an intermittent
+ * hydration error (React #418, seen only on the CI runner) can be traced to what changed the page
+ * before React hydrated it. Read back by pageDiagnostics() only when a page check fails.
+ */
+async function recordDomChanges(page: Page) {
+  await page.addInitScript(() => {
+    const log: string[] = [];
+    (window as unknown as { __domLog: string[] }).__domLog = log;
+    const show = (n: Node): string => {
+      if (!(n instanceof Element)) return n.nodeName + (n.textContent ? `(${JSON.stringify(n.textContent.slice(0, 40))})` : '');
+      const attrs = [...n.attributes].map((a) => `${a.name}="${a.value.slice(0, 60)}"`).join(' ');
+      return `<${n.localName}${attrs ? ` ${attrs}` : ''}>`;
+    };
+    const where = (n: Node): string => {
+      const parts: string[] = [];
+      for (let e: Node | null = n; e && e instanceof Element && parts.length < 4; e = e.parentNode) parts.unshift(e.localName);
+      return parts.join('>');
+    };
+    const t0 = performance.now();
+    const at = () => `${Math.round(performance.now() - t0)}ms`;
+    document.addEventListener('DOMContentLoaded', () => log.push(`${at()} DOMContentLoaded`));
+    window.addEventListener('load', () => log.push(`${at()} load`));
+    window.addEventListener('error', (e) => log.push(`${at()} error: ${String(e.message).slice(0, 80)}`));
+    new MutationObserver((records) => {
+      if (document.readyState === 'loading') return; // the parser building the page
+      for (const r of records) {
+        if (log.length > 80) return;
+        if (r.type === 'attributes') log.push(`${at()} attr ${r.attributeName} on ${where(r.target)} (was ${JSON.stringify(r.oldValue)})`);
+        for (const n of r.addedNodes) log.push(`${at()} + ${where(r.target)} ${show(n)}`);
+        for (const n of r.removedNodes) log.push(`${at()} - ${where(r.target)} ${show(n)}`);
+      }
+    }).observe(document, { subtree: true, childList: true, attributes: true, attributeOldValue: true });
+  });
+}
+
+/** Runs one page's checks; on failure, adds the page's recorded DOM changes to the error. */
+async function checkPage(page: Page, problems: string[], checks: () => Promise<void>) {
+  try {
+    await checks();
+  } catch (err) {
+    const log = await page.evaluate(() => (window as unknown as { __domLog?: string[] }).__domLog ?? []).catch(() => ['(no log)']);
+    (err as Error).message += `\n\nProblems: ${JSON.stringify(problems)}\n\nDOM changes after parsing (diagnostic):\n${log.join('\n')}`;
+    throw err;
+  }
+}
+
 test.describe.configure({ mode: 'serial' });
 
 let pages: string[] = [];
@@ -104,8 +151,10 @@ test('every page in English (light): lang, dir, theme, one heading, no console e
   test.setTimeout(600_000);
   const problems = watch(page);
   await setTheme(page, 'light');
+  await recordDomChanges(page);
   for (const p of pages.filter((x) => x.startsWith('/en/'))) {
     await page.goto(p);
+    await checkPage(page, problems, async () => {
     const html = page.locator('html');
     await expect(html, p).toHaveAttribute('lang', 'en');
     await expect(html, p).toHaveAttribute('dir', 'ltr');
@@ -113,6 +162,7 @@ test('every page in English (light): lang, dir, theme, one heading, no console e
     await expect(page.locator('h1'), p).toHaveCount(1);
     await expect(page.locator('main'), p).toBeVisible();
     expect(problems, p).toEqual([]);
+    });
   }
 });
 
@@ -120,8 +170,10 @@ test('every page in Arabic (dark, RTL): lang, dir, theme, one heading, no consol
   test.setTimeout(600_000);
   const problems = watch(page);
   await setTheme(page, 'dark');
+  await recordDomChanges(page);
   for (const p of pages.filter((x) => x.startsWith('/ar/'))) {
     await page.goto(p);
+    await checkPage(page, problems, async () => {
     const html = page.locator('html');
     await expect(html, p).toHaveAttribute('lang', 'ar');
     await expect(html, p).toHaveAttribute('dir', 'rtl');
@@ -129,6 +181,7 @@ test('every page in Arabic (dark, RTL): lang, dir, theme, one heading, no consol
     await expect(page.locator('h1'), p).toHaveCount(1);
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), p).toBe('rgb(17, 20, 24)');
     expect(problems, p).toEqual([]);
+    });
   }
 });
 
