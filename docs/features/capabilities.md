@@ -28,7 +28,7 @@ before relying on any row below.
 | Router control | 16 vendor drivers: client list, block/unblock, rate limit, schedule, rename, Wi-Fi, DHCP reservations, port forwards and reboot where the firmware offers them, each re-read after the change ([router-controls.md](router-controls.md)) |
 | Switch ports | Port Detective reads managed switches over SNMP (state, speed, traffic and error history, devices per port, "which port is this device plugged into"); port control over SNMP SET: enable/disable, VLAN, quarantine ([switch-port-control.md](switch-port-control.md)) |
 | Security checks | Rogue DHCP, UPnP IGD audit, Wi-Fi analyser, DHCP/HTTP fingerprinting ([smart-checks.md](smart-checks.md)) |
-| Config backup | SSH configuration backup, diff and secret sanitization; restore for Juniper Junos only, with `commit confirmed` ([config-backup.md](config-backup.md)) |
+| Config backup | SSH configuration backup, diff and secret sanitization; restore for Juniper Junos (`commit confirmed`) and Cisco IOS XE (`configure replace` with a revert timer), both tested only against SSH test doubles ([config-backup.md](config-backup.md)) |
 | Mind | Knowledge memory, approval-gated playbooks ([playbooks.md](playbooks.md)), automation catalogue with overrides. No AI anywhere: everything is deterministic |
 | Smart insights | Rule-based summary on the Overview: network score with the reasons behind it, and the few things worth doing now, each with evidence and a one-click action |
 | IPAM | Per-subnet address map (IPv4 and IPv6): observed, documented and free addresses, subnet plan (VLAN, gateway, DHCP pool, DNS), static / reserved records, conflict detection + automatic conflict events with evidence, address history, CSV export, subnet calculator |

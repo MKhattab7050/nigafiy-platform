@@ -32,7 +32,7 @@ to see how it works, and [roadmap/status.md](roadmap/status.md) for what is buil
 - [features/smart-checks.md](features/smart-checks.md): rogue DHCP, UPnP, Wi-Fi analyser and fingerprinting checks run by the Sensor.
 - [features/router-controls.md](features/router-controls.md): router controls beyond block/unblock, with the per-driver matrix and vendor sources.
 - [features/switch-port-control.md](features/switch-port-control.md): enable/disable, VLAN and quarantine over SNMP SET.
-- [features/config-backup.md](features/config-backup.md): SSH configuration backup, diff, sanitization and Junos restore.
+- [features/config-backup.md](features/config-backup.md): SSH configuration backup, diff, sanitization, and Junos and IOS XE restore.
 - [features/toolbox-scope.md](features/toolbox-scope.md): how every Toolbox target is checked against the authorized scopes.
 - [features/playbooks.md](features/playbooks.md): approval-gated automation.
 - [features/fleet-compliance.md](features/fleet-compliance.md): evidence-based compliance on Windows, Linux and macOS.

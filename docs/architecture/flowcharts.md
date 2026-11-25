@@ -295,45 +295,51 @@ Code: [routers/control.ts](../../apps/api/src/modules/routers/control.ts),
 [Sensor agent/routers.go](../../collectors/lan-collector/internal/agent/routers.go),
 [router drivers](../../collectors/lan-collector/internal/router). Docs:
 [features/router-controls.md](../features/router-controls.md). Real: the Zyxel VMG3625-T50B (block,
-unblock, rename, reserve, port forward, guest Wi-Fi). The other 15 drivers only against pinned-TLS
-protocol test doubles.
+unblock, rename, reserve, port forward, guest Wi-Fi). The other 15 drivers, including the Cisco IOS XE
+controls over RESTCONF (IOS XE 16.6+: block, schedule, rate limit, reservations, static-NAT port
+forwards), only against pinned-TLS protocol test doubles.
 
 ---
 
 ## 6. Configuration backup and restore safety
 
-Restore is offered for Juniper Junos only, because Junos applies a configuration with
-`commit confirmed N` and rolls back by itself if it is not confirmed in time. Every other vendor shows
-"Restore not supported". The device's identity is checked by its pinned SSH host key (a restore never
-trusts a key on first use) and by the admin typing the device name.
+Restore is offered only for vendors whose device rolls a change back by itself: **Juniper Junos**
+(`commit confirmed N`) and **Cisco IOS XE** (`configure replace … force revert trigger error timer N`,
+then `configure confirm`). Every other vendor shows "Restore not supported". The device's identity is
+checked three ways: its pinned SSH host key (a restore never trusts a key on first use), the admin
+typing the device name, and the version's own host name, which must match the latest backup's unless
+the admin forces it with a second typed confirmation.
 
 ```mermaid
 flowchart TD
-  ASK["Admin: restore version V, typed device name, reason, confirm_minutes 1 to 10"] --> PRE{"Junos, host key pinned, credentials accepted, sealed raw copy, Sensor online, nothing else running?"}
+  ASK["Admin: restore version V, typed device name, reason, timer 1 to 10 min"] --> PRE{"Junos or IOS XE, host key pinned, credentials accepted, sealed raw copy, Sensor online, nothing else running?"}
   PRE -->|no| NOT["Restore not supported or not possible now, with the reason"]
   PRE -->|yes| NAME{"Typed name equals the device name?"}
   NAME -->|no| R422["422 confirm_mismatch"]
-  NAME -->|yes| BK["Fresh backup first"]
+  NAME -->|yes| HOST{"Host name inside V equals the latest backup's?"}
+  HOST -->|"no, not forced"| R409["409 other_device"]
+  HOST -->|"yes, or forced with the second typed name"| BK["Fresh backup first"]
   BK -->|fails| F1["Failed: nothing was changed on the device"]
-  BK -->|"already runs V"| VER["verified, nothing applied"]
   BK -->|ok| CMD["config_restore command: id only, secrets added in the heartbeat answer"]
   CMD --> LEDGER["Sensor writes the id to its at-most-once ledger, refuses expired commands"]
-  LEDGER --> APPLY["configure exclusive, load override, commit confirmed N"]
+  LEDGER --> APPLY["Junos: commit confirmed N. IOS XE: SCP, verify md5, configure replace with revert timer N"]
   APPLY --> READBACK["Read back over a second SSH session"]
   READBACK --> MATCH{"Read-back equals the restored text?"}
-  MATCH -->|yes| CONFIRM["commit: confirmed"]
-  MATCH -->|"no, or session failed"| ROLL["rollback 1 and commit: rolled back"]
+  MATCH -->|yes| CONFIRM["Confirm: Junos commit, IOS XE configure confirm then write memory"]
+  MATCH -->|"no, or session failed"| ROLL["Junos rollback 1, IOS XE configure revert now"]
   CONFIRM --> HASH{"Server: verification version hash equals V?"}
   HASH -->|yes| OK["verified, config_restored event"]
   HASH -->|no| BAD["failed verify_mismatch, config_restore_failed event"]
   ROLL --> BAD2["rolled_back, audited"]
+  APPLY -.->|"never confirmed in time"| SELF["Device reverts by itself when timer N ends"]
 ```
 
 Code: [configbackup/restore.ts](../../apps/api/src/modules/configbackup/restore.ts),
 [Sensor configbackup/restore.go](../../collectors/lan-collector/internal/configbackup/restore.go),
+[restore_iosxe.go](../../collectors/lan-collector/internal/configbackup/restore_iosxe.go),
 [agent/configrestore.go](../../collectors/lan-collector/internal/agent/configrestore.go). Docs:
-[features/config-backup.md](../features/config-backup.md). Tested only, against an SSH test double of
-the Junos CLI; it has never run against a real Junos device.
+[features/config-backup.md](../features/config-backup.md). Tested only, against SSH (and SCP) test
+doubles of the Junos and IOS XE CLIs; it has never run against a real Junos or IOS XE device.
 
 ---
 
