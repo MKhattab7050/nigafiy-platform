@@ -220,7 +220,7 @@ export function TeamManagement() {
                             </Badge>
                           )}
 
-                          {canManageMember && (
+                          {canManageMember && (m.role !== 'admin' || me.role === 'owner') && (
                             <Button
                               size="sm"
                               variant="ghost"

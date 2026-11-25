@@ -361,6 +361,26 @@ teamRouter.post('/team/members/:userId/reset-password', requireRole('admin'), as
   if (member.role === 'owner' && ctx.role !== 'owner') {
     throw forbidden('Only an organization owner can reset an owner’s password');
   }
+  // The link is handed to the person who issues it, so issuing it is taking over the account
+  // (SEC-03). An administrator must not be able to become another administrator (that would
+  // defeat the second-admin approval), so only an owner resets an administrator.
+  if (member.role === 'admin' && ctx.role !== 'owner') {
+    throw forbidden('Only an organization owner can reset an administrator’s password');
+  }
+  // A password belongs to the person, not to this organization: a member who also belongs to
+  // another organization would be taken over there too (perhaps as its owner). They reset their
+  // own password with "Forgot password".
+  const elsewhere = await systemPool.query(
+    `SELECT 1 FROM memberships WHERE user_id = $1 AND organization_id <> $2 LIMIT 1`,
+    [userId, ctx.organizationId],
+  );
+  if (elsewhere.rowCount) {
+    throw new AppError(
+      409,
+      'member_in_other_organizations',
+      'This person also belongs to another organization. They can reset their own password with “Forgot password” on the sign-in page.',
+    );
+  }
 
   const token = randomToken(32);
   const expiresAt = new Date(Date.now() + 60 * 60_000);

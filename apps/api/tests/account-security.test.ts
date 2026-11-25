@@ -430,4 +430,35 @@ describe('password reset', () => {
     expect(handover.body.mail_outcome).toBe('not_configured');
     expect(handover.body.token).toBeTruthy();
   });
+
+  it('admin-issued: never for another administrator, nor for a person who also belongs to another organization (SEC-03)', async () => {
+    const owner = await newAccount('reset-sec03');
+    const admin = await addMember(owner, 'admin');
+    const admin2 = await addMember(owner, 'admin');
+    const tokensFor = async (id: string) => (await systemPool.query(`SELECT 1 FROM auth_tokens WHERE purpose = 'password_reset' AND user_id = $1`, [id])).rowCount;
+
+    // An administrator cannot take over a second administrator (the two-person approval).
+    const refused = await admin.agent.post(`/api/v1/team/members/${admin2.id}/reset-password`).set(CSRF);
+    expect(refused.status).toBe(403);
+    expect(await tokensFor(admin2.id)).toBe(0);
+    // The owner still can.
+    expect((await owner.agent.post(`/api/v1/team/members/${admin2.id}/reset-password`).set(CSRF)).status).toBe(200);
+
+    // The victim owns another organization and is only a technician here: issuing a link here
+    // would have reset the password of the other organization's owner.
+    const victim = await newAccount('reset-sec03-victim');
+    const inv = await owner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: victim.email, role: 'technician' });
+    expect(inv.status).toBe(201);
+    const acc = await request.agent(app).post(`/api/v1/auth/invitations/${inv.body.token}/accept`).set(CSRF).send({ password: PASSWORD });
+    expect(acc.status).toBe(200);
+    const victimId = await userId(victim.email);
+    for (const issuer of [admin, owner]) {
+      const r = await issuer.agent.post(`/api/v1/team/members/${victimId}/reset-password`).set(CSRF);
+      expect(r.status).toBe(409);
+      expect(r.body.error.code).toBe('member_in_other_organizations');
+      expect(r.body.token).toBeUndefined();
+    }
+    expect(await tokensFor(victimId)).toBe(0);
+    expect((await login(request.agent(app), victim.email)).status).toBe(200);
+  });
 });
