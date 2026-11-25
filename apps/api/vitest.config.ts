@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 import { readEnv } from './src/config/env-compat.ts';
 
@@ -22,6 +24,8 @@ export default defineConfig({
       SMTP_ALLOW_PRIVATE_HOSTS: 'true',
       // No engine in tests: nothing listens on this port.
       ENGINE_CONTROL_URL: 'http://127.0.0.1:47199',
+      // Uploaded APKs go to a throw-away folder, never the repository's .data (one per test server port).
+      NIGAFIY_FILES_DIR: path.join(os.tmpdir(), `nigafiy-test-files-${port}`),
     },
   },
 });
