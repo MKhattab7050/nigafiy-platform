@@ -17,7 +17,7 @@ interface CheckResult {
 
 /** Settings → Single sign-on: the organization's OIDC / SAML identity providers (owner and admin). */
 export function SsoProviders() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const query = useQuery<{ items: IdentityProvider[] }>('/sso/providers', [], 60_000);
   const [editing, setEditing] = useState<IdentityProvider | 'new-oidc' | 'new-saml' | null>(null);
   const [checks, setChecks] = useState<Record<string, CheckResult | ApiError>>({});
@@ -103,7 +103,7 @@ export function SsoProviders() {
                           {d}
                         </bdi>
                       ))}
-                      · {fill(t('settings.sso.linked'), { n: p.linked_users })} · {t('settings.sso.mfaLabel')}: {p.trust_idp_mfa ? t('settings.sso.mfaIdp') : t('settings.sso.mfaLocal')}
+                      · {fill(tn('settings.sso.linked', p.linked_users), { n: p.linked_users })} · {t('settings.sso.mfaLabel')}: {p.trust_idp_mfa ? t('settings.sso.mfaIdp') : t('settings.sso.mfaLocal')}
                     </p>
                     {check && 'checks' in check && (
                       <ul className="mt-2 space-y-0.5 text-xs">

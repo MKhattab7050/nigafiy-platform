@@ -10,7 +10,7 @@ import { fill, useI18n } from '@/lib/i18n';
 
 /** Dashboard: how many single points of failure the selected site has, and the largest one. */
 export default function ImpactWidget() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const { siteId, sites } = useApp();
   const site = siteId ?? (sites.length === 1 ? sites[0]!.id : null);
   const query = useQuery<SpofReport>(site ? `/impact/spof${qs({ site_id: site })}` : null, ['devices', 'collectors'], 300_000);
@@ -27,8 +27,8 @@ export default function ImpactWidget() {
                 <Metric label={t('imp.widget.spofs')} value={r.items.length} tone={r.items.length ? 'warn' : 'ok'} href={`/watch/impact${qs({ site })}`} size="lg" />
                 {top ? (
                   <p className="text-xs leading-relaxed text-muted">
-                    {t('imp.widget.largest')}: <span className="font-medium text-fg" dir="auto">{top.label}</span> — {fill(t('imp.spof.devices'), { n: top.devices_impacted })}
-                    {top.checks_down ? ` · ${fill(t('imp.spof.checks'), { n: top.checks_down })}` : ''}
+                    {t('imp.widget.largest')}: <span className="font-medium text-fg" dir="auto">{top.label}</span> — {fill(tn('imp.spof.devices', top.devices_impacted), { n: top.devices_impacted })}
+                    {top.checks_down ? ` · ${fill(tn('imp.spof.checks', top.checks_down), { n: top.checks_down })}` : ''}
                   </p>
                 ) : (
                   <p className="text-xs text-muted">{t('imp.spof.none')}</p>

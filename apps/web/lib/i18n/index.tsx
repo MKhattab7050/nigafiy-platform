@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo } from 'react';
 import type { Key, Locale, Messages } from './dictionary';
+import { selectPlural } from './plural';
 
 export type { Key, Locale };
 
@@ -10,6 +11,8 @@ interface I18n {
   locale: Locale;
   dir: 'ltr' | 'rtl';
   t: (key: Key) => string;
+  /** The plural form of `key` for `count` (CLDR rules of the active language); fill placeholders with `fill`. */
+  tn: (key: Key, count: number) => string;
   setLocale: (locale: Locale) => void;
 }
 
@@ -37,7 +40,16 @@ export function I18nProvider({ locale, messages, children }: { locale: Locale; m
     [router],
   );
 
-  const value = useMemo<I18n>(() => ({ locale, dir: locale === 'ar' ? 'rtl' : 'ltr', setLocale, t: (key) => messages[key] ?? key }), [locale, setLocale, messages]);
+  const value = useMemo<I18n>(
+    () => ({
+      locale,
+      dir: locale === 'ar' ? 'rtl' : 'ltr',
+      setLocale,
+      t: (key) => messages[key] ?? key,
+      tn: (key, count) => selectPlural(messages[key] ?? key, count, locale),
+    }),
+    [locale, setLocale, messages],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

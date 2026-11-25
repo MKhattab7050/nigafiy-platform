@@ -51,7 +51,7 @@ export function Automation() {
 }
 
 function AutomationRow({ item, siteId, admin, onChanged }: { item: AutomationItem; siteId: string | null; admin: boolean; onChanged: () => void }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -170,7 +170,7 @@ function AutomationRow({ item, siteId, admin, onChanged }: { item: AutomationIte
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <p className="text-xs text-faint" title={effect.last_at ? absoluteTime(effect.last_at, locale) : undefined}>
           {effect.count > 0
-            ? fill(t('automation.lastEffect'), { count: effect.count, days: effect.window_days, when: relativeTime(effect.last_at, locale) })
+            ? fill(tn('automation.lastEffect', effect.count), { count: effect.count, days: effect.window_days, when: relativeTime(effect.last_at, locale) })
             : fill(t('automation.lastEffectNone'), { days: effect.window_days })}
         </p>
         {admin && ownOverride && (

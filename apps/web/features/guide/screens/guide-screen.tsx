@@ -16,7 +16,7 @@ const GROUPS: readonly GuideGroup[] = ['start', 'tasks', 'programs', 'help'];
 
 /** Hub page /guide: the search box and every section, grouped, in the reader's language. */
 export function GuideScreen() {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const { installed } = usePrograms();
   const content = GUIDE_CONTENT[locale];
   const index = useMemo(() => buildGuideIndex(content, [GUIDE_CONTENT[locale === 'en' ? 'ar' : 'en']]), [content, locale]);
@@ -39,7 +39,7 @@ export function GuideScreen() {
 
       {hits ? (
         <section aria-live="polite">
-          <p className="mb-3 text-[13px] text-muted">{hits.length ? fill(t('guide.results'), { n: hits.length }) : t('guide.searchEmpty')}</p>
+          <p className="mb-3 text-[13px] text-muted">{hits.length ? fill(tn('guide.results', hits.length), { n: hits.length }) : t('guide.searchEmpty')}</p>
           <ul className="space-y-2">
             {hits.map((hit) => {
               const section = content.find((s) => s.id === hit.id)!;

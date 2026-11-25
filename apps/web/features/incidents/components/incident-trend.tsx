@@ -16,7 +16,7 @@ const PAGE = 100;
  * the chart is not drawn rather than drawn from a partial list.
  */
 export function IncidentTrend({ days = 14, height = 96, framed }: { days?: number; height?: number; /** Draw inside its own card (only when there is a chart to show). */ framed?: boolean }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const { siteId } = useApp();
   const query = useQuery<Paginated<Incident>>(`/incidents${qs({ status: 'all', site_id: siteId, page_size: PAGE })}`, ['events', 'checks', 'collectors'], 60_000);
   const page = query.data;
@@ -52,8 +52,8 @@ export function IncidentTrend({ days = 14, height = 96, framed }: { days?: numbe
   });
   return (
     <div className={framed ? 'mb-5 rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-card)]' : undefined}>
-      <p className="mb-2 text-xs font-medium text-muted">{fill(t('dash.incidentsDays'), { days })}</p>
-      {inWindow === 0 ? <p className="text-xs text-faint">{fill(t('dash.incidentsNoneDays'), { days })}</p> : <ColumnChart columns={columns} label={fill(t('dash.incidentsDays'), { days })} height={height} valueLabel={t('chart.count')} />}
+      <p className="mb-2 text-xs font-medium text-muted">{fill(tn('dash.incidentsDays', days), { days })}</p>
+      {inWindow === 0 ? <p className="text-xs text-faint">{fill(tn('dash.incidentsNoneDays', days), { days })}</p> : <ColumnChart columns={columns} label={fill(tn('dash.incidentsDays', days), { days })} height={height} valueLabel={t('chart.count')} />}
     </div>
   );
 }

@@ -24,7 +24,7 @@ const When = ({ iso }: { iso: string | null }) => {
 };
 
 export function DhcpServers({ dhcp }: { dhcp: SecurityOverview['dhcp'] }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const statusOf = (s: DhcpServer) =>
     s.expected ? (
       <Badge tone="ok">{t(`security.dhcp.expected.${s.expected}` as Key)}</Badge>
@@ -37,8 +37,8 @@ export function DhcpServers({ dhcp }: { dhcp: SecurityOverview['dhcp'] }) {
     <div className="space-y-2">
       {dhcp.probe && (
         <p className="px-4 pt-3 text-xs text-muted">
-          {fill(t('security.dhcp.probes'), { n: dhcp.probe.probes, when: relativeTime(dhcp.probe.last_probe_at, locale) })}
-          {dhcp.probe.no_offer_open && <span className="ms-2 text-warn">{fill(t('security.dhcp.noOffer'), { n: dhcp.probe.consecutive_no_offer })}</span>}
+          {fill(tn('security.dhcp.probes', dhcp.probe.probes), { n: dhcp.probe.probes, when: relativeTime(dhcp.probe.last_probe_at, locale) })}
+          {dhcp.probe.no_offer_open && <span className="ms-2 text-warn">{fill(tn('security.dhcp.noOffer', dhcp.probe.consecutive_no_offer), { n: dhcp.probe.consecutive_no_offer })}</span>}
         </p>
       )}
       {dhcp.servers.length === 0 ? (

@@ -6,7 +6,7 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 
 /** Single points of failure, largest blast radius first. Every count says what it is; confidence is shown. */
 export function SpofList({ items, limit, onSimulate }: { items: SpofEntry[]; limit?: number; onSimulate?: (target: ImpactFailure) => void }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const shown = limit ? items.slice(0, limit) : items;
   return (
     <ul className="divide-y divide-line">
@@ -25,10 +25,10 @@ export function SpofList({ items, limit, onSimulate }: { items: SpofEntry[]; lim
             </div>
             <p className="text-xs text-muted">
               {[
-                fill(t('imp.spof.devices'), { n: s.devices_impacted }),
+                fill(tn('imp.spof.devices', s.devices_impacted), { n: s.devices_impacted }),
                 s.critical_devices_impacted ? fill(t('imp.spof.critical'), { n: s.critical_devices_impacted }) : null,
-                s.checks_down ? fill(t('imp.spof.checks'), { n: s.checks_down }) : null,
-                s.endpoints_unreachable ? fill(t('imp.spof.endpoints'), { n: s.endpoints_unreachable }) : null,
+                s.checks_down ? fill(tn('imp.spof.checks', s.checks_down), { n: s.checks_down }) : null,
+                s.endpoints_unreachable ? fill(tn('imp.spof.endpoints', s.endpoints_unreachable), { n: s.endpoints_unreachable }) : null,
                 s.attachment_unknown ? fill(t('imp.spof.unknown'), { n: s.attachment_unknown }) : null,
               ]
                 .filter(Boolean)

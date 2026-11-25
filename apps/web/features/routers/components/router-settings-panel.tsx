@@ -47,7 +47,7 @@ export function RouterSettingsPanel({
   canAdmin: boolean;
   onChanged: () => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const query = useQuery<RouterSettingsView>(`/routers/${r.id}/settings`, ['devices', 'collectors'], 15_000);
   const [activeReq, setActiveReq] = useState<QueuedRequest | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -86,7 +86,7 @@ export function RouterSettingsPanel({
             <span title={s.settings_at ? absoluteTime(s.settings_at, locale) : undefined}>
               {s.settings_at ? fill(t('routers.settings.readAt'), { when: relativeTime(s.settings_at, locale) }) : t('routers.settings.notRead')}
             </span>
-            {s.pending.length > 0 && <Badge tone="info">{fill(t('routers.settings.pending'), { count: s.pending.length })}</Badge>}
+            {s.pending.length > 0 && <Badge tone="info">{fill(tn('routers.settings.pending', s.pending.length), { count: s.pending.length })}</Badge>}
           </div>
           {!canAdmin && <p className="text-xs text-muted">{t('routers.settings.adminOnly')}</p>}
 

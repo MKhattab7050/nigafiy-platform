@@ -21,7 +21,7 @@ const NEARLY_FULL = 90;
 
 /** Dashboard: address usage per subnet and addresses that need checking (GET /ipam/subnets). */
 export default function IpamWidget() {
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const tx = ipamText(locale);
   const { siteId } = useApp();
   const query = useQuery<{ items: IpamSubnetSummary[] }>(`/ipam/subnets${qs({ site_id: siteId })}`, ['devices'], 30_000);
@@ -32,7 +32,7 @@ export default function IpamWidget() {
       const out: AttentionItem[] = [];
       for (const s of items) {
         if (s.conflicts > 0)
-          out.push({ id: `ipam-conflict-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.conflicts'), { count: s.conflicts, cidr: s.cidr }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
+          out.push({ id: `ipam-conflict-${s.id}`, tone: 'warn', text: fill(tn('ipam.attn.conflicts', s.conflicts), { count: s.conflicts, cidr: s.cidr }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
         if (s.usable > 0 && share(s) >= NEARLY_FULL)
           out.push({ id: `ipam-full-${s.id}`, tone: 'warn', text: fill(t('ipam.attn.full'), { cidr: s.cidr, free: countText(s.free_exact) }), action: { label: t('ipam.attn.check'), href: `/radar/ipam?subnet=${s.id}` } });
       }
