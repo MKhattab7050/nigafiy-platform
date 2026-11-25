@@ -197,6 +197,8 @@ export interface RestorePreview {
   blocker: { code: string; message: string } | null;
   confirm_text: string;
   confirm_minutes_default: number;
+  /** Set when the version names another host than the latest backup: a second, typed confirmation is needed. */
+  other_device: { current: string; version: string } | null;
   identical: boolean;
   added: number;
   removed: number;
