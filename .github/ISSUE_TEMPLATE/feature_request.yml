@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a new capability or a change to an existing one.
+title: "Feature: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Nigafiy rules apply to every proposal: no AI, no mock data in the product, English and Arabic,
+        role checks and audit, and nothing covert (see CONTRIBUTING.md).
+  - type: dropdown
+    id: program
+    attributes:
+      label: Program
+      options:
+        - Hub
+        - Radar
+        - Watch
+        - Guard
+        - Fleet
+        - Mind
+        - Toolbox
+        - Sensor
+        - Agent
+        - Platform-wide
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What an administrator cannot do today, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What it should do. For a vendor or protocol, link its official documentation.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: How it can be verified
+      description: Which hardware or OS a real run needs, and what can be covered by tests only.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Checks
+      options:
+        - label: Works without AI and without simulated data
+          required: true
+        - label: Needs English and Arabic text
