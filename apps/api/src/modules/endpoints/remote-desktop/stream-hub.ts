@@ -627,6 +627,8 @@ export class StreamHub {
     let delivered = 0;
     for (const s of sinks) {
       if (s.ws.readyState !== WebSocket.OPEN) continue;
+      // Its picture plays over WebRTC (other viewers may still take JPEG frames).
+      if (s.rtc === 'active') continue;
       if (s.stale) {
         if (!meta.full) {
           if (!s.fullAsked && s.ws.bufferedAmount < RESUME_BUFFERED) {

@@ -45,12 +45,14 @@ async function closeInstance(i: Instance): Promise<void> {
 class Peer {
   readonly ws: WebSocket;
   readonly texts: Array<Record<string, unknown>> = [];
+  frames = 0;
   closed: { code: number; reason: string } | null = null;
   private waiters: Array<() => void> = [];
   constructor(ws: WebSocket) {
     this.ws = ws;
     ws.on('message', (data, isBinary) => {
-      if (!isBinary) this.texts.push(JSON.parse((Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)).toString('utf8')));
+      if (isBinary) this.frames++;
+      else this.texts.push(JSON.parse((Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)).toString('utf8')));
       for (const w of this.waiters.splice(0)) w();
     });
     ws.on('close', (code, reason) => {
@@ -122,6 +124,17 @@ async function fullAdminGroup(a: TestAccount, epId: string) {
     .send({ name: `RTC ${Math.random().toString(36).slice(2, 6)}`, access_mode: 'unattended', default_profile_id: full, max_profile_id: full });
   expect(g.status).toBe(201);
   await a.agent.post('/api/v1/fleet/groups/assign').set(CSRF).send({ endpoint_ids: [epId], fleet_group_id: g.body.group.id });
+}
+
+/** A full JPEG frame packet as the Go agent builds it. */
+function packet(seq: number): Buffer {
+  const tile = Buffer.from([0xff, 0xd8, 1, 2, 3, 0xff, 0xd9]);
+  const header = Buffer.from(
+    JSON.stringify({ t: 'frame', seq, full: true, display: 0, w: 64, h: 64, sw: 64, sh: 64, q: 70, s: 1, fmt: 'jpeg', tiles: [{ x: 0, y: 0, w: 64, h: 64, n: tile.length }], mode: 'test' }),
+  );
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(header.length);
+  return Buffer.concat([Buffer.from([0x4e, 1]), len, header, tile]);
 }
 
 const transportAudits = async (orgId: string) =>
@@ -207,6 +220,8 @@ describe('WebRTC video signalling (stream hub)', () => {
     viewer.send({ t: 'rtc_active', encoder: HELLO_RTC.webrtc.encoder });
     await agent.until(() => agent.last('viewers')?.count === 0, 'viewers = 0');
     expect(A.hub.stats(epId)).toMatchObject({ viewers: 1, rtc: 1 });
+    // JPEG frames (another viewer's, or the last ones in flight) do not reach a WebRTC viewer.
+    agent.ws.send(packet(1), { binary: true });
     agent.send({ t: 'rtc_stats', fps: 29.8, kbps: 3900, bitrate_kbps: 4000, encoder: 'x', peers: 1 });
     expect((await viewer.text('rtc_stats')).fps).toBe(29.8);
 
@@ -232,6 +247,9 @@ describe('WebRTC video signalling (stream hub)', () => {
     await agent.until(() => agent.last('viewers')?.count === 1, 'viewers = 1');
     await agent.text('full');
     expect(A.hub.stats(epId)).toMatchObject({ rtc: 0 });
+    expect(viewer.frames).toBe(0);
+    agent.ws.send(packet(2), { binary: true });
+    await viewer.until(() => viewer.frames === 1, 'JPEG frame after the fallback');
     await settle();
     expect(await systemPool.query(`SELECT transport, rtc_encoder, rtc_fallback_reason, rtc_started_at IS NOT NULL AS started FROM fleet_sessions WHERE public_id = $1`, [session]).then((r) => r.rows[0])).toEqual({
       transport: 'webrtc',
