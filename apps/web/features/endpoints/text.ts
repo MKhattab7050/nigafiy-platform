@@ -10,7 +10,7 @@ import type { Locale } from '@/lib/i18n';
 const en = {
   title: 'Unified Endpoint Management',
   subtitle:
-    'Inventory, health, compliance, remote desktop, remote files and IT administration for company computers running the Nigafiy agent (Windows, Linux, macOS).',
+    'Inventory, health, compliance, remote desktop, remote files and IT administration for company computers running the Nigafiy agent (Windows, Linux, macOS) and Android phones running the Nigafiy app.',
   addEndpoint: 'Enroll endpoint',
   endpointName: 'Device label',
   endpointNamePlaceholder: 'e.g. Accounting-PC-01, Ubuntu-DB-01',
@@ -19,11 +19,12 @@ const en = {
     windows: 'Windows (Desktop / Laptop / Server)',
     linux: 'Linux (Ubuntu / Debian / RHEL / Server)',
     macos: 'macOS (MacBook / iMac / Mac mini)',
+    android: 'Android (phone / tablet, Nigafiy app)',
   } as Record<EndpointPlatform, string>,
   create: 'Create & generate enrollment credentials',
   emptyTitle: 'No enrolled endpoints yet',
   emptyBody:
-    'Enroll company Windows, Linux or macOS computers with the Nigafiy agent to inspect health, applications and compliance, and run authorized remote administration. Phones and tablets (iOS, Android) are not supported.',
+    'Enroll company Windows, Linux or macOS computers with the Nigafiy agent, or Android phones with the Nigafiy app, to inspect health, applications and compliance, and run authorized remote administration. iOS is not supported (it needs a paid Apple account).',
   tokenModalTitle: 'Endpoint Enrollment & Provisioning',
   tokenOnce: 'This single-use enrollment token is shown only once and expires in 24 hours.',
   tokenLabel: 'Enrollment token',
@@ -62,6 +63,7 @@ const en = {
     windows: 'Windows',
     linux: 'Linux',
     macos: 'macOS',
+    android: 'Android',
   } as Record<EndpointPlatform, string>,
   complianceStatus: {
     compliant: 'Compliant',
@@ -180,6 +182,13 @@ const en = {
     software_action: 'Software package action',
     fetch_logs: 'Fetch system logs',
     diagnostic_command: 'Diagnostic command',
+    android_lock: 'Android: lock now',
+    android_password_policy: 'Android: screen-lock requirement',
+    android_camera: 'Android: camera',
+    android_install_apk: 'Android: install APK',
+    android_uninstall: 'Android: remove app',
+    android_wipe: 'Android: erase phone',
+    android_release: 'Android: stop management',
   } as Record<EndpointCommandKind, string>,
   commandStatus: {
     pending: 'Queued',
@@ -204,7 +213,7 @@ type Dict = typeof en;
 const ar: Dict = {
   title: 'مركز الإدارة الشاملة للأجهزة (Unified Endpoint Management)',
   subtitle:
-    'الجرد والصحة والامتثال وسطح المكتب البعيد والملفات عن بُعد وإدارة تقنية المعلومات لحواسيب الشركة التي تعمل بوكيل Nigafiy (Windows و Linux و macOS).',
+    'الجرد والصحة والامتثال وسطح المكتب البعيد والملفات عن بُعد وإدارة تقنية المعلومات لحواسيب الشركة التي تعمل بوكيل Nigafiy (Windows و Linux و macOS) وهواتف Android التي تعمل بتطبيق Nigafiy.',
   addEndpoint: 'تسجيل جهاز جديد',
   endpointName: 'اسم تعريف الجهاز',
   endpointNamePlaceholder: 'مثال: Accounting-PC-01 أو Ubuntu-DB-01',
@@ -213,11 +222,12 @@ const ar: Dict = {
     windows: 'Windows (حاسوب مكتبي / محمول / خادم)',
     linux: 'Linux (Ubuntu / Debian / RHEL / خادم)',
     macos: 'macOS (MacBook / iMac / Mac mini)',
+    android: 'Android (هاتف / جهاز لوحي، تطبيق Nigafiy)',
   },
   create: 'إنشاء وإصدار بيانات التسجيل',
   emptyTitle: 'لا توجد أجهزة مُدارة مسجَّلة بعد',
   emptyBody:
-    'سجّل حواسيب الشركة (Windows / Linux / macOS) بوكيل Nigafiy لمعرفة صحتها وتطبيقاتها وامتثالها وإدارتها عن بُعد بصلاحية. الهواتف والأجهزة اللوحية (iOS و Android) غير مدعومة.',
+    'سجّل حواسيب الشركة (Windows / Linux / macOS) بوكيل Nigafiy أو هواتف Android بتطبيق Nigafiy لمعرفة صحتها وتطبيقاتها وامتثالها وإدارتها عن بُعد بصلاحية. نظام iOS غير مدعوم (يتطلب حساب Apple مدفوعاً).',
   tokenModalTitle: 'تسجيل وإعداد الجهاز (Endpoint Enrollment)',
   tokenOnce: 'يُعرض رمز التسجيل ذو الاستخدام الواحد مرة واحدة فقط وتنتهي صلاحيته بعد 24 ساعة.',
   tokenLabel: 'رمز التسجيل (Enrollment Token)',
@@ -256,6 +266,7 @@ const ar: Dict = {
     windows: 'Windows',
     linux: 'Linux',
     macos: 'macOS',
+    android: 'Android',
   },
   complianceStatus: {
     compliant: 'ممتثل (Compliant)',
@@ -374,6 +385,13 @@ const ar: Dict = {
     software_action: 'إدارة حزمة برامج',
     fetch_logs: 'جلب سجلات النظام',
     diagnostic_command: 'أمر تشخيص معتمد',
+    android_lock: 'Android: القفل الآن',
+    android_password_policy: 'Android: اشتراط قفل الشاشة',
+    android_camera: 'Android: الكاميرا',
+    android_install_apk: 'Android: تثبيت ملف APK',
+    android_uninstall: 'Android: إزالة تطبيق',
+    android_wipe: 'Android: مسح الهاتف',
+    android_release: 'Android: إيقاف الإدارة',
   },
   commandStatus: {
     pending: 'في الانتظار',

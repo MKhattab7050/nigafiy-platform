@@ -1589,6 +1589,8 @@ export interface EndpointSoftware {
   version?: string;
   publisher?: string;
   install_date?: string;
+  /** Android: the app's package name (com.example.app). */
+  package_id?: string;
 }
 
 export interface EndpointConnection {

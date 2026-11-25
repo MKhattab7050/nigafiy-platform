@@ -81,6 +81,7 @@ export function FleetContent({
       windows: 0,
       linux: 0,
       macos: 0,
+      android: 0,
     };
     for (const e of active) {
       const p = e.platform ?? 'windows';
@@ -184,7 +185,7 @@ export function FleetContent({
         </div>
         <div className="p-5">
           <p className="mb-3 text-xs font-medium text-muted">{t('dash.platforms')}</p>
-          <ProportionBar label={t('dash.platforms')} slices={(['windows', 'linux', 'macos'] as const).map((p, i) => ({ key: p, label: tx.platforms[p], value: stats.byPlatform[p], color: SERIES[i]! }))} />
+          <ProportionBar label={t('dash.platforms')} slices={(['windows', 'linux', 'macos', 'android'] as const).map((p, i) => ({ key: p, label: tx.platforms[p], value: stats.byPlatform[p], color: SERIES[i]! }))} />
         </div>
       </section>
 
@@ -199,6 +200,7 @@ export function FleetContent({
             { value: 'windows', label: `Windows (${stats.byPlatform.windows})` },
             { value: 'linux', label: `Linux (${stats.byPlatform.linux})` },
             { value: 'macos', label: `macOS (${stats.byPlatform.macos})` },
+            { value: 'android', label: `Android (${stats.byPlatform.android})` },
           ]}
         />
 

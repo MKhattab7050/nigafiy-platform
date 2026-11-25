@@ -279,7 +279,7 @@ export const GUIDE_EN: GuideContent = [
     blocks: [
       {
         kind: 'p',
-        text: 'Nigafiy Fleet manages company computers that run the Nigafiy agent: Windows, Linux and macOS. Phones and tablets are not managed (they still appear in Radar as network devices). Only enroll computers your organization owns or manages.',
+        text: 'Nigafiy Fleet manages company computers that run the Nigafiy agent (Windows, Linux and macOS) and Android phones that run the Nigafiy app (see Android phones below). iPhones and iPads are not managed: that needs a paid Apple account. Only enroll devices your organization owns or manages.',
       },
       { kind: 'h', id: 'enroll', text: 'Create the computer in Nigafiy' },
       {
@@ -318,6 +318,44 @@ export const GUIDE_EN: GuideContent = [
         kind: 'note',
         tone: 'warn',
         text: 'The agent setup has been built and checked, but its silent install has not yet been run on a real company network. Try it on one computer before a wide rollout.',
+      },
+      { kind: 'h', id: 'android', text: 'Android phones' },
+      {
+        kind: 'p',
+        text: 'Android management is free: the Nigafiy app is installed from its APK file (no Google Play, no Google account, no Firebase). The app talks only to your Nigafiy server, over HTTPS with the same certificate pin as the Windows agent, and shows a permanent “Managed by Nigafiy” notification.',
+      },
+      {
+        kind: 'table',
+        head: ['Mode', 'How', 'What Fleet can do'],
+        rows: [
+          ['Regular app', 'Install the APK and enroll with the QR code or the three values', 'Inventory (model, Android version, patch level, storage, memory, battery, network, apps) and the compliance checks (screen lock, encryption, patch age, developer options, USB debugging, install unknown apps)'],
+          ['Device Owner', 'QR provisioning on a factory-reset phone, or `adb shell dpm set-device-owner com.nigafiy.agent/.admin.NigafiyAdminReceiver` on a phone without accounts', 'Everything above, plus lock now, disable the camera, require a screen lock, install an APK uploaded to Fleet, remove an app, erase the phone and stop management'],
+        ],
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Build the app once on the Nigafiy server: `pnpm build:android` (needs JDK 17 and the Android SDK; see docs/features/android.md).',
+          'In Fleet, choose Enroll endpoint, platform Android. The window shows two codes: the app link for a phone that already has the app, and the Device Owner code for a factory-reset phone.',
+          'Regular app: copy the APK to the phone, install it (Android asks to allow installs from that source once), then scan the app link with the camera or type server, token and pin into the app.',
+          'Device Owner: on the welcome screen of a factory-reset phone tap six times, join Wi-Fi and scan the Device Owner code. Android downloads the app from your server, checks its SHA-256 and enrolls it.',
+          'Open the phone in Fleet: the Phone card shows the mode, battery, network and patch level, and the actions the mode allows.',
+        ],
+      },
+      {
+        kind: 'list',
+        items: [
+          'Lock, camera and screen-lock requirement: technician and above. Installing and removing apps: admin.',
+          'Erase and Stop management: admin, always with your verification code (authenticator app), and with a second admin’s approval when the phone’s Fleet group asks for approvals (Fleet, Approvals).',
+          'The phone’s Fleet group policy applies to every action: allowed roles, addresses, hours and the verification code.',
+          'Android gives apps no CPU load, so Fleet shows CPU as not measured on phones.',
+          'Without Device Owner Android does not allow those actions at all; making an existing phone Device Owner needs a factory reset or removing its accounts first.',
+        ],
+      },
+      {
+        kind: 'note',
+        tone: 'warn',
+        text: 'The Android app has been built, signed and unit-tested, and the server side is tested, but it has not yet run on a real phone or an emulator. Try it on one test phone first.',
       },
       { kind: 'h', id: 'quick-support', text: 'Quick Support: help a computer without the agent' },
       {

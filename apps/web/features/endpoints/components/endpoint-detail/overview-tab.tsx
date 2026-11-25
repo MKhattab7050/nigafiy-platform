@@ -9,6 +9,7 @@ import { pct, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { formatUptime, SendCommand, SeriesRange } from './helpers';
 import { endpointsText } from '../../text';
+import { androidText } from '../android/android-text';
 
 export function OverviewTab({
   ep,
@@ -19,7 +20,10 @@ export function OverviewTab({
   setRange,
   seriesQuery,
   message,
+  side,
 }: {
+  /** Replaces the power and message cards (Android: the phone panel). */
+  side?: React.ReactNode;
   ep: EndpointDetail;
   online: boolean;
   busy: string;
@@ -38,7 +42,11 @@ export function OverviewTab({
                   <div className="min-w-0 space-y-5">
                     <Card title={tx.currentLoad} description={`${tx.lastCheckIn}: ${relativeTime(ep.last_heartbeat_at, locale)}`}>
                       <div className="grid gap-5 sm:grid-cols-3">
-                        <Meter label={tx.cpu} value={ep.cpu_pct} detail={ep.cpu_cores ? `${ep.cpu_cores} ${tx.cores}` : undefined} />
+                        <Meter
+                          label={tx.cpu}
+                          value={ep.cpu_pct}
+                          detail={ep.platform === 'android' ? androidText(locale).cpuNote : ep.cpu_cores ? `${ep.cpu_cores} ${tx.cores}` : undefined}
+                        />
                         <Meter
                           label={tx.memory}
                           value={ep.ram_pct}
@@ -171,6 +179,9 @@ export function OverviewTab({
                     </Card>
                   </div>
 
+                  {side ? (
+                    <div className="min-w-0 space-y-5">{side}</div>
+                  ) : (
                   <div className="min-w-0 space-y-5">
                     <Card title={tx.powerTitle}>
                       {!can('technician') ? (
@@ -288,6 +299,7 @@ export function OverviewTab({
                       )}
                     </Card>
                   </div>
+                  )}
                 </div>
   );
 }
