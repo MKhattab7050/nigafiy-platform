@@ -198,11 +198,11 @@ test('one window per program: reused, focused, navigated, recreated after close'
   assert.throws(() => windows.open('evil'), /unknown program/);
 });
 
-test('the protocol is registered only by a packaged build', () => {
+test('the protocol is registered only by a packaged build, and not by the Store package (its manifest declares it)', () => {
   // Static check of main.cjs: a source checkout or a test run must never write HKCU\Software\Classes\nigafiy.
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.cjs'), 'utf8');
   const calls = main.split('\n').filter((l) => l.includes('setAsDefaultProtocolClient'));
   assert.equal(calls.length, 1, 'exactly one registration call');
-  assert.match(calls[0], /if \(app\.isPackaged\)/);
+  assert.match(calls[0], /if \(app\.isPackaged && !STORE\)/);
   assert.doesNotMatch(main, /removeAsDefaultProtocolClient/);
 });

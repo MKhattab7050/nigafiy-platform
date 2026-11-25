@@ -14,6 +14,18 @@ the free Authenticode route in [code-signing.md](code-signing.md).
 The desktop installers are named "Nigafiy" (productName). The NSIS GUID stays the one the earlier builds had, so an update installs over an existing install instead of beside it (docs/architecture/naming.md).
 New installers (the endpoint agent) say Nigafiy.
 
+## Three channels
+
+| Channel | Who it is for | Package | Signed by | Warning on a stranger's PC |
+| --- | --- | --- | --- | --- |
+| **Microsoft Store** | The public: anybody installing Nigafiy or Nigafiy Quick Support | MSIX (`dist:msix`, `build-msix.cjs quick-support`; [microsoft-store.md](microsoft-store.md)) | Microsoft, at publishing (free; needs the owner's Partner Center account) | None: Store apps are never subject to SmartScreen |
+| **Group Policy, own certificate** | Computers of an organisation that deploys its own free certificate by GPO | The endpoint agent installer and the desktop MSI | The organisation's self-signed certificate ([code-signing.md](code-signing.md)) | None on computers that received the `.cer` by GPO; "Unknown publisher" anywhere else |
+| **Direct download** (NSIS `.exe`, Quick Support `.exe` from Fleet) | Testing, and organisations that accept the warning | NSIS, plain exe | The organisation's certificate, or none | "Windows protected your PC" (SmartScreen) and "Unknown publisher" |
+
+The Store package and an NSIS install of the desktop use the same loopback ports, so only one of them
+runs at a time. The Store copy keeps its own data in its package folder and leaves an NSIS profile
+alone (microsoft-store.md).
+
 ## Desktop app: NSIS
 
 `oneClick: false`, per-user by default, the folder can be changed, English and Arabic
@@ -258,3 +270,10 @@ network) — only `--smoke`; the interactive installer pages (Choose programs, t
 and the Modify chooser — only silent mode; the first-run "move my data" dialog (an explicit
 `--user-data-dir` never asks); an all-users NSIS install; the MSI install, upgrade and `PROGRAMS=`;
 the agent installer and the agent's install/upgrade/rollback on a real service.
+
+**Microsoft Store packages (Builder S1, 2026-11-25, worktree `worktree-store-msix`):** both MSIX
+packages (desktop 213.4 MB, Quick Support 7.2 MB) were built with the `--local-test` identity, signed
+with the same test certificate and inspected (manifest, capabilities, firewall rules, files, English
+and Arabic strings). Installing them was refused (`0x800B0109`, certificate not trusted; Developer
+Mode off), and the Windows App Certification Kit needs administrator rights, so neither ran. Details
+and the owner's steps: [microsoft-store.md](microsoft-store.md), "What ran here vs never ran".

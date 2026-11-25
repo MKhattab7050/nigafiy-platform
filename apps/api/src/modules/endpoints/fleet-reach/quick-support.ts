@@ -84,6 +84,31 @@ export function buildTrailer(o: { server: string; tlsPin: string | null; link: s
   return Buffer.concat([Buffer.from('\n'), json, len, TRAILER_MAGIC]);
 }
 
+/**
+ * The Microsoft Store version of Quick Support (docs/operations/microsoft-store.md) cannot carry a
+ * trailer: a Store package is the same signed file for everybody. It reads the same signed binding
+ * from a link instead: `nigafiy-support:qs1/<base64url of the trailer JSON>`. The program checks the
+ * signature exactly as for the trailer, so the server cannot be changed in a link either.
+ */
+export const STORE_LINK_PREFIX = 'nigafiy-support:qs1/';
+
+export function bindingLink(trailer: Buffer): string {
+  // trailer = "\n" + JSON + u32le(len) + magic
+  const len = trailer.readUInt32LE(trailer.length - TRAILER_MAGIC.length - 4);
+  const json = trailer.subarray(1, 1 + len);
+  return STORE_LINK_PREFIX + json.toString('base64url');
+}
+
+/** GET /fleet/quick-support/link?site_id=: the binding as a link for the Store version (same validity as a download). */
+export async function quickSupportLink(req: Request, ctx: AuthContext, siteId: string, server: { url: string; pin: string | null }): Promise<{ link: string; fingerprint: string; expires_in_seconds: number }> {
+  await withTenant(ctx.organizationId, async (db) => {
+    if (!(await db.query(`SELECT 1 FROM sites WHERE id = $1`, [siteId])).rowCount) throw notFound('Site');
+    await audit(db, req, 'fleet.quick_support_link_issued', { type: 'site', id: siteId }, { server: server.url, fingerprint: quickSupportKey().fingerprint });
+  });
+  const trailer = buildTrailer({ server: server.url, tlsPin: server.pin, link: issueLink(ctx.organizationId, siteId), issuedBy: ctx.userEmail });
+  return { link: bindingLink(trailer), fingerprint: quickSupportKey().fingerprint, expires_in_seconds: LINK_TTL_S };
+}
+
 export function proofFor(nonce: string, code: string): string {
   return sign(null, Buffer.from(`nigafiy-qs-proof\n${nonce}\n${code}`), signingKey().priv).toString('base64');
 }

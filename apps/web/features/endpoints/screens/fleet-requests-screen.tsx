@@ -1,6 +1,6 @@
 'use client';
 
-import { Download, LifeBuoy, PlugZap } from 'lucide-react';
+import { Download, LifeBuoy, Link2, PlugZap } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -162,12 +162,37 @@ function QuickSupportPanel({ onConnected }: { onConnected: (endpointId: string) 
   const { locale } = useI18n();
   const tx = reachText(locale);
   const px = policyText(locale);
-  const { sites, siteId } = useApp();
+  const { sites, siteId, can } = useApp();
+  const canWrite = can('technician');
   const list = useQuery<{ sessions: FleetQuickSupport[]; key: { fingerprint: string } }>('/fleet/quick-support?limit=50', ['devices'], 10_000);
   const [site, setSite] = useState(siteId || sites[0]?.id || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connectOpen, setConnectOpen] = useState(false);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [storeLink, setStoreLink] = useState<{ link: string; fingerprint: string; days: number; copied: boolean } | null>(null);
+
+  /** The binding as a nigafiy-support: link for the Microsoft Store version (GET /fleet/quick-support/link). */
+  async function copyStoreLink() {
+    if (!site) return;
+    setLinkBusy(true);
+    setError(null);
+    try {
+      const r = await api<{ link: string; fingerprint: string; expires_in_seconds: number }>(`/fleet/quick-support/link${qs({ site_id: site })}`);
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(r.link);
+        copied = true;
+      } catch {
+        // No clipboard permission: the link stays selectable below.
+      }
+      setStoreLink({ link: r.link, fingerprint: r.fingerprint, days: Math.round(r.expires_in_seconds / 86_400), copied });
+    } catch (err) {
+      setError(err instanceof ApiError ? codeMessage(px, err) : String(err));
+    } finally {
+      setLinkBusy(false);
+    }
+  }
 
   async function download() {
     if (!site) return;
@@ -216,10 +241,18 @@ function QuickSupportPanel({ onConnected }: { onConnected: (endpointId: string) 
               ))}
             </Select>
           )}
-          <Button busy={busy} disabled={!site} onClick={() => void download()}>
-            <Download className="size-4" aria-hidden />
-            {tx.qsDownload}
-          </Button>
+          {canWrite && (
+            <>
+              <Button busy={busy} disabled={!site} onClick={() => void download()}>
+                <Download className="size-4" aria-hidden />
+                {tx.qsDownload}
+              </Button>
+              <Button busy={linkBusy} disabled={!site} onClick={() => void copyStoreLink()} title={tx.qsStoreLinkHelp}>
+                <Link2 className="size-4" aria-hidden />
+                {tx.qsStoreLink}
+              </Button>
+            </>
+          )}
           {list.data?.key && (
             <span className="text-xs text-muted" title={tx.qsKeyHelp}>
               {tx.qsKey}: <span className="mono text-fg">{ltr(list.data.key.fingerprint)}</span>
@@ -227,7 +260,17 @@ function QuickSupportPanel({ onConnected }: { onConnected: (endpointId: string) 
           )}
         </div>
         <p className="text-xs text-faint">{tx.qsUnsigned}</p>
-        {error && <Notice className="border-crit/30 bg-crit/[0.07]">{error}</Notice>}
+        {storeLink && (
+          <div className="space-y-1">
+            <Input readOnly value={storeLink.link} dir="ltr" className="mono text-xs" aria-label={tx.qsStoreLinkLabel} onFocus={(e) => e.currentTarget.select()} />
+            <p className="text-xs text-muted" role="status">
+              {storeLink.copied ? `${tx.qsStoreLinkCopied} ` : ''}
+              {tx.qsStoreLinkExpires(storeLink.days)} {tx.qsKey}: <span className="mono text-fg">{ltr(storeLink.fingerprint)}</span>
+            </p>
+            <p className="text-xs text-faint">{tx.qsStoreLinkHelp}</p>
+          </div>
+        )}
+        {error &&<Notice className="border-crit/30 bg-crit/[0.07]">{error}</Notice>}
 
         <div>
           <h3 className="mb-2 text-xs font-medium text-muted">{tx.qsList}</h3>

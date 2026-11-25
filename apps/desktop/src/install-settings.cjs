@@ -86,14 +86,17 @@ const sameDir = (a, b) => Boolean(a && b) && path.win32.resolve(a).toLowerCase()
 
 /**
  * How the copy in installDir was installed and what was chosen.
- * @returns {Promise<{ scope: 'user' | 'machine' | 'msi' | 'unknown', programs: string, raw: string | null, writable: boolean }>}
+ * @returns {Promise<{ scope: 'user' | 'machine' | 'msi' | 'store' | 'unknown', programs: string, raw: string | null, writable: boolean }>}
  */
-async function readInstallSettings({ installDir, reader = makeReader() }) {
+async function readInstallSettings({ installDir, store = false, reader = makeReader() }) {
   let scope = 'unknown';
-  if (sameDir(await reader.get('HKCU', `Software\\${NSIS_GUID}`, 'InstallLocation'), installDir)) scope = 'user';
+  // The Microsoft Store package (per user): its HKCU is the package's private copy, which the engine
+  // inside the package reads too (docs/operations/microsoft-store.md).
+  if (store) scope = 'store';
+  else if (sameDir(await reader.get('HKCU', `Software\\${NSIS_GUID}`, 'InstallLocation'), installDir)) scope = 'user';
   else if (sameDir(await reader.get('HKLM', `Software\\${NSIS_GUID}`, 'InstallLocation'), installDir)) scope = 'machine';
   else if (await reader.keyExists('HKLM', `SOFTWARE\\Classes\\Installer\\UpgradeCodes\\${MSI_UPGRADE_CODE_PACKED}`)) scope = 'msi';
-  const roots = scope === 'user' ? ['HKCU'] : scope === 'unknown' ? ['HKCU', 'HKLM'] : ['HKLM'];
+  const roots = scope === 'user' || scope === 'store' ? ['HKCU'] : scope === 'unknown' ? ['HKCU', 'HKLM'] : ['HKLM'];
   let raw = null;
   for (const root of roots) {
     raw = await reader.get(root, PROGRAMS_KEY, 'Programs');
@@ -105,7 +108,7 @@ async function readInstallSettings({ installDir, reader = makeReader() }) {
   } catch {
     programs = 'all'; // the engine ignores an invalid value the same way
   }
-  return { scope, programs, raw, writable: scope === 'user' || scope === 'machine' };
+  return { scope, programs, raw, writable: scope === 'user' || scope === 'machine' || scope === 'store' };
 }
 
 /** Elevated reg.exe through the UAC prompt (per-machine installs). */
@@ -135,7 +138,7 @@ async function writePrograms({ scope, ids, run = regExe, runElevated = elevatedR
   }
   if (!/^[a-z,]+$/.test(value)) return { ok: false, error: 'invalid value' };
   const args = ['add', `${scope === 'machine' ? 'HKLM' : 'HKCU'}\\${PROGRAMS_KEY}`, '/v', 'Programs', '/t', 'REG_SZ', '/d', value, '/f', '/reg:64'];
-  if (scope === 'user') {
+  if (scope === 'user' || scope === 'store') {
     const r = await run(args);
     return r.code === 0 ? { ok: true, programs: value } : { ok: false, error: `reg.exe exit code ${r.code}` };
   }

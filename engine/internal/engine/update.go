@@ -30,7 +30,11 @@ var (
 	checkSig        = update.CheckAuthenticode
 	selfExe         = os.Executable
 	installRegistry = update.SystemRegistry
+	installPackage  = update.PackageReader(update.SystemPackage)
 )
+
+// storeManaged is the refusal for the Microsoft Store package (docs/operations/microsoft-store.md).
+const storeManaged = "this installation is the Microsoft Store package: the Microsoft Store installs its updates, not the in-app updater"
 
 // msiManaged is the refusal for an MSI-managed installation.
 const msiManaged = "this installation is managed by Windows Installer (MSI): updates come from your administrator through Group Policy or Intune, not from the in-app updater"
@@ -57,7 +61,7 @@ func (u *updater) install() *update.InstallInfo {
 		if err != nil {
 			return
 		}
-		info := update.DetectInstall(dir, installRegistry())
+		info := update.DetectInstallWith(dir, installRegistry(), installPackage)
 		u.kind = &info
 	})
 	return u.kind
@@ -118,6 +122,9 @@ func (u *updater) apply(req update.Request) (control.UpdateDoc, error) {
 	}
 	if k := u.install(); k != nil && k.Kind == update.KindMSI {
 		return control.UpdateDoc{}, fmt.Errorf("%w: %s", control.ErrRefused, msiManaged)
+	}
+	if k := u.install(); k != nil && k.Kind == update.KindMSIX {
+		return control.UpdateDoc{}, fmt.Errorf("%w: %s", control.ErrRefused, storeManaged)
 	}
 	if err := req.Validate(e.cfg.DataDir); err != nil {
 		return control.UpdateDoc{}, errors.Join(control.ErrUpdateRejected, err)

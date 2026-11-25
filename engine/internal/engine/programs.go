@@ -77,10 +77,11 @@ func ResolvePrograms(getenv func(string) string, bundleDir string, reg update.Re
 	roots := []string{"HKCU", "HKLM"}
 	if bundleDir != "" {
 		install := filepath.Dir(filepath.Dir(bundleDir))
-		switch info := update.DetectInstall(install, reg); {
+		switch info := update.DetectInstallWith(install, reg, installPackage); {
 		case info.Kind == update.KindMSI, info.Kind == update.KindNSIS && info.Scope == "machine":
 			roots = []string{"HKLM"}
-		case info.Kind == update.KindNSIS && info.Scope == "user":
+		// The Store package: its HKCU is the package's private copy, where the app's chooser writes.
+		case info.Kind == update.KindNSIS && info.Scope == "user", info.Kind == update.KindMSIX:
 			roots = []string{"HKCU"}
 		}
 	}
@@ -118,5 +119,5 @@ type InstallInfoDoc struct {
 func InstallInfo(bundleDir string, getenv func(string) string) InstallInfoDoc {
 	install := filepath.Dir(filepath.Dir(bundleDir))
 	reg := installRegistry()
-	return InstallInfoDoc{InstallDir: install, Install: update.DetectInstall(install, reg), Programs: ResolvePrograms(getenv, bundleDir, reg)}
+	return InstallInfoDoc{InstallDir: install, Install: update.DetectInstallWith(install, reg, installPackage), Programs: ResolvePrograms(getenv, bundleDir, reg)}
 }

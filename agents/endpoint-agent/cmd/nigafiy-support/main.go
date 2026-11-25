@@ -15,6 +15,8 @@
 //	nigafiy-support.exe          run Quick Support
 //	nigafiy-support.exe -keep    do not delete the program at the end (to run it again)
 //	nigafiy-support.exe -v       write the log to the console
+//	nigafiy-support.exe "nigafiy-support:qs1/..."   the binding from a Fleet link instead of the file
+//	                             (how the Microsoft Store version is opened; it never deletes itself)
 package main
 
 import (
@@ -56,14 +58,17 @@ func main() {
 		showError(title, "Cannot find this program's path: "+err.Error())
 		os.Exit(1)
 	}
-	dir, code := run(exe, *verbose)
-	cleanup(dir, exe, *keep)
+	// The Microsoft Store version (an MSIX package): the binding comes from the Fleet link it was
+	// opened with, and the program file belongs to the package, so it is never deleted here.
+	packaged := quicksupport.Packaged()
+	dir, code := run(exe, flag.Args(), packaged, *verbose)
+	cleanup(dir, exe, *keep || packaged)
 	os.Exit(code)
 }
 
 // run returns the temporary folder it made ("" when none) and the exit code.
-func run(exe string, verbose bool) (string, int) {
-	b, err := quicksupport.ReadBinding(exe)
+func run(exe string, args []string, packaged, verbose bool) (string, int) {
+	b, err := quicksupport.FromArgs(args, exe, packaged)
 	if err == nil {
 		err = b.CheckServer()
 	}
@@ -136,7 +141,7 @@ func run(exe string, verbose bool) (string, int) {
 	}()
 	// The window with the ID and PIN; closing it ends Quick Support.
 	go func() {
-		showCode(title, quicksupport.ScreenText(b, reg))
+		showCode(title, quicksupport.ScreenTextFor(b, reg, packaged))
 		closeOnServer()
 		cancel()
 	}()

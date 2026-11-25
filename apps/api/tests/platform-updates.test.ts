@@ -330,6 +330,67 @@ describe('MSI-managed installation: updates come from the administrator', () => 
   });
 });
 
+describe('Microsoft Store package: updates come from the Store', () => {
+  const status = (install: unknown) => JSON.stringify({ version: '0.1.0', mode: 'foreground', started_at: '2026-11-25T00:00:00Z', children: [], update: { state: 'idle', version: null, last: null, install } });
+  const FAMILY = 'Nigafiy.Hub_8wekyb3d8bbwe';
+
+  it('reads msix from the engine, keeps a valid family name only, and never hands an update over', async () => {
+    let install: unknown = { kind: 'msix', scope: 'user', package_full_name: 'Nigafiy.Hub_1.2.3.0_x64__8wekyb3d8bbwe', package_family_name: FAMILY };
+    let applyCalls = 0;
+    const url = await serveHttp((req, res) => {
+      if (req.url === '/v1/status') return void res.end(status(install));
+      applyCalls++;
+      res.writeHead(202);
+      res.end('{}');
+    });
+    const dir = tmp();
+    mkdirSync(path.join(dir, 'staged'), { recursive: true });
+    writeFileSync(path.join(dir, 'staged', 'Nigafiy-Update-0.2.0.exe'), INSTALLER);
+    writeFileSync(
+      path.join(dir, 'staged', 'staged.json'),
+      JSON.stringify({ version: '0.2.0', file: 'Nigafiy-Update-0.2.0.exe', size: INSTALLER.length, sha256: SHA, component: 'desktop-windows-x64', signature: { status: 'not_checked', thumbprint: null, checked: false }, staged_at: new Date().toISOString(), staged_by: 'a@b.c' }),
+    );
+    const tokenFile = path.join(dir, 'tok');
+    writeFileSync(tokenFile, 'x');
+    const engine = { controlUrl: url, tokenFile };
+    expect(await engineInstallKind(engine)).toBe('msix');
+    await expect(requestInstall('0.2.0', dir, engine)).rejects.toMatchObject({ status: 409, code: 'store_managed' });
+    expect(applyCalls).toBe(0);
+    const cfg = { component: 'desktop-windows-x64', maxBytes: 1, currentVersion: '0.1.0', dir, checkSignature: async () => ({ status: 'NotSigned', thumbprint: null }) };
+    expect((await installStatus(cfg, engine)).engine?.install).toEqual({ kind: 'msix', product_code: null, package_family_name: FAMILY });
+    resetInstallState();
+    install = { kind: 'msix', package_family_name: 'bad name <script>' };
+    expect((await installStatus(cfg, engine)).engine?.install).toEqual({ kind: 'msix', product_code: null, package_family_name: null });
+  });
+
+  it('the update check says store_managed and download/install are refused and audited', async () => {
+    const url = await serveHttp((_req, res) => res.end(status({ kind: 'msix', scope: 'user', package_family_name: FAMILY })));
+    const saved = env.ENGINE_CONTROL_URL;
+    (env as { ENGINE_CONTROL_URL: string }).ENGINE_CONTROL_URL = url;
+    try {
+      const acct = await newAccount('updstore');
+      const check = await acct.agent.get('/api/v1/platform/updates');
+      expect(check.status).toBe(200);
+      expect(check.body).toMatchObject({ configured: false, reason: 'store_managed' });
+      expect((await acct.agent.post('/api/v1/platform/updates/check').set(CSRF)).body).toMatchObject({ configured: false, reason: 'store_managed' });
+      const dl = await acct.agent.post('/api/v1/platform/updates/download').set(CSRF);
+      expect(dl.status).toBe(409);
+      expect(dl.body.error.code).toBe('store_managed');
+      const inst = await acct.agent.post('/api/v1/platform/updates/install').set(CSRF).send({ version: '9.9.9', confirm: true });
+      expect(inst.status).toBe(409);
+      expect(inst.body.error.code).toBe('store_managed');
+      const rows = await systemPool.query(`SELECT action, target_id FROM audit_logs WHERE organization_id = $1 AND action LIKE 'platform.update.%' ORDER BY created_at`, [acct.organizationId]);
+      expect(rows.rows.map((r) => r.action)).toEqual(['platform.update.download_refused', 'platform.update.install_refused']);
+      expect(rows.rows[0].target_id).toBe('msix');
+      await setRole(acct.email, acct.organizationId, 'viewer');
+      expect((await acct.agent.get('/api/v1/platform/updates')).body.reason).toBe('store_managed');
+      expect((await acct.agent.post('/api/v1/platform/updates/download').set(CSRF)).status).toBe(403);
+    } finally {
+      (env as { ENGINE_CONTROL_URL: string }).ENGINE_CONTROL_URL = saved;
+    }
+  });
+});
+
 describe('release scripts (scripts/release)', () => {
   it('a manifest built and signed by sign-manifest verifies in the API, and keys stay out of the repository', async () => {
     const { pathToFileURL } = await import('node:url');

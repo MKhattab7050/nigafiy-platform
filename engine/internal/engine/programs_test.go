@@ -68,6 +68,16 @@ func TestResolveProgramsReadsTheRootOfTheInstall(t *testing.T) {
 	if got := ResolvePrograms(none, "", nil); got.Source != "default" {
 		t.Fatalf("no registry: %+v", got)
 	}
+	// The Store package reads HKCU (its private copy) only, even when HKLM has a value.
+	store := `C:\Program Files\WindowsApps\Nigafiy.Hub_1.2.3.0_x64__8wekyb3d8bbwe\app`
+	storeReg := update.MapRegistry{`HKLM\` + ProgramsKey: {"Programs": "fleet"}}
+	if got := ResolvePrograms(none, bundle(store), storeReg); got.Source != "default" {
+		t.Fatalf("Store package, HKLM only: %+v", got)
+	}
+	storeReg[`HKCU\`+ProgramsKey] = map[string]any{"Programs": "mind"}
+	if got := ResolvePrograms(none, bundle(store), storeReg); got != (ProgramsChoice{Value: "hub,mind", Source: "HKCU"}) {
+		t.Fatalf("Store package: %+v", got)
+	}
 	if programsEnv(ProgramsChoice{Value: "hub,radar", Source: "HKCU"}) != "NIGAFIY_PROGRAMS=hub,radar" {
 		t.Fatal("programsEnv")
 	}

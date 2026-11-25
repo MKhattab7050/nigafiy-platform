@@ -319,7 +319,7 @@ export function configuredEngine(): EngineLink {
   return { controlUrl: env.ENGINE_CONTROL_URL, tokenFile: path.join(dataDir, 'engine', 'control-token') };
 }
 
-const KINDS: readonly PlatformInstallKind[] = ['msi', 'nsis', 'unknown'];
+const KINDS: readonly PlatformInstallKind[] = ['msi', 'msix', 'nsis', 'unknown'];
 let kindCache: { url: string; at: number; kind: PlatformInstallKind | null } | null = null;
 
 /**
@@ -343,9 +343,23 @@ export async function engineInstallKind(engine: EngineLink): Promise<PlatformIns
 export const MSI_MANAGED_MESSAGE =
   'This installation was installed from the MSI (Windows Installer), so your administrator updates it through Group Policy or Intune; the in-app updater does not install over it.';
 
-/** Refuses (409 msi_managed) when the engine reports an MSI-managed installation. */
+export const STORE_MANAGED_MESSAGE =
+  'This installation is the Microsoft Store package, so the Microsoft Store installs its updates; the in-app updater does not install over it.';
+
+/**
+ * Who updates this installation when it is not the in-app updater: `msi_managed` (Windows
+ * Installer, GPO/Intune) or `store_managed` (the Microsoft Store package); null otherwise.
+ */
+export async function managedElsewhere(engine: EngineLink): Promise<'msi_managed' | 'store_managed' | null> {
+  const kind = await engineInstallKind(engine);
+  return kind === 'msi' ? 'msi_managed' : kind === 'msix' ? 'store_managed' : null;
+}
+
+/** Refuses (409 msi_managed / store_managed) when the administrator or the Microsoft Store updates this installation. */
 export async function refuseIfMsiManaged(engine: EngineLink): Promise<void> {
-  if ((await engineInstallKind(engine)) === 'msi') throw new AppError(409, 'msi_managed', MSI_MANAGED_MESSAGE);
+  const reason = await managedElsewhere(engine);
+  if (reason === 'msi_managed') throw new AppError(409, 'msi_managed', MSI_MANAGED_MESSAGE);
+  if (reason === 'store_managed') throw new AppError(409, 'store_managed', STORE_MANAGED_MESSAGE);
 }
 
 /** Re-hashes the staged installer and asks the engine to install it. */
@@ -428,7 +442,15 @@ function parseEngineUpdate(raw: unknown): PlatformUpdateInstallStatus['engine'] 
   return {
     state: u.state === 'applying' ? 'applying' : 'idle',
     version: str(u.version, 40),
-    install: kind ? { kind, product_code: typeof inst?.product_code === 'string' && /^\{[0-9A-F-]{36}\}$/i.test(inst.product_code) ? inst.product_code : null } : null,
+    install: kind
+      ? {
+          kind,
+          product_code: typeof inst?.product_code === 'string' && /^\{[0-9A-F-]{36}\}$/i.test(inst.product_code) ? inst.product_code : null,
+          ...(kind === 'msix'
+            ? { package_family_name: typeof inst?.package_family_name === 'string' && /^[A-Za-z0-9.-]{3,50}_[a-z0-9]{13}$/.test(inst.package_family_name) ? inst.package_family_name : null }
+            : {}),
+        }
+      : null,
     last: last
       ? {
           version: str(last.version, 40) ?? '',

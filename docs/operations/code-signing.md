@@ -2,7 +2,25 @@
 
 Nigafiy's Windows build signs every program it ships (the desktop app, its uninstaller, the
 installer, `nigafiy-engine.exe` and `nigafiy-sensor.exe`) with Authenticode. Signing uses only
-built-in Windows PowerShell (`Set-AuthenticodeSignature`): no signtool, no paid service.
+built-in Windows PowerShell (`Set-AuthenticodeSignature`): no signtool, no paid service. (The one
+exception is the local test signature of an MSIX package, below: `Set-AuthenticodeSignature` cannot
+sign an `.msix`, so `build-msix.cjs --local-test` uses the `signtool.exe` of an already-installed
+Windows SDK. Store packages are not signed here at all.)
+
+## Three channels
+
+Owner decision (2026-11-25): no "Unknown publisher" and no SmartScreen warning for the public, and
+no paid certificate.
+
+| Channel | For whom | What | Signed by | Warning |
+| --- | --- | --- | --- | --- |
+| **Microsoft Store** | The public | Desktop app and Nigafiy Quick Support as MSIX ([microsoft-store.md](microsoft-store.md)) | Microsoft re-signs the package when it is published; the build leaves it unsigned | None (Store apps are never subject to SmartScreen) |
+| **Group Policy, own certificate** | Computers of an organisation | Endpoint agent installer and the desktop MSI | The organisation's free self-signed certificate (this page), its `.cer` deployed by GPO | None where the `.cer` is deployed; "Unknown publisher" anywhere else |
+| **Direct download** | Testing, or organisations that accept the warning | NSIS `.exe`, Quick Support `.exe` from Fleet | The organisation's certificate, or none | SmartScreen "Windows protected your PC" and "Unknown publisher" |
+
+A local test MSIX (`--local-test`) is signed with the same self-signed certificate so Windows can
+read it back; installing it needs that certificate in Local Machine → Trusted People (administrator
+rights), so it is for the owner's own test PC only and never for upload.
 
 ## The free route: your organisation's own certificate
 
@@ -61,8 +79,9 @@ With nothing configured the build still works and prints `building UNSIGNED`.
   `Cert:\CurrentUser\My` and set `NIGAFIY_SIGN_THUMBPRINT`, or use `NIGAFIY_SIGN_PFX`):
   - **SignPath Foundation** signs open-source projects for free (the repository must be public under
     an OSI licence).
-  - **Microsoft Store**: an individual developer account is free; the Store signs MSIX packages it
-    distributes.
+  - **Microsoft Store** (the route chosen on 2026-11-25, above): developer accounts are free; the
+    Store re-signs the MSIX packages it distributes. Policy 10.14 asks for a Company account for a
+    product published as a business name (microsoft-store.md).
 - Keep the private key off shared drives and never commit a `.pfx`. If it leaks, remove the old
   certificate's trust (`Install-NigafiyTrust.ps1 -Remove`), make a new one and re-sign.
 
