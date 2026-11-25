@@ -1,6 +1,10 @@
 package com.nigafiy.agent
 
+import android.Manifest
 import android.app.Notification
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
+import com.nigafiy.agent.admin.NigafiyAdminReceiver
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -47,6 +51,7 @@ class AgentService : Service() {
         executor = Executor(this, store, facts)
         seen = SeenCommands(store.seenCommands)
         channel(this)
+        showManagementNotification()
         startInForeground(getString(R.string.notif_enrolling, store.server ?: store.pendingEnrollment?.server ?: "…"))
     }
 
@@ -93,33 +98,73 @@ class AgentService : Service() {
         return Gateway(server, store.pin, store.credential)
     }
 
+    private val polling = AtomicBoolean(false)
+
     private fun loop() {
-        // Enroll first when an enrollment is waiting (QR provisioning extras, or a link opened).
-        while (running.get() && !store.enrolled) {
-            val p = store.pendingEnrollment ?: run { stopSelf(); return }
-            try {
-                val g = Gateway(p.server, p.pin)
-                val (id, cred) = g.enroll(Protocol.enrollBody(p.token, facts.device(withApps = false), facts.security()))
-                store.server = p.server
-                store.pin = p.pin
-                store.endpointId = id
-                store.credential = cred
-                store.pendingEnrollment = null
-                store.lastError = null
-            } catch (e: GatewayError) {
-                store.lastError = e.message
-                if (e.status == 401) { store.pendingEnrollment = null; stopSelf(); return }
-                sleep(30_000)
-            } catch (e: Exception) {
-                store.lastError = e.message
-                sleep(30_000)
-            }
-        }
-        pool.execute { pollLoop() }
         while (running.get()) {
+            if (!store.enrolled) {
+                // Not (or no longer) enrolled: enroll when an enrollment is waiting (QR provisioning
+                // extras, or a link opened), else stop. "Stop management" forgets the credential
+                // while this loop runs; before, the service kept running with nothing to do, kept the
+                // "Managed by Nigafiy" notification and never picked up a new enrollment (emulator run).
+                if (store.pendingEnrollment == null) { stopService(); return }
+                enrollOnce()
+                continue
+            }
+            if (polling.compareAndSet(false, true)) pool.execute { try { pollLoop() } finally { polling.set(false) } }
             heartbeat()
             sleep(store.heartbeatSeconds * 1000L)
         }
+    }
+
+    /** One enrollment attempt; on failure waits 30 s (a refused token is dropped). */
+    private fun enrollOnce() {
+        val p = store.pendingEnrollment ?: return
+        try {
+            val g = Gateway(p.server, p.pin)
+            val (id, cred) = g.enroll(Protocol.enrollBody(p.token, facts.device(withApps = false), facts.security()))
+            store.server = p.server
+            store.pin = p.pin
+            store.endpointId = id
+            store.credential = cred
+            store.pendingEnrollment = null
+            store.lastError = null
+            forceApps = true
+        } catch (e: GatewayError) {
+            store.lastError = e.message
+            if (e.status == 401) { store.pendingEnrollment = null; return }
+            sleep(30_000)
+        } catch (e: Exception) {
+            store.lastError = e.message
+            sleep(30_000)
+        }
+    }
+
+    /**
+     * A Device Owner grants itself the notification permission (Android 13+), so "Managed by
+     * Nigafiy" is always visible on a fully managed phone (no stealth mode). On the emulator run the
+     * permission was never asked for, so the notification was hidden although the phone was managed.
+     * A regular app keeps asking the person (MainActivity), who may refuse.
+     */
+    private fun showManagementNotification() {
+        if (Build.VERSION.SDK_INT < 33 || facts.mode() != Mode.DEVICE_OWNER) return
+        try {
+            val dpm = getSystemService(DevicePolicyManager::class.java)
+            dpm.setPermissionGrantState(
+                ComponentName(this, NigafiyAdminReceiver::class.java),
+                packageName,
+                Manifest.permission.POST_NOTIFICATIONS,
+                DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED,
+            )
+        } catch (e: Exception) {
+            store.lastError = e.message
+        }
+    }
+
+    private fun stopService() {
+        running.set(false)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun heartbeat() {

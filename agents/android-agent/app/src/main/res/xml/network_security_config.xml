@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HTTPS everywhere, system CAs only (the Nigafiy LAN TLS pin is checked in code, core/Pin.kt).
+  Plain http:// is allowed for a server on this phone's own loopback address only, which is what
+  core/EnrollLink.kt accepts (development, and adb reverse on an emulator). Without this the
+  manifest's usesCleartextTraffic="false" made Android refuse even that ("Cleartext HTTP traffic
+  to 127.0.0.1 not permitted"), seen on the first emulator run (2026-11-25).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

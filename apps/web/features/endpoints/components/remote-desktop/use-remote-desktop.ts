@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import type { ConnectChoice } from '../fleet-policy/connect-dialog';
 import { policyText } from '../fleet-policy/policy-text';
 import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';
+import { pointerThrottle } from './pointer-throttle';
 import { useWebRtcVideo } from './use-webrtc-video';
 
 export interface RemoteDesktopConsoleProps {
@@ -86,7 +87,13 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const drawChain = useRef<Promise<void>>(Promise.resolve());
   const inFlightRef = useRef(false);
   const waitingSince = useRef<number | null>(null);
-  const lastMove = useRef(0);
+  // The throttle calls the newest sendInput (it reads mayControl and the transport at send time).
+  const sendMoveRef = useRef<(p: { x: number; y: number }) => void>(() => undefined);
+  const moveThrottle = useRef(pointerThrottle<{ x: number; y: number }>((p) => sendMoveRef.current(p), 50));
+  useEffect(() => {
+    const th = moveThrottle.current;
+    return () => th.cancel();
+  }, []);
   const reqSeq = useRef(0);
   const [wsAttempt, setWsAttempt] = useState(0);
   const [, setTick] = useState(0);
@@ -412,6 +419,8 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     }
   }
 
+  sendMoveRef.current = (p) => void sendInput({ kind: 'mouse_move', x: p.x, y: p.y });
+
   function pointer(e: React.MouseEvent<HTMLCanvasElement> | React.WheelEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
@@ -425,11 +434,9 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const canvasHandlers = {
     onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!mayControl || !wsLive) return;
-      const now = performance.now();
-      if (now - lastMove.current < 50) return;
-      lastMove.current = now;
       const p = pointer(e);
-      if (p) void sendInput({ kind: 'mouse_move', x: p.x, y: p.y });
+      // At most one move per 50 ms, and the resting position is always sent (pointer-throttle.ts).
+      if (p) moveThrottle.current.push({ x: p.x, y: p.y });
     },
     onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
       if (!mayControl || !wsLive) return;

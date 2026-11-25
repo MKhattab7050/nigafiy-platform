@@ -12,7 +12,7 @@
     "start": "next start -p 3100",
     "typecheck": "tsc --noEmit -p .",
     "test:e2e": "playwright test",
-    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts features/endpoints/components/remote-desktop/adpcm.test.ts features/endpoints/components/remote-files/sha256.test.ts features/guide/guide.test.ts lib/retry.test.ts lib/i18n/messages.test.ts lib/i18n/plural.test.ts features/endpoints/components/android/qr.test.ts features/endpoints/components/android/enroll-codes.test.ts"
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test features/ipam/subnet-calc.test.ts features/endpoints/components/remote-desktop/adpcm.test.ts features/endpoints/components/remote-desktop/pointer-throttle.test.ts features/endpoints/components/remote-files/sha256.test.ts features/guide/guide.test.ts lib/retry.test.ts lib/i18n/messages.test.ts lib/i18n/plural.test.ts features/endpoints/components/android/qr.test.ts features/endpoints/components/android/enroll-codes.test.ts"
   },
   "dependencies": {
     "@nigafiy/brand": "workspace:*",

@@ -1091,6 +1091,10 @@ for the browser and the agent). **Never run:** a real browser receiving the agen
 connection between two computers. There is no second computer here, and no browser was pointed at
 a running agent; the web viewer is type-checked and built only. A Windows N edition without the
 Media Feature Pack (the agent then reports the reason and stays on JPEG) was not available either.
+**Update (2026-11-25, builder EMU):** a real Chromium has since received the real agent's video on
+this one PC (frames decoded, input over the data channel, the `RD_WEBRTC=off` fallback). Between two
+computers it is still never run. Candidates, firewall, STUN/TURN and owner steps for a LAN are in
+`webrtc-networking.md`.
 
 ## Target feature set
 

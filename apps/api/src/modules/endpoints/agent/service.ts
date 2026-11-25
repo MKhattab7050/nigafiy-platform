@@ -13,6 +13,7 @@ import { POLL_RECHECK_MS, armWake } from './wake.ts';
 import { evaluateMonitoring, monitorSpec } from '../fleet-monitoring/evaluate.ts';
 import { onHeartbeatPatches } from '../fleet-patches/service.ts';
 import { trayFlags } from '../fleet-user/recordings.ts';
+import { auditEndpointEvent } from '../remote-desktop/sessions.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -224,8 +225,35 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       );
     }
     // Android (migration 045): mode, battery, network kind and the Device Owner settings it applied.
+    // A phone that said "erasing" but reports again without having restarted was not erased (seen on
+    // the emulator run: Android accepted wipeDevice, then could not reboot into recovery and logged
+    // the failure only). The wipe command becomes "failed" with the reason, so Fleet never shows an
+    // erase that did not happen. Three minutes of grace cover the seconds before the reboot.
+    if (platform === 'android' && typeof body.uptime_seconds === 'number') {
+      const notWiped = await db.query<{ id: string }>(
+        `UPDATE endpoint_commands
+            SET status = 'failed',
+                error = 'The phone is still running: it reported again without restarting after the erase, so Android did not erase it'
+          WHERE endpoint_id = $1 AND kind = 'android_wipe' AND status = 'completed'
+            AND completed_at < $2::timestamptz - interval '3 minutes'
+            AND completed_at > $2::timestamptz - make_interval(secs => $3)
+          RETURNING id`,
+        [ep.id, now, body.uptime_seconds],
+      );
+      for (const r of notWiped.rows) {
+        await auditEndpointEvent(db, ep.organizationId, ep.id, 'fleet.android_wipe_not_done', { command_id: r.id, uptime_seconds: body.uptime_seconds });
+      }
+    }
+    // apps_count comes only with an inventory heartbeat (the one carrying `software`); the others
+    // keep the last count instead of turning it into "not measured" (seen on the emulator run).
     if (body.android) {
-      await db.query(`UPDATE endpoints SET android = $2::jsonb WHERE id = $1`, [ep.id, JSON.stringify({ ...body.android, reported_at: now.toISOString() })]);
+      await db.query(
+        `UPDATE endpoints
+            SET android = CASE WHEN $2::jsonb ? 'apps_count' OR android->'apps_count' IS NULL THEN $2::jsonb
+                               ELSE $2::jsonb || jsonb_build_object('apps_count', android->'apps_count') END
+          WHERE id = $1`,
+        [ep.id, JSON.stringify({ ...body.android, reported_at: now.toISOString() })],
+      );
     }
     // Restart and reconnect: the agent is back; a safe-boot flag still set gets cleared.
     await onHeartbeatRestarts(db, ep.organizationId, ep.id, body.boot_state, body.uptime_seconds);

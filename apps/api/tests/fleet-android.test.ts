@@ -171,6 +171,46 @@ describe('Android phones: enrollment, heartbeat and the endpoint view', () => {
     expect((p.endpoint ?? p).compliance_status).toBe('unknown');
   });
 
+  // Both seen on the first emulator run (Android 16, docs/features/android.md §11).
+  it('accepts the framework package "android" (one segment) in the app list, which every phone reports', async () => {
+    const a = await newAccount('android-framework-pkg');
+    const { epId, cred } = await phone(a, 'device_owner');
+    const body = heartbeatBody('Pixel-Reception', 'device_owner', {
+      software: [
+        { name: 'Android System', version: '16', package_id: 'android', publisher: 'system app' },
+        { name: 'Nigafiy', version: '0.1.0', package_id: 'com.nigafiy.agent' },
+      ],
+    });
+    const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(body);
+    expect(hb.status, JSON.stringify(hb.body)).toBe(200);
+    const e = (await a.agent.get(`/api/v1/endpoints/${epId}`)).body;
+    expect((e.endpoint ?? e).software.map((s: { package_id?: string }) => s.package_id)).toContain('android');
+    // Still refused where it would be dangerous: malformed names, and uninstalling needs a dotted name.
+    const bad = heartbeatBody('Pixel-Reception', 'device_owner', { software: [{ name: 'x', package_id: 'android..evil' }] });
+    expect((await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(bad)).status).toBe(400);
+    expect((await act(a, epId, { action: 'uninstall', package: 'android' })).status).toBe(400);
+  });
+
+  it('keeps the last apps count when a heartbeat carries no app list', async () => {
+    const a = await newAccount('android-apps-count');
+    const { epId, cred } = await phone(a, 'device_owner');
+    const read = async () => {
+      const e = (await a.agent.get(`/api/v1/endpoints/${epId}`)).body;
+      return (e.endpoint ?? e).android;
+    };
+    expect((await read()).apps_count).toBe(2);
+    const { software: _s, ...light } = heartbeatBody('Pixel-Reception', 'device_owner');
+    const { apps_count: _c, ...androidLight } = light.android as Record<string, unknown>;
+    const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send({ ...light, android: { ...androidLight, battery_pct: 55 } });
+    expect(hb.status, JSON.stringify(hb.body)).toBe(200);
+    expect(await read()).toMatchObject({ apps_count: 2, battery_pct: 55 });
+    // A new inventory replaces it.
+    const next = heartbeatBody('Pixel-Reception', 'device_owner');
+    (next.android as Record<string, unknown>).apps_count = 7;
+    expect((await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(next)).status).toBe(200);
+    expect((await read()).apps_count).toBe(7);
+  });
+
   it('a CPU monitoring rule on a phone is "not measured", never a breach of 0 %', () => {
     const m = measure({ kind: 'cpu', threshold: 90 } as Parameters<typeof measure>[0], { cpuPct: null, ramPct: 40, disks: null, monitor: undefined });
     expect(m.breach).toBeNull();
@@ -260,6 +300,60 @@ describe('Android actions: Device Owner, roles, policy, MFA, approvals, audit', 
     const rel = await act(a, epId, { action: 'release', reason: 'phone returned to the shop', step_up_token: await stepUp(a, secret) });
     expect(rel.status).toBe(202);
     expect(rel.body.command.kind).toBe('android_release');
+  });
+
+  // Seen on the emulator run: after "Stop management" the phone forgot its credential but the
+  // endpoint stayed active and the credential kept working.
+  it('a stop management the phone confirmed revokes the credential; a failed one does not', async () => {
+    const a = await newAccount('android-release-revoke');
+    const { epId, cred } = await phone(a, 'device_owner');
+    const secret = await enableMfa(a);
+    const result = async (ok: boolean) => {
+      expect((await act(a, epId, { action: 'release', reason: 'emulator run', step_up_token: await stepUp(a, secret) })).status).toBe(202);
+      const cmd = (await poll(cred)).find((c) => c.kind === 'android_release')!;
+      const r = await request(app).post('/api/v1/agent/command-result').set('Authorization', `Bearer ${cred}`).send({ command_results: [{ id: cmd.id, ok, ...(ok ? { output: 'done' } : { error: 'Android refused' }) }] });
+      expect(r.status).toBe(200);
+    };
+    const status = async () => (await systemPool.query(`SELECT status, credential_hash FROM endpoints WHERE id = $1`, [epId])).rows[0];
+
+    await result(false);
+    expect((await status()).status).toBe('active');
+    expect((await heartbeat(cred, 'Pixel-Reception', 'device_owner')).status).toBe(200);
+
+    await result(true);
+    expect(await status()).toMatchObject({ status: 'revoked', credential_hash: null });
+    expect((await heartbeat(cred, 'Pixel-Reception', 'device_owner')).status).toBe(401);
+    expect((await audits(a.organizationId, 'endpoint.revoked'))[0]?.metadata).toMatchObject({ reason: 'android_management_stopped', source: 'endpoint_agent' });
+  });
+
+  // Seen on the emulator run: Android accepted wipeDevice, the agent said "erasing", but the phone
+  // could not reboot into recovery and kept running.
+  it('a phone that reports again without restarting after an erase turns the erase into "failed"', async () => {
+    const a = await newAccount('android-wipe-not-done');
+    const { epId, cred } = await phone(a, 'device_owner');
+    const secret = await enableMfa(a);
+    expect((await act(a, epId, { action: 'wipe', reason: 'emulator run', step_up_token: await stepUp(a, secret) })).status).toBe(202);
+    const cmd = (await poll(cred)).find((c) => c.kind === 'android_wipe')!;
+    await request(app).post('/api/v1/agent/command-result').set('Authorization', `Bearer ${cred}`).send({ command_results: [{ id: cmd.id, ok: true, output: 'erasing the phone' }] });
+    const row = async () => (await systemPool.query(`SELECT status, error FROM endpoint_commands WHERE id = $1`, [cmd.id])).rows[0];
+    // The credential stays (a wipe that did not happen must not cut the phone off).
+    expect((await systemPool.query(`SELECT status FROM endpoints WHERE id = $1`, [epId])).rows[0].status).toBe('active');
+
+    // Within the grace period nothing changes.
+    expect((await heartbeat(cred, 'Pixel-Reception', 'device_owner')).status).toBe(200);
+    expect((await row()).status).toBe('completed');
+
+    // A phone that restarted (uptime shorter than the time since the erase) was erased and enrolled again: no change.
+    await systemPool.query(`UPDATE endpoint_commands SET completed_at = now() - interval '2 hours' WHERE id = $1`, [cmd.id]);
+    const fresh = heartbeatBody('Pixel-Reception', 'device_owner', { uptime_seconds: 600 });
+    expect((await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(fresh)).status).toBe(200);
+    expect((await row()).status).toBe('completed');
+
+    // Running since before the erase (uptime 3600 s > 10 min since it): not erased.
+    await systemPool.query(`UPDATE endpoint_commands SET completed_at = now() - interval '10 minutes' WHERE id = $1`, [cmd.id]);
+    expect((await heartbeat(cred, 'Pixel-Reception', 'device_owner')).status).toBe(200);
+    expect(await row()).toMatchObject({ status: 'failed', error: expect.stringMatching(/did not erase/) });
+    expect((await audits(a.organizationId, 'fleet.android_wipe_not_done'))[0]?.metadata).toMatchObject({ command_id: cmd.id, uptime_seconds: 3600 });
   });
 
   it('a group that asks for MFA asks it for every Android action; its role list and address list apply', async () => {

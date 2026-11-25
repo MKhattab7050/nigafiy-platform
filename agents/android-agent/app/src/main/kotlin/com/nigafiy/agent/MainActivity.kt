@@ -14,6 +14,7 @@ import android.provider.Settings
 import android.text.InputType
 import android.text.format.DateUtils
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -35,9 +36,21 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         store = Store(this)
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 48, 48, 48) }
-        setContentView(ScrollView(this).apply { addView(root) })
+        val scroll = ScrollView(this).apply { addView(root) }
+        if (Build.VERSION.SDK_INT >= 35) {
+            // Android 15+ draws an app targeting API 35+ edge to edge: without this the first lines
+            // (title, enrollment error) sat under the status and action bars (first emulator run).
+            // The top inset Android hands the content already includes the action bar.
+            scroll.setOnApplyWindowInsetsListener { v, insets ->
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                insets
+            }
+        }
+        setContentView(scroll)
         fromLink(intent)
-        if (store.enrolled) AgentService.start(this)
+        // Also resumes an enrollment that was waiting (as BootReceiver does after a reboot or update).
+        if (store.enrolled || store.pendingEnrollment != null) AgentService.start(this)
     }
 
     override fun onNewIntent(intent: Intent) {
