@@ -8,6 +8,7 @@ import { notifyRealtime } from '../../realtime/index.ts';
 import { effectivePolicy, evaluatePolicy, loadProfiles, normalizeIp } from '../fleet-policy/policy.ts';
 import { checkStepUpToken, operatorHasMfa } from '../fleet-policy/step-up.ts';
 import { ONLINE_WITHIN_MS } from '../repo.ts';
+import { apkFileError, auditApkFileProblem, checkApkFileForInstall } from './apks.ts';
 import type { AndroidAction } from './schema.ts';
 
 // Android actions (docs/features/android.md §5). Every one needs the Nigafiy agent to be the phone's
@@ -82,7 +83,7 @@ async function loadEndpoint(db: Db, id: string, lock = false): Promise<AndroidEn
 const online = (ep: AndroidEndpoint) => ep.status === 'active' && ep.last_heartbeat_at !== null && ep.last_heartbeat_at.getTime() >= Date.now() - ONLINE_WITHIN_MS;
 
 /** The command payload the agent parses (agents/android-agent core/Commands.kt). */
-async function commandPayload(db: Db, body: AndroidAction): Promise<Record<string, unknown>> {
+async function commandPayload(db: Db, orgId: string, endpointId: string, body: AndroidAction): Promise<Record<string, unknown>> {
   switch (body.action) {
     case 'lock':
       return {};
@@ -92,12 +93,18 @@ async function commandPayload(db: Db, body: AndroidAction): Promise<Record<strin
       return { disabled: body.disabled };
     case 'install_apk': {
       const apk = (
-        await db.query<{ id: string; name: string; file_name: string; size_bytes: string; sha256: string }>(
-          `SELECT id, name, file_name, size_bytes::text, sha256 FROM fleet_android_apks WHERE id = $1`,
+        await db.query<{ id: string; name: string; file_name: string; size_bytes: string; sha256: string; storage_key: string }>(
+          `SELECT id, name, file_name, size_bytes::text, sha256, storage_key FROM fleet_android_apks WHERE id = $1`,
           [body.apk_id],
         )
       ).rows[0];
       if (!apk) throw notFound('APK');
+      // The phone would only fail later: refuse now when the stored file is gone or has the wrong size.
+      const problem = await checkApkFileForInstall({ storage_key: apk.storage_key, size_bytes: Number(apk.size_bytes) });
+      if (problem) {
+        await auditApkFileProblem(orgId, apk, problem, 'install', { endpoint_id: endpointId });
+        throw apkFileError(problem);
+      }
       return { apk_id: apk.id, name: apk.name, file_name: apk.file_name, size_bytes: Number(apk.size_bytes), sha256: apk.sha256 };
     }
     case 'uninstall':
@@ -195,7 +202,7 @@ export async function performAndroidAction(req: Request, ctx: AuthContext, endpo
     if (body.action === 'uninstall' && body.package === AGENT_PACKAGE) {
       return refuse(409, 'android_self_uninstall', ANDROID_REFUSAL_MESSAGES.android_self_uninstall, trail, groupName);
     }
-    const payload = await commandPayload(db, body);
+    const payload = await commandPayload(db, ctx.organizationId, ep.id, body);
 
     if (rule.approval && eff.policy.approval_required) {
       trail.push({ check: 'approval', result: 'info', detail: `a second admin approves (expires after ${eff.policy.approval_ttl_minutes} min)` });

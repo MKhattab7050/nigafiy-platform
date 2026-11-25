@@ -1,12 +1,15 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { env } from '../src/config/env.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { LocalFileStore, filesRoot } from '../src/infrastructure/file-store.ts';
 import { base32Decode, totp } from '../src/modules/auth/totp.ts';
+import { runApkFileSweep } from '../src/modules/endpoints/fleet-android/apks.ts';
 import { measure } from '../src/modules/endpoints/fleet-monitoring/evaluate.ts';
 import { CSRF, app, newAccount, type TestAccount } from './helpers.ts';
 
@@ -394,6 +397,179 @@ describe('APKs pushed from Fleet', () => {
     expect((await tech.agent.delete(`/api/v1/fleet/android/apks/${apkId}`).set(CSRF)).status).toBe(403);
     expect((await a.agent.delete(`/api/v1/fleet/android/apks/${apkId}`).set(CSRF)).status).toBe(200);
     expect((await act(a, epId, { action: 'install_apk', apk_id: apkId })).status).toBe(404);
+  });
+});
+
+describe('APK files in the file store (migration 048)', () => {
+  const store = new LocalFileStore();
+  const up = (who: TestAccount, body: Buffer, q = 'name=Store%20app&file_name=store-app.apk') =>
+    who.agent.post(`/api/v1/fleet/android/apks?${q}`).set(CSRF).set('Content-Type', 'application/vnd.android.package-archive').send(body);
+  const fileOf = (orgId: string, sha: string) => path.join(filesRoot(), 'apks', orgId, sha);
+  const orgFiles = (orgId: string) => (existsSync(path.join(filesRoot(), 'apks', orgId)) ? readdirSync(path.join(filesRoot(), 'apks', orgId)) : []);
+
+  /** Downloads through a real socket: an aborted body rejects instead of looking complete. */
+  async function fetchFile(urlPath: string, headers: Record<string, string>): Promise<{ status: number; body: Buffer | null; aborted: boolean; json: unknown }> {
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    try {
+      const res = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}${urlPath}`, { headers });
+      if (res.headers.get('content-type')?.includes('json')) return { status: res.status, body: null, aborted: false, json: await res.json() };
+      try {
+        return { status: res.status, body: Buffer.from(await res.arrayBuffer()), aborted: false, json: null };
+      } catch {
+        return { status: res.status, body: null, aborted: true, json: null };
+      }
+    } finally {
+      server.closeAllConnections();
+      await new Promise((r) => server.close(r));
+    }
+  }
+  /** The session cookie the test agent holds, for fetch(). */
+  const cookieOf = (a: TestAccount) => {
+    const jar = (a.agent as unknown as { jar: { getCookies: (o: unknown) => Array<{ name: string; value: string }> } }).jar;
+    return jar
+      .getCookies({ domain: '127.0.0.1', path: '/', secure: false, script: false })
+      .map((c) => `${c.name}=${c.value}`)
+      .join('; ');
+  };
+
+  it('upload streams to <files>/apks/<org>/<sha256>; same bytes are one file; delete removes it; roles and organizations are enforced', async () => {
+    const a = await newAccount('apk-files-a');
+    const b = await newAccount('apk-files-b');
+    const tech = await addMember(a, 'technician');
+    const viewer = await addMember(a, 'viewer');
+    const bytes = fakeApk('stored');
+    const sha = createHash('sha256').update(bytes).digest('hex');
+
+    // Viewer and technician cannot upload.
+    expect((await up(viewer, bytes)).status).toBe(403);
+    expect((await up(tech, bytes)).status).toBe(403);
+    expect(orgFiles(a.organizationId)).toEqual([]);
+
+    const created = await up(a, bytes);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id: string = created.body.apk.id;
+    expect(statSync(fileOf(a.organizationId, sha)).size).toBe(bytes.length);
+    const row = (await systemPool.query(`SELECT storage_key, size_bytes::int AS size, sha256 FROM fleet_android_apks WHERE id = $1`, [id])).rows[0];
+    expect(row).toEqual({ storage_key: `apks/${a.organizationId}/${sha}`, size: bytes.length, sha256: sha });
+    // The bytes are no longer in the database at all.
+    expect((await systemPool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'fleet_android_apks' AND column_name = 'content'`)).rowCount).toBe(0);
+
+    // Same bytes again in the same organization: refused, still one file, no temporary file left.
+    expect((await up(a, bytes, 'name=Again&file_name=again.apk')).body.error.code).toBe('apk_exists');
+    expect(orgFiles(a.organizationId)).toEqual([sha]);
+    // The same bytes in another organization: its own row and its own folder.
+    expect((await up(b, bytes)).status).toBe(201);
+    expect(orgFiles(b.organizationId)).toEqual([sha]);
+
+    // Empty or wrongly typed bodies leave nothing behind either.
+    expect((await up(a, Buffer.alloc(0))).body.error.code).toBe('apk_empty');
+    expect((await a.agent.post('/api/v1/fleet/android/apks?name=x&file_name=x.apk').set(CSRF).set('Content-Type', 'text/plain').send('PK')).body.error.code).toBe('apk_empty');
+    expect((await up(a, Buffer.from('not a zip file at all, just text'))).body.error.code).toBe('apk_invalid');
+    expect(orgFiles(a.organizationId)).toEqual([sha]);
+
+    // Admin download: the exact bytes, audited; technician and viewer refused; another organization sees nothing.
+    const dl = await fetchFile(`/api/v1/fleet/android/apks/${id}/file`, { cookie: cookieOf(a) });
+    expect(dl.status).toBe(200);
+    expect(Buffer.compare(dl.body!, bytes)).toBe(0);
+    expect((await audits(a.organizationId, 'fleet.android_apk_downloaded'))[0]?.metadata).toEqual({ name: 'Store app', sha256: sha });
+    expect((await tech.agent.get(`/api/v1/fleet/android/apks/${id}/file`)).status).toBe(403);
+    expect((await viewer.agent.get(`/api/v1/fleet/android/apks/${id}/file`)).status).toBe(403);
+    expect((await b.agent.get(`/api/v1/fleet/android/apks/${id}/file`)).status).toBe(404);
+    expect((await b.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(404);
+    expect((await viewer.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(403);
+    expect((await tech.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(403);
+    expect(existsSync(fileOf(a.organizationId, sha))).toBe(true);
+
+    // Delete: row and file go; the other organization's copy stays.
+    expect((await a.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(200);
+    expect(existsSync(fileOf(a.organizationId, sha))).toBe(false);
+    expect(existsSync(fileOf(b.organizationId, sha))).toBe(true);
+    expect((await audits(a.organizationId, 'fleet.android_apk_deleted'))[0]?.metadata).toEqual({ name: 'Store app', sha256: sha, file_removed: true });
+  });
+
+  it('a missing or damaged file is a clear, audited error and never a complete download', async () => {
+    const a = await newAccount('apk-files-bad');
+    const { epId, cred } = await phone(a, 'device_owner', 'Pixel-Files');
+    const bytes = Buffer.concat([fakeApk('damaged'), Buffer.alloc(300_000, 7)]);
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    const id: string = (await up(a, bytes)).body.apk.id;
+    const file = fileOf(a.organizationId, sha);
+    const cookie = cookieOf(a);
+
+    // An install command, then the file is damaged (same size, other bytes): the downloads abort.
+    expect((await act(a, epId, { action: 'install_apk', apk_id: id })).status).toBe(202);
+    const damaged = Buffer.from(bytes);
+    damaged[damaged.length - 1]! ^= 0xff;
+    writeFileSync(file, damaged);
+    const agentDl = await fetchFile(`/api/v1/agent/android/apks/${id}`, { authorization: `Bearer ${cred}` });
+    expect(agentDl.status).toBe(200);
+    expect(agentDl.aborted).toBe(true);
+    const adminDl = await fetchFile(`/api/v1/fleet/android/apks/${id}/file`, { cookie });
+    expect(adminDl.aborted).toBe(true);
+    await expect.poll(async () => (await audits(a.organizationId, 'fleet.android_apk_file_problem')).length).toBe(2);
+    expect((await audits(a.organizationId, 'fleet.android_apk_file_problem'))[0]?.metadata).toEqual({ problem: 'corrupt', during: 'agent_download', sha256: sha, endpoint_id: epId });
+
+    // Wrong size: refused before the first byte, and the install action is refused.
+    writeFileSync(file, bytes.subarray(0, 1000));
+    const short = await fetchFile(`/api/v1/fleet/android/apks/${id}/file`, { cookie });
+    expect(short.status).toBe(409);
+    expect(short.json).toMatchObject({ error: { code: 'apk_file_corrupt' } });
+    expect((await act(a, epId, { action: 'install_apk', apk_id: id })).body.error.code).toBe('apk_file_corrupt');
+
+    // Missing: the install action is refused and audited; downloads say so.
+    rmSync(file);
+    const inst = await act(a, epId, { action: 'install_apk', apk_id: id });
+    expect(inst.status).toBe(409);
+    expect(inst.body.error.code).toBe('apk_file_missing');
+    const missing = await fetchFile(`/api/v1/agent/android/apks/${id}`, { authorization: `Bearer ${cred}` });
+    expect(missing.json).toMatchObject({ error: { code: 'apk_file_missing' } });
+    const problems = (await audits(a.organizationId, 'fleet.android_apk_file_problem')).map((x) => [x.metadata.problem, x.metadata.during]);
+    expect(problems).toEqual([
+      ['corrupt', 'agent_download'],
+      ['corrupt', 'admin_download'],
+      ['corrupt', 'admin_download'],
+      ['corrupt', 'install'],
+      ['missing', 'install'],
+      ['missing', 'agent_download'],
+    ]);
+
+    // Deleting an APK whose file is already gone still works (nothing to remove).
+    expect((await a.agent.delete(`/api/v1/fleet/android/apks/${id}`).set(CSRF)).status).toBe(200);
+    expect((await audits(a.organizationId, 'fleet.android_apk_deleted'))[0]?.metadata).toMatchObject({ file_removed: false });
+  });
+
+  it('the sweep removes old orphans and old temporary files, never a referenced file, and audits a summary', async () => {
+    const a = await newAccount('apk-files-sweep');
+    const bytes = fakeApk('kept');
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    expect((await up(a, bytes)).status).toBe(201);
+    const dir = path.join(filesRoot(), 'apks', a.organizationId);
+    const old = new Date(Date.now() - 7 * 3600_000);
+    const orphan = path.join(dir, 'ab'.repeat(32));
+    const oldTemp = path.join(dir, `.tmp-${'1'.repeat(32)}`);
+    const freshTemp = path.join(dir, `.tmp-${'2'.repeat(32)}`);
+    const freshOrphan = path.join(dir, 'cd'.repeat(32));
+    const other = path.join(dir, 'notes.txt');
+    writeFileSync(orphan, 'x'.repeat(10));
+    writeFileSync(oldTemp, 'y'.repeat(20));
+    writeFileSync(freshTemp, 'z');
+    writeFileSync(freshOrphan, 'w');
+    writeFileSync(other, 'leave me');
+    for (const f of [orphan, oldTemp, other, fileOf(a.organizationId, sha)]) utimesSync(f, old, old);
+
+    await runApkFileSweep(store);
+    expect(existsSync(orphan)).toBe(false);
+    expect(existsSync(oldTemp)).toBe(false);
+    expect(existsSync(fileOf(a.organizationId, sha))).toBe(true); // referenced
+    expect(existsSync(freshTemp)).toBe(true); // an upload may still be writing it
+    expect(existsSync(freshOrphan)).toBe(true); // younger than the safe age
+    expect(existsSync(other)).toBe(true); // not a file of the store: never touched
+    expect((await audits(a.organizationId, 'fleet.android_apk_files_swept'))[0]?.metadata).toEqual({ orphans_removed: 1, temp_removed: 1, bytes_freed: 30, others_kept: 1 });
+    // A second run finds nothing more to do in this organization.
+    await runApkFileSweep(store);
+    expect(await audits(a.organizationId, 'fleet.android_apk_files_swept')).toHaveLength(1);
+    rmSync(other);
   });
 });
 
