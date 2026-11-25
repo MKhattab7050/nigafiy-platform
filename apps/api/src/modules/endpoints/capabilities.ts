@@ -10,6 +10,7 @@ import type {
 
 export function inferPlatformFromOs(osRaw?: string | null, current?: EndpointPlatform): EndpointPlatform {
   const s = (osRaw ?? '').toLowerCase();
+  if (s.includes('android')) return 'android';
   // darwin before win: 'darwin' contains 'win'.
   if (s.includes('darwin') || s.includes('mac')) return 'macos';
   if (s.includes('win')) return 'windows';
@@ -38,6 +39,11 @@ export const COMPLIANCE_CHECKS: Record<EndpointComplianceCheck, CheckDef> = {
   gatekeeper: { label_en: 'Gatekeeper', label_ar: 'التحقق من التطبيقات (Gatekeeper)', failVerdict: 'attention' },
   disk_space: { label_en: 'Free disk space', label_ar: 'المساحة الحرة على القرص', failVerdict: 'attention' },
   local_admins: { label_en: 'Local administrators', label_ar: 'المسؤولون المحليون', failVerdict: 'attention' },
+  // Android (docs/features/android.md §1): measured by the Android agent with framework APIs.
+  screen_lock: { label_en: 'Screen lock', label_ar: 'قفل الشاشة', failVerdict: 'non_compliant' },
+  developer_options: { label_en: 'Developer options', label_ar: 'خيارات المطوّر', failVerdict: 'attention' },
+  usb_debugging: { label_en: 'USB debugging', label_ar: 'تصحيح أخطاء USB', failVerdict: 'attention' },
+  unknown_sources: { label_en: 'Install unknown apps', label_ar: 'تثبيت التطبيقات غير المعروفة', failVerdict: 'attention' },
 };
 
 /** The items an endpoint of each platform must pass to be called compliant. */
@@ -45,6 +51,7 @@ export const REQUIRED_CHECKS: Record<EndpointPlatform, EndpointComplianceCheck[]
   windows: ['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'disk_space'],
   linux: ['firewall', 'disk_encryption', 'os_updates', 'disk_space'],
   macos: ['firewall', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper', 'disk_space'],
+  android: ['screen_lock', 'disk_encryption', 'os_updates', 'developer_options', 'usb_debugging', 'unknown_sources', 'disk_space'],
 };
 
 const RANK: Record<EndpointComplianceStatus, number> = { compliant: 0, unknown: 1, attention: 2, non_compliant: 3 };
@@ -135,6 +142,11 @@ function judgeItem(key: EndpointComplianceCheck, evidence: EndpointSecurityEvide
         [en, ar] = [`Disk encryption is off: ${s}`, `تشفير القرص غير مفعّل: ${iso(s)}`];
         break;
       case 'os_updates': {
+        const patch = fails.find((e) => e.source === 'Build.VERSION.SECURITY_PATCH');
+        if (patch) {
+          [en, ar] = [`Android security patch is too old: ${patch.value}`, `تصحيح أمان Android قديم جداً: ${iso(patch.value)}`];
+          break;
+        }
         const n = fails.reduce((sum, e) => sum + (e.count ?? 0), 0);
         [en, ar] = [`${n} OS/security update(s) pending`, `توجد ${iso(String(n))} تحديثات نظام/أمان معلّقة`];
         break;
@@ -145,6 +157,20 @@ function judgeItem(key: EndpointComplianceCheck, evidence: EndpointSecurityEvide
       case 'gatekeeper':
         [en, ar] = ['Gatekeeper is disabled', 'التحقق من التطبيقات (Gatekeeper) معطّل'];
         break;
+      case 'screen_lock':
+        [en, ar] = ['No screen lock (PIN, pattern or password) protects the phone', 'لا يحمي الهاتف أي قفل شاشة (رمز أو نمط أو كلمة مرور)'];
+        break;
+      case 'developer_options':
+        [en, ar] = ['Developer options are switched on', 'خيارات المطوّر مفعّلة'];
+        break;
+      case 'usb_debugging':
+        [en, ar] = ['USB debugging (adb) is switched on', 'تصحيح أخطاء USB (adb) مفعّل'];
+        break;
+      case 'unknown_sources': {
+        const apps = fails.map((e) => e.value).join(', ');
+        [en, ar] = [`Apps allowed to install unknown apps: ${apps}`, `تطبيقات مسموح لها بتثبيت تطبيقات غير معروفة: ${iso(apps)}`];
+        break;
+      }
       case 'disk_space': {
         const pct = fails[0]!.value.replace(/ used$/, '');
         [en, ar] = [`Disk usage is critically high (${pct})`, `امتلاء القرص وصل لمستوى حرج (${iso(pct)})`];
@@ -483,6 +509,7 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
     ];
   }
 
+  if (platform === 'android') return androidCapabilities();
   if (platform === 'macos') {
     return [
       {
@@ -582,4 +609,49 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
   }
 
   return [];
+}
+
+/**
+ * The Android agent (agents/android-agent). Every Device Owner action needs the agent to be the
+ * phone's Device Owner (adb dpm set-device-owner or QR provisioning on a factory-reset phone); a
+ * regular app has inventory and checks only. Built and unit-tested here, never run on a phone.
+ */
+function androidCapabilities(): EndpointCapabilityItem[] {
+  const owner = (key: string, label_en: string, label_ar: string, reason_en: string, reason_ar: string): EndpointCapabilityItem => ({
+    key,
+    category: key === 'android_apps' ? 'software' : 'remote_control',
+    label_en,
+    label_ar,
+    state: 'requires_permissions',
+    enabled: true,
+    reason_en: `${reason_en} Needs the agent to be the phone's Device Owner. Not tested on a real phone.`,
+    reason_ar: `${reason_ar} يتطلب أن يكون الوكيل مالك الجهاز. لم يُختبر على هاتف حقيقي.`,
+  });
+  return [
+    {
+      key: 'telemetry_inventory',
+      category: 'inventory',
+      label_en: 'Android inventory (model, Android version, patch level, storage, memory, battery, network, installed apps)',
+      label_ar: 'جرد Android (الطراز والإصدار ومستوى التصحيح والتخزين والذاكرة والبطارية والشبكة والتطبيقات المثبتة)',
+      state: 'not_tested',
+      enabled: true,
+      reason_en: 'Read with Build, StatFs, ActivityManager, BatteryManager, ConnectivityManager and PackageManager (QUERY_ALL_PACKAGES). CPU load is not available to Android apps and is not shown. Not tested on a real phone.',
+      reason_ar: 'يُقرأ عبر واجهات Android القياسية. حمل المعالج غير متاح لتطبيقات Android ولا يُعرض. لم يُختبر على هاتف حقيقي.',
+    },
+    {
+      key: 'security_compliance',
+      category: 'inventory',
+      label_en: 'Security compliance (screen lock, encryption, patch age, developer options, USB debugging, unknown sources)',
+      label_ar: 'الامتثال الأمني (قفل الشاشة والتشفير وعمر التصحيح وخيارات المطوّر وتصحيح USB والمصادر غير المعروفة)',
+      state: 'not_tested',
+      enabled: true,
+      reason_en: 'KeyguardManager.isDeviceSecure, DevicePolicyManager.getStorageEncryptionStatus, Build.VERSION.SECURITY_PATCH (fails after 90 days), Settings.Global DEVELOPMENT_SETTINGS_ENABLED and ADB_ENABLED, the "Install unknown apps" grants Android lets the agent read. Not tested on a real phone.',
+      reason_ar: 'يُقاس عبر واجهات Android القياسية (يفشل التصحيح بعد 90 يوماً). لم يُختبر على هاتف حقيقي.',
+    },
+    owner('android_lock', 'Lock now', 'القفل الآن', 'DevicePolicyManager.lockNow.', 'عبر DevicePolicyManager.lockNow.'),
+    owner('android_password_policy', 'Screen-lock requirement', 'اشتراط قفل الشاشة', 'setRequiredPasswordComplexity (Android 12+) or the password quality API before.', 'عبر setRequiredPasswordComplexity أو واجهة جودة كلمة المرور في الإصدارات الأقدم.'),
+    owner('android_camera', 'Disable / enable camera', 'تعطيل الكاميرا أو تفعيلها', 'DevicePolicyManager.setCameraDisabled.', 'عبر DevicePolicyManager.setCameraDisabled.'),
+    owner('android_apps', 'Install an APK from Fleet / remove an app', 'تثبيت ملف APK من Fleet أو إزالة تطبيق', 'Silent PackageInstaller sessions; the APK is checked by size and SHA-256 before installing.', 'جلسات PackageInstaller صامتة بعد التحقق من الحجم وبصمة SHA-256.'),
+    owner('android_wipe', 'Erase the phone', 'مسح الهاتف', 'wipeDevice (Android 14+) or wipeData; admin only, verification code always, second admin when the group asks for approvals.', 'للمسؤول فقط، مع رمز تحقق دائماً وموافقة مسؤول ثانٍ عندما تطلب المجموعة ذلك.'),
+  ];
 }

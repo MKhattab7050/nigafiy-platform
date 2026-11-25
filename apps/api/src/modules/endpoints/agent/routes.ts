@@ -20,6 +20,7 @@ import { agentHardwareSchema, recordHardware } from '../fleet-inventory/hardware
 import { agentPatchStatusSchema } from '../fleet-patches/schema.ts';
 import { recordPatchStatus } from '../fleet-patches/service.ts';
 import { agentRecordingLink, agentRecordings, recordingLinkSchema } from '../fleet-user/recordings.ts';
+import { androidGatewayRouter } from '../fleet-android/routes.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -149,3 +150,6 @@ agentGatewayRouter.post('/shell-end', requireEndpointAgent, async (req, res) => 
 agentGatewayRouter.post('/it-activity', requireEndpointAgent, async (req, res) => {
   res.json({ items: await itActivity(req.endpoint!) });
 });
+
+// Android: the agent APK for QR provisioning and APKs pushed from Fleet (fleet-android/routes.ts).
+agentGatewayRouter.use(androidGatewayRouter);

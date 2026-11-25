@@ -151,6 +151,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       allowedLocalAdmins: currentRow?.allowed_local_admins ?? undefined,
     });
 
+    // Android gives apps no CPU load: null (not measured) there, 0 for an older agent that sent none.
+    const cpuPct = body.cpu_pct ?? (platform === 'android' ? null : 0);
+
     const deviceId = ep.deviceId ?? (await resolveDeviceLink(db, ep.siteId, mac ?? undefined, body.primary_ip));
 
     await db.query(
@@ -189,7 +192,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         body.logged_in_users,
         body.primary_ip ?? null,
         mac,
-        body.cpu_pct,
+        cpuPct,
         body.ram_used_mb,
         body.ram_pct,
         topDiskPct,
@@ -211,7 +214,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     await db.query(
       `INSERT INTO endpoint_samples (endpoint_id, ts, organization_id, cpu_pct, ram_pct, ram_used_mb, disk_used_pct)
        VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
-      [ep.id, now, ep.organizationId, body.cpu_pct, body.ram_pct, body.ram_used_mb, topDiskPct],
+      [ep.id, now, ep.organizationId, cpuPct, body.ram_pct, body.ram_used_mb, topDiskPct],
     );
 
     if (body.user_sessions || body.boot_state) {
@@ -220,6 +223,10 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         [ep.id, body.user_sessions ? JSON.stringify(body.user_sessions) : null, body.boot_state ? JSON.stringify({ ...body.boot_state, reported_at: now.toISOString() }) : null],
       );
     }
+    // Android (migration 045): mode, battery, network kind and the Device Owner settings it applied.
+    if (body.android) {
+      await db.query(`UPDATE endpoints SET android = $2::jsonb WHERE id = $1`, [ep.id, JSON.stringify({ ...body.android, reported_at: now.toISOString() })]);
+    }
     // Restart and reconnect: the agent is back; a safe-boot flag still set gets cleared.
     await onHeartbeatRestarts(db, ep.organizationId, ep.id, body.boot_state, body.uptime_seconds);
 
@@ -227,7 +234,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     const storedDisks = body.disks
       ? null
       : ((await db.query<{ disks: { mount: string; free_gb?: number; total_gb?: number; used_pct: number }[] | null }>(`SELECT disks FROM endpoints WHERE id = $1`, [ep.id])).rows[0]?.disks ?? null);
-    await evaluateMonitoring(db, ep.id, { cpuPct: body.cpu_pct, ramPct: body.ram_pct, disks: body.disks ?? storedDisks, monitor: body.monitor }, now);
+    await evaluateMonitoring(db, ep.id, { cpuPct, ramPct: body.ram_pct, disks: body.disks ?? storedDisks, monitor: body.monitor }, now);
     const monitor = await monitorSpec(db, ep.id);
     // Patches: a computer that came back after its patch restart.
     await onHeartbeatPatches(db, ep.organizationId, ep.id, body.uptime_seconds);

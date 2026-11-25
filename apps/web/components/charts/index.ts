@@ -9,4 +9,4 @@ export { SeriesLegend, TimeSeriesChart, type SeriesDef, type TimePoint } from '.
 export { ColumnChart, type Column } from './column-chart';
 
 /** Fixed series colours, in order. State colours (ok/warn/crit) are never used as series. */
-export const SERIES = ['var(--color-series-1)', 'var(--color-series-2)', 'var(--color-series-3)'] as const;
+export const SERIES = ['var(--color-series-1)', 'var(--color-series-2)', 'var(--color-series-3)', 'var(--color-series-4)'] as const;

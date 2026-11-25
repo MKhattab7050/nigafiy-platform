@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">وكيل Nigafiy</string>
+    <string name="admin_label">إدارة الجهاز عبر Nigafiy</string>
+    <string name="admin_description">يسمح لـ Nigafiy Fleet الخاص بمؤسستك بقفل هذا الهاتف، وفرض قفل الشاشة، وإيقاف الكاميرا، وتثبيت تطبيقات العمل أو إزالتها، ومسح الهاتف. يُسجَّل كل إجراء في Fleet.</string>
+    <string name="channel_name">إدارة الجهاز</string>
+    <string name="channel_description">يظهر ما دام Nigafiy يدير هذا الهاتف</string>
+    <string name="notif_title">يُدار بواسطة Nigafiy</string>
+    <string name="notif_regular">متصل بـ %1$s. الجرد وفحوص الأمان فقط.</string>
+    <string name="notif_owner">متصل بـ %1$s. مؤسستك تدير هذا الهاتف.</string>
+    <string name="notif_offline">تعذّر الوصول إلى %1$s: %2$s</string>
+    <string name="notif_enrolling">جارٍ التسجيل لدى %1$s…</string>
+    <string name="title_enroll">تسجيل هذا الهاتف</string>
+    <string name="enroll_hint">افتح Fleet ← الأجهزة الطرفية ← تسجيل ← Android وامسح رمز QR بالكاميرا، أو اكتب القيم الثلاث هنا.</string>
+    <string name="field_server">خادم Nigafiy (https://…)</string>
+    <string name="field_token">رمز التسجيل (ldea_…)</string>
+    <string name="field_pin">بصمة الشهادة (اختيارية، 64 حرفاً ست عشرياً)</string>
+    <string name="action_enroll">تسجيل</string>
+    <string name="enrolling">جارٍ التسجيل…</string>
+    <string name="enroll_failed">فشل التسجيل: %1$s</string>
+    <string name="enrolled_title">هذا الهاتف يُدار بواسطة Nigafiy</string>
+    <string name="status_server">الخادم: %1$s</string>
+    <string name="status_endpoint">معرّف الجهاز: %1$s</string>
+    <string name="status_mode_owner">الوضع: مالك الجهاز (القفل والمسح والكاميرا وسياسة قفل الشاشة وتثبيت التطبيقات متاحة لفريق تقنية المعلومات)</string>
+    <string name="status_mode_regular">الوضع: تطبيق عادي (الجرد وفحوص الأمان فقط؛ لا يستطيع فريق تقنية المعلومات قفل الهاتف أو مسحه)</string>
+    <string name="status_last">آخر اتصال: %1$s</string>
+    <string name="status_never">آخر اتصال: لم يحدث بعد</string>
+    <string name="status_error">آخر خطأ: %1$s</string>
+    <string name="action_battery">السماح لـ Nigafiy بالعمل في الخلفية</string>
+    <string name="action_notifications">السماح بإشعار الإدارة</string>
+    <string name="what_is_sent">ما يقرؤه Nigafiy: الطراز وإصدار Android ومستوى تصحيح الأمان والتخزين والذاكرة والبطارية وعناوين الشبكة والتطبيقات المثبتة وإعدادات الأمان المعروضة في Fleet. لا يقرأ أبداً الرسائل أو الصور أو الملفات أو جهات الاتصال أو الموقع أو ما تكتبه.</string>
+    <string name="wipe_notice">مسحت مؤسستك هذا الهاتف عبر Nigafiy.</string>
+</resources>

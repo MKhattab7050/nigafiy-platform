@@ -9,7 +9,7 @@ const mac = z.string().regex(/^[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}$/, 'must be
 // eslint-disable-next-line no-control-regex
 const cleanText = (max: number) => z.string().min(1).max(max).regex(/^[^\u0000-\u001f\u007f]*$/, 'control characters are not allowed');
 
-export const platformEnum = z.enum(['windows', 'linux', 'macos']);
+export const platformEnum = z.enum(['windows', 'linux', 'macos', 'android']);
 
 // eslint-disable-next-line no-control-regex
 const evidenceText = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001f\u007f]*$/, 'control characters are not allowed');
@@ -17,7 +17,7 @@ const evidenceText = (max: number) => z.string().max(max).regex(/^[^\u0000-\u001
 /** One measured compliance fact from the agent: the command, what it printed (summarised) and when. */
 export const securityEvidenceSchema = z
   .object({
-    check: z.enum(['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper', 'local_admins']),
+    check: z.enum(['firewall', 'antivirus', 'disk_encryption', 'os_updates', 'sip', 'gatekeeper', 'local_admins', 'screen_lock', 'developer_options', 'usb_debugging', 'unknown_sources']),
     subject: cleanText(120),
     state: z.enum(['pass', 'fail', 'warn', 'unknown', 'info']),
     value: evidenceText(300),
@@ -46,6 +46,24 @@ export const endpointPolicySchema = z
     allowed_fs_roots: z.array(cleanText(260)).max(20).optional(),
     remote_desktop_consent: z.enum(['unattended', 'prompt']).optional(),
     allowed_local_admins: z.array(cleanText(256)).max(50).optional(),
+  })
+  .strict();
+
+/** What only the Android agent reports (endpoints.android). */
+export const androidStateSchema = z
+  .object({
+    mode: z.enum(['regular', 'device_owner']),
+    sdk_int: z.number().int().min(1).max(1000),
+    release: cleanText(40).optional(),
+    security_patch: z.string().max(20).regex(/^[0-9A-Za-z-]*$/).optional(),
+    battery_pct: z.number().int().min(0).max(100).optional(),
+    charging: z.boolean().optional(),
+    network: z.enum(['wifi', 'cellular', 'ethernet', 'vpn', 'none', 'other']).optional(),
+    camera_disabled: z.boolean().optional(),
+    password_complexity: z.enum(['none', 'low', 'medium', 'high']).optional(),
+    battery_optimisation_exempt: z.boolean().optional(),
+    notifications_allowed: z.boolean().optional(),
+    apps_count: z.number().int().min(0).max(100_000).optional(),
   })
   .strict();
 
@@ -127,6 +145,8 @@ export const softwareSchema = z
     version: cleanText(120).optional(),
     publisher: cleanText(160).optional(),
     install_date: cleanText(40).optional(),
+    // Android: the app's package name (the uninstall action names it).
+    package_id: z.string().max(200).regex(/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/).optional(),
   })
   .strict();
 
@@ -164,7 +184,8 @@ export const agentHeartbeatSchema = z
     logged_in_users: z.array(cleanText(120)).max(32).default([]),
     primary_ip: ipv4.optional(),
     primary_mac: mac.optional(),
-    cpu_pct: z.number().min(0).max(100).default(0),
+    // Absent from the Android agent: Android gives apps no CPU load (stored as null, not 0).
+    cpu_pct: z.number().min(0).max(100).optional(),
     ram_used_mb: z.number().int().min(0).max(16_777_216).default(0),
     ram_pct: z.number().min(0).max(100).default(0),
     disk_used_pct: z.number().min(0).max(100).optional(),
@@ -197,6 +218,8 @@ export const agentHeartbeatSchema = z
     boot_state: z.object({ safe_mode: z.boolean().optional(), safe_boot_flag: z.boolean().optional(), service: z.boolean().optional() }).strict().optional(),
     // Fleet Pro (migration 043): service states and event-log counts for the monitoring rules.
     monitor: agentMonitorSchema.optional(),
+    // Android agent (migration 045): mode, battery, network kind, Device Owner settings.
+    android: androidStateSchema.optional(),
   })
   .strict();
 

@@ -30,6 +30,7 @@ import { RemoteDesktopConsole } from '../components/remote-desktop/remote-deskto
 import { reachText } from '../components/reach/reach-text';
 import { endpointsText } from '../text';
 import { DeviceLink } from '@/components/device-link';
+import { AndroidPanel } from '../components/android/android-panel';
 
 export function EndpointDetailScreen({ id }: { id: string }) {
   const confirm = useConfirm();
@@ -102,6 +103,8 @@ export function EndpointDetailScreen({ id }: { id: string }) {
           const tone: Tone = ep.status === 'revoked' ? 'crit' : ep.status === 'pending' ? 'warn' : online ? 'ok' : 'crit';
 
           const capEnabled = (key: string) => ep.capabilities?.find((c) => c.key === key)?.enabled ?? false;
+          // Android phones: no hardware/licence report, no OS update scan, no shell (agents/android-agent).
+          const isAndroid = ep.platform === 'android';
 
           const availableTabs: { value: Tab; label: string }[] = [
             { value: 'overview', label: tx.tabs.overview },
@@ -117,13 +120,17 @@ export function EndpointDetailScreen({ id }: { id: string }) {
               ? [{ value: 'connections' as Tab, label: `${tx.tabs.connections} (${ep.connections.length})` }]
               : []),
             { value: 'software', label: `${tx.tabs.software} (${ep.software.length})` },
-            { value: 'hardware', label: tx.tabs.hardware },
-            { value: 'patches', label: tx.tabs.patches },
+            ...(isAndroid
+              ? []
+              : [
+                  { value: 'hardware' as Tab, label: tx.tabs.hardware },
+                  { value: 'patches' as Tab, label: tx.tabs.patches },
+                ]),
             ...(capEnabled('diagnostics_logs') ? [{ value: 'diagnostics' as Tab, label: tx.tabs.diagnostics }] : []),
             { value: 'security', label: tx.tabs.security },
             { value: 'commands', label: `${tx.tabs.commands} (${ep.commands.length})` },
             // Remote shell: admins only (the API refuses everyone else and audits it).
-            ...(can('admin') ? [{ value: 'shell' as Tab, label: jobsText(locale).shellTitle }] : []),
+            ...(can('admin') && !isAndroid ? [{ value: 'shell' as Tab, label: jobsText(locale).shellTitle }] : []),
           ];
           // A requested tab this endpoint does not offer (capability off, unknown name) opens the overview.
           const shown: Tab = availableTabs.some((o) => o.value === tab) ? tab : 'overview';
@@ -194,6 +201,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                   setRange={setRange}
                   seriesQuery={seriesQuery}
                   message={{ title: msgTitle, setTitle: setMsgTitle, body: msgBody, setBody: setMsgBody }}
+                  side={isAndroid ? <AndroidPanel ep={ep} online={online} onReload={query.reload} /> : undefined}
                 />
               )}
 
@@ -256,7 +264,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 <SoftwareTab
                   ep={ep}
                   online={online}
-                  canAdmin={can('admin')}
+                  canAdmin={can('admin') && !isAndroid}
                   search={swSearch}
                   setSearch={setSwSearch}
                   pkgId={pkgId}

@@ -6,6 +6,7 @@ import { commandsRouter } from './commands/routes.ts';
 import { enrollmentRouter } from './enrollment/routes.ts';
 import { fleetRouter } from './fleet/routes.ts';
 import { fleetPolicyRouter } from './fleet-policy/routes.ts';
+import { fleetAndroidRouter } from './fleet-android/routes.ts';
 import { fleetReachRouter } from './fleet-reach/routes.ts';
 import { fleetJobsRouter } from './fleet-jobs/routes.ts';
 import { runJobScheduler } from './fleet-jobs/jobs.ts';
@@ -27,12 +28,13 @@ import { AGENT_WAKE_CHANNEL, onAgentWakeNotification } from './agent/wake.ts';
 import { streamHub } from './remote-desktop/stream-hub.ts';
 
 /**
- * Endpoint management (Windows, Linux, macOS agents).
+ * Endpoint management (Windows, Linux, macOS agents; Android phones).
  *
  *   agent/           credential-authenticated agent gateway (/api/v1/agent): enroll, heartbeat, poll, results, inventory
  *   fleet/           fleet & inventory reads
  *   enrollment/      register endpoints, re-issue enrollment tokens, revoke
  *   policy/          per-endpoint policy (compliance is evaluated in capabilities.ts)
+ *   fleet-android/   Android phones: Device Owner actions (policy, MFA, approvals), APKs to push, provisioning QR
  *   fleet-policy/    Fleet permission profiles, groups, per-group access policy, MFA step-up, approvals
  *   fleet-reach/     address book, connect by name/ID/code, Request help, restart and reconnect, Quick Support
  *   fleet-shell/     remote shell (admins; group switch): agent/operator sockets, encrypted transcript
@@ -47,7 +49,7 @@ import { streamHub } from './remote-desktop/stream-hub.ts';
  *   commands/        every remote action queued for an agent
  */
 const endpointsApi: Router = Router();
-endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, fleetMonitoringRouter, fleetPatchesRouter, remoteDesktopRouter, commandsRouter);
+endpointsApi.use(fleetRouter, enrollmentRouter, policyRouter, fleetPolicyRouter, fleetAndroidRouter, fleetReachRouter, fleetShellRouter, fleetJobsRouter, fleetMonitoringRouter, fleetPatchesRouter, remoteDesktopRouter, commandsRouter);
 
 let unsubscribeCommandDone: (() => void) | null = null;
 let unsubscribeFrames: (() => void) | null = null;

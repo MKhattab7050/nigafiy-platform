@@ -103,6 +103,8 @@ export function SecurityAndCapabilitiesTab({
           </dl>
         </Card>
 
+        {/* File Manager roots, local administrators and remote desktop consent do not apply to Android phones. */}
+        {ep.platform !== 'android' && (
         <Card title={isAr ? 'سياسة الجهاز' : 'Endpoint Policy'}>
           <form onSubmit={savePolicy} className="space-y-3">
             <Field label={isAr ? 'تقييد مجلدات مدير الملفات (مفصولة بفاصلة)' : 'Allowed File Manager Roots (comma-separated, empty = full authorized access)'}>
@@ -160,6 +162,7 @@ export function SecurityAndCapabilitiesTab({
             )}
           </form>
         </Card>
+        )}
       </div>
 
       <ComplianceEvidence items={ep.compliance_items ?? []} locale={locale} />

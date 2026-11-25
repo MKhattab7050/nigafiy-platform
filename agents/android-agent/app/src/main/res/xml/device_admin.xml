@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Policies a Device Owner agent uses (lock, wipe, camera, password requirements). -->
+<device-admin>
+    <uses-policies>
+        <limit-password />
+        <force-lock />
+        <wipe-data />
+        <disable-camera />
+    </uses-policies>
+</device-admin>

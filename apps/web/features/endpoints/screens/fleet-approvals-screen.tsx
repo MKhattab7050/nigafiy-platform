@@ -12,6 +12,8 @@ import { useI18n } from '@/lib/i18n';
 import { ltr } from '@/lib/localize/bidi';
 import { PermissionChips } from '../components/fleet-policy/permission-chips';
 import { codeMessage, policyText } from '../components/fleet-policy/policy-text';
+import { AndroidRequestsCard } from '../components/android/android-panel';
+import type { AndroidActionRequest } from '@nigafiy/shared-types';
 
 interface FleetApproval extends FleetSession {
   endpoint_name: string;
@@ -30,6 +32,8 @@ export function FleetApprovalsScreen() {
   const { me } = useApp();
   const [state, setState] = useState<'pending' | 'decided'>('pending');
   const query = useQuery<{ approvals: FleetApproval[] }>(`/fleet/approvals?state=${state}&limit=100`, ['devices'], state === 'pending' ? 5_000 : 30_000);
+  // Android erase / stop-management requests (fleet-android): decided here too.
+  const android = useQuery<{ requests: AndroidActionRequest[] }>(`/fleet/android/requests?state=${state}&limit=100`, ['devices'], state === 'pending' ? 5_000 : 30_000);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -164,6 +168,7 @@ export function FleetApprovalsScreen() {
           }
         </Async>
       </Card>
+      <AndroidRequestsCard requests={android.data?.requests ?? []} onChanged={android.reload} showPhone />
     </div>
   );
 }

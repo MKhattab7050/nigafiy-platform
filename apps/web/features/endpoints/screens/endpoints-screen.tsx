@@ -11,6 +11,8 @@ import { fill, useI18n } from '@/lib/i18n';
 import { FleetContent } from '../components/fleet-content';
 import { ConnectBox } from '../components/reach/connect-box';
 import { endpointsText } from '../text';
+import { AndroidEnrollment } from '../components/android/android-enroll';
+import { androidText } from '../components/android/android-text';
 
 export function EndpointsScreen() {
   const confirm = useConfirm();
@@ -211,6 +213,7 @@ export function EndpointsScreen() {
                   <option value="windows">{tx.platformOptions.windows}</option>
                   <option value="linux">{tx.platformOptions.linux}</option>
                   <option value="macos">{tx.platformOptions.macos}</option>
+                  <option value="android">{tx.platformOptions.android}</option>
                 </Select>
               )}
             </Field>
@@ -245,7 +248,7 @@ export function EndpointsScreen() {
       )}
 
       {issued && (
-        <Modal title={tx.tokenModalTitle} onClose={() => setIssued(null)} wide>
+        <Modal title={issued.endpoint.platform === 'android' ? androidText(locale).enrollTitle : tx.tokenModalTitle} onClose={() => setIssued(null)} wide>
           <div className="space-y-4">
             <p className="text-[13px] text-muted">{tx.tokenOnce}</p>
             <CopyBlock label={tx.tokenLabel} value={issued.enrollment_token} />
@@ -261,6 +264,8 @@ export function EndpointsScreen() {
 /** Agent install commands for the issued token, pointed at the server address the API reported. */
 function InstallCommands({ issued }: { issued: EndpointCreated }) {
   const { locale, t } = useI18n();
+  // Android: the app enrollment QR / link and the Device Owner provisioning QR (components/android).
+  if (issued.endpoint.platform === 'android') return <AndroidEnrollment issued={issued} />;
   const tx = endpointsText(locale);
   const server = issued.server_url.replace(/\/+$/, '');
   const insecure = server.startsWith('http://');

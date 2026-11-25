@@ -19,6 +19,12 @@ export function validateCommandForPlatform(platform: EndpointPlatform, body: Com
   }
   if (body.kind === 'fs_op') assertFileOperationAllowed(body, isAdmin);
 
+  // Android (agents/android-agent): inventory refresh here; everything else goes through
+  // POST /endpoints/:id/android/actions (Device Owner rules, MFA step-up, approvals).
+  if (platform === 'android' && body.kind !== 'refresh_inventory') {
+    throw new AppError(409, 'unsupported_by_platform', 'Android phones take inventory refreshes here; use the Android actions for the rest');
+  }
+
   // Refuse up front what the agent cannot do on this platform, instead of queueing a command that fails.
   // (Sign-out works on all three: shutdown /l, loginctl terminate-session, System Events log out.)
   if (body.kind === 'diagnostic_command' && body.tool === 'gpresult' && platform !== 'windows') {

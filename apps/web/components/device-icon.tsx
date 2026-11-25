@@ -40,7 +40,7 @@ export const DEVICE_ICON: Record<string, LucideIcon> = {
 };
 
 /** Managed-computer platforms (generic glyphs, no vendor marks). */
-export const PLATFORM_ICON: Record<string, LucideIcon> = { windows: AppWindow, linux: Terminal, macos: Laptop };
+export const PLATFORM_ICON: Record<string, LucideIcon> = { windows: AppWindow, linux: Terminal, macos: Laptop, android: Smartphone };
 
 export function DeviceIcon({ type, className }: { type: string | null | undefined; className?: string }) {
   const Icon = DEVICE_ICON[type ?? 'unknown'] ?? CircleHelp;

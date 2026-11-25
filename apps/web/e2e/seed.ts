@@ -16,6 +16,7 @@ import { type APIRequestContext, type Page, expect } from '@playwright/test';
 export interface Seeded {
   deviceId: string;
   endpointId: string;
+  androidEndpointId: string;
   incidentId: string;
   routerId: string;
   configTargetId: string;
@@ -120,6 +121,48 @@ export async function seedRecords(page: Page): Promise<Seeded> {
     }),
   );
 
+  // An Android phone enrolled through the same protocol, in Device Owner mode, with the facts and
+  // checks the app reports (sent by this test; no phone or emulator is involved).
+  const phone = await ok<{ endpoint: { id: string }; enrollment_token: string }>(
+    'android endpoint',
+    await api.post('/api/v1/endpoints', { headers: CSRF, data: { site_id: siteId, name: 'E2E-Phone-01', platform: 'android' } }),
+  );
+  const at = new Date().toISOString();
+  const phoneIdentity = { agent_version: '0.1.0', hostname: 'E2E-Phone-01', platform: 'android', os: 'android', os_version: 'Android 15 (API 35)', arch: 'arm64-v8a', manufacturer: 'Google', model: 'Pixel 8', ram_total_mb: 7790 };
+  const phoneChecks = [
+    { check: 'screen_lock', subject: 'Screen lock', state: 'pass', value: 'PIN, pattern or password set', source: 'KeyguardManager.isDeviceSecure', measured_at: at },
+    { check: 'disk_encryption', subject: 'Storage', state: 'pass', value: 'file-based encryption (per user)', source: 'DevicePolicyManager.getStorageEncryptionStatus', measured_at: at },
+    { check: 'os_updates', subject: 'Security patch level', state: 'pass', value: 'recent', source: 'Build.VERSION.SECURITY_PATCH', measured_at: at },
+    { check: 'developer_options', subject: 'Developer options', state: 'pass', value: 'off', source: 'Settings.Global.DEVELOPMENT_SETTINGS_ENABLED', measured_at: at },
+    { check: 'usb_debugging', subject: 'USB debugging', state: 'fail', value: 'on', source: 'Settings.Global.ADB_ENABLED', measured_at: at },
+    { check: 'unknown_sources', subject: 'Install unknown apps', state: 'pass', value: 'no app may install unknown apps', source: 'AppOpsManager request_install_packages', measured_at: at },
+  ];
+  const phoneAgent = await ok<{ credential: string }>(
+    'android enroll',
+    await api.post('/api/v1/agent/enroll', { data: { enrollment_token: phone.enrollment_token, ...phoneIdentity, security: { checks: phoneChecks, measured_at: at } } }),
+  );
+  await ok(
+    'android heartbeat',
+    await api.post('/api/v1/agent/heartbeat', {
+      headers: { Authorization: `Bearer ${phoneAgent.credential}` },
+      data: {
+        ...phoneIdentity,
+        uptime_seconds: 3600,
+        ram_used_mb: 4100,
+        ram_pct: 52.6,
+        disk_used_pct: 41.3,
+        disks: [{ mount: '/data', filesystem: 'internal storage', total_gb: 119.2, used_gb: 49.23, free_gb: 69.97, used_pct: 41.3 }],
+        interfaces: [{ name: 'wlan0', addresses: ['10.250.0.15/24'] }],
+        software: [
+          { name: 'Chrome', version: '131.0', package_id: 'com.android.chrome', publisher: 'system app' },
+          { name: 'Nigafiy', version: '0.1.0', package_id: 'com.nigafiy.agent' },
+        ],
+        security: { checks: phoneChecks, measured_at: at },
+        android: { mode: 'device_owner', sdk_int: 35, release: '15', security_patch: '2026-11-01', battery_pct: 81, charging: false, network: 'wifi', notifications_allowed: true, apps_count: 2 },
+      },
+    }),
+  );
+
   const router = await ok<{ id: string }>(
     'router',
     await api.post('/api/v1/routers', {
@@ -156,6 +199,7 @@ export async function seedRecords(page: Page): Promise<Seeded> {
   return {
     deviceId,
     endpointId: ep.endpoint.id,
+    androidEndpointId: phone.endpoint.id,
     incidentId: incidents.items[0]!.id,
     routerId: router.id,
     configTargetId: target.items[0]!.id,
