@@ -21,6 +21,7 @@ import { runQuickSupportSweep } from './fleet-reach/quick-support.ts';
 import { runRestartTimeouts } from './fleet-reach/restarts.ts';
 import { policyRouter } from './policy/routes.ts';
 import { remoteDesktopRouter } from './remote-desktop/routes.ts';
+import { runApkFileSweep } from './fleet-android/apks.ts';
 import { runRecordingRetention } from './remote-desktop/recording.ts';
 import { COMMAND_DONE_CHANNEL, signalCommandDone } from './repo.ts';
 import { RD_FRAME_CHANNEL, onFrameNotification } from './remote-desktop/frames.ts';
@@ -88,6 +89,8 @@ export const endpointsModule = defineModule({
     },
     // Patches: approved updates installed in open windows, then restart questions and deadlines.
     { name: 'fleet-patch-scheduler', everyMs: 30_000, lockKey: 727173, run: async () => void (await runPatchScheduler()) },
+    // APK files no row references and leftovers of interrupted uploads (first run right after start).
+    { name: 'fleet-apk-file-sweep', everyMs: 6 * 3_600_000, lockKey: 727174, run: async () => void (await runApkFileSweep()) },
   ],
   lifecycle: {
     // Results uploaded to another API instance wake this instance's waiters (interactive commands).

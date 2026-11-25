@@ -26,7 +26,7 @@ System / Light / Dark switch overrides it (kept in this browser's `localStorage`
 | Changelog | `content/changelog.json`, written from `git log --no-merges` (commit subjects, no author names) by `pnpm --filter @nigafiy/site changelog`; the page names the branch and commit it came from |
 | Security and privacy | A short privacy summary (EN/AR) and `docs/security/model.md` |
 | Release manifest | How Hub verifies an update (Ed25519 manifest, HTTPS, SHA-256, publisher, admin confirmation), the payload format, and a link to the manifest **only when the release file names one** (`manifest_url`) |
-| 404, sitemap, robots, icons | `app/global-not-found.tsx` (English and Arabic on one page, served as `404.html`), `app/sitemap.ts`, `app/robots.ts`, `public/icon.svg` and `public/favicon.ico` (the brand's app icon, unchanged), `public/og.png` (`pnpm --filter @nigafiy/site og`, drawn from the brand paths) |
+| 404, sitemap, robots, icons | `app/global-not-found.tsx` (English and Arabic on one page, served as `404.html`), `app/sitemap.ts`, `app/robots.ts`, `public/icon.svg` and `public/favicon.ico` (copied from `packages/brand` by `scripts/copy-brand-icons.ts` before every build and unit test run, not committed), `public/og.png` (`pnpm --filter @nigafiy/site og`, drawn from the brand paths) |
 
 Docs rendering is safe: markdown-it with `html: false` escapes any raw HTML, its link validator refuses
 `javascript:`/`data:`/`vbscript:`, links to another published doc go to its page (anchors use GitHub's

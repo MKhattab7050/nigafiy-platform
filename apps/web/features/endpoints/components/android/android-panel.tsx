@@ -193,7 +193,7 @@ export function AndroidPanel({ ep, online, onReload }: { ep: EndpointDetail; onl
                         </Button>
                       </div>
                     )}
-                    <ApkUpload ax={ax} locale={locale} onUploaded={(name) => { setNotice(ax.uploaded(name)); apks.reload(); }} onError={setError} />
+                    <ApkUpload ax={ax} locale={locale} onUploaded={(name, repaired) => { setNotice(repaired ? ax.repaired(name) : ax.uploaded(name)); apks.reload(); }} onError={setError} />
                   </div>
 
                   <div className="space-y-2 border-t border-line pt-4">
@@ -272,7 +272,7 @@ export function AndroidPanel({ ep, online, onReload }: { ep: EndpointDetail; onl
   );
 }
 
-function ApkUpload({ ax, locale, onUploaded, onError }: { ax: AndroidText; locale: string; onUploaded: (name: string) => void; onError: (e: ApiError) => void }) {
+function ApkUpload({ ax, locale, onUploaded, onError }: { ax: AndroidText; locale: string; onUploaded: (name: string, repaired: boolean) => void; onError: (e: ApiError) => void }) {
   const file = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -288,7 +288,7 @@ function ApkUpload({ ax, locale, onUploaded, onError }: { ax: AndroidText; local
         headers: { 'X-LD-CSRF': '1', 'Content-Type': 'application/vnd.android.package-archive' },
         body: f,
       });
-      const json = (await res.json().catch(() => null)) as { apk?: AndroidApk; error?: { code: string; message: string } } | null;
+      const json = (await res.json().catch(() => null)) as { apk?: AndroidApk; repaired?: boolean; error?: { code: string; message: string } } | null;
       if (!res.ok || !json?.apk) {
         const e = json?.error ?? { code: 'upload_failed', message: `HTTP ${res.status}` };
         const err = new ApiError(res.status, e.code, e.message);
@@ -297,7 +297,7 @@ function ApkUpload({ ax, locale, onUploaded, onError }: { ax: AndroidText; local
       }
       setName('');
       if (file.current) file.current.value = '';
-      onUploaded(json.apk.name);
+      onUploaded(json.apk.name, json.repaired === true);
     } finally {
       setBusy(false);
     }

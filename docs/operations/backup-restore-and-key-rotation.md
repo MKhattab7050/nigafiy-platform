@@ -73,6 +73,29 @@ pnpm --filter ./apps/api db:backup -- --out-dir D:\nigafiy-backups
 - Remote desktop screen images are never stored in the database (they pass through memory and
   PostgreSQL notifications only), so a backup never contains a screenshot of a user's screen.
 
+### The files folder is not in the database backup
+
+Since migration 048, **uploaded Android APKs are files, not database rows**: the backup holds only
+each APK's name, size, SHA-256 and storage key. The bytes are in the API's files folder,
+`NIGAFIY_FILES_DIR`, by default `<data folder>\files` (`<data folder>\files\apks\<organization id>\<sha256>`).
+`db:backup` does **not** copy that folder. Back it up together with the database archive, with any
+file-level backup tool, for example:
+
+```powershell
+robocopy "$env:NIGAFIY_DATA_DIR\files" D:\nigafiy-backups\files-20261125 /MIR   # Windows
+rsync -a --delete "$NIGAFIY_DATA_DIR/files/" /backups/nigafiy/files-20261125/       # Linux / macOS
+```
+
+- Copy the folder **after** the database backup: a file uploaded in between is then simply an extra
+  file (the sweep removes it after restore, since no row references it), never a missing one.
+- Every file is named by its SHA-256, so a copy can be checked at any time
+  (`Get-FileHash -Algorithm SHA256` / `sha256sum`: the hash must equal the file name).
+- Without the folder, a restored database still lists the APKs, but installing one is refused with
+  "the stored APK file is missing" (`apk_file_missing`, audited); uploading the same APK again repairs
+  it. Nothing else depends on the folder.
+- The API never writes outside `NIGAFIY_FILES_DIR` for these files, and removes only files no row
+  references (orphans older than 1 hour, unfinished uploads older than 6 hours).
+
 **The backup contains sealed secrets** (router, SNMP, SSH, SMTP/webhook and MFA secrets, backed-up
 device configurations). They can only be read with the `APP_ENCRYPTION_KEY` that was in effect when
 the backup was made. Store the key **separately** from the backups (a password manager, a sealed
@@ -102,9 +125,13 @@ What happens:
    a transaction, so these are two statements: if the second fails, the first is undone (the
    original gets its name back and accepts connections again) and the tool reports it. If even the
    undo fails, the message gives the two SQL statements to put the original back by hand.
-4. **Migrations** newer than the backup are applied (`APP_DATABASE_URL` must be set), and a
+4. **Migrations** newer than the backup are applied (`APP_DATABASE_URL` must be set; a backup from
+   before migration 048 has its APK bytes moved into the files folder of the machine you restore on,
+   see `docs/features/android.md`), and a
    `database.restored` audit entry (file name, SHA-256, previous database name) is written in every
    organization of the restored database.
+
+Restore the files folder (section 2) from the copy taken with the backup **before** starting the API.
 
 The previous database is **kept** as `<name>_before_restore_<time>`. Once the restored data looks
 right, drop it: `DROP DATABASE "<name>_before_restore_<time>";`
