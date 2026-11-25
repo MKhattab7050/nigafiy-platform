@@ -1,6 +1,6 @@
 'use client';
 
-import { Camera, CameraOff, Check, Download, Eraser, Lock, PackageMinus, ShieldOff, Upload, X } from 'lucide-react';
+import { BellOff, BellRing, Camera, CameraOff, Check, Download, Eraser, Lock, MessageSquare, PackageMinus, ShieldOff, Upload, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { AndroidActionInput, AndroidActionRequest, AndroidActionResult, AndroidApk, AndroidPasswordComplexity, EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Fact, Field, Input, Notice, Select } from '@/components/ui';
@@ -66,6 +66,28 @@ export function AndroidPanel({ ep, online, onReload }: { ep: EndpointDetail; onl
     }
   }
 
+  const features = a?.features ?? [];
+  const [ringSeconds, setRingSeconds] = useState(30);
+  const [msgTitle, setMsgTitle] = useState('');
+  const [msgText, setMsgText] = useState('');
+
+  async function sendMessage() {
+    setBusy('message');
+    setError(null);
+    setNotice('');
+    try {
+      await api(`/endpoints/${ep.id}/commands`, { method: 'POST', body: { kind: 'notify_user', title: msgTitle.trim(), message: msgText.trim() } });
+      setNotice(ax.messageSent);
+      setMsgTitle('');
+      setMsgText('');
+      onReload();
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setBusy('');
+    }
+  }
+
   const codeInput = (
     <Field label={ax.code}>
       {(id) => (
@@ -108,6 +130,69 @@ export function AndroidPanel({ ep, online, onReload }: { ep: EndpointDetail; onl
           </Fact>
           <Fact label={ax.apps}>{typeof a?.apps_count === 'number' ? ltr(a.apps_count) : <span className="text-muted">{ax.notMeasured}</span>}</Fact>
         </dl>
+      </Card>
+
+      <Card title={ax.controlsTitle} description={ax.controlsHint}>
+        {!features.length ? (
+          <p className="text-[13px] text-muted">{ax.controlsOld}</p>
+        ) : (
+          <div className="space-y-4 text-sm">
+            <dl>
+              {features.includes('screen') && (
+                <Fact label={ax.screenView}>{a?.screen_capture === false ? <span className="text-warn">{ax.screenViewOff}</span> : ax.screenViewYes}</Fact>
+              )}
+              {features.includes('control') && (
+                <Fact label={ax.remoteControl}>{a?.accessibility_enabled ? ax.remoteControlYes : <span className="text-warn">{ax.remoteControlNo}</span>}</Fact>
+              )}
+              {features.includes('files') && <Fact label={ax.files}>{a?.all_files_access ? ax.filesYes : <span className="text-warn">{ax.filesNo}</span>}</Fact>}
+            </dl>
+            {can('technician') && (
+              <>
+                {features.includes('ring') && (
+                  <div className="flex flex-wrap items-end gap-2">
+                    <Field label={ax.ringSeconds}>
+                      {(id) => (
+                        <Select id={id} value={String(ringSeconds)} onChange={(e) => setRingSeconds(Number(e.target.value))}>
+                          {[15, 30, 60, 120].map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    <Button size="sm" busy={busy === 'ring'} disabled={!online} onClick={() => void run('ring', { action: 'ring', seconds: ringSeconds }, ax.ring)}>
+                      <BellRing className="size-3.5" aria-hidden />
+                      {ax.ring}
+                    </Button>
+                    <Button size="sm" busy={busy === 'ring_stop'} disabled={!online} onClick={() => void run('ring_stop', { action: 'ring_stop' }, ax.ringStop)}>
+                      <BellOff className="size-3.5" aria-hidden />
+                      {ax.ringStop}
+                    </Button>
+                  </div>
+                )}
+                {features.includes('message') && (
+                  <form
+                    className="space-y-2 border-t border-line pt-4"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void sendMessage();
+                    }}
+                  >
+                    <Field label={ax.messageTitle}>{(id) => <Input id={id} value={msgTitle} maxLength={120} onChange={(e) => setMsgTitle(e.target.value)} />}</Field>
+                    <Field label={ax.messageText}>
+                      {(id) => <textarea id={id} value={msgText} maxLength={600} rows={3} onChange={(e) => setMsgText(e.target.value)} className="w-full rounded-md border border-line bg-bg px-2 py-1.5 text-sm" />}
+                    </Field>
+                    <Button type="submit" size="sm" busy={busy === 'message'} disabled={!online || !msgTitle.trim() || !msgText.trim()}>
+                      <MessageSquare className="size-3.5" aria-hidden />
+                      {ax.sendMessage}
+                    </Button>
+                  </form>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </Card>
 
       <Card title={ax.actionsTitle}>

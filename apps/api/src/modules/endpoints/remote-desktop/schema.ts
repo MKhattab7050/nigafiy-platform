@@ -39,7 +39,8 @@ export const rdCaptureCommandSchema = z
 export const rdInputCommandSchema = z
   .object({
     kind: z.literal('rd_input'),
-    event_kind: z.enum(['mouse_move', 'mouse_click', 'mouse_down', 'mouse_up', 'mouse_wheel', 'key_press', 'key_down', 'key_up', 'key_combo', 'text']),
+    // swipe and nav: Android phones only (commands/guards.ts assertAndroidCommand).
+    event_kind: z.enum(['mouse_move', 'mouse_click', 'mouse_down', 'mouse_up', 'mouse_wheel', 'key_press', 'key_down', 'key_up', 'key_combo', 'text', 'swipe', 'nav']),
     display_index: z.number().int().min(0).max(8).default(0),
     x: z.number().min(0).max(1).default(0.5),
     y: z.number().min(0).max(1).default(0.5),
@@ -56,8 +57,15 @@ export const rdInputCommandSchema = z
     // keyboard layout decides the character; key_combo: up to 4 codes pressed together.
     code: z.string().regex(/^[A-Za-z0-9]{1,24}$/).optional(),
     keys: z.array(z.string().regex(/^[A-Za-z0-9]{1,24}$/)).min(2).max(4).optional(),
+    // swipe: from (x, y) to (x2, y2) in duration_ms; nav: back, home or recents.
+    x2: z.number().min(0).max(1).optional(),
+    y2: z.number().min(0).max(1).optional(),
+    duration_ms: z.number().int().min(50).max(3000).optional(),
+    nav: z.enum(['back', 'home', 'recents']).optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => b.event_kind !== 'swipe' || (b.x2 !== undefined && b.y2 !== undefined), { message: 'a swipe needs x2 and y2' })
+  .refine((b) => b.event_kind !== 'nav' || b.nav !== undefined, { message: 'nav needs back, home or recents' });
 
 /** POST /endpoints/:id/remote-desktop/recording */
 export const recordingToggleSchema = z.object({ on: z.boolean() }).strict();

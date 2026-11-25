@@ -175,7 +175,15 @@ class AgentService : Service() {
         val withApps = forceApps || now - lastAppsAt > TimeUnit.HOURS.toMillis(6)
         val results = generateSequence { unsent.poll() }.toList()
         try {
-            val r = g.heartbeat(Protocol.heartbeatBody(facts.device(withApps), facts.security(), results))
+            val body = Protocol.heartbeatBody(facts.device(withApps), facts.security(), results)
+            val r = try {
+                g.heartbeat(body)
+            } catch (e: GatewayError) {
+                // A Nigafiy server older than this app refuses fields it does not know (400): report
+                // again without the phone-control facts rather than going silent (first A36 run of 1.0.2).
+                if (e.status != 400) throw e
+                g.heartbeat(Protocol.withoutPhoneControls(body))
+            }
             if (withApps) { lastAppsAt = now; forceApps = false }
             (r["heartbeat_interval_seconds"] as? Long)?.let { store.heartbeatSeconds = it.toInt() }
             store.lastContact = now

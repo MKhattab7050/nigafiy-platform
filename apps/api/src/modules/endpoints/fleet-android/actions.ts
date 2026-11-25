@@ -20,6 +20,8 @@ import type { AndroidAction } from './schema.ts';
 //   install_apk, uninstall            admin
 //   wipe, release (stop management)   admin, a verification code ALWAYS, and a second admin's
 //                                     approval when the group's policy asks for approvals
+//   ring, ring_stop                   technician and above; regular app mode is enough, the phone
+//                                     must report the "ring" feature (agent 1.0.2+)
 //
 // Every action, refusal, request and decision is audited; the agent's result comes back on the
 // command (endpoint_commands).
@@ -33,16 +35,21 @@ interface Rule {
   alwaysMfa: boolean;
   /** Waits for a second admin when the group's policy asks for approvals. */
   approval: boolean;
+  /** Needs Device Owner (false: works in regular app mode when the phone reports [feature]). */
+  owner: boolean;
+  feature?: 'ring';
 }
 
 export const ANDROID_RULES: Record<AndroidAction['action'], Rule> = {
-  lock: { kind: 'android_lock', adminOnly: false, alwaysMfa: false, approval: false },
-  password_policy: { kind: 'android_password_policy', adminOnly: false, alwaysMfa: false, approval: false },
-  camera: { kind: 'android_camera', adminOnly: false, alwaysMfa: false, approval: false },
-  install_apk: { kind: 'android_install_apk', adminOnly: true, alwaysMfa: false, approval: false },
-  uninstall: { kind: 'android_uninstall', adminOnly: true, alwaysMfa: false, approval: false },
-  wipe: { kind: 'android_wipe', adminOnly: true, alwaysMfa: true, approval: true },
-  release: { kind: 'android_release', adminOnly: true, alwaysMfa: true, approval: true },
+  lock: { kind: 'android_lock', adminOnly: false, alwaysMfa: false, approval: false, owner: true },
+  password_policy: { kind: 'android_password_policy', adminOnly: false, alwaysMfa: false, approval: false, owner: true },
+  camera: { kind: 'android_camera', adminOnly: false, alwaysMfa: false, approval: false, owner: true },
+  install_apk: { kind: 'android_install_apk', adminOnly: true, alwaysMfa: false, approval: false, owner: true },
+  uninstall: { kind: 'android_uninstall', adminOnly: true, alwaysMfa: false, approval: false, owner: true },
+  wipe: { kind: 'android_wipe', adminOnly: true, alwaysMfa: true, approval: true, owner: true },
+  release: { kind: 'android_release', adminOnly: true, alwaysMfa: true, approval: true, owner: true },
+  ring: { kind: 'android_ring', adminOnly: false, alwaysMfa: false, approval: false, owner: false, feature: 'ring' },
+  ring_stop: { kind: 'android_ring_stop', adminOnly: false, alwaysMfa: false, approval: false, owner: false, feature: 'ring' },
 };
 
 export const ANDROID_REFUSAL_MESSAGES = {
@@ -50,6 +57,7 @@ export const ANDROID_REFUSAL_MESSAGES = {
   android_admin_only: 'Only an admin can do this on an Android phone',
   android_requires_device_owner: 'Nigafiy is not the Device Owner of this phone: only inventory and checks are available',
   android_self_uninstall: 'The Nigafiy agent cannot uninstall itself; use Stop management',
+  android_feature_missing: 'The Nigafiy app on this phone does not offer this yet: update the app on the phone',
 } as const;
 
 const isAdmin = (role: string) => role === 'owner' || role === 'admin';
@@ -83,7 +91,7 @@ async function loadEndpoint(db: Db, id: string, lock = false): Promise<AndroidEn
 const online = (ep: AndroidEndpoint) => ep.status === 'active' && ep.last_heartbeat_at !== null && ep.last_heartbeat_at.getTime() >= Date.now() - ONLINE_WITHIN_MS;
 
 /** The command payload the agent parses (agents/android-agent core/Commands.kt). */
-async function commandPayload(db: Db, orgId: string, endpointId: string, body: AndroidAction): Promise<Record<string, unknown>> {
+async function commandPayload(db: Db, orgId: string, endpointId: string, body: AndroidAction, operatorEmail: string): Promise<Record<string, unknown>> {
   switch (body.action) {
     case 'lock':
       return {};
@@ -112,6 +120,10 @@ async function commandPayload(db: Db, orgId: string, endpointId: string, body: A
     case 'wipe':
     case 'release':
       return { reason: body.reason };
+    case 'ring':
+      return { seconds: body.seconds, operator: operatorEmail };
+    case 'ring_stop':
+      return {};
   }
 }
 
@@ -192,17 +204,25 @@ export async function performAndroidAction(req: Request, ctx: AuthContext, endpo
     if (rule.alwaysMfa && !eff.policy.mfa_required) trail.push({ check: 'mfa', result: 'info', detail: 'always required for this action' });
 
     if (!online(ep)) throw new AppError(409, 'endpoint_offline', 'This endpoint is not currently online');
-    if (ep.android?.mode !== 'device_owner') {
+    if (!rule.owner) {
+      if (!rule.feature || !ep.android?.features?.includes(rule.feature)) {
+        return refuse(409, 'android_feature_missing', ANDROID_REFUSAL_MESSAGES.android_feature_missing, [
+          ...trail,
+          { check: 'feature', result: 'fail', detail: `the app on the phone does not report "${rule.feature}"` },
+        ], groupName);
+      }
+      trail.push({ check: 'feature', result: 'pass', detail: `the app reports "${rule.feature}" (regular app mode is enough)` });
+    } else if (ep.android?.mode !== 'device_owner') {
       return refuse(409, 'android_requires_device_owner', ANDROID_REFUSAL_MESSAGES.android_requires_device_owner, [
         ...trail,
         { check: 'device_owner', result: 'fail', detail: ep.android ? `agent reports mode ${ep.android.mode}` : 'the agent has not reported its mode yet' },
       ], groupName);
     }
-    trail.push({ check: 'device_owner', result: 'pass', detail: 'agent reports Device Owner' });
+    if (rule.owner) trail.push({ check: 'device_owner', result: 'pass', detail: 'agent reports Device Owner' });
     if (body.action === 'uninstall' && body.package === AGENT_PACKAGE) {
       return refuse(409, 'android_self_uninstall', ANDROID_REFUSAL_MESSAGES.android_self_uninstall, trail, groupName);
     }
-    const payload = await commandPayload(db, ctx.organizationId, ep.id, body);
+    const payload = await commandPayload(db, ctx.organizationId, ep.id, body, ctx.userEmail);
 
     if (rule.approval && eff.policy.approval_required) {
       trail.push({ check: 'approval', result: 'info', detail: `a second admin approves (expires after ${eff.policy.approval_ttl_minutes} min)` });

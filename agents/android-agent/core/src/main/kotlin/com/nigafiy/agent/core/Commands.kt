@@ -4,7 +4,7 @@ package com.nigafiy.agent.core
  * The commands Fleet can send to the Android agent (kinds as the API queues them, see
  * apps/api/src/modules/endpoints/fleet-android). The android_* management actions need the agent
  * to be the phone's Device Owner; the API refuses them first, the agent checks again. The phone
- * controls of regular app mode (docs/features/android.md §11) do not: screen sharing (rd_*, the
+ * controls of regular app mode (docs/features/android.md §12) do not: screen sharing (rd_*, the
  * Remote Desktop session protocol), the file manager (fs_op), a message (notify_user) and ringing.
  * Each of them is visible on the phone, and the ones that need the person's permission check it.
  */
@@ -24,7 +24,7 @@ sealed class AgentCommand(val id: String, val kind: String) {
     class Wipe(id: String, val reason: String) : AgentCommand(id, "android_wipe")
     /** Stop management: the agent clears itself as Device Owner (`clearDeviceOwnerApp`). */
     class Release(id: String) : AgentCommand(id, "android_release")
-    // ── Phone controls (regular app mode, docs/features/android.md §11) ──
+    // ── Phone controls (regular app mode, docs/features/android.md §12) ──
     /** A screen-sharing session: the person is asked on the phone (MediaProjection consent). */
     class SessionOpen(id: String, val session: ScreenSessionRequest) : AgentCommand(id, "rd_session_open") {
         override val needsDeviceOwner get() = false

@@ -17,7 +17,7 @@ against an installation you do not own.
 
 ## Supported versions
 
-Nigafiy has no public release yet (version `1.0.1` is an internal release, installed only inside the owner's company). Security fixes go to the active
+Nigafiy has no public release yet (version `1.0.2` is an internal release, installed only inside the owner's company). Security fixes go to the active
 development branch; there are no maintained older versions.
 
 | Version | Supported |

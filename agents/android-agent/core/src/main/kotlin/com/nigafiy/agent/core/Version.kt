@@ -1,2 +1,2 @@
 package com.nigafiy.agent.core
-object Version { const val NAME = "1.0.1" }
+object Version { const val NAME = "1.0.2" }

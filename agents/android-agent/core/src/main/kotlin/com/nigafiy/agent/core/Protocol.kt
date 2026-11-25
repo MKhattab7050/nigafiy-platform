@@ -87,6 +87,16 @@ object Protocol {
         "measured_at" to now.toString(),
     )
 
+    /** The phone-control facts of the android block (agent 1.0.2+); a 1.0.1 server refuses them. */
+    val PHONE_CONTROL_KEYS = setOf("features", "all_files_access", "accessibility_enabled", "screen_capture")
+
+    /** [body] without the phone-control facts, for a server older than this app. */
+    fun withoutPhoneControls(body: Map<String, Any?>): Map<String, Any?> {
+        @Suppress("UNCHECKED_CAST")
+        val android = body["android"] as? Map<String, Any?> ?: return body
+        return LinkedHashMap(body).also { it["android"] = android.filterKeys { k -> k !in PHONE_CONTROL_KEYS } }
+    }
+
     fun heartbeatBody(i: DeviceInfo, facts: SecurityFacts, results: List<CommandOutcome>, now: Instant = Instant.now()): Map<String, Any?> {
         val m = identity(i)
         m["uptime_seconds"] = i.uptimeSeconds.coerceAtLeast(0)

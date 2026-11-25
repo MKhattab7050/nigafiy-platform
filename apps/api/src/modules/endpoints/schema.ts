@@ -64,6 +64,15 @@ export const androidStateSchema = z
     battery_optimisation_exempt: z.boolean().optional(),
     notifications_allowed: z.boolean().optional(),
     apps_count: z.number().int().min(0).max(100_000).optional(),
+    // Phone controls (agent 1.0.2+). Unknown feature names from a newer agent are dropped, not refused.
+    features: z
+      .array(z.string().max(20))
+      .max(20)
+      .transform((a) => a.filter((f): f is 'screen' | 'control' | 'files' | 'ring' | 'message' => ['screen', 'control', 'files', 'ring', 'message'].includes(f)))
+      .optional(),
+    all_files_access: z.boolean().optional(),
+    accessibility_enabled: z.boolean().optional(),
+    screen_capture: z.boolean().optional(),
   })
   .strict();
 

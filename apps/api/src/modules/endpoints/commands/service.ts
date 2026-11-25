@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointCommand, EndpointPlatform, EndpointPolicy } from '@nigafiy/shared-types';
+import type { EndpointAndroidState, EndpointCommand, EndpointPlatform, EndpointPolicy } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
 import { withTenant } from '../../../infrastructure/db.ts';
@@ -49,8 +49,9 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
         rd_active: boolean;
         rd_state: string | null;
         kind: string;
+        android: EndpointAndroidState | null;
       }>(
-        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, kind,
+        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, kind, android,
                 rd_session IS NOT NULL AS rd_active, rd_session->>'state' AS rd_state
            FROM endpoints WHERE id = $1`,
         [id],
@@ -58,7 +59,7 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     ).rows[0];
     if (!ep) throw notFound('Endpoint');
 
-    validateCommandForPlatform(ep.platform, body, ctx.role);
+    validateCommandForPlatform(ep.platform, body, ctx.role, ep.android);
     // Quick Support (attended, at most Support): the session's screen and files, nothing else.
     if (ep.kind === 'quick_support' && !['rd_capture', 'rd_input', 'fs_op', 'notify_user'].includes(body.kind)) {
       throw new AppError(409, 'quick_support_limited', 'A Quick Support computer allows the session and its files only');

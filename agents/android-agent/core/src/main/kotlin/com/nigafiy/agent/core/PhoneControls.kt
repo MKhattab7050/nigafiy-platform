@@ -3,7 +3,7 @@ package com.nigafiy.agent.core
 import kotlin.math.roundToInt
 
 /**
- * The phone controls of regular app mode (docs/features/android.md §11), the parts that run in the
+ * The phone controls of regular app mode (docs/features/android.md §12), the parts that run in the
  * JVM tests: what the agent can do, the screen-session request, the input events and how they
  * become gestures, and the frame metadata of the Remote Desktop HTTP frame path.
  *

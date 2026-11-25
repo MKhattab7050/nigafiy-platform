@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointPlatform, FleetPolicyTrailItem, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@nigafiy/shared-types';
+import type { EndpointAndroidState, EndpointPlatform, FleetPolicyTrailItem, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { randomToken } from '../../../common/crypto.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
@@ -79,14 +79,17 @@ export async function startSession(
   const hasMfa = await operatorHasMfa(ctx.userId);
   const outcome = await withTenant(ctx.organizationId, async (db): Promise<Refusal | { refused: false; session: RemoteDesktopSession }> => {
     const ep = (
-      await db.query<StartEndpointRow & { kind: string }>(`SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, rd_session, kind FROM endpoints WHERE id = $1`, [id])
+      await db.query<StartEndpointRow & { kind: string; android: EndpointAndroidState | null }>(
+        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, rd_session, kind, android FROM endpoints WHERE id = $1`,
+        [id],
+      )
     ).rows[0];
     if (!ep) throw notFound('Endpoint');
     // A Quick Support computer is reached only with its code and PIN (fleet-reach/quick-support.ts).
     if (ep.kind === 'quick_support' && !opts.quickSupportId) throw new AppError(409, 'quick_support_needs_code', 'Connect to a Quick Support computer with its code and PIN');
     if (body.user_session) await assertUserSession(db, id, ep.platform, body.user_session);
 
-    const caps = buildCapabilities(ep.platform);
+    const caps = buildCapabilities(ep.platform, ep.android);
     const rdCap = caps.find((c) => c.key === 'remote_desktop');
     if (!rdCap?.enabled) {
       throw new AppError(409, 'unsupported_by_platform', rdCap?.reason_en ?? 'Remote desktop is not supported on this platform');
@@ -97,7 +100,8 @@ export async function startSession(
 
     // The access policy decides before anything reaches the endpoint.
     const eff = (await effectivePolicy(db, ctx.organizationId, id))!;
-    if (opts.forceAttended || opts.quickSupportId) {
+    // A phone always asks the person (and Android asks again): never unattended, never silent.
+    if (opts.forceAttended || opts.quickSupportId || ep.platform === 'android') {
       // The person asked for this session (or runs Quick Support): they accept it on their screen.
       eff.policy = { ...eff.policy, access_mode: 'attended', approval_required: false };
     }

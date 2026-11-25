@@ -2916,8 +2916,18 @@ export interface EndpointAndroidState {
   battery_optimisation_exempt?: boolean;
   notifications_allowed?: boolean;
   apps_count?: number;
+  /** The phone controls this agent build implements (docs/features/android.md §11). */
+  features?: AndroidPhoneFeature[];
+  /** "All files access" granted by the person (Android 11+); the file manager needs it. */
+  all_files_access?: boolean;
+  /** The person turned on Nigafiy's accessibility service: remote control is possible. */
+  accessibility_enabled?: boolean;
+  /** False when a policy disables screen capture on the phone. */
+  screen_capture?: boolean;
   reported_at?: string;
 }
+
+export type AndroidPhoneFeature = 'screen' | 'control' | 'files' | 'ring' | 'message';
 
 export type AndroidCommandKind =
   | 'android_lock'
@@ -2926,7 +2936,9 @@ export type AndroidCommandKind =
   | 'android_install_apk'
   | 'android_uninstall'
   | 'android_wipe'
-  | 'android_release';
+  | 'android_release'
+  | 'android_ring'
+  | 'android_ring_stop';
 
 /** POST /endpoints/:id/android/actions (step_up_token: from POST /fleet/step-up; always needed for wipe and release). */
 export type AndroidActionInput = { step_up_token?: string } & (
@@ -2937,6 +2949,8 @@ export type AndroidActionInput = { step_up_token?: string } & (
   | { action: 'uninstall'; package: string }
   | { action: 'wipe'; reason: string }
   | { action: 'release'; reason: string }
+  | { action: 'ring'; seconds?: number }
+  | { action: 'ring_stop' }
 );
 
 export type AndroidActionResult =

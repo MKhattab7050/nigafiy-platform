@@ -35,6 +35,8 @@ const en = {
   snapshot: 'Request a full frame now',
   typeText: 'Type text to send to the remote screen…',
   sendText: 'Send text',
+  phoneHint: 'Click to tap, hold to long-press, drag to swipe.',
+  phoneNav: { back: 'Back', home: 'Home', recents: 'Recent apps' },
   path: {
     direct: 'Live stream · direct',
     relay: 'Live stream · relayed by another server',
@@ -181,6 +183,8 @@ const ar: Text = {
   snapshot: 'اطلب إطارًا كاملًا الآن',
   typeText: 'اكتب نصًا لإرساله إلى الشاشة البعيدة…',
   sendText: 'إرسال النص',
+  phoneHint: 'انقر للمس، واضغط مطولًا للضغط الطويل، واسحب للتمرير.',
+  phoneNav: { back: 'رجوع', home: 'الرئيسية', recents: 'التطبيقات الأخيرة' },
   path: {
     direct: 'بث مباشر · اتصال مباشر',
     relay: 'بث مباشر · عبر خادم آخر',

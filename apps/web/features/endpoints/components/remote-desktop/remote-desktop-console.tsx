@@ -185,8 +185,20 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         }
       >
         <div className="space-y-3">
-          {rd.live && <SessionToolbar rd={rd} t={tools} canControl={canControl} />}
-          {canControl && !viewOnly && rd.live && rd.allows('control') && (
+          {rd.live && !rd.isPhone && <SessionToolbar rd={rd} t={tools} canControl={canControl} />}
+          {rd.isPhone && canControl && !viewOnly && rd.live && rd.allows('control') && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
+              <p className="text-xs text-muted">{tx.phoneHint}</p>
+              <div className="flex items-center gap-1">
+                {(['back', 'home', 'recents'] as const).map((a) => (
+                  <Button key={a} size="sm" disabled={!rd.mayControl} onClick={() => rd.phoneNav(a)}>
+                    {tx.phoneNav[a]}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+          {!rd.isPhone && canControl && !viewOnly && rd.live && rd.allows('control') && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
               <form
                 onSubmit={(e) => {
@@ -237,7 +249,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               ref={rd.canvasRef}
               className={clsx('max-h-[72vh] max-w-full select-none object-contain', !rd.hasPicture && 'hidden', rd.mayControl && 'cursor-crosshair')}
               aria-label={tx.title}
-              {...rd.canvasHandlers}
+              {...(rd.isPhone ? rd.phoneHandlers : rd.canvasHandlers)}
             />
             {rd.live && rd.hasPicture && canControl && <AnnotationLayer rd={rd} t={tools} />}
             {!rd.hasPicture && (

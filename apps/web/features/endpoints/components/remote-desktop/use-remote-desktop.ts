@@ -421,6 +421,40 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
 
   sendMoveRef.current = (p) => void sendInput({ kind: 'mouse_move', x: p.x, y: p.y });
 
+  // ── A phone (agents/android-agent): taps, long presses, swipes and Back / Home / Recents ──
+  const isPhone = ep.platform === 'android';
+  const phoneDown = useRef<{ x: number; y: number; at: number } | null>(null);
+  function phoneNav(action: 'back' | 'home' | 'recents') {
+    void sendInput({ kind: 'nav', nav: action });
+  }
+  const phoneHandlers = {
+    onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (!mayControl || e.button !== 0) return;
+      const p = pointer(e);
+      if (p) phoneDown.current = { x: p.x, y: p.y, at: Date.now() };
+    },
+    onMouseUp: (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const start = phoneDown.current;
+      phoneDown.current = null;
+      if (!mayControl || !start || e.button !== 0) return;
+      const p = pointer(e);
+      if (!p) return;
+      const held = Date.now() - start.at;
+      const moved = Math.hypot(p.x - start.x, p.y - start.y);
+      if (moved > 0.02) {
+        void sendInput({ kind: 'swipe', x: start.x, y: start.y, x2: p.x, y2: p.y, duration_ms: Math.max(80, Math.min(1500, held)) });
+      } else if (held >= 550) {
+        void sendInput({ kind: 'mouse_click', x: p.x, y: p.y, button: 'right' });
+      } else {
+        void sendInput({ kind: 'mouse_click', x: p.x, y: p.y });
+      }
+    },
+    onMouseLeave: () => {
+      phoneDown.current = null;
+    },
+    onContextMenu: (e: React.MouseEvent<HTMLCanvasElement>) => e.preventDefault(),
+  };
+
   function pointer(e: React.MouseEvent<HTMLCanvasElement> | React.WheelEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
@@ -476,7 +510,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   };
 
   function onViewportKey(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (!mayControl) return;
+    if (!mayControl || isPhone) return;
     if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
     e.preventDefault();
     // By position: the physical key goes down and up, so the remote layout (and held modifiers)
@@ -579,6 +613,9 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     reloadStatus: loadStatus,
     stopSession,
     sendInput,
+    isPhone,
+    phoneNav,
+    phoneHandlers,
     requestFull,
   };
 }

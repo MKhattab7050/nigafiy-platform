@@ -236,4 +236,13 @@ class SharedStorageTest {
     }
 
     private fun sha(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
+
+    @Test
+    fun `an older server gets the heartbeat without the phone-control facts`() {
+        val body = mapOf("hostname" to "A36", "android" to mapOf("mode" to "regular", "sdk_int" to 36, "features" to listOf("screen"), "all_files_access" to true, "accessibility_enabled" to false, "screen_capture" to true))
+        val old = Protocol.withoutPhoneControls(body)
+        assertEquals(mapOf("mode" to "regular", "sdk_int" to 36), old["android"])
+        assertEquals("A36", old["hostname"])
+        assertEquals(listOf("screen"), (body["android"] as Map<*, *>)["features"])
+    }
 }

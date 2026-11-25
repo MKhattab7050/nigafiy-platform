@@ -10,7 +10,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * One screen-sharing session at a time (docs/features/android.md §11). Fleet's rd_session_open
+ * One screen-sharing session at a time (docs/features/android.md §12). Fleet's rd_session_open
  * waits here for the person: a high-priority notification asks them, [ShareRequestActivity] says who
  * asks and why, Android's own MediaProjection dialog asks again, and only then does
  * [ScreenCaptureService] start (its notification and Android's cast indicator stay while it runs).

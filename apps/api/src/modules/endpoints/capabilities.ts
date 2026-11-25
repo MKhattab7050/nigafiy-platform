@@ -1,4 +1,5 @@
 import type {
+  EndpointAndroidState,
   EndpointCapabilityItem,
   EndpointComplianceCheck,
   EndpointComplianceItem,
@@ -292,7 +293,7 @@ export function evaluateCompliance(params: {
  * What the agent can do on each platform, stated as plainly as the agent code supports it.
  * "tested" is reserved for what tests/real-windows-agent.test.ts runs against the real agent binary.
  */
-export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilityItem[] {
+export function buildCapabilities(platform: EndpointPlatform, android?: EndpointAndroidState | null): EndpointCapabilityItem[] {
   if (platform === 'windows') {
     return [
       {
@@ -509,7 +510,7 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
     ];
   }
 
-  if (platform === 'android') return androidCapabilities();
+  if (platform === 'android') return androidCapabilities(android ?? null);
   if (platform === 'macos') {
     return [
       {
@@ -616,7 +617,7 @@ export function buildCapabilities(platform: EndpointPlatform): EndpointCapabilit
  * phone's Device Owner (adb dpm set-device-owner or QR provisioning on a factory-reset phone); a
  * regular app has inventory and checks only. Built and unit-tested here, never run on a phone.
  */
-function androidCapabilities(): EndpointCapabilityItem[] {
+function androidCapabilities(android: EndpointAndroidState | null): EndpointCapabilityItem[] {
   const owner = (key: string, label_en: string, label_ar: string, reason_en: string, reason_ar: string): EndpointCapabilityItem => ({
     key,
     category: key === 'android_apps' ? 'software' : 'remote_control',
@@ -653,5 +654,67 @@ function androidCapabilities(): EndpointCapabilityItem[] {
     owner('android_camera', 'Disable / enable camera', 'تعطيل الكاميرا أو تفعيلها', 'DevicePolicyManager.setCameraDisabled.', 'عبر DevicePolicyManager.setCameraDisabled.'),
     owner('android_apps', 'Install an APK from Fleet / remove an app', 'تثبيت ملف APK من Fleet أو إزالة تطبيق', 'Silent PackageInstaller sessions; the APK is checked by size and SHA-256 before installing.', 'جلسات PackageInstaller صامتة بعد التحقق من الحجم وبصمة SHA-256.'),
     owner('android_wipe', 'Erase the phone', 'مسح الهاتف', 'wipeDevice (Android 14+) or wipeData; admin only, verification code always, second admin when the group asks for approvals.', 'للمسؤول فقط، مع رمز تحقق دائماً وموافقة مسؤول ثانٍ عندما تطلب المجموعة ذلك.'),
+    ...androidPhoneControls(android),
   ];
+}
+
+/**
+ * The phone controls of regular app mode (docs/features/android.md §12), offered only when the app
+ * on the phone reports them (agent 1.0.2+). Every one is visible on the phone while it happens.
+ */
+function androidPhoneControls(a: EndpointAndroidState | null): EndpointCapabilityItem[] {
+  const has = (f: 'screen' | 'control' | 'files' | 'ring' | 'message') => a?.features?.includes(f) ?? false;
+  const old = { reason_en: 'The Nigafiy app on this phone is older than 1.0.2: update it on the phone.', reason_ar: 'تطبيق Nigafiy على هذا الهاتف أقدم من 1.0.2: حدّثه على الهاتف.' };
+  const items: EndpointCapabilityItem[] = [];
+  const screenOff = a?.screen_capture === false;
+  items.push({
+    key: 'remote_desktop',
+    category: 'remote_control',
+    label_en: 'View the screen (and control it when allowed)',
+    label_ar: 'عرض الشاشة (والتحكم بها عند السماح)',
+    state: has('screen') && !screenOff ? 'requires_permissions' : 'requires_external_config',
+    enabled: has('screen') && !screenOff,
+    ...(has('screen')
+      ? screenOff
+        ? { reason_en: 'A policy on the phone disables screen capture.', reason_ar: 'سياسة على الهاتف تمنع التقاط الشاشة.' }
+        : {
+            reason_en: `The person accepts every session on the phone, then Android asks again (MediaProjection); Android shows its cast indicator while it runs. Control (taps, swipes, Back / Home / Recents): ${a?.accessibility_enabled ? 'turned on by the person in Accessibility' : 'off until the person turns on Nigafiy in Settings → Accessibility'}.`,
+            reason_ar: `يوافق الشخص على كل جلسة على الهاتف ثم يسأله Android مرة أخرى، ويظهر مؤشر البث طوال الجلسة. التحكم (لمس وسحب ورجوع والرئيسية والأخيرة): ${a?.accessibility_enabled ? 'فعّله الشخص في إمكانية الوصول' : 'غير مفعّل حتى يفعّل الشخص Nigafiy في الإعدادات ← إمكانية الوصول'}.`,
+          }
+      : old),
+  });
+  items.push({
+    key: 'remote_file_manager',
+    category: 'file_management',
+    label_en: 'File manager (shared storage)',
+    label_ar: 'مدير الملفات (التخزين المشترك)',
+    state: has('files') ? (a?.all_files_access ? 'implemented' : 'requires_permissions') : 'requires_external_config',
+    enabled: has('files') && a?.all_files_access === true,
+    ...(has('files')
+      ? a?.all_files_access
+        ? { reason_en: 'Download, DCIM, Documents and the rest of shared storage; app-private data is out of reach.', reason_ar: 'مجلدات Download وDCIM وDocuments وبقية التخزين المشترك؛ بيانات التطبيقات الخاصة غير متاحة.' }
+        : { reason_en: 'The person has not allowed All files access in the Nigafiy app yet.', reason_ar: 'لم يسمح الشخص بعد بالوصول إلى كل الملفات من تطبيق Nigafiy.' }
+      : a?.sdk_int !== undefined && a.sdk_int < 30
+        ? { reason_en: 'Needs Android 11 or newer.', reason_ar: 'يتطلب Android 11 أو أحدث.' }
+        : old),
+  });
+  items.push({
+    key: 'android_ring',
+    category: 'remote_control',
+    label_en: 'Ring the phone',
+    label_ar: 'جعل الهاتف يرن',
+    state: has('ring') ? 'implemented' : 'requires_external_config',
+    enabled: has('ring'),
+    ...(has('ring') ? { reason_en: 'The alarm sound at full alarm volume for up to 2 minutes, with a Stop button on the phone.', reason_ar: 'صوت المنبّه بأعلى مستوى حتى دقيقتين، مع زر إيقاف على الهاتف.' } : old),
+  });
+  items.push({
+    key: 'notify_user',
+    category: 'remote_control',
+    label_en: 'Show a message on the phone',
+    label_ar: 'عرض رسالة على الهاتف',
+    state: has('message') ? 'implemented' : 'requires_external_config',
+    enabled: has('message'),
+    ...(has('message') ? { reason_en: 'A high-priority notification with plain text.', reason_ar: 'إشعار عالي الأولوية بنص عادي.' } : old),
+  });
+  return items;
 }

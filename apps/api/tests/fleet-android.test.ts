@@ -171,7 +171,7 @@ describe('Android phones: enrollment, heartbeat and the endpoint view', () => {
     expect((p.endpoint ?? p).compliance_status).toBe('unknown');
   });
 
-  // Both seen on the first emulator run (Android 16, docs/features/android.md §11).
+  // Both seen on the first emulator run (Android 16, docs/features/android.md §12).
   it('accepts the framework package "android" (one segment) in the app list, which every phone reports', async () => {
     const a = await newAccount('android-framework-pkg');
     const { epId, cred } = await phone(a, 'device_owner');
@@ -440,6 +440,112 @@ describe('Android actions: Device Owner, roles, policy, MFA, approvals, audit', 
     const { epId } = await phone(a, 'device_owner');
     await systemPool.query(`UPDATE endpoints SET last_heartbeat_at = now() - interval '10 minutes' WHERE id = $1`, [epId]);
     expect((await act(a, epId, { action: 'lock' })).body.error.code).toBe('endpoint_offline');
+  });
+});
+
+describe('Android phone controls in regular app mode (screen, control, files, ring, message)', () => {
+  const controls = { features: ['screen', 'control', 'files', 'ring', 'message'], all_files_access: true, accessibility_enabled: true, screen_capture: true };
+  const hbWith = (cred: string, name: string, android: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/agent/heartbeat')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({ ...heartbeatBody(name, 'regular'), android: { ...heartbeatBody(name, 'regular').android, ...android } });
+  const cmd = (a: TestAccount, epId: string, body: Record<string, unknown>) => a.agent.post(`/api/v1/endpoints/${epId}/commands`).set(CSRF).send(body);
+
+  it('an older app (no features) is offered none of them; the heartbeat with features is accepted and drives the capabilities', async () => {
+    const a = await newAccount('android-ctl-old');
+    const { epId, cred } = await phone(a, 'regular');
+    expect((await act(a, epId, { action: 'ring' })).body.error.code).toBe('android_feature_missing');
+    expect((await cmd(a, epId, { kind: 'notify_user', title: 'Hi', message: 'Hello' })).body.error.code).toBe('android_feature_missing');
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'help with the phone' });
+    expect(start.status).toBe(409);
+    expect(start.body.error.code).toBe('unsupported_by_platform');
+
+    // Unknown feature names from a newer app are dropped, not refused.
+    const hb = await hbWith(cred, 'Pixel-Reception', { ...controls, features: [...controls.features, 'teleport'] });
+    expect(hb.status, JSON.stringify(hb.body)).toBe(200);
+    const view = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(view.body.android.features).toEqual(controls.features);
+    const caps = Object.fromEntries((view.body.capabilities as Array<{ key: string; enabled: boolean }>).map((c) => [c.key, c.enabled]));
+    expect(caps).toMatchObject({ remote_desktop: true, remote_file_manager: true, android_ring: true, notify_user: true });
+  });
+
+  it('ring and stop ringing: technician yes, viewer no, regular mode is enough, audited, payload with the operator', async () => {
+    const a = await newAccount('android-ctl-ring');
+    const { epId, cred } = await phone(a, 'regular');
+    expect((await hbWith(cred, 'Pixel-Reception', controls)).status).toBe(200);
+    const viewer = await addMember(a, 'viewer');
+    expect((await act(viewer, epId, { action: 'ring' })).status).toBe(403);
+    const r = await act(a, epId, { action: 'ring', seconds: 20 });
+    expect(r.status, JSON.stringify(r.body)).toBe(202);
+    const s = await act(a, epId, { action: 'ring_stop' });
+    expect(s.status).toBe(202);
+    const cmds = await poll(cred);
+    expect(cmds.map((c) => [c.kind, c.payload])).toEqual([
+      ['android_ring', { seconds: 20, operator: a.email }],
+      ['android_ring_stop', {}],
+    ]);
+    expect((await audits(a.organizationId, 'endpoint.android_ring')).length).toBe(1);
+    expect((await act(a, epId, { action: 'ring', seconds: 500 })).status).toBe(400);
+  });
+
+  it('message, files and input follow what the phone reports; Device Owner actions still need Device Owner', async () => {
+    const a = await newAccount('android-ctl-cmds');
+    const { epId, cred } = await phone(a, 'regular');
+    expect((await hbWith(cred, 'Pixel-Reception', { ...controls, all_files_access: false, accessibility_enabled: false })).status).toBe(200);
+    expect((await cmd(a, epId, { kind: 'notify_user', title: 'IT', message: 'Please restart' })).status).toBe(202);
+    const files = await cmd(a, epId, { kind: 'fs_op', op: 'roots' });
+    expect(files.status).toBe(409);
+    expect(files.body.error.code).toBe('android_files_not_allowed');
+    expect((await cmd(a, epId, { kind: 'power_action', action: 'lock' })).body.error.code).toBe('unsupported_by_platform');
+    expect((await act(a, epId, { action: 'lock' })).body.error.code).toBe('android_requires_device_owner');
+
+    expect((await hbWith(cred, 'Pixel-Reception', controls)).status).toBe(200);
+    expect((await cmd(a, epId, { kind: 'fs_op', op: 'roots' })).status).toBe(202);
+    // Input only inside a session the person accepted.
+    expect((await cmd(a, epId, { kind: 'rd_input', event_kind: 'nav', nav: 'back' })).body.error.code).toBe('no_remote_session');
+    expect((await cmd(a, epId, { kind: 'rd_input', event_kind: 'swipe', x: 0.5, y: 0.8 })).status).toBe(400);
+    const kinds = (await poll(cred)).map((c) => c.kind);
+    expect(kinds).toContain('fs_op');
+    const queuedKinds = (await systemPool.query(`SELECT kind FROM endpoint_commands WHERE endpoint_id = $1 ORDER BY created_at`, [epId])).rows.map((r) => r.kind);
+    expect(queuedKinds).toEqual(['notify_user', 'fs_op']);
+  });
+
+  it('screen view always asks the person: waiting for consent, then frames and phone input; a refusal ends it', async () => {
+    const a = await newAccount('android-ctl-screen');
+    const { epId, cred } = await phone(a, 'regular');
+    expect((await hbWith(cred, 'Pixel-Reception', controls)).status).toBe(200);
+    const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'check the mail app' });
+    expect(start.status, JSON.stringify(start.body)).toBe(200);
+    expect(start.body.session).toMatchObject({ state: 'waiting_consent', consent_mode: 'prompt' });
+    expect((await cmd(a, epId, { kind: 'rd_capture' })).body.error.code).toBe('consent_pending');
+    const open = (await poll(cred)).find((c) => c.kind === 'rd_session_open')!;
+    expect(open.payload).toMatchObject({ consent_required: true, reason: 'check the mail app' });
+
+    const ans = await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({ command_results: [{ id: open.id, ok: true, data: { consent: 'accepted', banner: 'shown', desktop: { mode: 'android' }, stream: 'http' } }] });
+    expect(ans.status).toBe(200);
+    expect((await cmd(a, epId, { kind: 'rd_capture', full_frame: true })).status).toBe(202);
+    expect((await cmd(a, epId, { kind: 'rd_input', event_kind: 'swipe', x: 0.5, y: 0.8, x2: 0.5, y2: 0.2, duration_ms: 300 })).status).toBe(202);
+    expect((await cmd(a, epId, { kind: 'rd_input', event_kind: 'nav', nav: 'home' })).status).toBe(202);
+    // A phone has no mouse moves or keyboard.
+    expect((await cmd(a, epId, { kind: 'rd_input', event_kind: 'key_press', key: 'a' })).body.error.code).toBe('unsupported_by_platform');
+    const queued = (await poll(cred)).filter((c) => c.kind === 'rd_input').map((c) => c.payload);
+    expect(queued[0]).toMatchObject({ kind: 'swipe', x2: 0.5, y2: 0.2, duration_ms: 300 });
+    expect(queued[1]).toMatchObject({ kind: 'nav', nav: 'home' });
+
+    // A second session the person refuses ends at once.
+    const again = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'one more look' });
+    expect(again.status).toBe(200);
+    const open2 = (await poll(cred)).find((c) => c.kind === 'rd_session_open')!;
+    await request(app)
+      .post('/api/v1/agent/command-result')
+      .set('Authorization', `Bearer ${cred}`)
+      .send({ command_results: [{ id: open2.id, ok: true, data: { consent: 'denied', banner: 'shown' } }] });
+    const ep = await a.agent.get(`/api/v1/endpoints/${epId}`);
+    expect(ep.body.rd_session).toBeNull();
   });
 });
 

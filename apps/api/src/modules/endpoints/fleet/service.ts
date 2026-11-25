@@ -90,7 +90,7 @@ export function getEndpointDetail(organizationId: string, id: string, role?: Rol
     }));
     // The latest frame of an open session, from the transient relay (never stored); not for viewers.
     ep.last_rd_frame = !isViewer && ep.rd_session ? (latestFrame(ep.id)?.frame ?? null) : null;
-    ep.capabilities = buildCapabilities(ep.platform);
+    ep.capabilities = buildCapabilities(ep.platform, ep.android);
     // Per-item verdicts with their evidence (the stored status/reasons come from the same function).
     ep.compliance_items = evaluateComplianceItems({ platform: ep.platform, diskUsedPct: ep.disk_used_pct, security: ep.security, allowedLocalAdmins: ep.policy?.allowed_local_admins });
     return ep;

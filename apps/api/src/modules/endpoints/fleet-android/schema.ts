@@ -20,6 +20,9 @@ export const androidActionSchema = z.discriminatedUnion('action', [
     .strict(),
   z.object({ action: z.literal('wipe'), reason, step_up_token: stepUpToken }).strict(),
   z.object({ action: z.literal('release'), reason, step_up_token: stepUpToken }).strict(),
+  // Regular app mode is enough (the phone reports the "ring" feature).
+  z.object({ action: z.literal('ring'), seconds: z.number().int().min(5).max(120).default(30), step_up_token: stepUpToken }).strict(),
+  z.object({ action: z.literal('ring_stop'), step_up_token: stepUpToken }).strict(),
 ]);
 export type AndroidAction = z.infer<typeof androidActionSchema>;
 

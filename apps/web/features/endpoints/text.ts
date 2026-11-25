@@ -189,6 +189,8 @@ const en = {
     android_uninstall: 'Android: remove app',
     android_wipe: 'Android: erase phone',
     android_release: 'Android: stop management',
+    android_ring: 'Android: ring the phone',
+    android_ring_stop: 'Android: stop ringing',
   } as Record<EndpointCommandKind, string>,
   commandStatus: {
     pending: 'Queued',
@@ -392,6 +394,8 @@ const ar: Dict = {
     android_uninstall: 'Android: إزالة تطبيق',
     android_wipe: 'Android: مسح الهاتف',
     android_release: 'Android: إيقاف الإدارة',
+    android_ring: 'Android: جعل الهاتف يرن',
+    android_ring_stop: 'Android: إيقاف الرنين',
   },
   commandStatus: {
     pending: 'في الانتظار',

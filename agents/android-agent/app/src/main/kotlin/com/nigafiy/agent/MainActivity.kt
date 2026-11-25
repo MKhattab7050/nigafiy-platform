@@ -15,11 +15,9 @@ import android.text.InputType
 import android.text.format.DateUtils
 import android.view.View
 import android.view.WindowInsets
-import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
 import com.nigafiy.agent.core.Enrollment
 import com.nigafiy.agent.core.Mode
 
@@ -27,6 +25,7 @@ import com.nigafiy.agent.core.Mode
 class MainActivity : Activity() {
     private lateinit var store: Store
     private lateinit var root: LinearLayout
+    private lateinit var ui: Ui
     private val handler = Handler(Looper.getMainLooper())
     // Redraws the status / enrolling screens every 3 s. Never the form: redrawing it threw away what
     // the person was typing (first real-phone run: "I type them and it erases them").
@@ -40,12 +39,18 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         store = Store(this)
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 48, 48, 48) }
-        val scroll = ScrollView(this).apply { addView(root) }
+        ui = Ui(this)
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = ui.bg
+            window.navigationBarColor = ui.bg
+            if (!ui.dark) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(24)) }
+        val scroll = ScrollView(this).apply { addView(root); setBackgroundColor(ui.bg); isFillViewport = true }
         if (Build.VERSION.SDK_INT >= 35) {
             // Android 15+ draws an app targeting API 35+ edge to edge: without this the first lines
-            // (title, enrollment error) sat under the status and action bars (first emulator run).
-            // The top inset Android hands the content already includes the action bar.
+            // sat under the status bar (first emulator run).
             scroll.setOnApplyWindowInsetsListener { v, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
@@ -67,8 +72,7 @@ class MainActivity : Activity() {
     override fun onPause() { super.onPause(); handler.removeCallbacks(refresh) }
 
     private var prefill: Enrollment? = null
-    // Not "error": inside Button(this).apply { } that name is the button's own TextView.error, so the
-    // message went onto the button and the form never showed it (first real-phone run).
+    // Not "error": inside a View's apply { } that name is the view's own TextView.error (first real-phone run).
     private var formError: String? = null
 
     private fun fromLink(intent: Intent?) {
@@ -82,81 +86,95 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun text(s: String, size: Float = 16f) = TextView(this).apply { text = s; textSize = size; setPadding(0, 12, 0, 12) }
-
     private fun render() {
+        // Keep the scroll position across the 3-second redraws.
+        val scroll = root.parent as? ScrollView
+        val y = scroll?.scrollY ?: 0
         root.removeAllViews()
         if (store.enrolled) renderStatus() else if (store.pendingEnrollment != null) renderEnrolling() else renderForm()
-        root.addView(text(getString(R.string.what_is_sent), 13f))
+        val privacy = ui.card(root, getString(R.string.section_privacy))
+        privacy.addView(ui.text(getString(R.string.what_is_sent), 13f, ui.muted))
+        scroll?.post { scroll.scrollTo(0, y) }
     }
 
     private fun renderEnrolling() {
         val p = store.pendingEnrollment ?: return
         // If the server refuses the token, the service drops it and the form comes back with these values.
         prefill = p
-        root.addView(text(getString(R.string.enrolling), 20f))
-        root.addView(text(getString(R.string.enrolling_to, p.server), 13f).apply { textDirection = View.TEXT_DIRECTION_LTR })
-        store.lastError?.let { root.addView(text(getString(R.string.enroll_failed, it))) }
-        root.addView(Button(this).apply {
-            text = getString(R.string.action_change)
-            // A wrong address or pin retries for ever: let the person go back and fix it.
-            setOnClickListener {
-                prefill = p
-                formError = store.lastError
-                store.pendingEnrollment = null
-                store.lastError = null
-                render()
-            }
-        })
+        root.addView(ui.header(getString(R.string.app_name), getString(R.string.enrolling), ui.warn))
+        val c = ui.card(root, getString(R.string.enrolling))
+        c.addView(ui.text(getString(R.string.enrolling_to, p.server), 13f, ui.muted, ltr = true))
+        store.lastError?.let { ui.note(c, getString(R.string.enroll_failed, it)) }
+        // A wrong address or pin retries for ever: let the person go back and fix it.
+        ui.addButton(c, getString(R.string.action_change), primary = false) {
+            prefill = p
+            formError = store.lastError
+            store.pendingEnrollment = null
+            store.lastError = null
+            render()
+        }
     }
 
     private fun renderStatus() {
-        root.addView(text(getString(R.string.enrolled_title), 20f))
-        root.addView(text(getString(R.string.status_server, store.server)))
-        root.addView(text(getString(R.string.status_endpoint, store.endpointId ?: "")))
-        val mode = Facts(this, store).mode()
-        root.addView(text(getString(if (mode == Mode.DEVICE_OWNER) R.string.status_mode_owner else R.string.status_mode_regular)))
         val last = store.lastContact
-        root.addView(text(if (last == 0L) getString(R.string.status_never) else getString(R.string.status_last, DateUtils.getRelativeTimeSpanString(last))))
-        store.lastError?.let { root.addView(text(getString(R.string.status_error, it))) }
+        val fresh = last != 0L && System.currentTimeMillis() - last < 3 * 60_000 && store.lastError == null
+        val lastText = if (last == 0L) getString(R.string.status_never) else getString(R.string.status_last, DateUtils.getRelativeTimeSpanString(last))
+        val lastValue = if (last == 0L) "—" else DateUtils.getRelativeTimeSpanString(last).toString()
+        root.addView(ui.header(getString(R.string.app_name), if (fresh) getString(R.string.header_connected) else lastText, if (fresh) ui.ok else ui.warn))
+
+        val phone = ui.card(root, getString(R.string.enrolled_title))
+        val mode = Facts(this, store).mode()
+        ui.fact(phone, getString(R.string.label_server), store.server ?: "", ltr = true)
+        ui.fact(phone, getString(R.string.label_mode), getString(if (mode == Mode.DEVICE_OWNER) R.string.status_mode_owner else R.string.status_mode_regular))
+        ui.fact(phone, getString(R.string.label_last), lastValue)
+        ui.fact(phone, getString(R.string.label_endpoint), store.endpointId ?: "", ltr = true)
+        store.lastError?.let { ui.note(phone, getString(R.string.status_error, it)) }
+
         val pm = getSystemService(PowerManager::class.java)
-        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-            root.addView(Button(this).apply {
-                text = getString(R.string.action_battery)
-                // The standard settings screen: the person may refuse.
-                setOnClickListener { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
-            })
+        val needBattery = !pm.isIgnoringBatteryOptimizations(packageName)
+        val needNotif = Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (needBattery || needNotif) {
+            val setup = ui.card(root, getString(R.string.section_setup), getString(R.string.section_setup_hint))
+            // The standard settings screens: the person may refuse.
+            if (needNotif) ui.addButton(setup, getString(R.string.action_notifications)) { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) }
+            if (needBattery) ui.addButton(setup, getString(R.string.action_battery)) { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
         }
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            root.addView(Button(this).apply {
-                text = getString(R.string.action_notifications)
-                setOnClickListener { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) }
-            })
-        }
+
         // The optional phone controls: each one is the person's own switch in Android's Settings.
-        root.addView(text(getString(R.string.controls_title), 18f))
-        root.addView(text(getString(R.string.controls_screen), 13f))
+        val ctl = ui.card(root, getString(R.string.controls_title), getString(R.string.controls_hint))
+        ui.control(ctl, getString(R.string.control_screen), null, getString(R.string.chip_asks), getString(R.string.controls_screen))
+        ui.divider(ctl)
         val controlOn = ControlService.isEnabled(this)
-        root.addView(text(getString(if (controlOn) R.string.controls_control_on else R.string.controls_control_off), 13f))
-        root.addView(Button(this).apply {
-            text = getString(if (controlOn) R.string.action_accessibility_off else R.string.action_accessibility)
-            setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-        })
-        if (Build.VERSION.SDK_INT >= 30) {
-            val filesOn = android.os.Environment.isExternalStorageManager()
-            root.addView(text(getString(if (filesOn) R.string.controls_files_on else R.string.controls_files_off), 13f))
-            root.addView(Button(this).apply {
-                text = getString(if (filesOn) R.string.action_files_off else R.string.action_files)
-                setOnClickListener {
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-                    } catch (_: Exception) {
-                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                    }
-                }
-            })
+        ui.control(
+            ctl, getString(R.string.control_remote), controlOn, getString(if (controlOn) R.string.chip_on else R.string.chip_off),
+            getString(if (controlOn) R.string.controls_control_on else R.string.controls_control_off),
+            getString(if (controlOn) R.string.action_accessibility_off else R.string.action_accessibility),
+        ) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        if (!controlOn) {
+            // Android 13+ blocks Accessibility for apps installed outside a store until the person
+            // allows "restricted settings" in App info (first A36 run of 1.0.2).
+            ctl.addView(ui.text(getString(R.string.controls_restricted), 13f, ui.muted, top = 2))
+            ui.addButton(ctl, getString(R.string.action_app_info), primary = false) {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
         }
-        root.addView(text(getString(R.string.controls_ring_message), 13f))
+        if (Build.VERSION.SDK_INT >= 30) {
+            ui.divider(ctl)
+            val filesOn = android.os.Environment.isExternalStorageManager()
+            ui.control(
+                ctl, getString(R.string.control_files), filesOn, getString(if (filesOn) R.string.chip_allowed else R.string.chip_not_allowed),
+                getString(if (filesOn) R.string.controls_files_on else R.string.controls_files_off),
+                getString(if (filesOn) R.string.action_files_off else R.string.action_files),
+            ) {
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }
+            }
+        }
+        ui.divider(ctl)
+        ui.control(ctl, getString(R.string.control_ring_message), null, getString(R.string.chip_notification), getString(R.string.controls_ring_message))
     }
 
     // What was typed, kept across redraws (an error, a refused token, rotation) so nothing is lost.
@@ -189,6 +207,7 @@ class MainActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             override fun afterTextChanged(s: android.text.Editable?) = onChange(s?.toString().orEmpty())
         })
+        ui.styleField(this)
     }
 
     /** Google's code scanner: its own camera screen, no camera permission for this app. */
@@ -237,30 +256,29 @@ class MainActivity : Activity() {
         prefill?.let { draftServer = it.server; draftToken = it.token; draftPin = it.pin; prefill = null }
         // The service drops a token the server refused (401) and records why: say so here.
         if (formError == null) formError = store.lastError
-        root.addView(text(getString(R.string.title_enroll), 20f))
-        root.addView(text(getString(R.string.enroll_hint)))
-        root.addView(Button(this).apply { text = getString(R.string.action_scan); setOnClickListener { scanQr() } })
-        root.addView(Button(this).apply { text = getString(R.string.action_paste); setOnClickListener { pasteEnrollment() } })
+        root.addView(ui.header(getString(R.string.app_name), getString(R.string.header_not_enrolled), null))
+        val quick = ui.card(root, getString(R.string.title_enroll), getString(R.string.enroll_hint))
+        ui.addButton(quick, getString(R.string.action_scan)) { scanQr() }
+        ui.addButton(quick, getString(R.string.action_paste), primary = false) { pasteEnrollment() }
+
+        val manual = ui.card(root, getString(R.string.section_manual))
         val server = field(R.string.field_server, draftServer, uri = true) { draftServer = it }
         val token = field(R.string.field_token, draftToken, uri = false) { draftToken = it }
         val pin = field(R.string.field_pin, draftPin, uri = false) { draftPin = it }
-        root.addView(server); root.addView(token); root.addView(pin)
-        formError?.let { root.addView(text(getString(R.string.enroll_failed, it))) }
-        root.addView(Button(this).apply {
-            text = getString(R.string.action_enroll)
-            setOnClickListener {
-                try {
-                    store.pendingEnrollment = Enrollment.of(server.text.toString(), token.text.toString(), pin.text.toString())
-                    store.lastError = null
-                    formError = null
-                    AgentService.start(this@MainActivity)
-                    handler.removeCallbacks(refresh)
-                    handler.post(refresh)
-                } catch (e: IllegalArgumentException) {
-                    formError = e.message
-                    render()
-                }
+        manual.addView(server); manual.addView(token); manual.addView(pin)
+        formError?.let { ui.note(manual, getString(R.string.enroll_failed, it)) }
+        ui.addButton(manual, getString(R.string.action_enroll)) {
+            try {
+                store.pendingEnrollment = Enrollment.of(server.text.toString(), token.text.toString(), pin.text.toString())
+                store.lastError = null
+                formError = null
+                AgentService.start(this@MainActivity)
+                handler.removeCallbacks(refresh)
+                handler.post(refresh)
+            } catch (e: IllegalArgumentException) {
+                formError = e.message
+                render()
             }
-        })
+        }
     }
 }

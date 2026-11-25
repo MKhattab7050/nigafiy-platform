@@ -37,6 +37,10 @@ URL-safe base64 of the APK's SHA-256).
 | Disable / enable camera | no | yes |
 | Install an APK pushed from Fleet / uninstall an app | no | yes (silent) |
 | Wipe (factory reset) | no | yes, admin only, MFA step-up always, second-admin approval when the endpoint's Fleet group asks for approvals |
+| Screen view (MediaProjection; the person accepts every session, then Android asks again) | yes (app 1.0.2+, §12) | yes |
+| Remote control: taps, swipes, Back / Home / Recents (accessibility service the person turns on) | yes, during an accepted screen session only (§12) | yes, same rule |
+| File manager on shared storage (All files access, granted by the person) | yes, Android 11+ (§12) | yes |
+| Ring the phone / show a message | yes (§12) | yes |
 | Persistent notification "Managed by Nigafiy" | yes | yes (cannot be hidden; there is no stealth mode) |
 
 The web shows each action only where the agent's reported mode allows it, and the API checks again.
@@ -306,3 +310,32 @@ Then open the printed enrollment link on the emulator
 (`adb -s emulator-5580 shell am start -a android.intent.action.VIEW -d '<link>'`), and send actions
 with `fleet.mjs act '{"action":"lock"}'`. Erase only this scratch emulator; the next `start` wipes it
 anyway.
+
+## 12. Phone controls in regular app mode (app 1.0.2, 2026-11-25)
+
+Asked by the owner after enrolling their own Samsung A36 (Android 16) as a regular app. Everything here
+works without Device Owner and everything is visible on the phone while it happens. Nothing is hidden,
+nothing reads messages or window text, and nothing logs keystrokes.
+
+| Control | On the phone | In Fleet | Rules |
+| --- | --- | --- | --- |
+| Screen view | A high-priority notification "IT asks to see your screen" → a screen with who, why and what they will see → Android's own MediaProjection dialog → foreground service of type `mediaProjection` with a Stop button; Android shows its cast icon | Remote desktop tab (shown only when the phone reports `screen`). Sessions on a phone are always attended (`consent_mode = prompt`), whatever the group's policy says | Frames only after the person accepted (`consent_pending` before). Refusing, ignoring or closing Android's dialog ends the session. Stop on the phone ends it in Fleet (`/agent/rd-session/end`) |
+| Remote control | Settings → Accessibility → Nigafiy (the person's own switch). A bar "Nigafiy: … is controlling this phone" stays on top while control is possible | Click = tap, hold = long press, drag = swipe, buttons Back / Home / Recent apps | Only inside an accepted session whose profile allows control. The service has no event types and `canRetrieveWindowContent=false`. Keys, text, wheel and mouse moves are refused for phones (`unsupported_by_platform`) |
+| File manager | Settings → All files access → Nigafiy (the person's switch, from the app's button) | Files tab (shown when the phone reports `files` and the access is granted) | Shared storage only (`SharedStorage.kt` confines paths); the usual file-manager roles: upload and delete are admin only, delete needs confirmation |
+| Ring | Alarm sound at full alarm volume (the person's volume is put back), notification with Stop | Android panel → Phone controls → Ring / Stop ringing | technician and above, 5–120 s, audited (`endpoint.android_ring`) |
+| Message | High-priority notification, plain text (title ≤ 120, text ≤ 600) | Android panel → Phone controls → Send message (`notify_user`) | technician and above, audited |
+
+The phone reports in every heartbeat (`endpoints.android`): `features` (what this app build implements),
+`all_files_access`, `accessibility_enabled`, `screen_capture`. The web shows a control only when the phone
+reported it, and the API checks it again (`commands/guards.ts assertAndroidCommand`,
+`fleet-android/actions.ts`, `capabilities.ts androidPhoneControls`). Migration 050 adds the
+`android_ring` / `android_ring_stop` command kinds.
+
+A server older than 1.0.2 refuses the new heartbeat fields (strict schema, 400). The app then reports
+again without them (`Protocol.withoutPhoneControls`), so a newer phone never goes silent; seen on the
+A36 before the PC was updated.
+
+The phone app's screens were redesigned in 1.0.2 (header with the connection state, cards, a "Phone
+controls" card with a coloured state and a button per control, light and dark), drawn in code
+(`Ui.kt`) without new libraries.
+
