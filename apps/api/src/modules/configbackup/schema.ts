@@ -107,11 +107,13 @@ export const restoreRequestSchema = z
     /** The device name, typed by the administrator. */
     confirm: z.string().max(200),
     reason: z.string().trim().min(10).max(500),
-    /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`). */
+    /** Minutes the device waits for the confirmation before it rolls back by itself (Junos `commit confirmed`, IOS XE revert timer, VyOS / EdgeOS `commit-confirm`, OpenWrt rpcd `uci apply` rollback). */
     confirm_minutes: z.number().int().min(1).max(10).default(5),
-    /** Restore a version whose host name differs from the device's latest backup (second confirmation). */
+    /** Restore although the version was taken from a different (or unidentified) device, or names another host. */
+    allow_other_device: z.boolean().default(false),
+    /** Alias of allow_other_device (the name the IOS XE restore introduced). */
     force_other_device: z.boolean().default(false),
-    /** The version's host name, typed, when force_other_device is set. */
+    /** With allow_other_device: the text the preview shows (other_device_confirm_text), typed. */
     confirm_other_device: z.string().max(200).optional(),
   })
   .strict();

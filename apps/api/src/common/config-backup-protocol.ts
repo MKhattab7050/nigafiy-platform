@@ -20,7 +20,7 @@ const ipv4 = z.string().max(15).refine(isIPv4, 'must be an IPv4 address');
 /** Error kinds of the collector's configbackup package (internal/configbackup/configbackup.go). */
 export const CONFIG_BACKUP_ERROR_KINDS = [
   'out_of_scope', 'unreachable', 'timeout', 'auth_failed', 'host_key_changed', 'privilege', 'unsupported_vendor', 'command_failed',
-  'output_too_large', 'protocol', 'invalid_argument', 'empty_config', 'expired', 'internal',
+  'output_too_large', 'protocol', 'invalid_argument', 'empty_config', 'expired', 'internal', 'device_mismatch',
 ] as const;
 export type ConfigBackupErrorKind = (typeof CONFIG_BACKUP_ERROR_KINDS)[number];
 
@@ -45,6 +45,13 @@ export const CONFIG_BACKUP_DRIVER_IDS = CONFIG_BACKUP_DRIVERS.map((d) => d.id) a
 
 /** OpenSSH-style SHA-256 fingerprint, as golang.org/x/crypto/ssh.FingerprintSHA256 prints it. */
 export const HOST_KEY_FINGERPRINT = /^SHA256:[A-Za-z0-9+/]{43}$/;
+
+/**
+ * The hardware model and serial number the device reported (collector internal/configbackup/identity.go;
+ * Junos, VyOS / EdgeOS and OpenWrt, which reports a model only). Read with read-only commands, never part of the configuration text.
+ */
+export const deviceIdentitySchema = z.object({ model: clean(100).optional(), serial: clean(100).optional() }).strict();
+export type DeviceIdentity = z.infer<typeof deviceIdentitySchema>;
 
 /** Base64 of the gzip stream. ~1.4 MB of base64 ≈ 1 MB compressed — far more than any real configuration. */
 export const MAX_CONFIG_GZIP_B64 = 1_400_000;
@@ -84,6 +91,7 @@ export const configBackupResultSchema = z
       .strict()
       .optional(),
     commands: z.array(clean(120)).max(16).optional(),
+    device_identity: deviceIdentitySchema.optional(),
     config_gzip_b64: z.string().max(MAX_CONFIG_GZIP_B64).regex(/^[A-Za-z0-9+/]*={0,2}$/, 'must be base64').optional(),
     error: z.object({ kind: z.enum(CONFIG_BACKUP_ERROR_KINDS), message: clean(500) }).strict().optional(),
   })
@@ -135,6 +143,7 @@ export const configRestoreResultSchema = z
     read_back: z.boolean().optional(),
     steps: z.array(clean(300)).max(32).optional(),
     host_key: z.object({ sha256: z.string().regex(HOST_KEY_FINGERPRINT), type: clean(60) }).strict().optional(),
+    device_identity: deviceIdentitySchema.optional(),
     error: z.object({ kind: z.enum(CONFIG_BACKUP_ERROR_KINDS), message: clean(500) }).strict().optional(),
   })
   .strict();

@@ -37,7 +37,8 @@ type device struct {
 	pubKey       ssh.PublicKey
 	// cliFn replaces the generic CLI (restore tests emulate Junos configuration mode).
 	cliFn func(ch ssh.Channel)
-	// execFn handles exec channels itself (the IOS XE restore test emulates the SCP sink); it returns the exit status.
+	// execFn handles exec channels itself (the IOS XE restore test emulates the SCP sink, the OpenWrt
+	// restore test ubus); it returns the exit status.
 	execFn func(cmd string, ch ssh.Channel) uint32
 
 	authCalls atomic.Int32

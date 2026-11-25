@@ -161,6 +161,7 @@ export const ERROR_KINDS = [
   'empty_config',
   'expired',
   'internal',
+  'device_mismatch',
 ] as const;
 
 export type RestoreStatus = 'pre_backup' | 'pending' | 'verified' | 'failed' | 'rolled_back' | 'expired';
@@ -185,16 +186,33 @@ export interface Restore {
   collector_name: string | null;
   created_at: string;
   completed_at: string | null;
+  /** Restored onto a device whose identity differs from the version's, as the administrator confirmed. */
+  forced_other_device: boolean;
+  identity_check: IdentityCheck | null;
+  /** The identity the device reported in the restore session. */
+  device_model: string | null;
+  device_serial: string | null;
+}
+
+export type IdentityCheck = 'match' | 'mismatch' | 'unknown';
+export interface DeviceIdentity {
+  model: string | null;
+  serial: string | null;
 }
 
 export interface RestorePreview {
   target: { id: string; name: string; address: string };
   version: Diff['to'];
   current: Diff['from'] | null;
+  driver: string | null;
   method: string | null;
   supported: boolean;
   possible: boolean;
   blocker: { code: string; message: string } | null;
+  identity: { version: DeviceIdentity; device: DeviceIdentity; check: IdentityCheck };
+  /** Set when restoring needs the second confirmation (another or unidentified device, or another host name): allow_other_device + this text typed. */
+  other_device_block: { code: string; message: string } | null;
+  other_device_confirm_text: string | null;
   confirm_text: string;
   confirm_minutes_default: number;
   /** Set when the version names another host than the latest backup: a second, typed confirmation is needed. */
