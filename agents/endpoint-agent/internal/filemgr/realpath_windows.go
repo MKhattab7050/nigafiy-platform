@@ -3,6 +3,7 @@
 package filemgr
 
 import (
+	"os"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -24,6 +25,14 @@ func realPath(p string) (string, error) {
 		return "", err
 	}
 	defer syscall.CloseHandle(h)
+	return finalPath(h)
+}
+
+// openedPath returns the real location of an open file, from its handle (EXT-8): what the
+// handle reads or writes, whatever its path name points at by now.
+func openedPath(f *os.File) (string, error) { return finalPath(syscall.Handle(f.Fd())) }
+
+func finalPath(h syscall.Handle) (string, error) {
 	buf := make([]uint16, 1024)
 	for {
 		n, _, callErr := procGetFinalPathNameByHandleW.Call(uintptr(h), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), 0)
