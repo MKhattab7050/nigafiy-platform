@@ -33,6 +33,7 @@ const (
 	KindMSI     = "msi"     // Windows Installer manages it: updates come from the administrator
 	KindNSIS    = "nsis"    // the NSIS installer (per-user or per-machine): the in-app updater applies
 	KindUnknown = "unknown" // neither registration names this folder (copied by hand, or not Windows)
+	// KindMSIX (package.go): the Microsoft Store package.
 )
 
 // InstallInfo says how the desktop app in a folder was installed.
@@ -42,6 +43,9 @@ type InstallInfo struct {
 	ProductCode string `json:"product_code,omitempty"`
 	// Scope is "machine" or "user" when known.
 	Scope string `json:"scope,omitempty"`
+	// PackageFullName and PackageFamilyName name the Microsoft Store package when Kind is msix.
+	PackageFullName   string `json:"package_full_name,omitempty"`
+	PackageFamilyName string `json:"package_family_name,omitempty"`
 }
 
 // PackGUID turns {6DA7D862-27E7-4AC8-809D-89B4128FB3AE} into Windows Installer's packed form
@@ -109,7 +113,12 @@ func sameDir(a, b string) bool {
 //     is installDir (an MSI that was registered some other way).
 //
 // NSIS wins when both claim the folder (it is the one that wrote the files the engine runs from).
+// A folder inside an MSIX package (…\WindowsApps\<package full name>\…) is the Store package before
+// anything else (DetectInstallWith also asks the process's own package identity).
 func DetectInstall(installDir string, reg Registry) InstallInfo {
+	if id, ok := PackageFromPath(installDir); ok && installDir != "" {
+		return InstallInfo{Kind: KindMSIX, Scope: "user", PackageFullName: id.FullName, PackageFamilyName: id.FamilyName}
+	}
 	if reg == nil || installDir == "" {
 		return InstallInfo{Kind: KindUnknown}
 	}
