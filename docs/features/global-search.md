@@ -46,3 +46,12 @@ it the migration skips the trigram indexes and search still works with scans.
   organization, not of the whole database. The trigram indexes serve system-role queries and any
   future leakproof path; they cost little to keep.
 - Short queries (one or two characters) cannot use trigram indexes at all.
+
+## User guide hits (2026-11-25)
+
+The search window also lists up to five sections of the in-app user guide under "User guide". They
+are found in the browser, not by the API: the guide is static content in the web app
+(`apps/web/features/guide/content/`), so a server round trip would add nothing. The guide's index is
+loaded the first time the search window opens (a dynamic import, so the guide is not part of every
+page), searches English and Arabic together, and opens `/guide/<section>#<anchor>`. See
+[user-guide.md](user-guide.md).

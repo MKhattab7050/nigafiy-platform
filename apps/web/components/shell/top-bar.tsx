@@ -1,12 +1,15 @@
 'use client';
 
-import { FileBarChart2, Menu, Search } from 'lucide-react';
+import { BookMarked, FileBarChart2, Menu, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import type { GuideSearchIndex } from '@/features/guide/search';
 import type { SearchHit, SearchHitKind, SearchResponse } from '@nigafiy/shared-types';
 import { type ApiError, api, qs } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';
+// The component file, not the feature index: the top bar must not pull the guide's content into every page.
+import { HelpButton } from '@/features/guide/components/help-button';
 import { Logo } from '../logo';
 import { SummaryReportView } from '../summary-report';
 import { Badge, Button, ErrorNote, Input, Modal, Select, SkeletonBlock } from '../ui';
@@ -26,6 +29,21 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<ApiError | null>(null);
+
+  // The user guide is searched in the browser (features/guide/search.ts), loaded the first time the
+  // search opens so its content is not part of every page.
+  const [guideIndex, setGuideIndex] = useState<{ locale: string; index: GuideSearchIndex } | null>(null);
+  useEffect(() => {
+    if (!searchOpen || guideIndex?.locale === locale) return;
+    let active = true;
+    void Promise.all([import('@/features/guide/content'), import('@/features/guide/search')]).then(([content, search]) => {
+      if (active) setGuideIndex({ locale, index: search.buildGuideIndex(content.GUIDE_CONTENT[locale], [content.GUIDE_CONTENT[locale === 'en' ? 'ar' : 'en']]) });
+    });
+    return () => {
+      active = false;
+    };
+  }, [searchOpen, locale, guideIndex]);
+  const guideHits = guideIndex && queryText.trim() ? guideIndex.index.query(queryText, 5) : [];
 
   // Executive summary report modal (the report itself is components/summary-report.tsx, also Watch, Reports)
   const [reportOpen, setReportOpen] = useState(false);
@@ -109,6 +127,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           </span>
           <span className="max-sm:sr-only">{live ? t('top.live') : t('top.reconnecting')}</span>
         </span>
+        <HelpButton />
         <ThemeSwitch />
         <button
           type="button"
@@ -140,7 +159,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
             {searchError && <ErrorNote error={searchError} />}
             {searching ? (
               <SkeletonBlock lines={4} />
-            ) : queryText.trim() && searchHits.length === 0 ? (
+            ) : queryText.trim() && searchHits.length === 0 && guideHits.length === 0 ? (
               <p className="py-6 text-center text-[13px] text-muted">{t('top.searchEmpty')}</p>
             ) : (
               <div className="space-y-4">
@@ -198,6 +217,31 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
                     </div>
                   );
                 })}
+              </div>
+            )}
+            {guideHits.length > 0 && (
+              <div data-search-guide>
+                <p className="mb-1.5 text-xs font-semibold text-muted">{t('guide.searchKind')}</p>
+                <ul className="divide-y divide-line rounded-md border border-line">
+                  {guideHits.map((hit) => (
+                    <li key={hit.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          router.push(`/guide/${hit.id}${hit.anchor ? `#${hit.anchor}` : ''}`);
+                        }}
+                        className="flex w-full items-start gap-2.5 px-3 py-2 text-start text-[13px] hover:bg-raised"
+                      >
+                        <BookMarked className="mt-0.5 size-3.5 shrink-0 text-faint" aria-hidden />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-fg">{hit.title}</span>
+                          <span className="line-clamp-2 block text-xs text-muted">{hit.snippet.replace(/`/g, '')}</span>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
