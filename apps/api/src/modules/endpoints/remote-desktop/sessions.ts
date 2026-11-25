@@ -12,7 +12,7 @@ export const RD_STREAM_CHANNEL = 'ld_rd_stream';
 export const CONSENT_TIMEOUT_SECONDS = 60;
 
 export const FLEET_SESSION_COLUMNS = `id, endpoint_id, public_id, operator_email, reason, state, consent_mode, consent_result, consent_error,
-  consent_decided_at, banner_state, banner_error, transport, stream_connected_at, desktop_mode, display_index, quality, scale,
+  consent_decided_at, banner_state, banner_error, transport, stream_connected_at, rtc_encoder, rtc_started_at, rtc_fallback_reason, desktop_mode, display_index, quality, scale,
   frames_relayed::float8 AS frames_relayed, bytes_relayed::float8 AS bytes_relayed, clipboard_to_remote, clipboard_from_remote,
   started_at, accepted_at, ended_at, end_reason, ended_by_email, source, fleet_group_id, group_name, profile_id, profile_name, permissions,
   consent_timeout_s, refuse_window_s, policy_trail, mfa_verified, request_ip, approval_state, approval_expires_at, approver_email,

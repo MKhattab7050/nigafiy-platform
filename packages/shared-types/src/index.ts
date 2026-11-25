@@ -1411,8 +1411,13 @@ export interface FleetSession {
   consent_decided_at: string | null;
   banner_state: 'pending' | 'shown' | 'unavailable' | 'not_supported';
   banner_error: string | null;
-  transport: 'http' | 'ws';
+  /** How the picture travelled: HTTP frames, the WebSocket + JPEG stream, or WebRTC video (migration 044). */
+  transport: 'http' | 'ws' | 'webrtc';
   stream_connected_at: string | null;
+  /** WebRTC video: the agent's H.264 encoder, when the first viewer started, the last fallback reason. */
+  rtc_encoder?: string | null;
+  rtc_started_at?: string | null;
+  rtc_fallback_reason?: string | null;
   desktop_mode: string | null;
   display_index: number;
   quality: number | null;

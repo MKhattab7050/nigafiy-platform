@@ -295,6 +295,7 @@ const AUDIT_LABELS_AR: Record<string, string> = {
   'fleet.session_ended': 'انتهاء جلسة دعم عن بُعد',
   'fleet.session_clipboard': 'نقل نص الحافظة في جلسة بعيدة',
   'fleet.session_display': 'تغيير الشاشة المعروضة في جلسة بعيدة',
+  'fleet.session_transport': 'تغيير طريقة نقل الصورة في جلسة بعيدة (WebRTC أو وضع التوافق)',
   'maintenance.created': 'جدولة نافذة صيانة',
   'maintenance.deleted': 'حذف نافذة صيانة',
   'team.invited': 'دعوة عضو للفريق',
