@@ -670,7 +670,7 @@ function fleetFlow(themeName, lang) {
   const lg = [G.user, G.server, P.agent.glyph];
   const out = [];
   // Lifelines.
-  lane.forEach((x) => out.push(`<line x1="${x}" y1="${top + head}" x2="${x}" y2="${H - 26}" stroke="${t.line}" stroke-width="1.4" stroke-dasharray="3 6"/>`));
+  for (const x of lane) out.push(`<line x1="${x}" y1="${top + head}" x2="${x}" y2="${H - 26}" stroke="${t.line}" stroke-width="1.4" stroke-dasharray="3 6"/>`);
   // Lane headers.
   lane.forEach((x, i) => {
     const w = 236;

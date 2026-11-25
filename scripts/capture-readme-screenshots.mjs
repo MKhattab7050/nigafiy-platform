@@ -70,7 +70,7 @@ const VARIANTS = [
   { theme: 'dark', locale: 'ar' },
 ];
 
-function frameHtml(png, theme, url, rtl) {
+function frameHtml(png, theme, url) {
   const dark = theme === 'dark';
   const c = dark
     ? { bar: '#161B26', stroke: '#2A3348', pill: '#0F141E', text: '#9AA6BF', dot: '#3A4459' }
@@ -113,7 +113,7 @@ try {
       const png = await page.screenshot();
       const framePage = await ctx.newPage();
       await framePage.setViewportSize({ width: VIEW.width + 140, height: VIEW.height + 160 });
-      await framePage.setContent(frameHtml(png, v.theme, `${SHOWN_ORIGIN}${p.replace(/[0-9a-f-]{36}/, (id) => `${id.slice(0, 8)}…`)}`, v.locale === 'ar'));
+      await framePage.setContent(frameHtml(png, v.theme, `${SHOWN_ORIGIN}${p.replace(/[0-9a-f-]{36}/, (id) => `${id.slice(0, 8)}…`)}`));
       const framed = await framePage.locator('body').screenshot({ omitBackground: true });
       // Encode as WebP in the browser (keeps the transparent shadow; no image library needed).
       const webp = await framePage.evaluate(async (b64) => {
