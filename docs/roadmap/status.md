@@ -173,7 +173,12 @@ Milestone 4 (2026-11-22, programs; plan `docs/superpowers/plans/2026-11-21-nigaf
 | Update download and install | — | Signed test manifests |
 | Desktop installer (NSIS) per user | Silent install, upgrade with data kept, uninstall in a scratch folder (2026-11-25) | Interactive pages, all-users install |
 | MSI and MSIX (desktop + Quick Support), WACK | Installed, checked and removed on this PC, elevated by the owner (run `20261125-105136`): 64 pass, 0 fail; WACK desktop PASS (optional "Blocked executables" only), WACK Quick Support PASS | MSI upgrade, agent installer, upgrade over a real LAN Detective install, the local stack inside the MSIX, Quick Support from a real Fleet link |
-| Backup/restore with pg_dump, Redis rate limits | — | Skipped (no client tools, no Redis) |
+| Backup/restore with pg_dump | 13/13 tests with the real PostgreSQL 18.6 client tools against the embedded server (2026-11-25) | — |
+| Redis rate limits | — | Skipped (no Redis) |
+| Android APK files on disk (migration 048: store, move, sweep, repair) | Real disk and real PostgreSQL inside the test suite | Never with a running server, real uploads or a phone |
+| Website (`apps/site`, static export, EN/AR) | Served on 127.0.0.1 and walked in Edge; screenshots captured from the real web app against a test database | Not hosted anywhere (no domain or host yet); no release published, so every download says "Not released yet" |
+| Desktop on Electron 42 (Node 24) | Packaged `--local-smoke` on scratch ports (2026-11-25); NSIS, MSI, MSIX built and signed with the test certificate | Installers not installed again since the upgrade (owner reruns `run-elevated.ps1`) |
+| Dependency and Go vulnerability scans | `pnpm audit`: 2 moderate left (minimatch in electron-builder, build machine only); `govulncheck` v1.10.0: none in agent, Sensor, engine (Go 1.27.4) | — |
 | Notifications to Telegram, Slack, Discord, ntfy | — | Local test servers |
 | GitHub CI workflow | Passes on GitHub (run 45581032770, 2026-11-25: typecheck, lint, tests, build in 17 min) | — |
 
