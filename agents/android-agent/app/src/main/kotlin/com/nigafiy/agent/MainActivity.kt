@@ -28,8 +28,13 @@ class MainActivity : Activity() {
     private lateinit var store: Store
     private lateinit var root: LinearLayout
     private val handler = Handler(Looper.getMainLooper())
+    // Redraws the status / enrolling screens every 3 s. Never the form: redrawing it threw away what
+    // the person was typing (first real-phone run: "I type them and it erases them").
     private val refresh = object : Runnable {
-        override fun run() { render(); handler.postDelayed(this, 3000) }
+        override fun run() {
+            render()
+            if (store.enrolled || store.pendingEnrollment != null) handler.postDelayed(this, 3000)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,16 +67,18 @@ class MainActivity : Activity() {
     override fun onPause() { super.onPause(); handler.removeCallbacks(refresh) }
 
     private var prefill: Enrollment? = null
-    private var error: String? = null
+    // Not "error": inside Button(this).apply { } that name is the button's own TextView.error, so the
+    // message went onto the button and the form never showed it (first real-phone run).
+    private var formError: String? = null
 
     private fun fromLink(intent: Intent?) {
         val data = intent?.data ?: return
         if (store.enrolled) return
         try {
             prefill = Enrollment.fromLink(data.toString())
-            error = null
+            formError = null
         } catch (e: IllegalArgumentException) {
-            error = e.message
+            formError = e.message
         }
     }
 
@@ -84,8 +91,23 @@ class MainActivity : Activity() {
     }
 
     private fun renderEnrolling() {
+        val p = store.pendingEnrollment ?: return
+        // If the server refuses the token, the service drops it and the form comes back with these values.
+        prefill = p
         root.addView(text(getString(R.string.enrolling), 20f))
+        root.addView(text(getString(R.string.enrolling_to, p.server), 13f).apply { textDirection = View.TEXT_DIRECTION_LTR })
         store.lastError?.let { root.addView(text(getString(R.string.enroll_failed, it))) }
+        root.addView(Button(this).apply {
+            text = getString(R.string.action_change)
+            // A wrong address or pin retries for ever: let the person go back and fix it.
+            setOnClickListener {
+                prefill = p
+                formError = store.lastError
+                store.pendingEnrollment = null
+                store.lastError = null
+                render()
+            }
+        })
     }
 
     private fun renderStatus() {
@@ -113,26 +135,105 @@ class MainActivity : Activity() {
         }
     }
 
+    // What was typed, kept across redraws (an error, a refused token, rotation) so nothing is lost.
+    private var draftServer: String? = null
+    private var draftToken: String? = null
+    private var draftPin: String? = null
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("server", draftServer); outState.putString("token", draftToken); outState.putString("pin", draftPin)
+    }
+
+    override fun onRestoreInstanceState(state: Bundle) {
+        super.onRestoreInstanceState(state)
+        draftServer = state.getString("server"); draftToken = state.getString("token"); draftPin = state.getString("pin")
+        render()
+    }
+
+    /** One field: left-to-right, no auto-correct or auto-capitals (they change the token's letters). */
+    private fun field(hintRes: Int, value: String?, uri: Boolean, onChange: (String) -> Unit) = EditText(this).apply {
+        hint = getString(hintRes)
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+            (if (uri) InputType.TYPE_TEXT_VARIATION_URI else InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD)
+        isSingleLine = true
+        textDirection = View.TEXT_DIRECTION_LTR
+        textAlignment = View.TEXT_ALIGNMENT_VIEW_START
+        setText(value ?: "")
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun afterTextChanged(s: android.text.Editable?) = onChange(s?.toString().orEmpty())
+        })
+    }
+
+    /** Google's code scanner: its own camera screen, no camera permission for this app. */
+    private fun scanQr() {
+        try {
+            val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE)
+                .build()
+            com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(this, options).startScan()
+                .addOnSuccessListener { useEnrollmentText(it.rawValue) }
+                .addOnFailureListener { e -> formError = getString(R.string.scan_unavailable, e.message ?: e.javaClass.simpleName); render() }
+        } catch (e: Exception) {
+            formError = getString(R.string.scan_unavailable, e.message ?: e.javaClass.simpleName)
+            render()
+        }
+    }
+
+    private fun pasteEnrollment() {
+        val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+        val pasted = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this)?.toString() else null
+        if (pasted.isNullOrBlank()) { formError = getString(R.string.paste_empty); render(); return }
+        useEnrollmentText(pasted)
+    }
+
+    /** A scanned or pasted `nigafiy://enroll?…` link fills all three fields; a bare ldea_ token fills the token. */
+    private fun useEnrollmentText(raw: String?) {
+        val v = raw?.trim().orEmpty()
+        val token = Regex("ldea_[A-Za-z0-9_-]{20,200}").find(v)?.value
+        when {
+            v.startsWith("nigafiy://", ignoreCase = true) -> try {
+                prefill = Enrollment.fromLink(v)
+                formError = null
+                store.lastError = null
+            } catch (e: IllegalArgumentException) {
+                formError = e.message
+            }
+            token != null -> { draftToken = token; formError = null; store.lastError = null }
+            else -> formError = getString(R.string.scan_not_ours)
+        }
+        render()
+    }
+
     private fun renderForm() {
         handler.removeCallbacks(refresh)
+        // A link or a refused enrollment brings values: they replace the draft once.
+        prefill?.let { draftServer = it.server; draftToken = it.token; draftPin = it.pin; prefill = null }
+        // The service drops a token the server refused (401) and records why: say so here.
+        if (formError == null) formError = store.lastError
         root.addView(text(getString(R.string.title_enroll), 20f))
         root.addView(text(getString(R.string.enroll_hint)))
-        val server = EditText(this).apply { hint = getString(R.string.field_server); inputType = InputType.TYPE_TEXT_VARIATION_URI; setText(prefill?.server ?: ""); textDirection = View.TEXT_DIRECTION_LTR }
-        val token = EditText(this).apply { hint = getString(R.string.field_token); setText(prefill?.token ?: ""); textDirection = View.TEXT_DIRECTION_LTR }
-        val pin = EditText(this).apply { hint = getString(R.string.field_pin); setText(prefill?.pin ?: ""); textDirection = View.TEXT_DIRECTION_LTR }
+        root.addView(Button(this).apply { text = getString(R.string.action_scan); setOnClickListener { scanQr() } })
+        root.addView(Button(this).apply { text = getString(R.string.action_paste); setOnClickListener { pasteEnrollment() } })
+        val server = field(R.string.field_server, draftServer, uri = true) { draftServer = it }
+        val token = field(R.string.field_token, draftToken, uri = false) { draftToken = it }
+        val pin = field(R.string.field_pin, draftPin, uri = false) { draftPin = it }
         root.addView(server); root.addView(token); root.addView(pin)
-        error?.let { root.addView(text(getString(R.string.enroll_failed, it))) }
+        formError?.let { root.addView(text(getString(R.string.enroll_failed, it))) }
         root.addView(Button(this).apply {
             text = getString(R.string.action_enroll)
             setOnClickListener {
                 try {
                     store.pendingEnrollment = Enrollment.of(server.text.toString(), token.text.toString(), pin.text.toString())
                     store.lastError = null
-                    error = null
+                    formError = null
                     AgentService.start(this@MainActivity)
+                    handler.removeCallbacks(refresh)
                     handler.post(refresh)
                 } catch (e: IllegalArgumentException) {
-                    error = e.message
+                    formError = e.message
                     render()
                 }
             }

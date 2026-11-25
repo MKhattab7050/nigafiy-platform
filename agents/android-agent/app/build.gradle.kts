@@ -60,4 +60,6 @@ kotlin {
 
 dependencies {
     implementation(project(":core"))
+    // In-app QR scanning through Google Play services: no camera permission, the image never reaches the app.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

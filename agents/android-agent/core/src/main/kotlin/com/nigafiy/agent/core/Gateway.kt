@@ -123,6 +123,11 @@ class Gateway(val server: String, private val pin: String?, private var credenti
         if (outcomes.isEmpty()) return
         post("/api/v1/agent/command-result", mapOf("command_results" to outcomes.map { it.toJson() }))
     }
+
+    /** The person stopped sharing on the phone (notification Stop, Android's cast indicator): the session ends in Fleet. */
+    fun endSession(sessionId: String) {
+        post("/api/v1/agent/rd-session/end", mapOf("session_id" to sessionId))
+    }
 }
 
 private fun java.io.InputStream.readBytes(limit: Int): ByteArray {

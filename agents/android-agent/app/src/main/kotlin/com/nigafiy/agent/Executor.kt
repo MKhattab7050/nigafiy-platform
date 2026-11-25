@@ -12,7 +12,12 @@ import com.nigafiy.agent.admin.NigafiyAdminReceiver
 import com.nigafiy.agent.core.AgentCommand
 import com.nigafiy.agent.core.CommandOutcome
 import com.nigafiy.agent.core.CommandRules
+import com.nigafiy.agent.core.FsError
 import com.nigafiy.agent.core.Gateway
+import com.nigafiy.agent.core.Gestures
+import com.nigafiy.agent.core.InputEvent
+import com.nigafiy.agent.core.SharedStorage
+import android.os.Environment
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
@@ -55,12 +60,83 @@ class Executor(private val ctx: Context, private val store: Store, private val f
                     @Suppress("DEPRECATION") dpm.clearDeviceOwnerApp(ctx.packageName)
                     store.forget()
                 })
+                is AgentCommand.SessionOpen -> sessionOpen(cmd)
+                is AgentCommand.SessionClose -> {
+                    val closed = ScreenShare.close(ctx, cmd.sessionId)
+                    Result(CommandOutcome(cmd.id, true, output = "Session ${cmd.sessionId} closed ($closed): screen sharing stopped"))
+                }
+                is AgentCommand.SessionUpdate -> {
+                    ScreenShare.update(cmd.operators)
+                    Result(CommandOutcome(cmd.id, true, output = "Session ${cmd.sessionId}: ${cmd.operators.size} operator(s)"))
+                }
+                is AgentCommand.Capture -> {
+                    val c = ScreenShare.capturer ?: return Result(CommandOutcome(cmd.id, false, error = "The screen is not being shared on the phone"))
+                    val frame = c.frame(cmd.quality, cmd.scale, cmd.fullFrame)
+                    val out = if (frame["unchanged"] == true) "Screen unchanged (no image sent)" else "Captured frame ${frame["width"]}x${frame["height"]} (${frame["byte_length"]} bytes)"
+                    Result(CommandOutcome(cmd.id, true, output = out, data = frame))
+                }
+                is AgentCommand.Input -> input(cmd)
+                is AgentCommand.FsOp -> fsOp(cmd)
+                is AgentCommand.Notify -> {
+                    if (!Notices.allowed(ctx)) return Result(CommandOutcome(cmd.id, false, error = NOTIFICATIONS_OFF))
+                    Notices.message(ctx, cmd.id, cmd.title, cmd.message)
+                    Result(CommandOutcome(cmd.id, true, output = "Message shown on the phone", data = mapOf("shown" to true)))
+                }
+                is AgentCommand.Ring -> {
+                    if (!Notices.allowed(ctx)) return Result(CommandOutcome(cmd.id, false, error = NOTIFICATIONS_OFF))
+                    val how = Ringer.start(ctx, cmd.seconds, cmd.operator)
+                    Result(CommandOutcome(cmd.id, true, output = "Ringing for ${cmd.seconds} s ($how, full alarm volume)", data = mapOf("seconds" to cmd.seconds, "sound" to how)))
+                }
+                is AgentCommand.RingStop -> {
+                    val was = Ringer.stop()
+                    Result(CommandOutcome(cmd.id, true, output = if (was) "Ringing stopped" else "The phone was not ringing", data = mapOf("was_ringing" to was)))
+                }
                 is AgentCommand.Unsupported -> Result(CommandOutcome(cmd.id, false, error = "unsupported"))
             }
         } catch (e: SecurityException) {
             Result(CommandOutcome(cmd.id, false, error = "Android refused: ${e.message}"))
         } catch (e: Exception) {
             Result(CommandOutcome(cmd.id, false, error = e.message ?: e.javaClass.simpleName))
+        }
+    }
+
+    /** Asks the person (blocks up to the consent time; AgentService runs it on its own thread). */
+    private fun sessionOpen(cmd: AgentCommand.SessionOpen): Result {
+        val data = ScreenShare.open(ctx, cmd.session)
+        return Result(CommandOutcome(cmd.id, true, output = "Session ${cmd.session.sessionId}: consent ${data["consent"]}, notification ${data["banner"]}", data = data))
+    }
+
+    private fun input(cmd: AgentCommand.Input): Result {
+        val session = ScreenShare.active ?: return Result(CommandOutcome(cmd.id, false, error = "No screen-sharing session the person accepted is running on the phone"))
+        if (!session.control) return Result(CommandOutcome(cmd.id, false, error = "The session's permission profile is view only: input refused by the agent"))
+        val service = ControlService.instance
+            ?: return Result(CommandOutcome(cmd.id, false, error = "android_control_not_enabled: remote control is not turned on in Settings → Accessibility on the phone"))
+        val (w, h) = ScreenShare.capturer?.screenSize() ?: return Result(CommandOutcome(cmd.id, false, error = "The screen is not being shared on the phone"))
+        val plan = Gestures.plan(cmd.event, w, h)
+        val ok = service.perform(plan)
+        val what = when (val e = cmd.event) {
+            is InputEvent.Tap -> if (e.double) "double tap" else "tap"
+            is InputEvent.LongPress -> "long press"
+            is InputEvent.Swipe -> "swipe"
+            is InputEvent.Nav -> e.action
+            is InputEvent.Unsupported -> e.kind
+        }
+        return if (ok) Result(CommandOutcome(cmd.id, true, output = "Input '$what' delivered"))
+        else Result(CommandOutcome(cmd.id, false, error = "Android did not complete the $what (cancelled by the system or by a touch on the phone)"))
+    }
+
+    private val storage by lazy { SharedStorage(Environment.getExternalStorageDirectory()) }
+
+    private fun fsOp(cmd: AgentCommand.FsOp): Result {
+        if (Build.VERSION.SDK_INT < 30) return Result(CommandOutcome(cmd.id, false, error = "android_files_unsupported: the file manager needs Android 11 or newer"))
+        if (!Environment.isExternalStorageManager()) {
+            return Result(CommandOutcome(cmd.id, false, error = "android_files_not_allowed: All files access is not allowed on the phone yet (the person allows it in the Nigafiy app)"))
+        }
+        return try {
+            val res = storage.execute(cmd.request)
+            Result(CommandOutcome(cmd.id, true, output = (res["message"] as? String) ?: "fs ${cmd.request.op} ok", data = res))
+        } catch (e: FsError) {
+            Result(CommandOutcome(cmd.id, false, error = e.message ?: "file operation refused"))
         }
     }
 
@@ -136,6 +212,7 @@ class Executor(private val ctx: Context, private val store: Store, private val f
 
     companion object {
         const val EXTRA_KEY = "com.nigafiy.agent.KEY"
+        const val NOTIFICATIONS_OFF = "android_notifications_off: notifications for the Nigafiy app are turned off on the phone, so nothing can be shown"
         val PENDING = ConcurrentHashMap<Int, CountDownLatch>()
         val RESULTS = ConcurrentHashMap<Int, Triple<Int, String?, String?>>()
     }

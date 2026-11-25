@@ -39,6 +39,14 @@ data class DeviceInfo(
     val passwordComplexityRequired: String?,
     val batteryOptimisationExempt: Boolean?,
     val notificationsAllowed: Boolean?,
+    /** The phone controls this agent implements ([PhoneFeatures]); the API offers only these. */
+    val features: List<String> = emptyList(),
+    /** "All files access" granted by the person (Environment.isExternalStorageManager); null before Android 11. */
+    val allFilesAccess: Boolean? = null,
+    /** The person turned on Nigafiy's accessibility service (remote control). */
+    val accessibilityEnabled: Boolean? = null,
+    /** Screen capture is possible (false when a policy disables it). */
+    val screenCapture: Boolean? = null,
 )
 
 object Protocol {
@@ -136,6 +144,10 @@ object Protocol {
         i.batteryOptimisationExempt?.let { a["battery_optimisation_exempt"] = it }
         i.notificationsAllowed?.let { a["notifications_allowed"] = it }
         if (i.apps != null) a["apps_count"] = i.apps.size
+        if (i.features.isNotEmpty()) a["features"] = i.features
+        i.allFilesAccess?.let { a["all_files_access"] = it }
+        i.accessibilityEnabled?.let { a["accessibility_enabled"] = it }
+        i.screenCapture?.let { a["screen_capture"] = it }
         return a
     }
 
