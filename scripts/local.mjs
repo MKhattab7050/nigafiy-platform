@@ -451,7 +451,10 @@ const agentDir = path.join(root, 'agents/endpoint-agent');
 const collectorData = path.join(dataDir, 'collector');
 const stateDir = path.join(collectorData, 'state');
 const credFile = path.join(stateDir, 'credential.json');
-const binary = path.join(collectorDir, 'bin', win ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
+const engineDir = path.join(root, 'engine');
+// The Sensor is the engine executable run as `nigafiy-engine sensor` (docs/architecture/engine-sensor.md).
+const binary = path.join(engineDir, 'bin', win ? 'nigafiy-engine.exe' : 'nigafiy-engine');
+const sensorSources = () => Math.max(newestSource(collectorDir), newestSource(engineDir));
 const agentBinary = path.join(agentDir, 'bin', win ? 'nigafiy-agent.exe' : 'nigafiy-agent');
 
 function findGo() {
@@ -481,7 +484,7 @@ function ensureAgentBinary() {
 }
 function ensureBinary() {
   ensureAgentBinary();
-  const stale = !existsSync(binary) || statSync(binary).mtimeMs < newestSource(collectorDir);
+  const stale = !existsSync(binary) || statSync(binary).mtimeMs < sensorSources();
   if (!stale) return true;
   const go = findGo();
   if (!go) {
@@ -494,12 +497,12 @@ function ensureBinary() {
   }
   mkdirSync(path.dirname(binary), { recursive: true });
   say(`${c.dim}Building the collector…${c.off}`);
-  const r = spawnSync(go, ['build', '-o', binary, './cmd/nigafiy-sensor'], { cwd: collectorDir, stdio: 'inherit' });
+  const r = spawnSync(go, ['build', '-o', binary, './cmd/nigafiy-engine'], { cwd: engineDir, stdio: 'inherit', env: { ...process.env, CGO_ENABLED: '0' } });
   if (r.status !== 0) {
-    warn('Collector build failed; skipping the collector.');
+    warn('Collector build failed (is nigafiy-engine running from engine/bin?); skipping the collector.');
     return false;
   }
-  ok('Updated nigafiy-sensor binary');
+  ok('Updated nigafiy-engine binary (engine and Sensor)');
   return true;
 }
 
@@ -804,7 +807,7 @@ async function launchCollector(initial = false) {
   );
   const quiet = new Set(['heartbeat', 'telemetry uploaded']);
   const startedAt = Date.now();
-  const child = start('collector', binary, ['-config', configPath], {
+  const child = start('collector', binary, ['sensor', '-config', configPath], {
     env: enrollToken && !enrolled ? { NIGAFIY_SENSOR_ENROLLMENT_TOKEN: enrollToken } : {},
     onLine: (line) => {
       let j;
@@ -844,7 +847,7 @@ if (!noCollector && !bundleDir) {
   setInterval(async () => {
     if (shuttingDown || collectorRestarting) return;
     ensureAgentBinary();
-    const collectorStale = existsSync(binary) && statSync(binary).mtimeMs < newestSource(collectorDir);
+    const collectorStale = existsSync(binary) && statSync(binary).mtimeMs < sensorSources();
     if (!collectorStale) return;
     collectorRestarting = true;
     try {

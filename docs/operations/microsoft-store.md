@@ -106,7 +106,7 @@ and [Detect package identity](https://learn.microsoft.com/en-us/windows/msix/det
 | Old installs | The NSIS profile (and the one from before the rename, naming.md) is left alone (not used, not moved, not deleted): moving it from inside a package would be virtualized. The first run says where that data is (EN + AR). | — |
 | Programs in the package | Read-only; started from the install folder (engine, sensor, PostgreSQL, Node). | — |
 | Ports | Same loopback ports as the NSIS install (47100/47130/47133, engine 47140), so the Store copy and an NSIS copy cannot run at the same time. | Outbound HTTPS only. |
-| Sensor listeners | MNDP (UDP 5678, receive-only) and the DNS filter (53, off until turned on) listen on the LAN: declared as firewall rules for `nigafiy-sensor.exe`, domain and private networks only. ICMP echo uses the same code as today. | — |
+| Sensor listeners | MNDP (UDP 5678, receive-only) and the DNS filter (53, off until turned on) listen on the LAN: declared as firewall rules for `nigafiy-engine.exe` (the Sensor runs as `nigafiy-engine sensor`, docs/architecture/engine-sensor.md), domain and private networks only. ICMP echo uses the same code as today. | — |
 | Service | None (Store: services are "in most cases" not approved). The engine runs while the app runs, as in a per-user NSIS install. | None. |
 | Updates | From the Store only; the in-app NSIS updater is switched off when the engine sees a package identity. | From the Store. |
 | Link handler | `nigafiy://` declared in the manifest (a packaged app's HKCU writes are private, so `setAsDefaultProtocolClient` would not reach the browser). | `nigafiy-support:` declared in the manifest. |
@@ -159,7 +159,7 @@ below happens on Microsoft's pages, in his name.
    agree); the fourth number is always 0 and every later upload needs a higher version.
 5. **Build** on a Windows PC with the Windows 10/11 SDK installed (no download; the build uses the
    installed `makeappx` and `makepri`):
-   - Desktop: `pnpm build:engine`, `pnpm build:collector`, then
+   - Desktop: `pnpm build:engine` (the engine is also the Sensor), then
      `pnpm --filter @nigafiy/desktop dist:msix` → `apps/desktop/release/Nigafiy-<version>-x64.msix`.
      Build without `NIGAFIY_SIGN_THUMBPRINT` set, so the programs inside are not signed with the
      organisation's test certificate; Microsoft signs the package.
@@ -182,7 +182,7 @@ below happens on Microsoft's pages, in his name.
    session."
 10. **Certification** (Microsoft's documentation: security tests, technical compliance, content
     review; usually up to a few business days). What to expect for Nigafiy: the `runFullTrust`
-    review; the desktop's firewall rules for `nigafiy-sensor.exe` (inbound UDP 5678, TCP/UDP 53,
+    review; the desktop's firewall rules for `nigafiy-engine.exe`, which runs the Sensor (inbound UDP 5678, TCP/UDP 53,
     domain and private networks); Quick Support's remote-control nature (it only runs after the
     person opens a link and accepts the session, with the Nigafiy banner and End session on screen).
     A refusal comes with the policy number; answer it in the submission notes.
@@ -239,7 +239,10 @@ nothing downloaded):**
 - `makeappx unpack` of both packages and a read of what came out: identity `Nigafiy.LocalTest.Hub` /
   `Nigafiy.LocalTest.QuickSupport` with the certificate's subject as publisher, version 0.1.0.0,
   `runFullTrust` as the only capability, `nigafiy://` / `nigafiy-support:` protocols, the three
-  firewall rules for `app\resources\collector\nigafiy-sensor.exe` (UDP 5678, UDP 53, TCP 53,
+  firewall rules for `app\resources\collector\nigafiy-sensor.exe` (that run was before the engine and
+  the Sensor became one executable: a build now declares them for
+  `app\resources\engine\nigafiy-engine.exe` and refuses a leftover `collector` folder;
+  `msix.test.cjs` checks the manifest; the merged package was not rebuilt here) (UDP 5678, UDP 53, TCP 53,
   domain and private only), `app\Nigafiy.exe`, the engine, the sensor, `local.mjs` and `app.asar`
   present. `makepri dump` shows English and Arabic display names, descriptions and protocol names.
 - A Store build without Partner Center values stops ("Store identity not configured …"), and one

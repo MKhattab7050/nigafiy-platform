@@ -1,0 +1,8 @@
+# Build context for collectors/lan-collector/Dockerfile is the repository root; only the two Go
+# modules of nigafiy-engine are needed.
+*
+!engine/
+!collectors/lan-collector/
+engine/bin/
+collectors/lan-collector/bin/
+**/*_test.go

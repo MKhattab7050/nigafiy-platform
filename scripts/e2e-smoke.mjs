@@ -13,7 +13,8 @@ import path from 'node:path';
 
 const API = process.env.API_URL ?? 'http://localhost:4100';
 const root = path.resolve(import.meta.dirname, '..');
-const binary = path.join(root, 'collectors/lan-collector/bin', process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
+// The Sensor is the engine executable run as `nigafiy-engine sensor` (pnpm build:engine).
+const binary = path.join(root, 'engine/bin', process.platform === 'win32' ? 'nigafiy-engine.exe' : 'nigafiy-engine');
 const keep = process.argv.includes('--keep-running');
 // E2E_SCOPE: a range YOU own. Defaults to the loopback test network.
 const SCOPE = process.env.E2E_SCOPE ?? '127.0.0.0/29';
@@ -67,7 +68,7 @@ writeFileSync(
 );
 
 step('starting collector binary');
-const collector = spawn(binary, ['-config', configPath], { env: { ...process.env, NIGAFIY_SENSOR_ENROLLMENT_TOKEN: created.enrollment_token }, stdio: ['ignore', 'inherit', 'pipe'] });
+const collector = spawn(binary, ['sensor', '-config', configPath], { env: { ...process.env, NIGAFIY_SENSOR_ENROLLMENT_TOKEN: created.enrollment_token }, stdio: ['ignore', 'inherit', 'pipe'] });
 let leakedSecret = false;
 collector.stderr.on('data', (chunk) => {
   const text = chunk.toString();

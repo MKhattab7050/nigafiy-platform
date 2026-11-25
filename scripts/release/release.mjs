@@ -9,7 +9,7 @@
 // a missing certificate (NIGAFIY_SIGN_THUMBPRINT or NIGAFIY_SIGN_PFX) stops the release before
 // anything is built, and every produced .exe/.msi must then report a Valid Authenticode signature.
 //
-// Steps: go build collector, engine and (unless --no-agent) the endpoint agent installer; sign the Go
+// Steps: go build the engine (which is also the Sensor, `nigafiy-engine sensor`) and (unless --no-agent) the endpoint agent installer; sign the Go
 // binaries; electron-builder NSIS (and MSI unless --no-msi; the app, its uninstaller and both
 // installers go through the signing hook); check every signature; copy the artefacts with SHA256SUMS
 // into --out (default dist/release/<version>); with --key, sign the update manifest for them.
@@ -75,11 +75,11 @@ function authenticode(file) {
 
 try {
   console.log(`[release] Nigafiy ${version} -> ${outDir}`);
-  const collectorExe = path.join(ROOT, 'collectors', 'lan-collector', 'bin', 'nigafiy-sensor.exe');
+  // One executable for the engine and the Sensor (docs/architecture/engine-sensor.md); main.Version
+  // stamps both (the Sensor reports it to the server).
   const engineExe = path.join(ROOT, 'engine', 'bin', 'nigafiy-engine.exe');
-  run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', collectorExe, './cmd/nigafiy-sensor'], path.join(ROOT, 'collectors', 'lan-collector'), goEnv);
   run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', engineExe, './cmd/nigafiy-engine'], path.join(ROOT, 'engine'), goEnv);
-  if (!signFiles([collectorExe, engineExe])) fail('the Go binaries were not signed');
+  if (!signFiles([engineExe])) fail('the engine executable was not signed');
 
   run('node', ['scripts/bundle-backend.mjs'], DESKTOP);
   const targets = has('--no-msi') ? ['nsis'] : ['nsis', 'msi'];
@@ -103,7 +103,9 @@ try {
 
   // Every artefact (and the binaries inside the app) must carry a valid signature.
   const unpacked = path.join(releaseDir, 'win-unpacked');
-  const inner = [path.join(unpacked, 'resources', 'engine', 'nigafiy-engine.exe'), path.join(unpacked, 'resources', 'collector', 'nigafiy-sensor.exe')];
+  const inner = [path.join(unpacked, 'resources', 'engine', 'nigafiy-engine.exe')];
+  // No stale second Sensor program in the package (it would also keep old firewall rules useful).
+  if (existsSync(path.join(unpacked, 'resources', 'collector'))) fail(`${path.join(unpacked, 'resources', 'collector')} exists: the Sensor is nigafiy-engine.exe now; remove the folder and build again`);
   const appExe = existsSync(unpacked) ? readdirSync(unpacked).find((n) => n.toLowerCase().endsWith('.exe')) : null;
   if (appExe) inner.push(path.join(unpacked, appExe));
   const bad = [];

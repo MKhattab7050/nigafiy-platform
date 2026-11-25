@@ -11,7 +11,7 @@ export function TokenModal({ created, onClose }: { created: CollectorCreated; on
   const dockerPin = pin ? ` \\\n  -e NIGAFIY_SENSOR_TLS_PIN_SHA256=${pin}` : '';
   const binaryPin = pin ? ` \\\nNIGAFIY_SENSOR_TLS_PIN_SHA256=${pin}` : '';
   const docker = `docker run -d --name nigafiy-sensor --restart unless-stopped \\\n  --network host --cap-add NET_RAW \\\n  -v lan-collector:/var/lib/lan-collector \\\n  -e NIGAFIY_SENSOR_SERVER_URL=${server} \\\n  -e NIGAFIY_SENSOR_ENROLLMENT_TOKEN=${created.enrollment_token}${dockerPin} \\\n  nigafiy/sensor`;
-  const binary = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nNIGAFIY_SENSOR_ENROLLMENT_TOKEN=${created.enrollment_token}${binaryPin} \\\n./nigafiy-sensor -config collector.yaml`;
+  const binary = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nNIGAFIY_SENSOR_ENROLLMENT_TOKEN=${created.enrollment_token}${binaryPin} \\\n./nigafiy-engine sensor -config collector.yaml`;
   const local = /^(localhost|127.0.0.1|[::1])$/.test(typeof window === 'undefined' ? '' : window.location.hostname);
   return (
     <Modal title={`${t('discovery.tokenTitle')} — ${created.collector.name}`} onClose={onClose} wide>

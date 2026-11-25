@@ -1,12 +1,16 @@
-# systemd unit for the Nigafiy collector (Linux service deployment).
+# systemd unit for the Nigafiy Sensor (Linux service deployment). The Sensor is the one Nigafiy
+# executable run as `nigafiy-engine sensor` (docs/architecture/engine-sensor.md). An older unit
+# with ExecStart=/usr/local/bin/nigafiy-sensor keeps working once that path is a link to
+# nigafiy-engine (deploy/upgrade-to-engine.sh does that). Unit name, user and state folder are
+# unchanged.
 # Not exercised in the development environment (Windows); review before production use.
 [Unit]
-Description=Nigafiy Collector
+Description=Nigafiy Sensor
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/nigafiy-sensor -config /etc/lan-collector/collector.yaml
+ExecStart=/usr/local/bin/nigafiy-engine sensor -config /etc/lan-collector/collector.yaml
 # Put NIGAFIY_SENSOR_ENROLLMENT_TOKEN=... here for the first start, then remove it.
 EnvironmentFile=-/etc/lan-collector/collector.env
 User=lan-collector

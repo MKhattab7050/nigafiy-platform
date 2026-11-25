@@ -2,7 +2,7 @@
   "name": "@nigafiy/desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Nigafiy desktop app (Nigafiy Hub): the programs plus a bundled, managed Sensor",
+  "description": "Nigafiy desktop app (Nigafiy Hub): the programs plus the bundled engine, which is also the managed Sensor",
   "author": "Nigafiy",
   "main": "src/main.cjs",
   "scripts": {
@@ -10,11 +10,11 @@
     "smoke": "electron . --smoke",
     "test": "node --test \"test/*.test.cjs\"",
     "icon": "node scripts/make-icon.mjs",
-    "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
-    "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
-    "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
-    "dist:msix": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop",
-    "dist:msix:local-test": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../collectors/lan-collector/bin/nigafiy-sensor.exe ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop --local-test",
+    "pack": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir",
+    "dist": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../engine/bin/nigafiy-engine.exe && electron-builder --win nsis",
+    "dist:msi": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../engine/bin/nigafiy-engine.exe && electron-builder --win msi",
+    "dist:msix": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop",
+    "dist:msix:local-test": "node scripts/bundle-backend.mjs && node scripts/signing.cjs ../../engine/bin/nigafiy-engine.exe && electron-builder --win dir && node scripts/build-msix.cjs desktop --local-test",
     "bundle": "node scripts/bundle-backend.mjs",
     "release": "node ../../scripts/release/release.mjs"
   },
@@ -34,10 +34,6 @@
       "package.json"
     ],
     "extraResources": [
-      {
-        "from": "../../collectors/lan-collector/bin/nigafiy-sensor.exe",
-        "to": "collector/nigafiy-sensor.exe"
-      },
       {
         "from": "build/backend",
         "to": "backend"

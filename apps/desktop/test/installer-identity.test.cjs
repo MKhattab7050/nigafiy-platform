@@ -33,8 +33,14 @@ test('the MSI upgrade code never changes', () => {
   assert.equal(pkg.build.msi.upgradeCode, '6DA7D862-27E7-4AC8-809D-89B4128FB3AE');
 });
 
-test('the bundled Sensor is packaged under its new name', () => {
-  const sensor = pkg.build.extraResources.find((r) => r.to.startsWith('collector/'));
-  assert.equal(sensor.to, 'collector/nigafiy-sensor.exe');
-  assert.match(sensor.from, /nigafiy-sensor\.exe$/);
+test('one executable for the engine and the Sensor: no separate Sensor program is packaged', () => {
+  // docs/architecture/engine-sensor.md: the Sensor runs as `nigafiy-engine sensor`.
+  const engine = pkg.build.extraResources.find((r) => r.to === 'engine/nigafiy-engine.exe');
+  assert.ok(engine, 'engine/nigafiy-engine.exe is bundled');
+  assert.match(engine.from, /engine\/bin\/nigafiy-engine\.exe$/);
+  assert.equal(pkg.build.extraResources.filter((r) => r.to.startsWith('collector/') || /nigafiy-sensor|lan-collector/.test(r.from)).length, 0);
+  for (const name of ['pack', 'dist', 'dist:msi', 'dist:msix', 'dist:msix:local-test']) {
+    assert.doesNotMatch(pkg.scripts[name], /nigafiy-sensor/, `${name} signs no separate Sensor program`);
+    assert.match(pkg.scripts[name], /signing\.cjs \.\.\/\.\.\/engine\/bin\/nigafiy-engine\.exe/);
+  }
 });

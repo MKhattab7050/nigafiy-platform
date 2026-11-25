@@ -120,12 +120,16 @@ Open http://localhost:3100, create an account, then go to **Discovery & Collecto
 3. Build and start the collector on a machine inside that network:
 
 ```bash
-pnpm build:collector
+pnpm build:engine
 ```
 
 ```bash
-cd collectors/lan-collector && NIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token> ./bin/nigafiy-sensor -config configs/collector.example.yaml
+NIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token> ./engine/bin/nigafiy-engine sensor -config collectors/lan-collector/configs/collector.example.yaml
 ```
+
+The engine and the Sensor are one executable, `nigafiy-engine`: `nigafiy-engine sensor` is the
+Sensor alone, with the same flags and `NIGAFIY_SENSOR_*` settings the old `nigafiy-sensor` had
+(docs/architecture/engine-sensor.md).
 
 (For a local test against the dev API use `server_url: http://localhost:4100` with `allow_insecure_http: true`.)
 

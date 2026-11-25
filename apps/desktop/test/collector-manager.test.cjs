@@ -1,5 +1,5 @@
 'use strict';
-// Drives the REAL lan-collector binary through the desktop manager against a stand-in server
+// Drives the REAL Sensor (the nigafiy-engine executable run as `nigafiy-engine sensor`) through the desktop manager against a stand-in server
 // speaking collector protocol v1. No network scopes are delivered, so nothing is probed.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -9,7 +9,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { CollectorManager, normalizeServerUrl, isLocalServerUrl, parseCidrs } = require('../src/collector-manager.cjs');
 
-const BINARY = path.join(__dirname, '..', '..', '..', 'collectors', 'lan-collector', 'bin', process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor');
+const BINARY = path.join(__dirname, '..', '..', '..', 'engine', 'bin', process.platform === 'win32' ? 'nigafiy-engine.exe' : 'nigafiy-engine');
+const ARGS = ['sensor'];
 const TOKEN = 'lde_desktop-test-token-0123456789abcdef';
 const CREDENTIAL = 'ldc_11111111-2222-4333-8444-555555555555.desktop-test-secret-0123456789';
 
@@ -66,10 +67,10 @@ test('server address and range validation', () => {
   assert.equal(isLocalServerUrl(''), false);
 });
 
-test('manages the real collector: enroll, run, stop, restart without re-enrolling', { skip: !fs.existsSync(BINARY) && 'collector binary not built (pnpm build:collector)' }, async () => {
+test('manages the real collector: enroll, run, stop, restart without re-enrolling', { skip: !fs.existsSync(BINARY) && 'engine binary not built (pnpm build:engine)' }, async () => {
   const { server, seen, url } = await fakeServer();
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ld-desktop-test-'));
-  const manager = new CollectorManager({ binaryPath: BINARY, dataDir });
+  const manager = new CollectorManager({ binaryPath: BINARY, binaryArgs: ARGS, dataDir });
   let again = null;
   try {
     assert.equal(manager.getState().enrolled, false);
@@ -106,7 +107,7 @@ test('manages the real collector: enroll, run, stop, restart without re-enrollin
     assert.equal(manager.getState().connected, null);
 
     // Next launch: stored identity is reused, no token needed, no second enrollment.
-    again = new CollectorManager({ binaryPath: BINARY, dataDir });
+    again = new CollectorManager({ binaryPath: BINARY, binaryArgs: ARGS, dataDir });
     const before = seen.heartbeats;
     again.start();
     await until('heartbeat after restart', () => seen.heartbeats > before);

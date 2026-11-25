@@ -123,9 +123,11 @@ async function main() {
   if (o.product === 'desktop') {
     const appDir = o.appDir || path.join(DESKTOP, 'release', 'win-unpacked');
     if (!fs.existsSync(path.join(appDir, 'Nigafiy.exe'))) throw new Error(`${appDir} has no Nigafiy.exe: run "pnpm --filter @nigafiy/desktop pack" first`);
-    for (const rel of ['resources/engine/nigafiy-engine.exe', 'resources/collector/nigafiy-sensor.exe', 'resources/backend/local.mjs']) {
+    for (const rel of ['resources/engine/nigafiy-engine.exe', 'resources/backend/local.mjs']) {
       if (!fs.existsSync(path.join(appDir, rel))) throw new Error(`${appDir} has no ${rel}: the bundle is incomplete`);
     }
+    // The Sensor is nigafiy-engine.exe (`sensor` subcommand); a leftover separate Sensor program must not ship.
+    if (fs.existsSync(path.join(appDir, 'resources', 'collector'))) throw new Error(`${appDir} has a stale resources/collector folder: the Sensor is nigafiy-engine.exe now; build the app again`);
     files = msix.appFiles(appDir, walk(appDir), 'app');
   } else {
     const exe = o.exe || path.join(REPO, 'agents', 'endpoint-agent', 'bin', 'nigafiy-support.exe');

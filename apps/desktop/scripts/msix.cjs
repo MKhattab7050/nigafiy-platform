@@ -33,9 +33,10 @@ const PRODUCTS = {
       },
     },
     // MNDP (receive-only, UDP 5678) and the DNS filter (53, off until the owner turns it on) listen on
-    // the LAN; domain and private networks only, never public ones.
+    // the LAN; domain and private networks only, never public ones. The Sensor is the engine
+    // executable run as `nigafiy-engine sensor` (docs/architecture/engine-sensor.md).
     firewall: {
-      executable: 'app\\resources\\collector\\nigafiy-sensor.exe',
+      executable: 'app\\resources\\engine\\nigafiy-engine.exe',
       rules: [
         { protocol: 'UDP', port: 5678 },
         { protocol: 'UDP', port: 53 },

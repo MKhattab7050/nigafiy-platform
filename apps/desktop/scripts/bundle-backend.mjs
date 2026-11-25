@@ -30,9 +30,11 @@ function run(cmd, args, opts = {}) {
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
-// 1. Collector binary (also bundled as resources/collector).
-run('go', ['build', '-o', path.join(root, 'collectors/lan-collector/bin', win ? 'nigafiy-sensor.exe' : 'nigafiy-sensor'), './cmd/nigafiy-sensor'], {
-  cwd: path.join(root, 'collectors/lan-collector'),
+// 1. The engine, which is also the Sensor (`nigafiy-engine sensor`; docs/architecture/engine-sensor.md),
+//    bundled as resources/engine. CGO off, as in the release build.
+run('go', ['build', '-trimpath', '-o', path.join(root, 'engine/bin', win ? 'nigafiy-engine.exe' : 'nigafiy-engine'), './cmd/nigafiy-engine'], {
+  cwd: path.join(root, 'engine'),
+  env: { CGO_ENABLED: '0' },
 });
 
 // 2. API with production dependencies only, as plain folders (no pnpm symlinks inside the installer).

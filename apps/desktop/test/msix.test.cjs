@@ -51,7 +51,9 @@ test('desktop manifest: full trust, nigafiy:// link, sensor firewall rules on pr
   assert.match(m, /<rescap:Capability Name="runFullTrust"\/>/);
   assert.match(m, /<uap3:Protocol Name="nigafiy" Parameters="&quot;%1&quot;">/);
   assert.match(m, /<Resource Language="en-US"\/>\s*<Resource Language="ar-SA"\/>/);
-  assert.match(m, /FirewallRules Executable="app\\resources\\collector\\nigafiy-sensor\.exe"/);
+  // The Sensor is the engine executable (`nigafiy-engine sensor`); the rules name that program.
+  assert.match(m, /FirewallRules Executable="app\\resources\\engine\\nigafiy-engine\.exe"/);
+  assert.doesNotMatch(m, /nigafiy-sensor/);
   const rules = m.match(/<desktop2:Rule [^>]*\/>/g);
   assert.equal(rules.length, 3);
   for (const r of rules) assert.match(r, /Direction="in".*Profile="domainAndPrivate"/);

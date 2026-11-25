@@ -82,6 +82,26 @@ node scripts\release\sign-manifest.mjs --key E:\nigafiy-release-key\nigafiy-upda
 The signature is self-checked before the file is written; `--expect-public-key` also refuses a key
 the installs would not accept.
 
+## Engine and Sensor in one executable: what an older install sees after the update
+
+Since the merge (docs/architecture/engine-sensor.md) the package has no
+`resources\collector\nigafiy-sensor.exe`; the Sensor runs as `resources\engine\nigafiy-engine.exe
+sensor`. The update manifest is unchanged (components `desktop-windows-x64` and
+`endpoint-agent-windows-x64`; there never was a separate Sensor component), so an older install finds
+and applies the update as before. After it:
+
+- the NSIS upgrade (the update helper runs the installer silently over the same folder) and the MSI
+  major upgrade remove the old `collector` folder with the old files;
+- the Sensor keeps its identity and settings (`%APPDATA%\Nigafiy\collector`) and starts again from
+  the engine executable;
+- Windows Defender Firewall decides per program, so the first time the Sensor opens UDP 5678 (MNDP)
+  or port 53 (the DNS filter, if turned on) Windows may ask once about `nigafiy-engine.exe`. A rule
+  accepted earlier for `nigafiy-sensor.exe` now points at a removed file and does nothing;
+- an engine installed as a Windows service with a recorded `--sensor-exe=…\nigafiy-sensor.exe` runs
+  the Sensor from itself (the engine logs one line about it).
+
+Not run against a real older install (the owner's installation is never touched).
+
 ## Building a release
 
 ```powershell
@@ -90,7 +110,8 @@ pnpm release -- --key E:\nigafiy-release-key\nigafiy-update-key.pem --base-url h
 ```
 
 `scripts/release/release.mjs` always sets `NIGAFIY_REQUIRE_SIGNING=1`: with no certificate it stops
-before building anything. It builds the collector and the engine (with `main.Version`), signs them,
+before building anything. It builds `nigafiy-engine.exe`, which is the engine and the Sensor in one
+executable (docs/architecture/engine-sensor.md), with `main.Version`, signs it,
 builds the desktop NSIS installer and the MSI (`--no-msi` to skip), the endpoint-agent installer
 (`--no-agent` to skip), checks that every installer and the programs inside the app report a `Valid`
 Authenticode signature, and copies the files with `SHA256SUMS` (and, with `--key`, `manifest.json`)

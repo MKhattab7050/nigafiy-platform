@@ -27,7 +27,7 @@
     "test:agent": "cd agents/endpoint-agent && go test ./...",
     "build:agent": "cd agents/endpoint-agent && go build -o bin/ ./cmd/nigafiy-agent && go build -o bin/nigafiy-support.exe ./cmd/nigafiy-support",
     "test:engine": "cd engine && go test ./...",
-    "build:engine": "cd engine && go build -o bin/ ./cmd/nigafiy-engine",
+    "build:engine": "cd engine && go build -trimpath -o bin/ ./cmd/nigafiy-engine",
     "build:launchers": "node scripts/build-launchers.mjs",
     "build:agent-installer": "node scripts/installers/build-agent-installer.mjs",
     "release": "node scripts/release/release.mjs"

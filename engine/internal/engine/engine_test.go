@@ -28,7 +28,33 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// sensorHelperEnv selects what the stand-in Sensor does when the test binary is started as
+// `<exe> sensor -config <file>`: "panic" panics after a moment (a crashing Sensor), anything else
+// runs until killed. sensorArgsEnv, when set, is a file the stand-in appends its arguments to.
+const (
+	sensorHelperEnv = "ENGINE_TEST_SENSOR"
+	sensorArgsEnv   = "ENGINE_TEST_SENSOR_ARGS"
+)
+
+func sensorHelper() int {
+	if f := os.Getenv(sensorArgsEnv); f != "" {
+		if out, err := os.OpenFile(f, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+			fmt.Fprintln(out, strings.Join(os.Args[1:], " "))
+			out.Close()
+		}
+	}
+	if os.Getenv(sensorHelperEnv) == "panic" {
+		time.Sleep(150 * time.Millisecond)
+		panic("stand-in Sensor crashed")
+	}
+	time.Sleep(time.Hour)
+	return 0
+}
+
 func helperMain(mode string) int {
+	if len(os.Args) > 1 && os.Args[1] == "sensor" {
+		return sensorHelper()
+	}
 	statusFile, component := "", ""
 	for _, a := range os.Args[1:] {
 		if v, ok := strings.CutPrefix(a, "--engine-status-file="); ok {
@@ -489,8 +515,10 @@ func TestResolveFindsCheckout(t *testing.T) {
 	if cfg.StackScript != filepath.Join(repo, "scripts", "local.mjs") || cfg.DataDir != filepath.Join(repo, ".data") {
 		t.Fatalf("cfg %+v", cfg)
 	}
-	if !strings.HasSuffix(cfg.SensorExe, filepath.Join("collectors", "lan-collector", "bin", "nigafiy-sensor")+exeSuffix()) {
-		t.Fatalf("sensor exe %s", cfg.SensorExe)
+	// The Sensor is this executable now (nigafiy-engine sensor), in a checkout too.
+	self, _ := os.Executable()
+	if !sameFile(cfg.SensorExe, self) || !cfg.SensorSelf {
+		t.Fatalf("sensor exe %s (self %v), want this executable %s", cfg.SensorExe, cfg.SensorSelf, self)
 	}
 }
 
@@ -531,5 +559,115 @@ func TestEnvCompatPrefersTheNewName(t *testing.T) {
 	}
 	if v := envCompat(get, "NIGAFIY_OTHER"); v != "" {
 		t.Fatalf("other %q", v)
+	}
+}
+
+func TestResolveSensorExe(t *testing.T) {
+	dir := t.TempDir()
+	self := filepath.Join(dir, "engine", "nigafiy-engine"+exeSuffix())
+	os.MkdirAll(filepath.Dir(self), 0o700)
+	os.WriteFile(self, []byte("x"), 0o700)
+	other := filepath.Join(dir, "dev", "nigafiy-sensor"+exeSuffix())
+	os.MkdirAll(filepath.Dir(other), 0o700)
+	os.WriteFile(other, []byte("x"), 0o700)
+	orig := selfExecutable
+	selfExecutable = func() (string, error) { return self, nil }
+	t.Cleanup(func() { selfExecutable = orig })
+
+	resolve := func(sensorExe string) Config {
+		t.Helper()
+		cfg, err := Resolve(Config{DataDir: dir, StackScript: "x", SensorExe: sensorExe}, func(string) string { return "" })
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	cases := []struct {
+		name, in, want string
+		self, note     bool
+	}{
+		{"default is this executable", "", self, true, false},
+		{"this executable named explicitly", self, self, true, false},
+		{"another existing program keeps the old interface", other, other, false, false},
+		{"missing nigafiy-sensor from before the merge", filepath.Join(dir, "app", "resources", "collector", "nigafiy-sensor.exe"), self, true, true},
+		{"missing lan-collector from before the rename", filepath.Join(dir, "old", "lan-collector"), self, true, true},
+		{"any other missing program is reported, not replaced", filepath.Join(dir, "typo", "sensr.exe"), filepath.Join(dir, "typo", "sensr.exe"), false, false},
+	}
+	for _, c := range cases {
+		cfg := resolve(c.in)
+		if cfg.SensorExe != c.want || cfg.SensorSelf != c.self || (cfg.SensorNote != "") != c.note {
+			t.Errorf("%s: exe %s self %v note %q; want %s self %v note %v", c.name, cfg.SensorExe, cfg.SensorSelf, cfg.SensorNote, c.want, c.self, c.note)
+		}
+	}
+	// The environment variable works like the flag.
+	cfg, err := Resolve(Config{DataDir: dir, StackScript: "x"}, func(k string) string {
+		if k == EnvSensorExe {
+			return other
+		}
+		return ""
+	})
+	if err != nil || cfg.SensorExe != other || cfg.SensorSelf {
+		t.Fatalf("env: %+v %v", cfg, err)
+	}
+}
+
+func TestSensorArgs(t *testing.T) {
+	cfg := Config{SensorConfig: "C"}
+	if got := strings.Join(SensorArgs(cfg), " "); got != "-config C" {
+		t.Fatalf("another program: %q", got)
+	}
+	cfg.SensorSelf = true
+	if got := strings.Join(SensorArgs(cfg), " "); got != "sensor -config C" {
+		t.Fatalf("this executable: %q", got)
+	}
+}
+
+// The Sensor runs as a child process of the engine's own executable. A Sensor that panics over
+// and over is restarted with backoff, and the database, API and web server keep running with the
+// same processes: a Sensor crash never reaches the engine's supervision.
+func TestSensorPanicIsIsolatedAndRestarted(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "sensor-args.txt")
+	t.Setenv(sensorHelperEnv, "panic")
+	t.Setenv(sensorArgsEnv, argsFile)
+	r := startEngine(t, "stack", func(c *Config) { c.SensorExe = "" }) // default: this executable
+	if !r.cfg.SensorSelf {
+		t.Fatalf("the Sensor is not this executable: %+v", r.cfg)
+	}
+	os.MkdirAll(filepath.Dir(r.cfg.SensorConfig), 0o700)
+	os.WriteFile(r.cfg.SensorConfig, []byte("server_url: http://127.0.0.1:1\n"), 0o600)
+	before := r.waitStatus(t, "stack running", func(d control.StatusDoc) bool {
+		return child(d, "db").State == "running" && child(d, "api").State == "running" && child(d, "web").State == "running"
+	})
+	if code, body := r.post(t, "/v1/children/sensor/start"); code != 200 {
+		t.Fatalf("start sensor: %d %s", code, body)
+	}
+	// Between starts the Sensor waits in backoff with its exit as the last error.
+	after := r.waitStatus(t, "sensor restarted twice after crashing", func(d control.StatusDoc) bool {
+		s := child(d, "sensor")
+		return s.Restarts >= 2 && s.State == "backoff" && str(s.LastError) != ""
+	})
+	for _, name := range []string{"db", "api", "web"} {
+		b, a := child(before, name), child(after, name)
+		if a.State != "running" || a.Restarts != 0 || a.Pid == nil || b.Pid == nil || *a.Pid != *b.Pid {
+			t.Errorf("%s was disturbed by the Sensor crash: before %+v after %+v", name, b, a)
+		}
+	}
+	t.Logf("sensor after crashes: restarts %d, last error %q", child(after, "sensor").Restarts, str(child(after, "sensor").LastError))
+	// The engine started itself with the sensor subcommand.
+	b, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := strings.Cut(string(b), "\n")
+	if want := "sensor -config " + r.cfg.SensorConfig; strings.TrimSpace(first) != want {
+		t.Fatalf("sensor started with %q, want %q", first, want)
+	}
+	// The engine still answers and shuts down cleanly.
+	if code, _ := r.post(t, "/v1/shutdown"); code != 200 && code != 202 {
+		t.Fatalf("shutdown: %d", code)
+	}
+	<-r.done
+	if r.err != nil {
+		t.Fatalf("engine stopped with %v", r.err)
 	}
 }

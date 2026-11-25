@@ -131,6 +131,11 @@ export const GUIDE_EN: GuideContent = [
       },
       {
         kind: 'note',
+        tone: 'info',
+        text: 'The engine and the Sensor are one program, `nigafiy-engine.exe`. After an update from an older setup program or MSI, Windows may ask once whether `nigafiy-engine.exe` may accept connections. Allow it on private networks, so the Sensor can hear MikroTik announcements and, if you turned it on, answer as the DNS filter. The Sensor keeps its enrollment.',
+      },
+      {
+        kind: 'note',
         tone: 'warn',
         text: 'The Microsoft Store packages have been built and inspected, but they are not published yet and have not been installed on a real computer. Until the Store listing exists, install with the setup program or the MSI.',
       },
@@ -165,6 +170,10 @@ export const GUIDE_EN: GuideContent = [
           'Nigafiy shows an enrollment token and the install commands: Docker on a Linux computer, the program file, or this computer. The token works once, expires in 24 hours and is shown only once.',
           'Run the command on that computer. When the Sensor checks in, its state changes to Reporting.',
         ],
+      },
+      {
+        kind: 'p',
+        text: 'The program file is `nigafiy-engine`, the same program that runs the engine. On a computer that only scans, it runs as `nigafiy-engine sensor`. A Sensor installed before this version keeps working and keeps its enrollment.',
       },
       { kind: 'h', id: 'scope', text: '2. Authorize the range' },
       {
