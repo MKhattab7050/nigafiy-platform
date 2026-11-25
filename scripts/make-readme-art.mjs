@@ -67,11 +67,21 @@ function hero(themeName) {
   const devDots = devices.map((d, i) => `<circle class="blink" style="animation-delay:${(i * 0.45).toFixed(2)}s" cx="${d.x}" cy="${d.y}" r="4"/>`).join('');
   const nodeEls = nodes.map((n, i) => `<g><circle class="pulse" style="animation-delay:${(i * 0.5).toFixed(1)}s" cx="${n.x}" cy="${n.y}" r="22" fill="none" stroke="${P[n.id].accent}" stroke-width="2"/><circle cx="${n.x}" cy="${n.y}" r="22" fill="${P[n.id].accent}"/>${glyph(n.id, n.x, n.y, 22)}</g>`).join('');
   const chips = ['hub', 'radar', 'watch', 'guard', 'fleet', 'mind', 'toolbox'];
+  // Chip = left padding, dot, gap, label, right padding. The label is centred in its own slot, so a
+  // system font that is a little wider or narrower than the estimate still leaves even padding.
+  const CHIP = { h: 32, y: 250, padL: 14, dot: 5, gap: 9, padR: 16, space: 12, charW: 8.4 };
+  // Label widths measured in the browser (Segoe UI, 14 px, weight 600, getComputedTextLength), so every
+  // chip gets the same padding; a name not listed falls back to the per-character estimate.
+  const LABEL_W = { Hub: 26.9, Radar: 37, Watch: 40, Guard: 38.7, Fleet: 30.6, Mind: 33.2, Toolbox: 50.3 };
   let x = 64;
   const chipEls = chips.map((id) => {
-    const w = 26 + P[id].name.length * 8.6;
-    const el = `<g><rect x="${x}" y="252" width="${w.toFixed(1)}" height="30" rx="15" fill="${t.chip}" stroke="${t.chipStroke}"/><circle cx="${x + 15}" cy="267" r="5" fill="${P[id].accent}"/><text x="${x + 26}" y="272" font-size="14" font-weight="600" fill="${t.ink}">${P[id].name}</text></g>`;
-    x += w + 10;
+    const tw = LABEL_W[P[id].name] ?? P[id].name.length * CHIP.charW;
+    const w = CHIP.padL + CHIP.dot * 2 + CHIP.gap + tw + CHIP.padR;
+    const cy = CHIP.y + CHIP.h / 2;
+    const dotX = x + CHIP.padL + CHIP.dot;
+    const textX = x + CHIP.padL + CHIP.dot * 2 + CHIP.gap + tw / 2;
+    const el = `<g><rect x="${x.toFixed(1)}" y="${CHIP.y}" width="${w.toFixed(1)}" height="${CHIP.h}" rx="${CHIP.h / 2}" fill="${t.chip}" stroke="${t.chipStroke}"/><circle cx="${dotX.toFixed(1)}" cy="${cy}" r="${CHIP.dot}" fill="${P[id].accent}"/><text x="${textX.toFixed(1)}" y="${cy + 5}" text-anchor="middle" font-size="14" font-weight="600" fill="${t.ink}">${P[id].name}</text></g>`;
+    x += w + CHIP.space;
     return el;
   }).join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-labelledby="t d">

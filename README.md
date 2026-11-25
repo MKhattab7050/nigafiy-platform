@@ -40,21 +40,23 @@ and dark themes.
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/hub.svg" width="56" alt=""><br><b>Nigafiy Hub</b><br><sub>Home, sign-in, settings and the engine</sub></td>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/radar.svg" width="56" alt=""><br><b>Nigafiy Radar</b><br><sub>See every device on the network</sub></td>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/watch.svg" width="56" alt=""><br><b>Nigafiy Watch</b><br><sub>Monitor, and understand what went wrong</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/hub.svg" width="56" alt=""><br><b>Nigafiy Hub</b><br><sub>Home, sign-in, settings and the engine</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/radar.svg" width="56" alt=""><br><b>Nigafiy Radar</b><br><sub>See every device on the network</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/watch.svg" width="56" alt=""><br><b>Nigafiy Watch</b><br><sub>Monitor, and understand what went wrong</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="packages/brand/svg/programs/guard.svg" width="56" alt=""><br><b>Nigafiy Guard</b><br><sub>Protect and control the network</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/fleet.svg" width="56" alt=""><br><b>Nigafiy Fleet</b><br><sub>Manage and support company computers</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/mind.svg" width="56" alt=""><br><b>Nigafiy Mind</b><br><sub>Knowledge, playbooks and automation</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/guard.svg" width="56" alt=""><br><b>Nigafiy Guard</b><br><sub>Protect and control the network</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/fleet.svg" width="56" alt=""><br><b>Nigafiy Fleet</b><br><sub>Manage and support company computers</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/mind.svg" width="56" alt=""><br><b>Nigafiy Mind</b><br><sub>Knowledge, playbooks and automation</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="packages/brand/svg/programs/toolbox.svg" width="56" alt=""><br><b>Nigafiy Toolbox</b><br><sub>Quick network tools</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/sensor.svg" width="56" alt=""><br><b>Nigafiy Sensor</b><br><sub>Network collector, one per site (runs as <code>nigafiy-engine sensor</code>)</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/agent.svg" width="56" alt=""><br><b>Nigafiy Agent</b><br><sub>On each managed Windows, Linux or macOS computer</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/toolbox.svg" width="56" alt=""><br><b>Nigafiy Toolbox</b><br><sub>Quick network tools</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/sensor.svg" width="56" alt=""><br><b>Nigafiy Sensor</b><br><sub>Network collector, one per site</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/agent.svg" width="56" alt=""><br><b>Nigafiy Agent</b><br><sub>On every managed computer</sub></td>
   </tr>
 </table>
+
+The Sensor runs as `nigafiy-engine sensor`; the Agent runs on Windows, Linux and macOS.
 
 The program list is defined once in [`packages/shared-types/src/programs.ts`](packages/shared-types/src/programs.ts);
 icons and accents come from [`packages/brand`](packages/brand).

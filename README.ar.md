@@ -45,21 +45,23 @@ Nigafiy منصة مجانية لإدارة الشبكات وأجهزة الشر�
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/hub.svg" width="56" alt=""><br><b>Nigafiy Hub</b><br><sub>الرئيسية وتسجيل الدخول والإعدادات والمحرك</sub></td>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/radar.svg" width="56" alt=""><br><b>Nigafiy Radar</b><br><sub>رؤية كل جهاز على الشبكة</sub></td>
-    <td align="center" width="33%"><img src="packages/brand/svg/programs/watch.svg" width="56" alt=""><br><b>Nigafiy Watch</b><br><sub>المراقبة وفهم سبب المشكلة</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/hub.svg" width="56" alt=""><br><b>Nigafiy Hub</b><br><sub>الرئيسية وتسجيل الدخول والإعدادات والمحرك</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/radar.svg" width="56" alt=""><br><b>Nigafiy Radar</b><br><sub>رؤية كل جهاز على الشبكة</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/watch.svg" width="56" alt=""><br><b>Nigafiy Watch</b><br><sub>المراقبة وفهم سبب المشكلة</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="packages/brand/svg/programs/guard.svg" width="56" alt=""><br><b>Nigafiy Guard</b><br><sub>حماية الشبكة والتحكم بها</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/fleet.svg" width="56" alt=""><br><b>Nigafiy Fleet</b><br><sub>إدارة أجهزة الشركة ودعمها</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/mind.svg" width="56" alt=""><br><b>Nigafiy Mind</b><br><sub>المعرفة وخطط العمل والأتمتة</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/guard.svg" width="56" alt=""><br><b>Nigafiy Guard</b><br><sub>حماية الشبكة والتحكم بها</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/fleet.svg" width="56" alt=""><br><b>Nigafiy Fleet</b><br><sub>إدارة أجهزة الشركة ودعمها</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/mind.svg" width="56" alt=""><br><b>Nigafiy Mind</b><br><sub>المعرفة وخطط العمل والأتمتة</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="packages/brand/svg/programs/toolbox.svg" width="56" alt=""><br><b>Nigafiy Toolbox</b><br><sub>أدوات شبكة سريعة</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/sensor.svg" width="56" alt=""><br><b>Nigafiy Sensor</b><br><sub>جامع بيانات الشبكة، واحد لكل موقع</sub></td>
-    <td align="center"><img src="packages/brand/svg/programs/agent.svg" width="56" alt=""><br><b>Nigafiy Agent</b><br><sub>على كل جهاز مُدار بنظام Windows أو Linux أو macOS</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/toolbox.svg" width="56" alt=""><br><b>Nigafiy Toolbox</b><br><sub>أدوات شبكة سريعة</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/sensor.svg" width="56" alt=""><br><b>Nigafiy Sensor</b><br><sub>جامع بيانات الشبكة، واحد لكل موقع</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/agent.svg" width="56" alt=""><br><b>Nigafiy Agent</b><br><sub>على كل جهاز مُدار</sub></td>
   </tr>
 </table>
+
+<p align="center"><sub>يعمل الـ Sensor بالأمر <code>nigafiy-engine sensor</code>، ويعمل الـ Agent على Windows وLinux وmacOS.</sub></p>
 
 ## البنية
 
