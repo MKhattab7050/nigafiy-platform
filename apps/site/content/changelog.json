@@ -1,0 +1,1405 @@
+{
+  "source": {
+    "kind": "git log --no-merges",
+    "branch": "worktree-site",
+    "head": "ce58587",
+    "generated_at": "2026-11-25T12:05:43.027Z"
+  },
+  "entries": [
+    {
+      "hash": "766750c",
+      "date": "2026-11-25",
+      "subject": "Docs: android.md as built (API, web, app, build), owner steps, and what ran here vs never ran (no phone, no emulator)"
+    },
+    {
+      "hash": "3ef853c",
+      "date": "2026-11-25",
+      "subject": "Web e2e: seed an Android phone through the agent protocol; walk its page in the EN light / AR RTL dark tour, plus an Android test of the phone page and the enrollment QR dialog"
+    },
+    {
+      "hash": "b688ccf",
+      "date": "2026-11-25",
+      "subject": "Agent shell test: wait for the resize before the shell exits"
+    },
+    {
+      "hash": "7190cb5",
+      "date": "2026-11-25",
+      "subject": "Android: local release key script (.data/android, never committed) and build:android / test:android (JVM tests, debug + release APK, aapt2 and apksigner checks)"
+    },
+    {
+      "hash": "20e5e49",
+      "date": "2026-11-25",
+      "subject": "Android web: phones in the Fleet list (platform filter, mix, icon), the Phone panel on the endpoint page (mode, battery, network, patch, camera, screen-lock requirement; Device Owner actions per role with verification code and approvals; APK upload/install, app removal), erase/stop-management requests on the endpoint and in Approvals, the enrollment dialog with the app-link QR and the Device Owner provisioning QR (own QR encoder, read back in tests), EN + AR, guide section"
+    },
+    {
+      "hash": "7476ee3",
+      "date": "2026-11-25",
+      "subject": "Docs: CI passes on GitHub (run 45581032770); owner's elevated rerun 20261125-105136 PASS (MSI, both MSIX, WACK desktop and Quick Support); README EN/AR and status rows"
+    },
+    {
+      "hash": "b58a742",
+      "date": "2026-11-25",
+      "subject": "dev-db: start and stop the embedded PostgreSQL with pg_ctl on Windows, so dev:db also works from an elevated prompt"
+    },
+    {
+      "hash": "f1841c7",
+      "date": "2026-11-25",
+      "subject": "Agent shell/rdstream tests: no send on a closed channel, no one-second poll, one hang guard for in-process waits"
+    },
+    {
+      "hash": "929d233",
+      "date": "2026-11-25",
+      "subject": "Stream hub: write a room's operator audit rows in event order; fleet-webrtc waits for the rows instead of a fixed 300 ms pause"
+    },
+    {
+      "hash": "7885c9d",
+      "date": "2026-11-25",
+      "subject": "Android API: phones as Fleet endpoints (migration 045: Android command kinds, nullable sample CPU), Device Owner actions under the Fleet access policy (roles, address list, hours, MFA; wipe and stop management always need a verification code and a second admin when the group asks), approvals, APKs pushed with size + SHA-256 and agent download only for an open install command, provisioning info and the agent APK download, 13 API tests"
+    },
+    {
+      "hash": "0171dd6",
+      "date": "2026-11-25",
+      "subject": "Fleet stream: end/state notifications name the session, so a late end for an earlier session no longer closes a newer session of the same endpoint"
+    },
+    {
+      "hash": "9469696",
+      "date": "2026-11-25",
+      "subject": "Docs: real install test run 20261125-095600 (owner, elevated): MSI install/uninstall PASS except two check bugs fixed in 2b54f16, both MSIX PASS, WACK desktop PASS (optional Blocked executables), Quick Support WARNING DPI awareness fixed in 7768aa7; what still has not run"
+    },
+    {
+      "hash": "7768aa7",
+      "date": "2026-11-25",
+      "subject": "Quick Support: embed an application manifest (PerMonitorV2 DPI aware, asInvoker, Windows 10/11) in nigafiy-support.exe through a committed .syso written by a pure-Go generator (internal/winres, tools/winres; go:generate), fixing WACK DPIAwarenessValidation WARNING from run 20261125-095600; tests check the COFF object, that it is up to date, and that the test process starts PerMonitorV2"
+    },
+    {
+      "hash": "9f1ea85",
+      "date": "2026-11-25",
+      "subject": "Docs: SEC-04 fixed in 60c020c (owner-only administrator changes, every path, tests); security model role rules"
+    },
+    {
+      "hash": "60c020c",
+      "date": "2026-11-25",
+      "subject": "Security: only an owner adds, promotes, demotes, deactivates or removes an administrator (SEC-04)"
+    },
+    {
+      "hash": "0794ad1",
+      "date": "2026-11-25",
+      "subject": "Revert the WIP db.ts change (ba0f746): it was a partial undo of item 10, not an improvement"
+    },
+    {
+      "hash": "ba0f746",
+      "date": "2026-11-25",
+      "subject": "WIP P1: db.ts change staged when the owner stopped work (unchecked; saved by lead)"
+    },
+    {
+      "hash": "521cb96",
+      "date": "2026-11-25",
+      "subject": "Browser tests: load the shared PostgreSQL helper with import() from the CommonJS e2e setup"
+    },
+    {
+      "hash": "2b54f16",
+      "date": "2026-11-25",
+      "subject": "Install test: Invoke-Logged keeps the exit code (process handle opened at start); install-info check reads install.kind from the JSON"
+    },
+    {
+      "hash": "bfded85",
+      "date": "2026-11-25",
+      "subject": "README: language badge reads English + Arabic (RTL); shields.io drew the Arabic word with disconnected letters"
+    },
+    {
+      "hash": "e357482",
+      "date": "2026-11-25",
+      "subject": "README art: the engine's control port reads left to right in the Arabic architecture"
+    },
+    {
+      "hash": "b711e53",
+      "date": "2026-11-25",
+      "subject": "README art scripts: lint clean (for-of instead of a returning forEach, no unused parameter), biome format"
+    },
+    {
+      "hash": "10def23",
+      "date": "2026-11-25",
+      "subject": "Flowcharts: brand-themed Mermaid and the illustrated figures on top of the key sections"
+    },
+    {
+      "hash": "25e9066",
+      "date": "2026-11-25",
+      "subject": "README and README.ar: product-page structure with screenshots and the new diagrams"
+    },
+    {
+      "hash": "e69f948",
+      "date": "2026-11-25",
+      "subject": "README art: legend spacing, taller cards for the outside row, the API port read left to right in Arabic"
+    },
+    {
+      "hash": "34a779f",
+      "date": "2026-11-25",
+      "subject": "Tests: start the throw-away PostgreSQL with pg_ctl on Windows, so the API and browser tests run on elevated CI runners"
+    },
+    {
+      "hash": "92ac715",
+      "date": "2026-11-25",
+      "subject": "README screenshots: the real web console, framed, English light and Arabic dark"
+    },
+    {
+      "hash": "85a1ff8",
+      "date": "2026-11-25",
+      "subject": "README art: hand-designed diagrams with motion, light and dark, English and Arabic"
+    },
+    {
+      "hash": "ddf734c",
+      "date": "2026-11-25",
+      "subject": "Docs: web-perf table for all ten items (verdict and commit each; none stale), final first-load JS after merging phase-2 be38e5b (largest route 2261 -> 1025 KB, mean 1382 -> 742 KB), item 9 (capture job instead of writes in GET) and item 10 (one-round-trip tenant start, 1.40 -> 1.16 ms mean on loopback, why nothing more was taken)"
+    },
+    {
+      "hash": "de7bffe",
+      "date": "2026-11-25",
+      "subject": "API: withTenant opens its transaction in one round trip (item 10): BEGIN and the transaction-local set_config('app.current_org', ..., true) go to PostgreSQL as one simple-protocol message when the organization id is a canonical UUID (hex and hyphens only, so the literal needs no escaping); any other spelling keeps the parameterized two-round-trip start. Same statements, same order, same transaction-local setting, so RLS is unchanged. Measured on loopback (3000 calls, one SELECT): mean 1.40 -> 1.16 ms, p95 1.71 -> 1.40 ms. Tests: only canonical UUIDs reach the literal (injection strings rejected), both starts see the same rows, the setting does not survive commit or rollback on any of the 16 pooled connections"
+    },
+    {
+      "hash": "9e8eb25",
+      "date": "2026-11-25",
+      "subject": "API: GET /knowledge no longer writes (item 9): the incident-to-candidate capture moved out of GET /knowledge, /knowledge/counts, /knowledge/suggest and /knowledge/:id into the knowledge-capture job (every 15 s, advisory lock 727180): one read-only set-based query finds the organizations with an uncaptured resolved incident or a changed untouched candidate, each gets its capture pass under its own tenant transaction; new candidates reach open pages through the realtime events notification as before. Test: every knowledge GET leaves entries, ledger, revisions, audit rows and updated_at unchanged; the job captures once"
+    },
+    {
+      "hash": "7830991",
+      "date": "2026-11-25",
+      "subject": "Docs: config restore beyond Junos — supported-method table, device identity check (migration 047), VyOS / EdgeOS commit-confirm and OpenWrt uci apply rollback sections (sources, steps, limits, tests-only), why every other vendor (MikroTik, FortiOS, NX-OS, ASA, Aruba, VRP, Dell, PAN-OS; pfSense, OPNsense, UniFi) is not restored; status.md restore rows"
+    },
+    {
+      "hash": "d6bf53e",
+      "date": "2026-11-25",
+      "subject": "Security review: every finding with a status (fixed + commit, accepted risk, open), SEC-04/SEC-05 recorded, checked-and-OK list; security model updated (reset-link rule, SSO and CSP exist)"
+    },
+    {
+      "hash": "818bd99",
+      "date": "2026-11-25",
+      "subject": "Config restore: precise not-supported reasons for MikroTik RouterOS and Fortinet FortiOS (API + web EN/AR) after checking the vendors' documented mechanisms"
+    },
+    {
+      "hash": "ddd394c",
+      "date": "2026-11-25",
+      "subject": "CI: move every action to its Node 24 major (checkout v5, pnpm/action-setup v5, setup-node v5, setup-go v6, upload-artifact v6)"
+    },
+    {
+      "hash": "909f245",
+      "date": "2026-11-25",
+      "subject": "Security: admin-issued password reset links never for another admin or for a person in other organizations (SEC-03)"
+    },
+    {
+      "hash": "be38e5b",
+      "date": "2026-11-25",
+      "subject": "README: even spacing in the hero chips and an aligned programs grid"
+    },
+    {
+      "hash": "7630d2c",
+      "date": "2026-11-25",
+      "subject": "Status: open gap 1 no longer says WebRTC is not built (it was added in 044; TURN and 60 fps / 4K stay out by choice)"
+    },
+    {
+      "hash": "2079b93",
+      "date": "2026-11-25",
+      "subject": "CI: run the whole gate: pnpm check:brand after lint, brand tests (13 here) and web unit tests (51 here), pnpm build instead of the web-only build, then a check that the generated brand sources match the commit; API DB tests, Go vet/tests, desktop tests and the browser walk unchanged; note that Windows runner minutes count double on a private repository"
+    },
+    {
+      "hash": "3234582",
+      "date": "2026-11-25",
+      "subject": "Docs: the brand line-ending note after .gitattributes (checked out with LF, pnpm build then changes nothing; one git checkout -- packages/brand for a working copy from before), verified here by re-checking out packages/brand and running the brand build: 0 changed files"
+    },
+    {
+      "hash": "db22b35",
+      "date": "2026-11-25",
+      "subject": "Repo: .gitattributes (text=auto; LF for source, config, docs, SVG and shell files; CRLF for .cmd, .bat and .ps1; binary for images, icons, installers, packages and certificates). git add --renormalize . changed no file: the index already stores every text file with LF"
+    },
+    {
+      "hash": "07618be",
+      "date": "2026-11-25",
+      "subject": "Repo: SECURITY.md (private reporting, supported versions, scope, link to the security model), CONTRIBUTING.md (product rules, branches, commit style from git log, the gate, test PostgreSQL ports and the ports to leave alone, the brand SVG line-ending note), a pull request template with the gate, EN + AR and real-hardware versus tests-only checklist, and issue forms for bugs and features with blank issues off and a private security link"
+    },
+    {
+      "hash": "ffbf237",
+      "date": "2026-11-25",
+      "subject": "Security: ws-guard MessageRate without parameter properties (erasable syntax only, runs under native Node TypeScript) (EXT-2)"
+    },
+    {
+      "hash": "478bae6",
+      "date": "2026-11-25",
+      "subject": "API: insights without the per-site settings loop (item 8): suggest.monitor_infrastructure settings for every site in one query (automationSettingsForSites), the inferred-infrastructure read is bounded (INFRASTRUCTURE_LIMIT 200 rows, exact total via count(*) OVER ()), the insight shows the exact count; test for the capped count"
+    },
+    {
+      "hash": "ffc881c",
+      "date": "2026-11-25",
+      "subject": "README and README.ar.md: hero and strip through <picture> with prefers-color-scheme, CI badge for MKhattab7050/nigafiy-platform and static shields.io badges (Windows, TypeScript, Go, EN + AR, no AI, pre-release, private), a programs grid with the brand icons (seven programs plus Sensor and Agent), a feature table with icons, animated dividers, and collapsible sections for the dev commands, the gate, the repository map and the honest status (Cisco IOS XE controls and restore listed as tests only)"
+    },
+    {
+      "hash": "4a25b98",
+      "date": "2026-11-25",
+      "subject": "README art: animated SVG hero banner (brand logo, the program accents as network nodes around the engine, pulses, flowing links, a slow radar sweep), a \"discover, watch, alert, act\" strip and a section divider, each in a light and a dark variant; CSS keyframes only, off under prefers-reduced-motion, system fonts, no scripts or external references, 1.3 to 12.4 KB each; generated from packages/brand by scripts/make-readme-art.mjs (fails when the brand tokens drift)"
+    },
+    {
+      "hash": "7702f94",
+      "date": "2026-11-25",
+      "subject": "Security: file manager checks the opened handle, not only the path (EXT-8)"
+    },
+    {
+      "hash": "d32bc82",
+      "date": "2026-11-25",
+      "subject": "Docs: after merging 24d0091, the flowcharts, capabilities and docs index describe Cisco IOS XE as it now is (controls over RESTCONF, IOS XE 16.6+, and config restore by configure replace with a revert timer; the other-device host-name check), all tested only against protocol doubles"
+    },
+    {
+      "hash": "9411702",
+      "date": "2026-11-25",
+      "subject": "Web: config restore dialog for OpenWrt (uci apply rollback text and timer hint, EN + AR), OpenWrt no longer listed as not supported"
+    },
+    {
+      "hash": "0b528c1",
+      "date": "2026-11-25",
+      "subject": "Web: one shared confirm dialog instead of window.confirm (item 7): ConfirmProvider + useConfirm() (role=alertdialog named and described, in the page language and direction, focus starts on Cancel, Escape or backdrop cancels, focus returns, red button and warning icon for destructive actions); all 25 window.confirm calls converted"
+    },
+    {
+      "hash": "85ade5b",
+      "date": "2026-11-25",
+      "subject": "API: config restore for OpenWrt (openwrt_uci_apply_rollback), OpenWrt removed from the unsupported reasons"
+    },
+    {
+      "hash": "aee1c80",
+      "date": "2026-11-25",
+      "subject": "Docs: index (docs/README.md) grouped into getting started, architecture, features, operations, security, roadmap, design and plans/specs, one line per document"
+    },
+    {
+      "hash": "6f68d12",
+      "date": "2026-11-25",
+      "subject": "Collector: OpenWrt config restore with rpcd uci apply rollback (ubus session staging, read back over a new SSH session, uci confirm or uci rollback), OpenWrt device model in backups"
+    },
+    {
+      "hash": "2bd1dd6",
+      "date": "2026-11-25",
+      "subject": "Docs: flowcharts.md with Mermaid diagrams of the real flows (components and ports; discovery to inventory, events, incidents and notifications; agent enrollment and at-most-once command delivery; the remote-session policy order; remote desktop consent, WebSocket JPEG, WebRTC with fallback and recording; router change with read-back and capability refusal; Junos restore safety; signed updates; distribution channels; sign-in with MFA, SSO and throttling), each linked to its code and marked real or tests only"
+    },
+    {
+      "hash": "4a01f6e",
+      "date": "2026-11-25",
+      "subject": "Security: ws 8.23.0 and node-forge 1.4.4; record the advisories that need a major upgrade (EXT-7)"
+    },
+    {
+      "hash": "33178e2",
+      "date": "2026-11-25",
+      "subject": "Web: accessibility in the shared components (item 6): Modal and Drawer dialogs are named by their title (aria-labelledby), the phone menu is a named dialog with a focus trap (focus moves in, Tab wraps, Escape closes, focus returns to the menu button), skip link to the main content (EN + AR)"
+    },
+    {
+      "hash": "2717e93",
+      "date": "2026-11-25",
+      "subject": "README.ar.md: Arabic landing page (RTL blocks, the seven programs with the Arabic jobs from programs.ts, the same architecture diagram, quick start, the gate, docs and honest status, license not yet chosen), linked from README.md and back"
+    },
+    {
+      "hash": "32ce1c3",
+      "date": "2026-11-25",
+      "subject": "README: landing page (what and who, CI badge, the seven programs, Mermaid architecture, quick start, the gate, repository map, docs, status and security links, license not yet chosen); the run, build and test instructions move to docs/getting-started.md (nothing dropped; Go version from go.mod, test ports, every build target) and the feature table to docs/features/capabilities.md (Sensor naming, Fleet remote desktop as built, links to each feature page)"
+    },
+    {
+      "hash": "44c617e",
+      "date": "2026-11-25",
+      "subject": "Web: plural forms for count sentences (item 5): lib/i18n/plural.ts picks the CLDR form with Intl.PluralRules (en one/other, ar zero/one/two/few/many/other), tn(key, count) in useI18n, 29 count sentences converted (no more \"1 devices\" or \"(s)\"), tests: Arabic six-form selection, every plural key carries exactly its language's forms in both languages, plural keys never read with t()"
+    },
+    {
+      "hash": "27ce5a3",
+      "date": "2026-11-25",
+      "subject": "Security: 80-bit recovery codes hashed per user, one-time use enforced by conditional updates (EXT-5)"
+    },
+    {
+      "hash": "2699c12",
+      "date": "2026-11-25",
+      "subject": "Security: WebSocket limits on remote desktop and shell sockets: size, rate, queue, connection count, dead-socket heartbeat (EXT-2)"
+    },
+    {
+      "hash": "81b43bc",
+      "date": "2026-11-25",
+      "subject": "Web: finish the bundle split (item 4): dictionary files loadable by node --test, EN/AR dictionary parity test (keys, placeholders, no empty text), first-load JS before/after in docs/architecture/web-perf-2026-11.md (largest route 2261 -> 1028 KB, mean 1382 -> 745 KB)"
+    },
+    {
+      "hash": "24d0091",
+      "date": "2026-11-25",
+      "subject": "Status: Cisco IOS XE row of the driver matrix (controls over RESTCONF, IOS XE 16.6+) and config restore for IOS XE"
+    },
+    {
+      "hash": "6599e21",
+      "date": "2026-11-25",
+      "subject": "Docs: Cisco IOS XE controls (Built: X1 in router-controls.md, both driver matrices) and IOS XE config restore (configure replace with revert timer, prerequisites, steps, tests) plus the other-device refusal in config-backup.md"
+    },
+    {
+      "hash": "bd45670",
+      "date": "2026-11-25",
+      "subject": "WIP SEC1 EXT-2: WebSocket guard (ws-guard.ts) wired into fleet shell hub and remote-desktop stream hub — unchecked, saved by lead when restarting builders at medium effort"
+    },
+    {
+      "hash": "be48ce8",
+      "date": "2026-11-25",
+      "subject": "WIP P1: web package sideEffects (*.css) for tree-shaking — unchecked, saved by lead when restarting builders at medium effort"
+    },
+    {
+      "hash": "b21d745",
+      "date": "2026-11-25",
+      "subject": "Web EN + AR for Cisco IOS XE controls: vendor note lists the RESTCONF controls (IOS XE 16.6+, write memory after read-back), translated Wi-Fi reason (no radios, Catalyst 9800 out of scope), guide tables and restore line updated"
+    },
+    {
+      "hash": "97a1c9b",
+      "date": "2026-11-25",
+      "subject": "Install test: reg.exe through Invoke-Reg so a missing registry key no longer stops the MSI test on Windows PowerShell 5.1"
+    },
+    {
+      "hash": "4beca24",
+      "date": "2026-11-25",
+      "subject": "WIP P1: bundle split (per-language messages-en/ar, i18n server helper, lazy time-series plot, scripts/) — unchecked, saved by lead when the owner stopped work"
+    },
+    {
+      "hash": "9a9dbbf",
+      "date": "2026-11-25",
+      "subject": "Security: per-account throttle on failed sign-ins across addresses (EXT-1)"
+    },
+    {
+      "hash": "5ee827e",
+      "date": "2026-11-25",
+      "subject": "Cisco IOS XE controls: stateful RESTCONF protocol double and tests for block/unblock, schedule across midnight, rate limit, reservation and rename, static NAT port forward, older release and missing models, administrator ACL/policy/pool refusals, save failure"
+    },
+    {
+      "hash": "39ddee3",
+      "date": "2026-11-25",
+      "subject": "Web: config restore dialog for VyOS / EdgeOS (commit-confirm text and timer hint), device identity with a typed second confirmation for another device, per-vendor reasons for not supported (EN + AR)"
+    },
+    {
+      "hash": "8f0b3a4",
+      "date": "2026-11-25",
+      "subject": "WIP A1: API start (mig 045 android_endpoints, endpoint schema + capabilities, shared types) — unchecked, saved by lead when the owner stopped Android"
+    },
+    {
+      "hash": "1a822de",
+      "date": "2026-11-25",
+      "subject": "Security: redact SNMP communities, router and other secrets in API and engine logs (EXT-9)"
+    },
+    {
+      "hash": "b6939f8",
+      "date": "2026-11-25",
+      "subject": "WIP Cisco IOS XE router controls over RESTCONF: block/schedule ACL, rate limit, reservations, rename, static NAT, write memory after read-back (tests for the write paths follow)"
+    },
+    {
+      "hash": "18fe809",
+      "date": "2026-11-25",
+      "subject": "API: config restore for VyOS / EdgeOS (vyos_commit_confirm), device identity check with forced restore onto another device, per-vendor reasons for not supported"
+    },
+    {
+      "hash": "01a3a82",
+      "date": "2026-11-25",
+      "subject": "Web: global-error, root not-found (server component, EN + AR), root and screen error pages use retry(), screen loading skeleton, error boundaries around the sidebar and top bar"
+    },
+    {
+      "hash": "d2c0590",
+      "date": "2026-11-25",
+      "subject": "Android agent app: Device Policy Controller (framework APIs only, no AndroidX/Play/Firebase), enrollment by nigafiy://enroll link, typed values or QR provisioning extras, Keystore-encrypted credential, foreground service with heartbeat + long poll, inventory and compliance facts, Device Owner lock/password requirement/camera/APK install/uninstall/wipe/stop management, persistent notification, EN + AR strings"
+    },
+    {
+      "hash": "663171e",
+      "date": "2026-11-25",
+      "subject": "Security: escape Slack mrkdwn and disable Discord mentions in alerts (EXT-6)"
+    },
+    {
+      "hash": "4c943a4",
+      "date": "2026-11-25",
+      "subject": "Collector: device identity (model/serial) on Junos and VyOS/EdgeOS backups, restore refuses another device unless forced, VyOS/EdgeOS restore with commit-confirm"
+    },
+    {
+      "hash": "c403c9f",
+      "date": "2026-11-25",
+      "subject": "Web: split the app context (session, sites, live flag, stable stream subscription) so SSE live/reconnect changes no longer re-run every useQuery; refresh all topics once after a stream reconnect; SSE no longer reconnects when reloadMe replaces the user object"
+    },
+    {
+      "hash": "64ee385",
+      "date": "2026-11-25",
+      "subject": "Security: agent remembers recent command ids with oldest-first eviction (EXT-4)"
+    },
+    {
+      "hash": "3a286a4",
+      "date": "2026-11-25",
+      "subject": "Security: agent refuses a remote shell whose banner cannot be shown (EXT-3)"
+    },
+    {
+      "hash": "cdb4f22",
+      "date": "2026-11-25",
+      "subject": "Web: no reload loop when the server is down; capped backoff retry with a Can't reach the server / Retry now screen (EN + AR)"
+    },
+    {
+      "hash": "ef6f5a4",
+      "date": "2026-11-25",
+      "subject": "Install test: read-results.mjs (results.json, msiexec logs and WACK XML to a Markdown summary) with tests"
+    },
+    {
+      "hash": "7529240",
+      "date": "2026-11-25",
+      "subject": "Config restore for Cisco IOS XE: configure replace with revert trigger error timer, SCP upload checked by verify /md5, read-back over a second SSH session, configure confirm and write memory only after a match, configure revert now proven by read-back; API refuses another device's configuration unless forced with a second typed confirmation; web EN + AR"
+    },
+    {
+      "hash": "25f6e1a",
+      "date": "2026-11-25",
+      "subject": "Security: Quick Support files only inside the session the person accepted (SEC-02)"
+    },
+    {
+      "hash": "0dd9d74",
+      "date": "2026-11-25",
+      "subject": "Install test: run-elevated.ps1 for the owner (MSI, both MSIX, WACK; cert in TrustedPeople only, undone in finally, safe to rerun)"
+    },
+    {
+      "hash": "25a2e21",
+      "date": "2026-11-25",
+      "subject": "Android agent core: reviewed the WIP (Json line-separator escapes), adds the TLS pin (same rule as VerifyPinnedChain), the command set with Device Owner rules and at-most-once ids, the heartbeat/enroll protocol, the gateway client (pinned HTTPS, APK download checked by size and SHA-256) and 27 JVM tests"
+    },
+    {
+      "hash": "76a9749",
+      "date": "2026-11-25",
+      "subject": "Security: only the owner creates, changes or deletes an SSO identity provider (SEC-01)"
+    },
+    {
+      "hash": "3d887f1",
+      "date": "2026-11-25",
+      "subject": "WIP A1: Android core Compliance/EnrollLink/Json (unchecked, saved by lead after the session ended)"
+    },
+    {
+      "hash": "1e3194f",
+      "date": "2026-11-25",
+      "subject": "WIP A1: Android agent Gradle skeleton (wrapper, core module, Version.kt) — unchecked, saved by lead when the owner stopped work"
+    },
+    {
+      "hash": "6eb100a",
+      "date": "2026-11-25",
+      "subject": "Docs: android.md design note (free Android management: regular app vs deprecated Device Admin vs Device Owner by dpm or QR, per-mode features, enrollment, transport without FCM, security, sideload updates, build tools downloaded and the SDK license the owner accepted)"
+    },
+    {
+      "hash": "d90e6cc",
+      "date": "2026-11-25",
+      "subject": "Agent: BannerMux passes Windows user-session switching (TargetSession) through to the wrapped desktop"
+    },
+    {
+      "hash": "4e155b1",
+      "date": "2026-11-25",
+      "subject": "README: build and run the Sensor as nigafiy-engine sensor"
+    },
+    {
+      "hash": "015dedf",
+      "date": "2026-11-25",
+      "subject": "Docs: one executable for the engine and the Sensor in engine.md (sensor command, --sensor-exe default, main.Version), installers.md, updates.md (what an older install sees after the update: same manifest components, old collector folder removed, enrollment kept, one firewall prompt for nigafiy-engine.exe, service fallback), microsoft-store.md (firewall rules name the engine exe), naming.md rows, code-signing, protocol, desktop README and the root README; the design note lists what ran on scratch ports, what is tested only and what never ran"
+    },
+    {
+      "hash": "bbb2a90",
+      "date": "2026-11-25",
+      "subject": "Packaging points at the single executable: the desktop app bundles and signs only resources/engine/nigafiy-engine.exe and runs its Sensor as nigafiy-engine sensor (CollectorManager binaryArgs); bundle-backend builds the engine (CGO off); MSIX firewall rules name the engine exe and build-msix/release refuse a stale resources/collector folder; release builds one Go binary stamped with main.Version; Docker image built from the repository root (arm64 via TARGETARCH, Dockerfile.dockerignore) with ENTRYPOINT nigafiy-engine sensor and nigafiy-sensor/lan-collector links; systemd unit ExecStart nigafiy-engine sensor plus deploy/upgrade-to-engine.sh for Sensors in the field; pnpm local and the e2e smoke run nigafiy-engine sensor; install snippets in the web console and the user guide (EN + AR) say nigafiy-engine sensor and the one-time firewall prompt after an update"
+    },
+    {
+      "hash": "a5dc1b6",
+      "date": "2026-11-25",
+      "subject": "One executable: nigafiy-engine runs the Sensor (nigafiy-engine sensor, or the exe named nigafiy-sensor/lan-collector) through the new public sensorcmd package of the Sensor module (same flags, NIGAFIY_SENSOR_* and legacy LAN_COLLECTOR_* env, config file, exit codes, -version output); engine mode starts itself as the Sensor child process by default (sensor -config <file>), keeps the old arguments for another --sensor-exe and falls back to itself when a recorded nigafiy-sensor/lan-collector path is gone; one main.Version (the release flag now stamps the engine too); tests for mode selection, aliases, legacy env, panic isolation and restart, and a CGO-off build answering to the old names"
+    },
+    {
+      "hash": "21375f6",
+      "date": "2026-11-25",
+      "subject": "Design note: the engine and the Sensor become one executable (nigafiy-engine; engine mode by default, nigafiy-engine sensor for Sensor-only sites, nigafiy-sensor/lan-collector name alias): two Go modules joined by a replace with a public sensorcmd package, the Sensor kept as a child process of the same exe for panic isolation, what stays compatible and the upgrade path for NSIS, MSI, MSIX, the service, Docker and systemd"
+    },
+    {
+      "hash": "ae771e9",
+      "date": "2026-11-25",
+      "subject": "Docs: user-guide.md (how the content is stored, how to add a section, the route map, search and the parity test)"
+    },
+    {
+      "hash": "987a4db",
+      "date": "2026-11-25",
+      "subject": "Tests: guide unit tests (every signed-in page maps to a section, EN/AR parity of sections, anchors, block shapes and links, search in both languages) in test:unit; the browser walk opens the guide and the help button in EN light and AR RTL dark"
+    },
+    {
+      "hash": "b099684",
+      "date": "2026-11-25",
+      "subject": "Search: the global search window lists matching user guide sections (client-side, both languages, loaded on first open); the guide page has its own search box"
+    },
+    {
+      "hash": "2e0d78c",
+      "date": "2026-11-25",
+      "subject": "Help button on every signed-in page: the top bar's question mark opens the guide section for the current page (route-map.ts, longest prefix, fallback to Getting started), a keyboard-reachable link labelled in EN and AR"
+    },
+    {
+      "hash": "96a8246",
+      "date": "2026-11-25",
+      "subject": "Guide: how Nigafiy is installed and updated (Microsoft Store, MSI by Group Policy, setup program) and the Quick Support Store link, after merging the Store MSIX work"
+    },
+    {
+      "hash": "a816774",
+      "date": "2026-11-25",
+      "subject": "Docs: WebRTC video as built (agent, API, web, dependencies) and what ran for real vs tests only vs never; status row for the remote desktop transport"
+    },
+    {
+      "hash": "6214a42",
+      "date": "2026-11-25",
+      "subject": "Web WebRTC viewer: RTCPeerConnection (receive-only H.264, data channel for input) signalled over the stream socket, frames drawn on the console canvas, automatic fallback to the JPEG stream with the reason (no RTC/H.264, refused, 8 s answer, 10 s video, ICE failed/disconnected, encoder failed, recording), mode badge, live fps/bitrate from getStats, Smooth video toggle and retry; EN + AR"
+    },
+    {
+      "hash": "80c9e92",
+      "date": "2026-11-25",
+      "subject": "Guide: in-app user guide (EN + AR) at /guide and /guide/<section>, linked from the sidebar of every program"
+    },
+    {
+      "hash": "0963120",
+      "date": "2026-11-25",
+      "subject": "API WebRTC: a viewer whose picture plays over WebRTC gets no JPEG frames (another viewer's stream kept reaching it)"
+    },
+    {
+      "hash": "7a6be15",
+      "date": "2026-11-25",
+      "subject": "API WebRTC signalling: rtc_offer / rtc_answer / rtc_ice over the existing stream sockets (and the peer link), routed only to the asking browser; every offer checked (session active, view permission, agent capability, RD_WEBRTC, no recording) on the operator's instance and again where the agent is; WebRTC viewers leave the JPEG count; fallback, stop, recording switch-on and hand-over (rtc_perms) handled; fleet.session_transport and endpoint.rd_input (via webrtc) audits; migration 044 (transport webrtc, rtc_encoder, rtc_started_at, rtc_fallback_reason); RD_WEBRTC, RD_WEBRTC_STUN_URLS (stun: only); tests"
+    },
+    {
+      "hash": "83aaf8b",
+      "date": "2026-11-25",
+      "subject": "Agent WebRTC: review of the WIP. BannerMux passes the video source through (the real agent wraps its desktop in it, so WebRTC was never offered); the browser's early ICE candidates are kept until its offer is answered; encoder_changed goes to each viewer; NIGAFIY_AGENT_RD_WEBRTC=off; tests (pion loopback video + data-channel input, offer refusals, encoder failure, grabber rules, real Media Foundation screen encode opt-in)"
+    },
+    {
+      "hash": "86d92a9",
+      "date": "2026-11-25",
+      "subject": "Docs: Microsoft Store owner steps checked against the build (version 1.0.0 in package.json, WACK needs administrator rights, how to trust and remove a local test package on his own PC), \"What ran here vs never ran\" for the two MSIX packages, three-channel table in code-signing.md (Store / GPO self-signed / direct download; signtool only for the local MSIX test signature), installers.md pointer and a missing blank line"
+    },
+    {
+      "hash": "dddee7f",
+      "date": "2026-11-25",
+      "subject": "MSIX build: MakeAppx prints one line per file (10 690 for the desktop app), which overflowed Node's 1 MB output buffer (ENOBUFS) and stopped the desktop package; the tools now get 256 MB and an error shows only the last 40 lines. Both local-test packages built, signed and inspected"
+    },
+    {
+      "hash": "7bc29a0",
+      "date": "2026-11-25",
+      "subject": "WIP W1: agent WebRTC video (pion, videoenc, rdstream/desktop/remotedesktop changes) — unchecked, does not build yet maybe; stopped by owner mid-agent work"
+    },
+    {
+      "hash": "0ee6447",
+      "date": "2026-11-25",
+      "subject": "WIP S1: owner step-by-step in microsoft-store.md and installers.md (unchecked; stopped by owner before item 4 build/check)"
+    },
+    {
+      "hash": "a601109",
+      "date": "2026-11-25",
+      "subject": "Quick Support for the Microsoft Store: a Store package is the same file for everybody and cannot carry the download trailer, so Fleet gives the same signed binding as a nigafiy-support:qs1/ link (GET /fleet/quick-support/link, technicians, no-store, audited fleet.quick_support_link_issued); the program reads a link from its arguments (signature checked as for the trailer), says where to get one when the packaged version starts without it, never deletes the packaged file and tells the person to remove it in Settings > Apps; Copy Microsoft Store link button with the server key (EN + AR, technicians only, the download button too); Go and API tests; docs"
+    },
+    {
+      "hash": "5614a2c",
+      "date": "2026-11-25",
+      "subject": "Store channel updates: the engine recognises the Microsoft Store package (its own package identity via GetCurrentPackageFullName, or a WindowsApps package folder), reports install kind msix with the family name, refuses the NSIS update and reads the programs choice from the package's HKCU; the API answers store_managed (check), 409 store_managed (download, install, audited); the update card says updates come from the Microsoft Store (EN + AR); tests with a fake identity reader"
+    },
+    {
+      "hash": "24ae17d",
+      "date": "2026-11-25",
+      "subject": "Docs: WebRTC video design note (signalling over the existing sockets, LAN only, fallback rules, how each guarantee survives, recorded sessions keep the server path)"
+    },
+    {
+      "hash": "2514694",
+      "date": "2026-11-25",
+      "subject": "Desktop app as an MSIX package for the Microsoft Store: build-msix.cjs (installed Windows SDK only; Partner Center identity from env or .data/store/identity.json, refuses without it; --local-test identity and signature), manifest with runFullTrust, nigafiy:// link, sensor firewall rules (domain/private), EN + AR strings; the packaged app keeps its profile in the package LocalState folder, leaves an NSIS profile alone and says where it is once, programs choice in its HKCU, chooser in the tray"
+    },
+    {
+      "hash": "5d7c551",
+      "date": "2026-11-25",
+      "subject": "Docs: Microsoft Store research (account types and cost, Microsoft re-signing MSIX, SmartScreen, restricted capabilities, AppData/HKCU virtualization, services, firewall, Quick Support binding) with sources"
+    },
+    {
+      "hash": "884af6b",
+      "date": "2026-11-25",
+      "subject": "Status: installers after I1 (what ran for real, what never ran)"
+    },
+    {
+      "hash": "bf09d0b",
+      "date": "2026-11-25",
+      "subject": "Tests: fleet-patches looked up the delivered install command by order after giving both commands the same created_at, so it failed about half the runs; it now looks it up by id"
+    },
+    {
+      "hash": "92874c6",
+      "date": "2026-11-25",
+      "subject": "Gate: check:brand allows the legacy-install import files (they must name the old folders, uninstaller and profile); the program chooser's heading has content before its script runs (biome a11y error)"
+    },
+    {
+      "hash": "e97faf9",
+      "date": "2026-11-25",
+      "subject": "Docs: installers after I1 (choose programs, old LAN Detective install, MSI PROGRAMS and inspection, MSI vs NSIS, agent self-copy and in-place upgrade, -token-file), closed gaps removed, \"What ran for real here\""
+    },
+    {
+      "hash": "9e7948d",
+      "date": "2026-11-25",
+      "subject": "Desktop installer: uninstall also removes this install's nigafiy:// handler and electron-builder's 160 MB setup copy"
+    },
+    {
+      "hash": "40d61b7",
+      "date": "2026-11-25",
+      "subject": "Installers: MSI inspection script checked against a real build; signing-cert script fixed for Windows PowerShell 5.1"
+    },
+    {
+      "hash": "9c90468",
+      "date": "2026-11-25",
+      "subject": "Repo: drop the macOS agent binary committed by mistake in 0d64828 and ignore bare go-build outputs of the agent"
+    },
+    {
+      "hash": "307767c",
+      "date": "2026-11-25",
+      "subject": "WIP: MSI inspection script (unchecked, saved by lead)"
+    },
+    {
+      "hash": "37026e4",
+      "date": "2026-11-25",
+      "subject": "Desktop: import an install from before the rename (LAN Detective) on first run, only on a click"
+    },
+    {
+      "hash": "0a7a8b5",
+      "date": "2026-11-25",
+      "subject": "Installers: choose programs at install (NSIS page, MSI PROGRAMS=, Modify chooser), read by the engine"
+    },
+    {
+      "hash": "f14bb46",
+      "date": "2026-11-25",
+      "subject": "Updates: the engine tells an MSI-managed install apart (Windows Installer upgrade code / WindowsInstaller=1 uninstall entry vs the NSIS install key, read-only, fake registry in tests), reports it in /v1/status and refuses to run the NSIS update over it; the API's update check answers msi_managed, download and install are refused (409, audited), and the update card says the administrator updates it (EN + AR)"
+    },
+    {
+      "hash": "0d64828",
+      "date": "2026-11-25",
+      "subject": "Agent: install copies itself into -install-dir and registers the service on the copy; install on an installed service (or the new upgrade subcommand) upgrades in place: stop, swap keeping <name>.previous, start, wait for running + the new version's health marker, roll back otherwise; credential kept, never enrolls. NSIS installer runs the agent from its temp folder with -install-dir and passes -token-file and the pin unchanged"
+    },
+    {
+      "hash": "f51aa58",
+      "date": "2026-11-25",
+      "subject": "Agent: -token-file (first line, trimmed, content never in an error or log) and -tls-pin accepts the sha256: prefix in any case"
+    },
+    {
+      "hash": "7569372",
+      "date": "2026-11-24",
+      "subject": "Status: router controls driver matrix after R1 and R2 (rename, Wi-Fi, reservations, port forwards, rate limits, schedules), tests only"
+    },
+    {
+      "hash": "ab03916",
+      "date": "2026-11-24",
+      "subject": "Docs: Built: R2 says exactly where an administrator's entry is refused"
+    },
+    {
+      "hash": "2d50d63",
+      "date": "2026-11-24",
+      "subject": "Docs: router controls per-driver matrix for rate limit and schedule with sources, and Built: R2 (tests only, never on real hardware)"
+    },
+    {
+      "hash": "46dd685",
+      "date": "2026-11-24",
+      "subject": "Router controls UI/API: the schedule form on a router that schedules devices itself shows the driver's note (e.g. quarter-hour times, 23:59 at midnight) as the rate-limit form already does; API test for router-side schedules (overnight and all-day windows queued unchanged, nothing stored by Nigafiy, audit, clear, viewer/technician refused) and pass-through notes"
+    },
+    {
+      "hash": "148b074",
+      "date": "2026-11-24",
+      "subject": "Router controls: precise not-offered notes for rate limit and schedule on D-Link, TP-Link, ZTE, Huawei, Huawei LTE, the Tenda schedule and the Omada schedule (what is missing or undocumented, and that Nigafiy enforces schedules itself with the router's block)"
+    },
+    {
+      "hash": "4f5abfa",
+      "date": "2026-11-24",
+      "subject": "Router controls: ASUS blocking schedule through Parental Controls time scheduling (MULTIFILTER_MACFILTER_DAYTIME_V2, firmware 386+, administrator entries refused); the V2 list now stays aligned when blocks are added or removed; rate limit refused with the reason (Bandwidth Limiter rules carry no label)"
+    },
+    {
+      "hash": "2c5afd4",
+      "date": "2026-11-24",
+      "subject": "Router controls: OpenWrt rate limit through nft-qos MAC-based limits when the package is installed (labelled client sections, administrator limits refused, MAC mode turned on and off again only when Nigafiy turned it on); not offered without nft-qos"
+    },
+    {
+      "hash": "0f7e754",
+      "date": "2026-11-24",
+      "subject": "Router controls: pfSense blocking schedule through a firewall schedule and a floating quick block rule (REST API v2, quarter-hour times, ids re-read after each delete, rollback keeps the previous schedule); rate limit refused with the reason (limiters need pass/match rules the API cannot place safely)"
+    },
+    {
+      "hash": "604ea7d",
+      "date": "2026-11-24",
+      "subject": "Router controls: OPNsense rate limit through traffic-shaper pipes and LAN rules per direction (administrator shaper entries untouched); schedule refused precisely (schedules have no API, legacy config only)"
+    },
+    {
+      "hash": "2e0246b",
+      "date": "2026-11-24",
+      "subject": "Router controls: FortiGate rate limit through a shaping policy with per-direction shapers and blocking schedule through deny policies with recurring schedules (overnight segments, all day), both at the top of their tables, rollback keeps the previous schedule"
+    },
+    {
+      "hash": "f6687fa",
+      "date": "2026-11-24",
+      "subject": "Router controls: UniFi rate limit through a per-device user group (administrator groups never moved) and blocking schedule through v2 traffic rules (UniFi Network 7.x+, overnight windows split); shared window/limit validation (router.SplitWindows)"
+    },
+    {
+      "hash": "2a6792e",
+      "date": "2026-11-24",
+      "subject": "Fleet patches: a cancelled install does not wait for a new scan before the next dispatch (it changed nothing; fixes a clock-resolution flake in fleet-patches.test.ts)"
+    },
+    {
+      "hash": "23679a3",
+      "date": "2026-11-24",
+      "subject": "Docs: router controls per-driver matrix (rename, Wi-Fi, reservations, port forwards) with sources, and Built: R1 (tests only, never on real hardware)"
+    },
+    {
+      "hash": "3475125",
+      "date": "2026-11-24",
+      "subject": "Router controls API and UI: a rename stored on the device's DHCP reservation (capability requires: reservation) is offered only for reserved devices and refused otherwise (needs_reservation), with EN/AR strings and API tests"
+    },
+    {
+      "hash": "6745ead",
+      "date": "2026-11-24",
+      "subject": "Router controls: precise not-supported notes for D-Link, TP-Link, ZTE and Huawei LTE rename, Huawei LTE reservations, pfSense and OPNsense Wi-Fi; Sensor sends capability requires=reservation"
+    },
+    {
+      "hash": "4ccb62b",
+      "date": "2026-11-24",
+      "subject": "Router controls: Tenda rename through /goform/SetOnlineDevName on the V15.03 firmware family (other firmware refused with its version)"
+    },
+    {
+      "hash": "9721b57",
+      "date": "2026-11-24",
+      "subject": "Router controls: FortiGate rename through the DHCP reservation description; Wi-Fi list and on/off through the SSID (VAP) interface status"
+    },
+    {
+      "hash": "0dd6af4",
+      "date": "2026-11-24",
+      "subject": "Router controls: OPNsense rename through the Kea reservation host name; port forwards through destination NAT on OPNsense 26.1+ (older firmware still refused, with the detected version)"
+    },
+    {
+      "hash": "0940d18",
+      "date": "2026-11-24",
+      "subject": "Router controls: pfSense rename through the DHCP static mapping host name; capabilities can say a control needs a reservation; CleanHostname"
+    },
+    {
+      "hash": "66371b2",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro close: browser walk opens the new Fleet pages and endpoint tabs (EN/AR); status.md records the Fleet Pro gate, real versus tests, and what is left; plan Task 11 ticked"
+    },
+    {
+      "hash": "8dff79b",
+      "date": "2026-11-24",
+      "subject": "API tests: module registry lists the fleet-patch-scheduler job"
+    },
+    {
+      "hash": "9cedb22",
+      "date": "2026-11-24",
+      "subject": "Docs: Fleet Pro built patches, monitoring, inventory and the user's side (what ran for real, limits); plan progress for Tasks 9 and 10"
+    },
+    {
+      "hash": "21947da",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro two-pane file manager: this browser and the computer side by side, transfer queue with pause, resume of interrupted chunked transfers, SHA-256 check of every transfer"
+    },
+    {
+      "hash": "d497d04",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro the user's side: tray IT activity with file transfers and updates, End current session, Past recordings via short-lived links"
+    },
+    {
+      "hash": "d262d24",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro patches: agent reads missing updates (Windows Update Agent over pure-Go IDispatch, apt, dnf, softwareupdate, labelled), installs only approved updates sent in a maintenance or group patch window, reboot policy never / ask with postponements up to a deadline / force at window end through the desktop helper; API status, catalog, approvals per update or group, policies with auto-approve classifications, scheduler, install history, audit; endpoint Patches tab and Fleet > Patches (EN/AR). Delivered scripts, installs and restart questions no longer expire after 10 minutes (their own jobs time them out)."
+    },
+    {
+      "hash": "223a3b7",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro monitoring rules: CPU, memory, disk free, service state, event log/journal per group with thresholds and durations; breaches raise Watch events and endpoint incidents, recovery resolves them; agent service and event-log probes; Fleet > Monitoring page (EN/AR)"
+    },
+    {
+      "hash": "aa29c23",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro inventory and local administrators (migration 043): agent hardware and licence inventory (CPU, memory modules, system/board/BIOS serials, Windows/Office licence status without keys, physical disks with health and reliability counters, batteries), local administrators evidence judged against an allowed list, Hardware & licences tab (EN/AR)"
+    },
+    {
+      "hash": "71a7161",
+      "date": "2026-11-24",
+      "subject": "Docs: Fleet Pro built shell, scripts and jobs (prerequisites, limits, what ran for real); plan progress for Task 8"
+    },
+    {
+      "hash": "583ac7b",
+      "date": "2026-11-24",
+      "subject": "API tests: shell transcript/history/end refused to technicians and viewers, Quick Support never opens a shell; job role refusals (viewer, other technician, script taken back), missed recurring occurrences run once, rerun takes expired computers"
+    },
+    {
+      "hash": "b1e812b",
+      "date": "2026-11-24",
+      "subject": "Fleet web: finish shell, scripts and jobs screens (typed hint fix, run-from-script defaults, localized All tab and state label, lint-clean fieldsets and terminal region)"
+    },
+    {
+      "hash": "0e32656",
+      "date": "2026-11-24",
+      "subject": "WIP: F4 web (shell, scripts, jobs screens) saved before relaunch"
+    },
+    {
+      "hash": "87609de",
+      "date": "2026-11-24",
+      "subject": "Agent: remote shell (PowerShell over ConPTY on Windows, pty on Linux, pipes on macOS), one banner naming every open shell with End and Ctrl+Alt+Shift+E, tray IT activity; real-agent test for shell and script job"
+    },
+    {
+      "hash": "702651e",
+      "date": "2026-11-24",
+      "subject": "Agent: script_run and script_cancel (parameters as environment data splatted onto the script, output cap, timeout and cancel stop the process tree)"
+    },
+    {
+      "hash": "b5693d6",
+      "date": "2026-11-24",
+      "subject": "API tests: shell socket peer without a parameter property (erasable syntax only)"
+    },
+    {
+      "hash": "60c6dad",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro API: remote shell (group switch, admins, MFA, profile shell flag, sockets, encrypted transcript), scripts library (typed parameters, versions) and jobs (now, once, recurring in a time zone, maintenance windows, offline catch-up, rerun failed, cancel) (migration 042)"
+    },
+    {
+      "hash": "4eaf030",
+      "date": "2026-11-24",
+      "subject": "API: commands queued together reach the agent in a fixed order (notice, session open, then frames)"
+    },
+    {
+      "hash": "71d96e8",
+      "date": "2026-11-24",
+      "subject": "API tests: module registry lists the fleet-reach-sweep job"
+    },
+    {
+      "hash": "6b29c62",
+      "date": "2026-11-24",
+      "subject": "Docs: Fleet Pro reaching computers and Quick Support; plan progress"
+    },
+    {
+      "hash": "fada14b",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro web: address book (search, site/tag/user filters, favourites, my recent, Nigafiy ID, tags, help badge, bulk bar), connect by name/ID/code, Quick Support connect and download, Windows session picker, restart and reconnect, Help requests page (EN + AR)"
+    },
+    {
+      "hash": "29f02a3",
+      "date": "2026-11-24",
+      "subject": "Quick Support: nigafiy-support.exe (signed server binding, code + one-time PIN, server proof, attended agent profile, removes itself at the end)"
+    },
+    {
+      "hash": "3a9e3f6",
+      "date": "2026-11-24",
+      "subject": "Agent: restart and reconnect (safe mode, always cleared), Windows user sessions and sign-in screen helper, tray with Request help and Nigafiy ID"
+    },
+    {
+      "hash": "7339bcf",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro API: address book, connect by name/ID/code, Request help, restart and reconnect (safe mode), Windows user sessions, Quick Support rendezvous (migration 037)"
+    },
+    {
+      "hash": "d9c9895",
+      "date": "2026-11-24",
+      "subject": "WIP: F2 gate test updates (stopped by owner before the gate finished)"
+    },
+    {
+      "hash": "9884bfb",
+      "date": "2026-11-24",
+      "subject": "Docs: Fleet Pro in-session tools, recording and operators; plan progress"
+    },
+    {
+      "hash": "68708d6",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro web: in-session tools, recording player, operators, wake-then-connect (EN + AR)"
+    },
+    {
+      "hash": "6c376f4",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro API: session tools on the stream hub, encrypted session recording, several operators, Wake-on-LAN then connect (migration 036)"
+    },
+    {
+      "hash": "327000b",
+      "date": "2026-11-24",
+      "subject": "Agent: session tools on the stream (profile-checked), banner updates, rd_session_update, tool events through the session helper"
+    },
+    {
+      "hash": "e32515d",
+      "date": "2026-11-24",
+      "subject": "Agent: session tool building blocks (privacy screen, chat, questions, overlay, input block, SAS, audio, rich clipboard, keys by position, cursor, colour depth)"
+    },
+    {
+      "hash": "93fca69",
+      "date": "2026-11-24",
+      "subject": "Docs: Fleet Pro permission profiles and access policy; real-agent test asks for a full frame"
+    },
+    {
+      "hash": "d057fb6",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro web: Access policies, Approvals, connect dialog, group assignment (EN + AR)"
+    },
+    {
+      "hash": "929ffe4",
+      "date": "2026-11-24",
+      "subject": "Agent: enforce the session permission profile, list it on the banner, unattended refuse window"
+    },
+    {
+      "hash": "4acc1cf",
+      "date": "2026-11-24",
+      "subject": "Fleet Pro: permission profiles, groups and access policy (API, migration 035)"
+    },
+    {
+      "hash": "b42efba",
+      "date": "2026-11-24",
+      "subject": "Docs: status.md matches the code and splits real hardware from tests"
+    },
+    {
+      "hash": "b5522be",
+      "date": "2026-11-23",
+      "subject": "Web e2e: walk every signed-in page in English (light) and Arabic (RTL, dark)"
+    },
+    {
+      "hash": "f991045",
+      "date": "2026-11-23",
+      "subject": "Sensor: DHCP persist test no longer races its own writer"
+    },
+    {
+      "hash": "3c190b5",
+      "date": "2026-11-23",
+      "subject": "Docs: naming table lists the kept browser preference keys"
+    },
+    {
+      "hash": "9b1e2a3",
+      "date": "2026-11-23",
+      "subject": "Brand: wordmark outlines without NaN (opentype.js toPathData bug dropped everything after the n)"
+    },
+    {
+      "hash": "f7900e0",
+      "date": "2026-11-23",
+      "subject": "Naming decision table and the leftover check (pnpm check:brand)"
+    },
+    {
+      "hash": "8f80d94",
+      "date": "2026-11-23",
+      "subject": "Product name and logo: Nigafiy everywhere a person looks; desktop profile never orphaned"
+    },
+    {
+      "hash": "a3864f0",
+      "date": "2026-11-23",
+      "subject": "Go modules, binary names and User-Agents: nigafiy-sensor, nigafiy-agent"
+    },
+    {
+      "hash": "4a350bf",
+      "date": "2026-11-23",
+      "subject": "npm scope @lan-detective/* -> @nigafiy/*, root package nigafiy (mechanical)"
+    },
+    {
+      "hash": "68bb54c",
+      "date": "2026-11-23",
+      "subject": "Env: NIGAFIY_* names with a fallback to LD_* / LAN_COLLECTOR_* / LAN_ENDPOINT_*"
+    },
+    {
+      "hash": "efd4493",
+      "date": "2026-11-23",
+      "subject": "Brand: wire the Nigafiy app icon into the desktop app and the Hub icon into the web app; icon test"
+    },
+    {
+      "hash": "ae23c80",
+      "date": "2026-11-23",
+      "subject": "Docs: installers (desktop NSIS/MSI, endpoint agent silent mode, gaps) and updates (keys, manifest, release, flow)"
+    },
+    {
+      "hash": "79db942",
+      "date": "2026-11-23",
+      "subject": "Release: signed release script (NIGAFIY_REQUIRE_SIGNING=1 always), signature check, SHA256SUMS and manifest"
+    },
+    {
+      "hash": "96378a4",
+      "date": "2026-11-23",
+      "subject": "Installers: endpoint-agent NSIS with silent GPO/Intune mode, desktop MSI target, per-machine aware updates"
+    },
+    {
+      "hash": "e3aa197",
+      "date": "2026-11-23",
+      "subject": "Updates: download, verify, stage and install on confirmation"
+    },
+    {
+      "hash": "372e8c8",
+      "date": "2026-11-23",
+      "subject": "Engine: supervise database, API and web as separate children"
+    },
+    {
+      "hash": "3605008",
+      "date": "2026-11-22",
+      "subject": "Docs: IPv6 across Radar and IPAM (docs/features/ipv6.md)"
+    },
+    {
+      "hash": "888aae2",
+      "date": "2026-11-22",
+      "subject": "IPAM IPv6: family-aware constraints, BigInt plan, sparse paged map, conflicts; ip_conflict_detected"
+    },
+    {
+      "hash": "7519e2d",
+      "date": "2026-11-22",
+      "subject": "Subnet calculator: IPv4 and IPv6 with BigInt, CIDR splitter, node:test unit tests"
+    },
+    {
+      "hash": "8cd435d",
+      "date": "2026-11-22",
+      "subject": "Inventory: show IPv6 addresses of devices (list and detail, EN/AR, bidi isolated)"
+    },
+    {
+      "hash": "8ef8585",
+      "date": "2026-11-22",
+      "subject": "IPv6 discovery: neighbour table, all-nodes multicast echo and evidence per address"
+    },
+    {
+      "hash": "e12d726",
+      "date": "2026-11-22",
+      "subject": "IPv6 scopes: accept IPv6 LAN prefixes at API and collector, never sweep larger than /120"
+    },
+    {
+      "hash": "901f90b",
+      "date": "2026-11-22",
+      "subject": "WIP: IPv6 builder partial work (net.ts v6 helpers, scope suggestions, toolbox queue) saved mid-way"
+    },
+    {
+      "hash": "8a7ba09",
+      "date": "2026-11-22",
+      "subject": "Topology: router Wi-Fi clients become observed router-to-device edges"
+    },
+    {
+      "hash": "40c4bcb",
+      "date": "2026-11-22",
+      "subject": "Neighbours: CDP and MikroTik neighbour tables over SNMP, passive MNDP listener"
+    },
+    {
+      "hash": "a5b33d6",
+      "date": "2026-11-22",
+      "subject": "Watch checks: HTTP/HTTPS, TLS certificate expiry and SNMP OID check kinds"
+    },
+    {
+      "hash": "508fa9b",
+      "date": "2026-11-22",
+      "subject": "Docs: features/sso.md (protocol checks, MFA interplay, audit), features/lan-tls.md, features/system-self-check.md"
+    },
+    {
+      "hash": "02cef35",
+      "date": "2026-11-22",
+      "subject": "Docs: drop the last assistant entry from the Mind mockup; mark the AI assistant as removed in the platform design snapshot"
+    },
+    {
+      "hash": "db17638",
+      "date": "2026-11-22",
+      "subject": "Tests: impact simulation and single points of failure (articulation, redundancy, unknown attachments, uplink, collector) and the impact API"
+    },
+    {
+      "hash": "c0f617d",
+      "date": "2026-11-22",
+      "subject": "Tests: portfolio roll-ups per site and per organization (RLS, inactive memberships, MFA-locked organizations)"
+    },
+    {
+      "hash": "60f20ab",
+      "date": "2026-11-22",
+      "subject": "Tests: maintenance windows (one-off across DST in America/New_York, weekly in Asia/Kolkata, scope suppression, in_maintenance, runs)"
+    },
+    {
+      "hash": "39b0a3d",
+      "date": "2026-11-22",
+      "subject": "Tests: MFA replay protection and lockout, member deactivate/reactivate, password reset (self-service and admin-issued)"
+    },
+    {
+      "hash": "465e537",
+      "date": "2026-11-22",
+      "subject": "SSO: more XML signature wrapping cases (tamper after signing, signed assertion in Extensions, nested unsigned assertion)"
+    },
+    {
+      "hash": "c14312d",
+      "date": "2026-11-22",
+      "subject": "Built-in LAN TLS: finish and verify (owner-only ACL on Windows, DER serial fix, Go pin tests, Settings card)"
+    },
+    {
+      "hash": "99359d8",
+      "date": "2026-11-22",
+      "subject": "WIP: built-in LAN TLS (CA + server cert, pinning in collector/agent, Sensors card) saved mid-way"
+    },
+    {
+      "hash": "02b977e",
+      "date": "2026-11-22",
+      "subject": "SSO UI: Settings identity providers (owner/admin) and sign-in page SSO buttons, EN + AR"
+    },
+    {
+      "hash": "2ef126e",
+      "date": "2026-11-22",
+      "subject": "Enterprise SSO backend: per-organization OIDC (code + PKCE, JWKS) and SAML 2.0 providers, pinned SSO sessions, audit, tests with local IdP doubles"
+    },
+    {
+      "hash": "d7138a2",
+      "date": "2026-11-22",
+      "subject": "Global search: migration 040 (SSO tables + trigram indexes on the searched expressions), IPAM subnets in search"
+    },
+    {
+      "hash": "496b27e",
+      "date": "2026-11-22",
+      "subject": "System self-check: server-side overdue flag per job and a /system/modules Hub page"
+    },
+    {
+      "hash": "fd49439",
+      "date": "2026-11-22",
+      "subject": "Root build script; drop stale assistant mentions from design mockups"
+    },
+    {
+      "hash": "7cffedd",
+      "date": "2026-11-22",
+      "subject": "Module registry test: list the quarantine auto-release job"
+    },
+    {
+      "hash": "d7134df",
+      "date": "2026-11-22",
+      "subject": "Config restore 2/2: admin-confirmed restore API, verification, UI and docs"
+    },
+    {
+      "hash": "884bed6",
+      "date": "2026-11-22",
+      "subject": "Collector: administrator-confirmed configuration restore (Junos commit confirmed)"
+    },
+    {
+      "hash": "9214ada",
+      "date": "2026-11-22",
+      "subject": "Router driver controls tests over pinned TLS: IOS XE, MikroTik, Omada, OpenWrt, UniFi"
+    },
+    {
+      "hash": "5310fe3",
+      "date": "2026-11-22",
+      "subject": "Router driver controls tests over pinned TLS: FortiGate, pfSense, OPNsense"
+    },
+    {
+      "hash": "68d7b86",
+      "date": "2026-11-22",
+      "subject": "Collector tests: DNS filter over TCP, category list cache, upstream loop-proofing"
+    },
+    {
+      "hash": "3f3efe5",
+      "date": "2026-11-22",
+      "subject": "Switch port control: single-step write rollback, quarantine auto-release"
+    },
+    {
+      "hash": "3b9a4d8",
+      "date": "2026-11-22",
+      "subject": "Playbooks: router Wi-Fi/reboot, switch port quarantine/disable and config backup actions; loop guard and chain depth tests"
+    },
+    {
+      "hash": "972cd1a",
+      "date": "2026-11-22",
+      "subject": "Toolbox: validate targets against authorized network scopes at API and collector"
+    },
+    {
+      "hash": "f50dd37",
+      "date": "2026-11-22",
+      "subject": "Config backup: redact secrets with keyed fingerprints, keep a sealed raw copy, convert old versions (migration 041)"
+    },
+    {
+      "hash": "2ad9293",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 11: document what was built, the security model, routing and what ran for real"
+    },
+    {
+      "hash": "0ef5b19",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 9: Wayland through the desktop portal, mouse and keyboard on macOS"
+    },
+    {
+      "hash": "6194a5c",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 6: service mode with a session helper in the user's desktop"
+    },
+    {
+      "hash": "a63bc44",
+      "date": "2026-11-22",
+      "subject": "Undo the dev server's tsconfig include of its own build folder"
+    },
+    {
+      "hash": "a5c99c7",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 2/3/7/8: live console on a canvas, session history, monitors, frame cap"
+    },
+    {
+      "hash": "6084777",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 2/10/4/5: live WebSocket stream, fleet_sessions, consent dialog, session banner"
+    },
+    {
+      "hash": "c530170",
+      "date": "2026-11-22",
+      "subject": "Fleet Pro 1: agent long poll woken through pg_notify"
+    },
+    {
+      "hash": "4f07374",
+      "date": "2026-11-22",
+      "subject": "Fleet compliance: finish the stopped builder's work"
+    },
+    {
+      "hash": "ad9bd77",
+      "date": "2026-11-22",
+      "subject": "WIP: partial Fleet compliance builder work, saved when the owner asked to stop everything"
+    },
+    {
+      "hash": "5383742",
+      "date": "2026-11-22",
+      "subject": "Endpoint agent: evidence-based compliance checks, desktop notices, lock/logoff on Linux and macOS, dnf/yum/zypper, upload overwrite guard"
+    },
+    {
+      "hash": "85a0e41",
+      "date": "2026-11-22",
+      "subject": "WIP: partial builder work saved when the owner asked to run builders one at a time"
+    },
+    {
+      "hash": "43dc0a6",
+      "date": "2026-11-22",
+      "subject": "WIP: partial builder work saved when the owner asked to run builders one at a time"
+    },
+    {
+      "hash": "f1a12fe",
+      "date": "2026-11-22",
+      "subject": "WIP: partial builder work saved when the owner asked to run builders one at a time"
+    },
+    {
+      "hash": "011d2c9",
+      "date": "2026-11-22",
+      "subject": "WIP: partial builder work saved when the owner asked to run builders one at a time"
+    },
+    {
+      "hash": "a7d2558",
+      "date": "2026-11-22",
+      "subject": "Free code signing for the Windows build"
+    },
+    {
+      "hash": "135eb3d",
+      "date": "2026-11-22",
+      "subject": "Milestone 4: the seven Nigafiy programs"
+    },
+    {
+      "hash": "5647d18",
+      "date": "2026-11-22",
+      "subject": "Hardening B2: key rotation, backup/restore, rate-limit store, DNS enforcement"
+    },
+    {
+      "hash": "2485e71",
+      "date": "2026-11-22",
+      "subject": "Router controls for all 16 drivers, Zyxel speed limits and schedules"
+    },
+    {
+      "hash": "4f72290",
+      "date": "2026-11-21",
+      "subject": "Router controls: Wi-Fi, reservations, port forwards, rename and reboot"
+    },
+    {
+      "hash": "87a71b2",
+      "date": "2026-11-21",
+      "subject": "Milestone 3: Nigafiy engine service and the Hub home"
+    },
+    {
+      "hash": "16807d3",
+      "date": "2026-11-21",
+      "subject": "Add @nigafiy/brand: logo D, program glyphs and generated .ico files (not wired in yet)"
+    },
+    {
+      "hash": "aa72696",
+      "date": "2026-11-21",
+      "subject": "Wake endpoint command waiters on every API instance (LISTEN/NOTIFY)"
+    },
+    {
+      "hash": "095b00b",
+      "date": "2026-11-21",
+      "subject": "Hardening step B1: Go alignment, CSP, Biome lint, CI and browser smoke tests"
+    },
+    {
+      "hash": "8fe4afc",
+      "date": "2026-11-21",
+      "subject": "feat(routers): add 15 real enterprise and MENA/home router drivers (16 total)"
+    },
+    {
+      "hash": "07fe149",
+      "date": "2026-11-21",
+      "subject": "Remove AI assistant and add hardening & multi-vendor routers plan"
+    },
+    {
+      "hash": "3501abe",
+      "date": "2026-11-21",
+      "subject": "Milestone 0b: smart checks in the collector, and the security, config backup, playbooks and system self-check screens"
+    },
+    {
+      "hash": "b096830",
+      "date": "2026-11-21",
+      "subject": "Record the Fleet Pro mockup approval"
+    },
+    {
+      "hash": "70a47a9",
+      "date": "2026-11-21",
+      "subject": "Fleet Pro scope and mockups"
+    },
+    {
+      "hash": "42e5051",
+      "date": "2026-11-21",
+      "subject": "Mockups: one screen per program and sites on Hub home"
+    },
+    {
+      "hash": "a1a8409",
+      "date": "2026-11-21",
+      "subject": "Add the Milestone 2 (rename and brand) plan"
+    },
+    {
+      "hash": "2442f7d",
+      "date": "2026-11-21",
+      "subject": "Add the approved Nigafiy design mockups and logo decision"
+    },
+    {
+      "hash": "83837ad",
+      "date": "2026-11-21",
+      "subject": "Add the Nigafiy implementation plan"
+    },
+    {
+      "hash": "aa4fa3c",
+      "date": "2026-11-21",
+      "subject": "Baseline before the Nigafiy restructuring"
+    },
+    {
+      "hash": "c8f2868",
+      "date": "2026-11-11",
+      "subject": "Report unknown compliance, retry deadlocks, fix endpoint page overflow"
+    },
+    {
+      "hash": "f6ecec1",
+      "date": "2026-11-11",
+      "subject": "Run insight queries sequentially on their one connection"
+    },
+    {
+      "hash": "a783c79",
+      "date": "2026-11-11",
+      "subject": "Make remote desktop visible and stop leaking typed text into logs"
+    },
+    {
+      "hash": "21d8e47",
+      "date": "2026-11-11",
+      "subject": "Complete Phase 4 (Remote File Manager, Live Remote Desktop) and Universal Endpoint Management (Windows, Linux, macOS, Android Enterprise, iOS MDM)"
+    },
+    {
+      "hash": "28ac604",
+      "date": "2026-11-11",
+      "subject": "Close Phase 2 (interface history, IPAM events, topology, email, IT toolbox) and add Phase 3/4 endpoint agent & control"
+    },
+    {
+      "hash": "e3ae8e8",
+      "date": "2026-11-10",
+      "subject": "Add Port Detective (switch ports over SNMP) and IPAM"
+    },
+    {
+      "hash": "9c5b065",
+      "date": "2026-11-10",
+      "subject": "Add network access control that works with any router"
+    },
+    {
+      "hash": "1c81224",
+      "date": "2026-11-10",
+      "subject": "Add device controls and smart insights"
+    },
+    {
+      "hash": "26d3b08",
+      "date": "2026-11-10",
+      "subject": "Run LAN Detective locally with one click: launcher and self-contained desktop app"
+    },
+    {
+      "hash": "7b2bb54",
+      "date": "2026-11-10",
+      "subject": "Identify devices on the LAN: announced names, evidence-based types, passive DHCP"
+    },
+    {
+      "hash": "8002b42",
+      "date": "2026-11-10",
+      "subject": "Add web dashboard, Go collector, Phase 2 network intelligence and desktop app"
+    },
+    {
+      "hash": "aa2a727",
+      "date": "2026-11-09",
+      "subject": "API: Phase 1 core (auth, tenancy with RLS, collectors, ingestion, monitoring, events)"
+    }
+  ]
+}
