@@ -28,9 +28,20 @@ export async function auditEndpointEvent(db: Db, orgId: string, endpointId: stri
   );
 }
 
-/** Tells every API instance's hub that an endpoint's session changed (delivered on COMMIT). */
-export async function signalSessionState(db: Db, endpointId: string, state: 'waiting_approval' | 'waiting_consent' | 'active' | 'ended'): Promise<void> {
-  await db.query('SELECT pg_notify($1, $2)', [RD_STREAM_CHANNEL, state === 'ended' ? `end|${endpointId}` : `state|${endpointId}|${state}`]);
+/**
+ * Tells every API instance's hub that an endpoint's session changed (delivered on COMMIT, and
+ * received asynchronously). The payload names the session ("end|E|S", "state|E|state|S"): a
+ * notification about an earlier session can arrive after a newer session of the same endpoint is
+ * already streaming (a start that replaced one, then a fast reconnect), and must not touch it.
+ */
+export async function signalSessionState(
+  db: Db,
+  endpointId: string,
+  sessionId: string | null,
+  state: 'waiting_approval' | 'waiting_consent' | 'active' | 'ended',
+): Promise<void> {
+  const s = sessionId ?? '';
+  await db.query('SELECT pg_notify($1, $2)', [RD_STREAM_CHANNEL, state === 'ended' ? `end|${endpointId}|${s}` : `state|${endpointId}|${state}|${s}`]);
 }
 
 export async function currentFleetSession(db: Db, endpointId: string): Promise<FleetSession | null> {
@@ -98,7 +109,9 @@ export async function endOpenSession(
   );
   dropFrames(endpointId);
   await publishFramesCleared(db, endpointId);
-  await signalSessionState(db, endpointId, 'ended');
+  // Nothing open means nothing to close: an unnamed "end" arriving late could hit a newer session.
+  const endedId = cur?.id ?? ended.rows[0]?.public_id;
+  if (endedId) await signalSessionState(db, endpointId, endedId, 'ended');
   if (cur?.id) {
     // The agent removes the banner and closes the stream (a no-op for agents that never opened one).
     await db.query(
@@ -168,7 +181,7 @@ export async function applySessionOpenResult(
       [fs.id, result, note],
     );
     await db.query(`UPDATE endpoints SET rd_session = rd_session || '{"state":"active"}'::jsonb WHERE id = $1 AND rd_session->>'id' = $2`, [endpointId, publicId]);
-    await signalSessionState(db, endpointId, 'active');
+    await signalSessionState(db, endpointId, publicId, 'active');
     await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result, refuse_window_s: fs.refuse_window_s, note, banner });
     return;
   }
@@ -179,7 +192,7 @@ export async function applySessionOpenResult(
   if (consent === 'accepted') {
     await db.query(`UPDATE fleet_sessions SET state = 'active', consent_result = 'accepted', consent_decided_at = now(), accepted_at = now() WHERE id = $1`, [fs.id]);
     await db.query(`UPDATE endpoints SET rd_session = rd_session || '{"state":"active"}'::jsonb WHERE id = $1 AND rd_session->>'id' = $2`, [endpointId, publicId]);
-    await signalSessionState(db, endpointId, 'active');
+    await signalSessionState(db, endpointId, publicId, 'active');
     await auditEndpointEvent(db, orgId, endpointId, 'fleet.session_consent', { fleet_session_id: fs.id, session_id: publicId, result: 'accepted', banner });
     return;
   }

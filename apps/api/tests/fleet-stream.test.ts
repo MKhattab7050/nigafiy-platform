@@ -388,4 +388,46 @@ describe('live remote desktop stream (WebSocket hub)', () => {
     viewer2.ws.close();
     agent2.ws.close();
   });
+
+  it('a late "end" or "state" for an earlier session never touches the newer session of the endpoint', async () => {
+    const a = await newAccount('stream-late-end');
+    const { epId, cred } = await onlineEndpoint(a);
+    const cookie = await loginCookie(a);
+    const s1: string = (await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'First session' })).body.session.id;
+    const agent1 = await agentSocket(A, cred, s1);
+    await agent1.text('viewers');
+    // A new start replaces the first session: its socket closes with "session ended".
+    const s2: string = (await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Second session' })).body.session.id;
+    await agent1.until(() => agent1.closed, 'first agent socket closed');
+    expect(agent1.closed?.code).toBe(4000);
+
+    const agent2 = await agentSocket(A, cred, s2);
+    const viewer = await viewerSocket(A, cookie, epId, s2);
+    await viewer.text('session', (m) => m.state === 'active' && m.session_id === s2);
+    await agent2.text('viewers', (m) => m.count === 1);
+
+    // The first session's notifications arrive late (they are asynchronous): they must be ignored.
+    // A marker for the second session follows on the same channel; once it is seen, they were handled.
+    const sessions = () => viewer.texts.filter((m) => m.t === 'session').length;
+    const before = sessions();
+    await systemPool.query(`SELECT pg_notify('ld_rd_stream', $1), pg_notify('ld_rd_stream', $2), pg_notify('ld_rd_stream', $3)`, [
+      `state|${epId}|waiting_consent|${s1}`,
+      `end|${epId}|${s1}`,
+      `state|${epId}|active|${s2}`,
+    ]);
+    await viewer.until(() => sessions() === before + 1, 'the second session marker');
+    expect(viewer.texts.filter((m) => m.t === 'session').at(-1)).toMatchObject({ state: 'active', session_id: s2 });
+    expect(viewer.closed).toBeNull();
+    expect(agent2.closed).toBeNull();
+    expect(A.hub.stats(epId)).toMatchObject({ agent: true, viewers: 1 });
+    agent2.ws.send(packet(1, true), { binary: true });
+    await viewer.until(() => viewer.frames.length === 1, 'frame after the stale notifications');
+
+    // The second session's own end still closes everything.
+    await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/stop`).set(CSRF).send({});
+    await viewer.until(() => viewer.closed, 'viewer close');
+    await agent2.until(() => agent2.closed, 'agent close');
+    expect(viewer.closed?.code).toBe(4000);
+    expect(agent2.closed?.code).toBe(4000);
+  });
 });

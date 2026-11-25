@@ -41,7 +41,7 @@ import { type ShellHub, shellHub } from '../fleet-shell/hub.ts';
  * channel ld_rd_stream ("up|E|S|instance|peerUrl", "down|E|S|instance"; "who|E|instance" asks
  * again). An instance whose operator watches an endpoint whose agent is connected elsewhere opens
  * one peer socket to that instance and carries every frame over it; its viewers count as one
- * weighted sink there. Session state ("state|E|…", "end|E") comes from sessions.ts on COMMIT.
+ * weighted sink there. Session state ("state|E|…", "end|E|S", always naming the session) comes from sessions.ts on COMMIT.
  *
  * WebRTC video (docs/features/fleet-pro.md "WebRTC video"): the browser and the agent may also form a
  * direct peer connection on the LAN for H.264 video and a data channel for input. The hub only
@@ -1293,13 +1293,20 @@ export class StreamHub {
     if (!endpointId || !UUID.test(endpointId)) return;
     const r = this.rooms.get(endpointId);
     switch (kind) {
-      case 'end':
-        clearStream(endpointId);
-        if (r) this.closeRoom(r, CLOSE_SESSION_ENDED, 'session ended', true);
+      case 'end': {
+        // "end|E|S": only session S ends. Notifications arrive asynchronously, so an end for an
+        // earlier session can land after a newer session of this endpoint already has its room.
+        // An empty S (an older instance's payload) still means "whatever is open".
+        const sessionId = parts[2] || null;
+        clearStream(endpointId, sessionId);
+        if (r && (sessionId === null || r.sessionId === sessionId)) this.closeRoom(r, CLOSE_SESSION_ENDED, 'session ended', true);
         return;
+      }
       case 'state': {
         const state = parts[2];
-        if (!r || (state !== 'active' && state !== 'waiting_consent' && state !== 'waiting_approval')) return;
+        const sessionId = parts[3] || null;
+        if (!r || (sessionId !== null && r.sessionId !== sessionId)) return;
+        if (state !== 'active' && state !== 'waiting_consent' && state !== 'waiting_approval') return;
         r.active = state === 'active';
         this.broadcastText(r, { t: 'session', state, session_id: r.sessionId }, false);
         this.sendViewerCount(r);

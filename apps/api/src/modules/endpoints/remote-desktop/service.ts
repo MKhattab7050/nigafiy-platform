@@ -262,7 +262,7 @@ export async function startSession(
       resumed_from: opts.resume?.fromSessionId ?? null,
     });
     if (decision.approvalNeeded) {
-      await signalSessionState(db, id, 'waiting_approval');
+      await signalSessionState(db, id, publicId, 'waiting_approval');
       await audit(db, req, 'fleet.session_approval_requested', { type: 'endpoint', id }, { fleet_session_id: fs.id, session_id: publicId, expires_at: fs.approval_expires_at });
       await emitEvent(db, ctx.organizationId, {
         siteId: ep.site_id,
@@ -391,7 +391,7 @@ export async function openOnAgent(
       [o.orgId, ep.id, JSON.stringify({ display_index: session.display_index, quality: session.quality, scale: session.scale }), o.operator.userId, o.operator.email],
     );
   }
-  await signalSessionState(db, ep.id, session.state ?? 'active');
+  await signalSessionState(db, ep.id, session.id, session.state ?? 'active');
 
   await audit(db, req, 'endpoint.remote_desktop_started', { type: 'endpoint', id: ep.id }, { ...session } as unknown as Record<string, unknown>);
   await audit(db, req, 'fleet.session_opened', { type: 'endpoint', id: ep.id }, {

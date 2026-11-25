@@ -11,7 +11,7 @@ import { env } from '../../../config/env.ts';
 import { type Db, withSystem, withTenant } from '../../../infrastructure/db.ts';
 import { inferPlatformFromOs } from '../capabilities.ts';
 import type { EndpointContext } from '../schema.ts';
-import { auditEndpointEvent } from '../remote-desktop/sessions.ts';
+import { auditEndpointEvent, signalSessionState } from '../remote-desktop/sessions.ts';
 import { startSession } from '../remote-desktop/service.ts';
 
 // Quick Support (migration 037): a computer that is not enrolled runs nigafiy-support.exe, which
@@ -243,8 +243,12 @@ export async function quickSupportClosedByUser(ep: EndpointContext): Promise<voi
     const row = r.rows[0];
     if (!row) return;
     if (row.fleet_session_id) {
-      await db.query(`UPDATE fleet_sessions SET state = 'ended', ended_at = now(), end_reason = 'quick_support_closed' WHERE id = $1 AND state <> 'ended'`, [row.fleet_session_id]);
-      await db.query(`SELECT pg_notify('ld_rd_stream', $1)`, [`end|${ep.id}`]);
+      const fs = await db.query<{ public_id: string }>(
+        `UPDATE fleet_sessions SET state = 'ended', ended_at = now(), end_reason = 'quick_support_closed' WHERE id = $1 AND state <> 'ended' RETURNING public_id`,
+        [row.fleet_session_id],
+      );
+      // Only that session's sockets close (a newer session of this endpoint is left alone).
+      if (fs.rows[0]) await signalSessionState(db, ep.id, fs.rows[0].public_id, 'ended');
     }
     await finish(db, ep.organizationId, row, 'ended', 'closed_by_user');
   });
