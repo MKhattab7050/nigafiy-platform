@@ -1,6 +1,7 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { RESTORE_METHODS, UNSUPPORTED_REASONS } from '../src/modules/configbackup/restore.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, type TestCollector, telemetry } from './helpers.ts';
 
 // Administrator-confirmed configuration restore (modules/configbackup/restore.ts). The collector side
@@ -482,6 +483,11 @@ describe('configuration restore', () => {
     const mp = (await a.agent.get(`/api/v1/config-backup/targets/${mt}/restore-preview?version_id=${mtv}`)).body;
     expect(mp).toMatchObject({ supported: false, driver: 'mikrotik_routeros', method: null });
     expect(mp.blocker.message).toContain('RouterOS has no atomic replace');
+    expect(mp.blocker.message).toContain('100 most recent actions');
+    expect(mp.blocker.message).toContain('Download the version and restore it by hand');
+    // The reasons the web shows come from the same table: one per backup driver without a restore method.
+    expect(Object.keys(UNSUPPORTED_REASONS).filter((d) => RESTORE_METHODS[d])).toEqual([]);
+    expect(UNSUPPORTED_REASONS.fortinet_fortios).toContain('cfg-save revert');
   });
   it('restores OpenWrt with rpcd uci apply rollback (model-only identity), records a rolled back restore and keeps the Wi-Fi key out of the preview', async () => {
     const a = await newAccount('cb-restore-owrt');

@@ -68,9 +68,9 @@ export const UNSUPPORTED_REASONS: Readonly<Record<string, string>> = {
   aruba_aoscx:
     'AOS-CX can roll back by itself ("checkpoint auto"), but pasted CLI lines merge into the running configuration; replacing it as a whole needs "copy <checkpoint or file> running-config" from a file on the switch or a TFTP / SFTP server, which the Nigafiy collector does not transfer.',
   mikrotik_routeros:
-    'RouterOS has no atomic replace with a rollback timer: an /export script merges into the running configuration when imported, a full replace needs "/system reset-configuration run-after-reset=" with a reboot and no automatic way back, and Safe Mode only undoes a limited history of one interactive session.',
+    'RouterOS has no atomic replace with a rollback timer: an /export script merges into the running configuration when imported ("/import … dry-run" in RouterOS 7 only simulates it), a full replace needs "/system reset-configuration run-after-reset=" with a reboot and no automatic way back, and Safe Mode undoes changes only when the session drops (after a TCP timeout of about 9 minutes) and keeps just the 100 most recent actions: a larger change leaves Safe Mode without undoing anything.',
   fortinet_fortios:
-    'FortiOS replaces the whole configuration only with "execute restore config", which reboots and keeps the restored file without a revert timer; its revert mode ("set cfg-save revert") covers CLI edits only, and pasted "show" output merges instead of replacing.',
+    'FortiOS replaces the whole configuration only with "execute restore config" or the REST restore (monitor system/config/restore), which reboot into the restored file and save it, so nothing is left to revert to; its revert mode ("set cfg-save revert" with "cfg-revert-timeout") undoes only unsaved CLI edits, and pasted "show" output merges (objects added since the backup stay) instead of replacing.',
   huawei_vrp:
     'Huawei VRP V8 can try a configuration with "commit trial" and replace it with "configuration replace file", but only from a file on the device’s flash copied there by SFTP / FTP, which the Nigafiy collector does not transfer; VRP V5 has neither. Pasted lines merge without a rollback timer.',
   dell_os10:
