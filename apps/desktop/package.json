@@ -19,8 +19,8 @@
     "release": "node ../../scripts/release/release.mjs"
   },
   "devDependencies": {
-    "electron": "^39.0.0",
-    "electron-builder": "^26.0.0"
+    "electron": "^42.11.18",
+    "electron-builder": "^26.18.1"
   },
   "build": {
     "appId": "com.nigafiy.hub",
