@@ -6,7 +6,7 @@ import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 import { rdStartSchema } from '../remote-desktop/schema.ts';
 import { bulkAction, bulkTags, resolveConnectTarget, setFavourite } from './address-book.ts';
 import { closeHelpRequest, listHelpRequests, startFromHelpRequest } from './help-requests.ts';
-import { connectQuickSupport, downloadQuickSupport, listQuickSupport, quickSupportKey } from './quick-support.ts';
+import { connectQuickSupport, downloadQuickSupport, listQuickSupport, quickSupportKey, quickSupportLink } from './quick-support.ts';
 import { requestRestart, restartStatus } from './restarts.ts';
 import {
   bulkActionSchema,
@@ -33,6 +33,7 @@ import {
  *   GET    /fleet/quick-support                     technician+ (codes are masked while waiting)
  *   GET    /fleet/quick-support/key                 technician+ (fingerprint shown beside the download)
  *   GET    /fleet/quick-support/download?site_id=   technician+
+ *   GET    /fleet/quick-support/link?site_id=       technician+ (the same binding as a link, for the Microsoft Store version)
  *   POST   /fleet/quick-support/connect             technician+, rate limited per operator
  */
 export const fleetReachRouter: Router = Router();
@@ -116,6 +117,13 @@ fleetReachRouter.get('/fleet/quick-support/download', requireRole('technician'),
   res.setHeader('Content-Disposition', 'attachment; filename="nigafiy-support.exe"');
   res.setHeader('Cache-Control', 'no-store');
   res.send(body);
+});
+
+fleetReachRouter.get('/fleet/quick-support/link', requireRole('technician'), async (req, res) => {
+  const { site_id } = parse(quickDownloadQuery, req.query);
+  const server = publicServerUrl(req);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await quickSupportLink(req, auth(req), site_id, { url: server.server_url, pin: server.tls_pin_sha256 }));
 });
 
 fleetReachRouter.post('/fleet/quick-support/connect', requireRole('technician'), quickConnectLimiter, async (req, res) => {

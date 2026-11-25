@@ -97,6 +97,12 @@ const en = {
   qsStates: { waiting: 'Waiting', connected: 'Connected', ended: 'Ended', expired: 'Expired', locked: 'Locked' } as Record<string, string>,
   qsConnectNow: 'Connect with code and PIN',
   qsUnsigned: 'Not Authenticode-signed: Windows SmartScreen may warn the person before it runs.',
+  qsStoreLink: 'Copy Microsoft Store link',
+  qsStoreLinkHelp:
+    'For a person who installed Nigafiy Quick Support from the Microsoft Store: send this link. Opening it starts Quick Support bound to this server. The link is signed.',
+  qsStoreLinkCopied: 'Link copied. Send it to the person.',
+  qsStoreLinkLabel: 'Microsoft Store link',
+  qsStoreLinkExpires: (days: number) => `Valid for ${days} days.`,
 };
 
 const ar: typeof en = {
@@ -189,6 +195,12 @@ const ar: typeof en = {
   qsStates: { waiting: 'بانتظار', connected: 'متصل', ended: 'انتهى', expired: 'انتهت صلاحيته', locked: 'مقفل' },
   qsConnectNow: 'اتصل بالرمز ورمز PIN',
   qsUnsigned: 'غير موقَّع بـ Authenticode: قد يحذّر Windows SmartScreen الشخص قبل تشغيله.',
+  qsStoreLink: 'انسخ رابط Microsoft Store',
+  qsStoreLinkHelp:
+    'لمن ثبّت Nigafiy الدعم السريع من Microsoft Store: أرسل له هذا الرابط. فتحه يشغّل الدعم السريع مربوطًا بهذا الخادم. الرابط موقَّع.',
+  qsStoreLinkCopied: 'نُسخ الرابط. أرسله إلى الشخص.',
+  qsStoreLinkLabel: 'رابط Microsoft Store',
+  qsStoreLinkExpires: (days: number) => `صالح لمدة ${days} أيام.`,
 };
 
 export type ReachText = typeof en;

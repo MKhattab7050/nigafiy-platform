@@ -576,6 +576,15 @@ always attended whatever the policy says.
   server build it with `GOOS=windows`, or point `QUICK_SUPPORT_EXE` at a built copy); without it the
   download answers `quick_support_not_built`. The exe is **not Authenticode-signed** (the binding is
   signed, the file is not), so SmartScreen may warn; the page says so.
+- **Microsoft Store version** (2026-11-25, `docs/operations/microsoft-store.md`): a Store package is the
+  same file for everybody and cannot carry a trailer, so **Copy Microsoft Store link** (technicians,
+  `GET /fleet/quick-support/link?site_id=`, `Cache-Control: no-store`, audited
+  `fleet.quick_support_link_issued`) gives the same signed binding as
+  `nigafiy-support:qs1/<base64url of the trailer JSON>`. The package registers that scheme; opening the
+  link starts Quick Support, which checks the signature exactly as for the trailer
+  (`internal/quicksupport/link.go`). Started from the Start menu without a link, it says where to get one.
+  The packaged program never deletes itself (the package owns the file); its screen says to remove it
+  in Settings > Apps. Everything else (code, PIN, Support profile, consent) is unchanged.
 
 ### Refusal codes (English and Arabic in `policy-text.ts`)
 `not_session_holder`, `profile_forbids_restart`, `restart_in_progress`, `safe_mode_needs_service`,
@@ -590,7 +599,7 @@ always attended whatever the policy says.
 `fleet.help_closed`, `fleet.restart_requested`, `fleet.restarting`, `fleet.restart_failed`,
 `fleet.restart_agent_back`, `fleet.restart_timeout`, `fleet.session_resumed`, `fleet.safe_boot_cleared`,
 `fleet.safe_boot_clear_failed`, `fleet.quick_support_downloaded`, `fleet.quick_support_registered`,
-`fleet.quick_support_connected`, `fleet.quick_support_failed`. Notes, typed text and PINs are never in
+`fleet.quick_support_connected`, `fleet.quick_support_failed`, `fleet.quick_support_link_issued`. Notes, typed text and PINs are never in
 the audit.
 
 ### What ran for real, and what did not
