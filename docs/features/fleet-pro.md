@@ -1012,6 +1012,67 @@ the picture. A required recording is never dropped. Recording on the agent was n
 need a second encrypted writer and upload path, and a recording that fails on the agent would be
 noticed only after the session.
 
+### Built: WebRTC video (2026-11-25, builder W1)
+What exists now, against the design above.
+
+- **Agent** (`internal/videoenc`, `internal/remotedesktop/video.go`, `validate.go`,
+  `internal/desktop/video.go`, `internal/rdstream/webrtc.go`). New pure-Go modules, pinned in
+  `go.mod`: `github.com/pion/webrtc/v4 v4.2.26` with `pion/interceptor v0.1.51`, `pion/rtcp v1.2.20`,
+  `pion/rtp v1.10.6` and their pion dependencies (datachannel, dtls/v3, ice/v4, logging, mdns/v2,
+  randutil, sctp, sdp/v3, srtp/v3, stun/v4, transport/v5, turn/v5), `google/uuid`, `wlynxg/anet`,
+  `golang.org/x/{crypto,net,time}`. No cgo. The H.264 encoder is the Media Foundation encoder MFT
+  through COM vtables (`mf_windows.go`, calling conventions for amd64, 386 and arm64): hardware MFT
+  first (asynchronous MFTs through their event generator), the Microsoft software MFT next, a
+  hardware encoder that fails mid-stream is replaced by the software one (`encoder_changed`), and
+  three failed grabs in a row end every peer with `rtc_state failed encoder_failed` so the browsers
+  go back to JPEG. Encoder sizes follow the operator's scale and a 1920 px longest edge; the bitrate
+  follows RTCP loss (`NextBitrate`); an unchanged screen is encoded again once a second; PLI/FIR and
+  a new viewer ask for a key frame (SPS/PPS in front). The encoder runs where the capture runs (in
+  the user-session helper for the service; only H.264 crosses the helper pipe). The hello says
+  `webrtc: {supported, encoder | reason}`; `NIGAFIY_AGENT_RD_WEBRTC=off` switches it off on one
+  computer. Data-channel input passes the same checks as the socket path (session control, profile
+  control, the viewer's own control from the API, `remotedesktop.ValidateInput` = the API's rd_input
+  schema) and is reported as `rtc_input` without keys or text. Review fixes over the first draft:
+  the real agent wraps its desktop in `BannerMux`, which hid the video source, so WebRTC would never
+  have been offered (`BannerMux` now passes it through); candidates the browser trickles before its
+  offer is answered are kept and applied.
+- **API** (`stream-hub.ts`, migration `044_fleet_session_webrtc.sql`). Signalling messages on the
+  existing sockets and over the peer link between instances; offers checked on the operator's
+  instance (`RD_WEBRTC`, session active, the viewer's `view`, recording, the agent's hello) and again
+  on the instance holding the agent; refusals as `rtc_refused`. The browser cannot choose its
+  routing id, its control or the STUN list. A WebRTC viewer is not counted for JPEG and gets no JPEG
+  frames; a fallback counts it again with a full frame. Recording switched on moves every WebRTC
+  viewer back (`rtc_closed`, reason `recording`); a hand-over or narrower invitation sends
+  `rtc_perms`; a viewer leaving sends `rtc_close`. Audit: `fleet.session_transport` (refused,
+  started with the encoder, fallback with the reason, stopped), `endpoint.rd_input` with
+  `via: webrtc`, `fleet.session_refused_action` with `via: webrtc`. `fleet_sessions.transport` becomes
+  `webrtc` (an agent reconnecting no longer rewrites it), with `rtc_encoder`, `rtc_started_at`,
+  `rtc_fallback_reason`. Offers, answers and candidates are never stored or audited.
+  `RD_WEBRTC_STUN_URLS` accepts `stun:`/`stuns:` only (at most 4). The capability is per endpoint
+  and per session: it comes in each agent hello, not from a stored flag.
+- **Web** (`use-webrtc-video.ts`, console). `RTCPeerConnection` with a receive-only H.264
+  transceiver and the `input` data channel; decoded frames are drawn on the console canvas, so the
+  drawing layer, monitor windows and pointer handlers are unchanged. Every fallback rule of the
+  design is implemented (no `RTCPeerConnection`, no H.264 decoder, refused, 8 s answer, 10 s video,
+  ICE failed or disconnected 5 s, encoder failed, recording). The bar shows "WebRTC video" or
+  "Compatibility mode (JPEG)", the reason after a fallback with "Try WebRTC again", a "Smooth video"
+  switch, and fps / kb/s measured by the browser (`getStats`) with the agent's target bitrate, loss
+  and encoder. EN + AR; light and dark use the existing tokens.
+
+**What ran for real on this PC (no elevation):** the Media Foundation encoder, hardware (Intel Quick
+Sync Video H.264 Encoder MFT) and software (H264 Encoder MFT), encoding synthetic pictures
+(`NIGAFIY_MF_TEST=1 go test ./internal/videoenc`) and one real DXGI capture of this 1920x1080
+screen (`TestVideoGrabRealScreen`: key frame with SPS/PPS/IDR, about 130 KB; the first hardware
+encode took about 1.1 s while the MFT warmed up). A pion browser stand-in and the agent's answerer
+connected over 127.0.0.1 inside one Go test: H.264 RTP depacketized to SPS, PPS, IDR; data-channel
+input applied and refused per permission; the peer closed when the session ended.
+**Tests only:** the API signalling, policy refusals, recording rule, hand-over and audit
+(`apps/api/tests/fleet-webrtc.test.ts`, real PostgreSQL and two hub instances, sockets standing in
+for the browser and the agent). **Never run:** a real browser receiving the agent's video, and any
+connection between two computers. There is no second computer here, and no browser was pointed at
+a running agent; the web viewer is type-checked and built only. A Windows N edition without the
+Media Feature Pack (the agent then reports the reason and stays on JPEG) was not available either.
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)
