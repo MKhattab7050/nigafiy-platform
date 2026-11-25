@@ -30,6 +30,8 @@ Dockerfile text eol=lf
 .gitattributes text eol=lf
 *.dockerignore text eol=lf
 .env.example text eol=lf
+# Go fuzz corpora ("go test fuzz v1" files) are read line by line by the Go toolchain: keep LF.
+**/testdata/fuzz/** text eol=lf
 
 # Windows scripts
 *.cmd      text eol=crlf
