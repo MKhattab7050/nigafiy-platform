@@ -172,10 +172,10 @@ Milestone 4 (2026-11-22, programs; plan `docs/superpowers/plans/2026-11-21-nigaf
 | Engine as a Windows service | — | Go tests |
 | Update download and install | — | Signed test manifests |
 | Desktop installer (NSIS) per user | Silent install, upgrade with data kept, uninstall in a scratch folder (2026-11-25) | Interactive pages, all-users install |
-| MSI, agent installer, upgrade over a real LAN Detective install | MSI and agent installer built, signed and inspected only | Agent upgrade/rollback in unit tests; never installed |
+| MSI and MSIX (desktop + Quick Support), WACK | Installed, checked and removed on this PC, elevated by the owner (run `20261125-105136`): 64 pass, 0 fail; WACK desktop PASS (optional "Blocked executables" only), WACK Quick Support PASS | MSI upgrade, agent installer, upgrade over a real LAN Detective install, the local stack inside the MSIX, Quick Support from a real Fleet link |
 | Backup/restore with pg_dump, Redis rate limits | — | Skipped (no client tools, no Redis) |
 | Notifications to Telegram, Slack, Discord, ntfy | — | Local test servers |
-| GitHub CI workflow | — | Never pushed |
+| GitHub CI workflow | Passes on GitHub (run 45581032770, 2026-11-25: typecheck, lint, tests, build in 17 min) | — |
 
 ## Verified in the development environment
 

@@ -313,8 +313,10 @@ the MSI (the programs printed the right output); the WARNING was a real Quick Su
 | MSI `Nigafiy.exe --smoke` (scratch profile) | printed `{"smoke":"ok", …, "windows":1,"tray":true,"protocolRegistered":true,"store":null}` | FAIL in the run, same **check bug** (empty exit code), fixed in `2b54f16`. |
 | MSI uninstall (`msiexec /x /qn`) | exit 0; no longer registered; `C:\Program Files\Nigafiy` gone (0 items); Programs entry, shortcuts and `HKLM\Software\Nigafiy\Hub` `Programs` removed | PASS |
 | MSIX desktop, MSIX Quick Support | see [microsoft-store.md](microsoft-store.md), "Real install test" | PASS (Quick Support launch SKIP) |
-| WACK desktop / Quick Support | | PASS / WARNING → fixed, see microsoft-store.md |
+| WACK desktop / Quick Support | | PASS / WARNING → fixed, PASS in the rerun (see below) |
 | cleanup | certificate, MSI, packages and registry back as before | PASS |
 
-The two fixed MSI checks and the Quick Support WACK fix have not been run again elevated: that needs
-the owner to run `run-elevated.ps1` once more.
+**Rerun 2026-11-25 `20261125-105136` (owner, elevated, after `2b54f16` and `7768aa7`): overall PASS, 64 pass, 0 fail,
+1 skip (Quick Support launch without a Fleet link, by design).** `install-info` printed `install.kind` `msi` (exit 0),
+`Nigafiy.exe --smoke` exit 0, MSI install and uninstall, both MSIX, WACK desktop (23 of 24, optional
+"Blocked executables") and WACK Quick Support all PASS; cleanup PASS.

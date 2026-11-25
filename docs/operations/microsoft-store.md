@@ -294,6 +294,6 @@ monitor, which `EnumerateDisplays` already assumed. Rebuilt and re-signed
 `Nigafiy-Quick-Support-0.1.0-x64-local-test.msix` (10.4 MB); unpacked: identity
 `Nigafiy.LocalTest.QuickSupport` 0.1.0.0, `runFullTrust` only, `nigafiy-support.exe` (SHA-256
 `6802b14016f40e368d7dcc7f32b54ddafcc8cffa5660a9d86f00bae9e4e4f871`) identical to the built program,
-and `mt.exe` reads the PerMonitorV2 manifest out of the packaged exe. **WACK has not run on the
-rebuilt package yet**: that needs the owner to run `run-elevated.ps1` again. The desktop package did
+and `mt.exe` reads the PerMonitorV2 manifest out of the packaged exe. **WACK on the rebuilt package
+(rerun `20261125-105136`, owner, elevated): overall PASS.** The desktop package did
 not change and was not rebuilt.
