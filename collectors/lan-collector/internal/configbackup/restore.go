@@ -18,6 +18,9 @@ import (
 //       VyOS / Ubiquiti EdgeOS (restore_vyos.go): the candidate is rebuilt from the version's "set"
 //       commands and activated with "commit-confirm N" — unless "confirm" follows within N minutes
 //       the device reboots into its saved boot configuration, which Nigafiy saves just before;
+//       OpenWrt (restore_openwrt.go): the version's packages are staged in a ubus session and
+//       activated with rpcd's "uci apply" with rollback — unless "uci confirm" follows within N
+//       minutes, rpcd copies the snapshot of the previous packages back and reloads them;
 //     every other vendor is refused (ErrUnsupported); the server shows "restore not supported" with
 //     the vendor-specific reason;
 //   - the SSH host key must already be pinned (no trust on first use for a write);
@@ -49,6 +52,8 @@ func RestoreMethod(driver string) string {
 		return RestoreMethodJunos
 	case vyosDriverID:
 		return RestoreMethodVyOS
+	case openwrtDriverID:
+		return RestoreMethodOpenWrt
 	}
 	return ""
 }
@@ -146,7 +151,7 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	}
 	res.Method = RestoreMethod(driver)
 	if res.Method == "" {
-		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed and VyOS / EdgeOS with commit-confirm)")
+		return res, fail(ErrUnsupported, "restore is not supported for this device type (only Juniper Junos with commit confirmed, VyOS / EdgeOS with commit-confirm and OpenWrt with uci apply rollback)")
 	}
 	cfg := strings.TrimSpace(strings.ReplaceAll(spec.Config, "\r\n", "\n"))
 	if cfg == "" || len(cfg) > maxRestoreConfigLength || !validRestoreText(cfg) {
@@ -167,6 +172,9 @@ func Restore(ctx context.Context, t Target, spec RestoreSpec, opts Options) (*Re
 	defer cancel()
 	if res.Method == RestoreMethodVyOS {
 		return res, restoreVyOS(ctx, addr, port, t, spec, cfg, minutes, opts, res)
+	}
+	if res.Method == RestoreMethodOpenWrt {
+		return res, restoreOpenWrt(ctx, addr, port, t, spec, cfg, minutes, opts, res)
 	}
 
 	// ── session A: lock, load, commit confirmed ──

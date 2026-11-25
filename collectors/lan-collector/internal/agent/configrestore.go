@@ -54,8 +54,11 @@ func identityItem(d *configbackup.DeviceIdentity) map[string]any {
 
 // readBackCommand is the command the restore read the configuration back with (per method).
 func readBackCommand(method string) string {
-	if method == configbackup.RestoreMethodVyOS {
+	switch method {
+	case configbackup.RestoreMethodVyOS:
 		return "show configuration commands | cat"
+	case configbackup.RestoreMethodOpenWrt:
+		return "uci export"
 	}
 	return "show configuration | no-more"
 }

@@ -43,6 +43,12 @@ var identityReaders = map[string]identityReader{
 		model:    regexp.MustCompile(`(?m)^\s*(?:Hardware model|HW model)\s*:[ \t]*(\S[^\r\n]*)$`),
 		serial:   regexp.MustCompile(`(?m)^\s*(?:Hardware S/N|HW S/N)\s*:[ \t]*(\S[^\r\n]*)$`),
 	},
+	// OpenWrt: "ubus call system board" (procd, OpenWrt 15.05+) prints JSON with "model" (from the
+	// device tree / board detection, e.g. "TP-Link Archer C7 v5"). OpenWrt reports no serial number.
+	openwrtDriverID: {
+		commands: []string{"ubus call system board"},
+		model:    regexp.MustCompile(`"model"\s*:\s*"([^"\\]{1,100})"`),
+	},
 }
 
 // HasIdentityReader reports whether backups of this driver record the device identity.
@@ -52,6 +58,9 @@ func HasIdentityReader(driver string) bool {
 }
 
 func identityValue(re *regexp.Regexp, out string) string {
+	if re == nil {
+		return ""
+	}
 	m := re.FindStringSubmatch(out)
 	if len(m) < 2 {
 		return ""

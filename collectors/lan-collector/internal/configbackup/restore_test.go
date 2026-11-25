@@ -280,10 +280,10 @@ func TestRestoreRefusals(t *testing.T) {
 	})
 }
 
-func TestRestoreMethodOnlyJunosAndVyOS(t *testing.T) {
+func TestRestoreMethodOnlyJunosVyOSAndOpenWrt(t *testing.T) {
 	for _, d := range Drivers() {
 		m := RestoreMethod(d.ID)
-		if (d.ID == junosDriverID || d.ID == vyosDriverID) != (m != "") {
+		if (d.ID == junosDriverID || d.ID == vyosDriverID || d.ID == openwrtDriverID) != (m != "") {
 			t.Errorf("%s: restore method %q", d.ID, m)
 		}
 	}

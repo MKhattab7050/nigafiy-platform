@@ -31,6 +31,9 @@ type device struct {
 	commands     map[string]string // command → output (privileged commands only after enable)
 	privileged   map[string]bool
 	exec         map[string]string // exec channel command → output (MikroTik)
+	// execFn replaces the exec table (restore tests emulate OpenWrt's ubus): stdin is the channel,
+	// the return value the exit status.
+	execFn func(cmd string, stdin io.Reader, out io.Writer) uint32
 	noShell      bool
 	auth         string // "password" | "keyboard" | "publickey"
 	password     string
@@ -152,6 +155,12 @@ func (s *server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			s.dev.mu.Lock()
 			s.dev.execSeen = append(s.dev.execSeen, p.Cmd)
 			s.dev.mu.Unlock()
+			if s.dev.execFn != nil {
+				_ = req.Reply(true, nil)
+				status := s.dev.execFn(p.Cmd, ch, ch)
+				_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+				return
+			}
 			out, ok := s.dev.exec[p.Cmd]
 			_ = req.Reply(true, nil)
 			status := uint32(0)

@@ -150,3 +150,15 @@ func TestConfigRestorePassesIdentityAndVyOSReadBackCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestReadBackCommandPerMethod(t *testing.T) {
+	for method, want := range map[string]string{
+		configbackup.RestoreMethodJunos:   "show configuration | no-more",
+		configbackup.RestoreMethodVyOS:    "show configuration commands | cat",
+		configbackup.RestoreMethodOpenWrt: "uci export",
+	} {
+		if got := readBackCommand(method); got != want {
+			t.Errorf("%s: %q", method, got)
+		}
+	}
+}
