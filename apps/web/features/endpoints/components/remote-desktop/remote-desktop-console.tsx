@@ -79,6 +79,11 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         {rd.session && (
           <div className="flex flex-wrap items-center gap-1.5">
             {rd.live && <Badge tone={PATH_TONE[rd.path]}>{tx.path[rd.path]}</Badge>}
+            {rd.live && rd.wsLive && rd.rtc.mode !== 'off' && (
+              <Badge tone={rd.rtc.active ? 'ok' : rd.rtc.mode === 'starting' ? 'idle' : 'info'}>
+                {rd.rtc.active ? tx.rtc.active : rd.rtc.mode === 'starting' ? tx.rtc.starting : tx.rtc.compat}
+              </Badge>
+            )}
             {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' ? 'ok' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
             {rd.hello?.desktop?.mode && <Badge tone="info">{tx.desktopMode[rd.hello.desktop.mode] ?? rd.hello.desktop.mode}</Badge>}
             {rd.session.user_session && <Badge tone="info">{rd.session.user_session === 'winlogon' ? rx.userSessionWinlogon : `${rx.userSession} ${ltr(rd.session.user_session)}`}</Badge>}
@@ -105,6 +110,18 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
         </Notice>
       ))}
       {rd.streamNote && <Notice className="border-warn/30 bg-warn/[0.08]">{rd.streamNote}</Notice>}
+      {rd.live && rd.wsLive && rd.rtc.mode === 'jpeg' && rd.rtc.reason && (
+        <Notice className="flex flex-wrap items-center justify-between gap-2">
+          <span>{tx.rtc.fellBack(tx.rtc.reasons[rd.rtc.reason] ?? rd.rtc.reason)}</span>
+          {rd.rtc.reason !== 'no_rtc' && rd.rtc.reason !== 'no_h264' && rd.rtc.reason !== 'recording' && (
+            <Button size="sm" onClick={rd.rtc.retry}>
+              {tx.rtc.retry}
+            </Button>
+          )}
+        </Notice>
+      )}
+      {rd.live && rd.wsLive && rd.hello?.webrtc && !rd.hello.webrtc.supported && rd.hello.webrtc.reason && <p className="text-xs text-muted">{tx.rtc.unavailable(rd.hello.webrtc.reason)}</p>}
+      {rd.live && rd.recording && rd.hello?.webrtc?.supported && <p className="text-xs text-muted">{tx.rtc.recording}</p>}
       {!rd.session && endedText && <Notice>{endedText}</Notice>}
 
       <Card
@@ -135,6 +152,12 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               <input type="checkbox" checked={rd.adaptive} onChange={(e) => rd.setAdaptive(e.target.checked)} />
               {tx.adaptive}
             </label>
+            {rd.hello?.webrtc?.supported && (
+              <label className="flex items-center gap-1.5 px-1 text-xs text-muted" title={tx.rtc.toggleHint}>
+                <input type="checkbox" checked={rd.rtc.preferred} onChange={(e) => (e.target.checked ? rd.rtc.retry() : rd.rtc.setPreferred(false))} />
+                {tx.rtc.toggle}
+              </label>
+            )}
             {canControl && !viewOnly && rd.live && rd.allows('control') && (
               <Button size="sm" onClick={() => rd.setInteractive((v) => !v)} className={clsx(rd.interactive && 'border-accent text-fg')}>
                 <MousePointer className="size-3.5" aria-hidden />
@@ -241,7 +264,16 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
           {/* What the stream measures (from the agent), or the HTTP frame's own figures. */}
           {rd.live && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted mono">
-              {rd.stats && rd.wsLive && (
+              {rd.rtc.active && (
+                <>
+                  {rd.rtc.stats && <span>{tx.rtc.stats(rd.rtc.stats.fps, rd.rtc.stats.kbps)}</span>}
+                  {rd.rtc.stats && rd.rtc.stats.width > 0 && <span>{ltr(`${rd.rtc.stats.width}×${rd.rtc.stats.height}`)}</span>}
+                  {rd.rtc.stats?.targetKbps ? <span>{tx.rtc.target(rd.rtc.stats.targetKbps)}</span> : null}
+                  {typeof rd.rtc.stats?.lossPct === 'number' && <span>{tx.rtc.loss(rd.rtc.stats.lossPct)}</span>}
+                  {rd.rtc.encoder && <span dir="ltr">{rd.rtc.encoder}</span>}
+                </>
+              )}
+              {rd.stats && rd.wsLive && !rd.rtc.active && (
                 <>
                   <span>{tx.stats(rd.stats.fps, rd.stats.kbps, rd.stats.rtt_ms, rd.stats.quality, rd.stats.scale)}</span>
                   {rd.stats.width > 0 && <span>{ltr(`${rd.stats.width}×${rd.stats.height}`)}</span>}

@@ -55,6 +55,8 @@ export interface StreamHello {
   desktop?: { mode?: string; backend?: string; input_supported?: boolean; permissions?: Record<string, string> | null };
   encoder: string;
   control?: boolean;
+  /** WebRTC video (H.264 from Media Foundation on Windows); `reason` when not available. */
+  webrtc?: { supported: boolean; encoder?: string; reason?: string };
 }
 
 /** Splits a packet; null when it is not one (wrong magic, lengths that do not add up). */

@@ -216,6 +216,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 			OnITActivity:  a.showITActivity,
 			OnRecordings:  a.showRecordings,
 			OnEndSession:  a.endShellsFromTray,
+			DisableWebRTC: cfg.DisableWebRTC,
 		})
 	}
 	a.reboot = &reboot.Manager{

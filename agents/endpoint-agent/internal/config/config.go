@@ -20,6 +20,9 @@ type Config struct {
 	TLSPinSHA256      string
 	LogLevel          string
 	AllowInsecureHTTP bool
+	// DisableWebRTC: NIGAFIY_AGENT_RD_WEBRTC=off keeps remote desktop on the WebSocket + JPEG
+	// stream (the hello then says WebRTC is not available, and every viewer uses JPEG).
+	DisableWebRTC bool
 }
 
 func FromEnv() Config {
@@ -31,6 +34,7 @@ func FromEnv() Config {
 		TLSPinSHA256:      Getenv("NIGAFIY_AGENT_TLS_PIN_SHA256"),
 		LogLevel:          Getenv("NIGAFIY_AGENT_LOG_LEVEL"),
 		AllowInsecureHTTP: Getenv("NIGAFIY_AGENT_ALLOW_INSECURE_HTTP") == "true" || Getenv("NIGAFIY_AGENT_ALLOW_INSECURE_HTTP") == "1",
+		DisableWebRTC:     strings.EqualFold(Getenv("NIGAFIY_AGENT_RD_WEBRTC"), "off"),
 	}
 	if cfg.StateDir == "" {
 		cfg.StateDir = "./state-endpoint"

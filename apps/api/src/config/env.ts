@@ -29,6 +29,21 @@ const schema = z.object({
    */
   RD_PEER_URL: optionalNonEmpty,
   /**
+   * Fleet live sessions: WebRTC video (H.264, a direct browser ↔ agent peer connection on the LAN).
+   * "off" keeps every session on the WebSocket + JPEG stream. See docs/features/fleet-pro.md
+   * "WebRTC video".
+   */
+  RD_WEBRTC: z.enum(['on', 'off']).default('on'),
+  /**
+   * Optional STUN servers for WebRTC video, comma separated (stun: or stuns: only; empty by
+   * default: host candidates on the LAN). TURN is not offered: the product is LAN first and a relay
+   * would carry the picture through a third machine.
+   */
+  RD_WEBRTC_STUN_URLS: z.preprocess(
+    (v) => (typeof v === 'string' ? v.split(',').map((s) => s.trim()).filter(Boolean) : []),
+    z.array(z.string().max(200).regex(/^stuns?:[A-Za-z0-9.\-[\]:]+$/, 'must be a stun: or stuns: URL')).max(4),
+  ),
+  /**
    * Fleet Quick Support: path of the built nigafiy-support.exe that Fleet hands out (with the signed
    * server binding appended). Unset: agents/endpoint-agent/bin/nigafiy-support.exe in this checkout.
    */

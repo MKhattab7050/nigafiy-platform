@@ -25,6 +25,7 @@ import (
 	"github.com/nigafiy/agent/internal/desktop"
 	"github.com/nigafiy/agent/internal/userui"
 	"github.com/nigafiy/agent/internal/wsclient"
+	"github.com/pion/webrtc/v4"
 )
 
 // OpenRequest is the payload of the server's rd_session_open command.
@@ -111,6 +112,12 @@ type Config struct {
 	// OnEndSession gets "End current session" from the tray (after the remote session, if any,
 	// was ended here as from the banner): the agent ends the remote shells.
 	OnEndSession func()
+	// DisableWebRTC: the hello says WebRTC is not available (the JPEG stream only).
+	DisableWebRTC bool
+	// VideoFPS caps the WebRTC video frame rate (default 30).
+	VideoFPS int
+	// RTCSettings adjusts pion's setting engine (tests: loopback candidates).
+	RTCSettings func(*webrtc.SettingEngine)
 }
 
 // Manager holds at most one live session (a new one replaces the old).
@@ -293,6 +300,10 @@ func (m *Manager) Close(sessionID, reason string) bool {
 		case <-time.After(3 * time.Second):
 		}
 	}
+	// Every WebRTC peer connection of the session closes first (no picture after the end).
+	if r := l.existingRTC(); r != nil {
+		r.closeAll(true)
+	}
 	// Every tool of the session goes with it: privacy screen, blocked input, chat, overlay, audio.
 	_, _, _ = m.cfg.Desktop.Tool(context.Background(), desktop.ToolRequest{Session: l.req.SessionID, Op: desktop.ToolEndAllForSess}, nil)
 	m.cfg.Desktop.HideBanner(l.req.SessionID)
@@ -339,6 +350,8 @@ type live struct {
 	cancel context.CancelFunc
 	done   chan struct{}
 	tools  toolState
+	// rtcm: the WebRTC peers of this session (webrtc.go), guarded by tools.mu.
+	rtcm *rtcManager
 }
 
 // StreamURL is where the agent's socket goes: <server>/api/v1/agent/stream?session=<id>.

@@ -3,7 +3,9 @@ package desktop
 import (
 	"sync"
 
+	"github.com/nigafiy/agent/internal/remotedesktop"
 	"github.com/nigafiy/agent/internal/userui"
+	"github.com/nigafiy/agent/internal/videoenc"
 )
 
 // ShellBannerID is the banner's session id while only remote shells are open.
@@ -107,4 +109,28 @@ func (m *BannerMux) render() error {
 			shEnd()
 		}
 	})
+}
+
+// The WebRTC video source (video.go) passes through the mux: BannerMux embeds the Desktop
+// interface, which promotes only Desktop's own methods, so without these the session manager's
+// desktop.Video check would fail on the real agent and WebRTC would never be offered.
+
+func (m *BannerMux) VideoCapability() videoenc.Capability {
+	if v, ok := m.Desktop.(Video); ok {
+		return v.VideoCapability()
+	}
+	return videoenc.Capability{Reason: "this desktop has no video source"}
+}
+
+func (m *BannerMux) GrabVideo(stream string, req remotedesktop.VideoRequest) (*remotedesktop.VideoFrame, error) {
+	if v, ok := m.Desktop.(Video); ok {
+		return v.GrabVideo(stream, req)
+	}
+	return nil, videoenc.ErrUnavailable
+}
+
+func (m *BannerMux) EndVideo(stream string) {
+	if v, ok := m.Desktop.(Video); ok {
+		v.EndVideo(stream)
+	}
 }

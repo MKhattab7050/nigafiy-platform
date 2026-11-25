@@ -43,6 +43,14 @@ import { type ShellHub, shellHub } from '../fleet-shell/hub.ts';
  * one peer socket to that instance and carries every frame over it; its viewers count as one
  * weighted sink there. Session state ("state|E|…", "end|E") comes from sessions.ts on COMMIT.
  *
+ * WebRTC video (docs/features/fleet-pro.md "WebRTC video"): the browser and the agent may also form a
+ * direct peer connection on the LAN for H.264 video and a data channel for input. The hub only
+ * signals (rtc_offer / rtc_answer / rtc_ice, tagged "<sink>.rtc" so an answer reaches only the
+ * browser that asked), checks every offer (session active, the viewer's view permission, the
+ * agent's capability, RD_WEBRTC, no recording) and audits start, fallback, stop and every input
+ * the agent reports (rtc_input). A viewer whose video plays over WebRTC no longer counts as a JPEG
+ * viewer; one that falls back counts again and gets a full frame. Recorded sessions stay on JPEG.
+ *
  * Control under the "prompt" policy: the agent opens its stream only after the user accepted the
  * dialog; the hub still sends it zero viewers (no frames) until the database says the session is
  * active, so nothing is relayed before the API recorded the consent.
@@ -92,6 +100,39 @@ const annotateOp = z.discriminatedUnion('op', [
   z.object({ op: z.literal('clear') }),
 ]);
 
+/** WebRTC signalling (validated here; the SDP and candidates are relayed, never stored or audited). */
+const rtcSdp = z
+  .string()
+  .min(10)
+  .max(64 * 1024)
+  .refine((s) => s.startsWith('v=0'), 'not an SDP');
+/** An ICE candidate as RTCIceCandidate.toJSON() gives it; "" is the end of candidates. No relay. */
+const rtcCandidate = z
+  .object({
+    candidate: z
+      .string()
+      .max(1024)
+      .regex(/^(|candidate:[A-Za-z0-9+/]{1,32} \d{1,5} (udp|tcp|UDP|TCP) \d{1,10} [0-9A-Za-z.:-]{1,255} \d{1,5} typ (host|srflx|prflx)( [\x21-\x7e]{1,255})*)$/),
+    sdpMid: z.string().max(32).nullable().optional(),
+    sdpMLineIndex: z.number().int().min(0).max(16).nullable().optional(),
+    usernameFragment: z.string().max(256).nullable().optional(),
+  })
+  .nullable();
+/** Why a browser went back to JPEG (rtc_fallback). */
+export const RTC_FALLBACK_REASONS = [
+  'no_rtc',
+  'no_h264',
+  'refused',
+  'answer_timeout',
+  'no_video',
+  'ice_failed',
+  'ice_disconnected',
+  'encoder_failed',
+  'recording',
+  'agent_failed',
+  'error',
+] as const;
+
 const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
   z.object({ t: z.literal('ack'), seq: z.number().int().min(0) }),
   z.object({ t: z.literal('full') }),
@@ -133,6 +174,20 @@ const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
   }),
   z.object({ t: z.literal('annotate'), op: annotateOp }),
   z.object({ t: z.literal('audio'), on: z.boolean(), mono: z.boolean().optional() }),
+  // WebRTC. From a browser, `req`, `control` and `ice_servers` are ignored (the hub sets them); from
+  // another instance they carry what the operator's instance decided.
+  z.object({
+    t: z.literal('rtc_offer'),
+    sdp: rtcSdp,
+    req: reqId.optional(),
+    control: z.boolean().optional(),
+    ice_servers: z.array(z.string().max(200)).max(4).optional(),
+  }),
+  z.object({ t: z.literal('rtc_ice'), candidate: rtcCandidate, req: reqId.optional() }),
+  z.object({ t: z.literal('rtc_active'), encoder: z.string().max(160).optional(), req: reqId.optional() }),
+  z.object({ t: z.literal('rtc_fallback'), reason: z.enum(RTC_FALLBACK_REASONS), req: reqId.optional() }),
+  z.object({ t: z.literal('rtc_close'), req: reqId.optional() }),
+  z.object({ t: z.literal('rtc_perms'), control: z.boolean(), req: reqId.optional() }),
 ]);
 /** From an operator's browser. */
 const viewerMessage = messageSchema(z.string().regex(/^[A-Za-z0-9_-]{1,32}$/));
@@ -157,7 +212,32 @@ const AGENT_TEXT_TYPES = new Set([
   'chat',
   'chat_shown',
   'answer',
+  // WebRTC: the answer, the agent's candidates, the peer's state (connected, failed with a code,
+  // encoder changed), the input it applied (audited here, never forwarded) and video stats.
+  'rtc_answer',
+  'rtc_ice',
+  'rtc_state',
+  'rtc_input',
+  'rtc_stats',
 ]);
+
+/** Why an offer was refused (sent as rtc_refused and audited as fleet.session_transport). */
+export type RtcRefusal =
+  | 'webrtc_disabled'
+  | 'webrtc_unsupported'
+  | 'webrtc_recording_active'
+  | 'webrtc_session_not_active'
+  | 'webrtc_agent_not_connected'
+  | 'profile_forbids_view';
+const RTC_REFUSAL_MESSAGES: Record<RtcRefusal, string> = {
+  webrtc_disabled: 'WebRTC video is switched off on this server',
+  webrtc_unsupported: 'This computer cannot send WebRTC video (no H.264 encoder, or not Windows)',
+  webrtc_recording_active: 'This session is being recorded: the picture stays on the server path',
+  webrtc_session_not_active: 'The session is not active yet',
+  webrtc_agent_not_connected: 'The endpoint is not connected to the live stream',
+  profile_forbids_view: PROFILE_REFUSAL_MESSAGES.profile_forbids_view,
+};
+const RTC_INPUT_KINDS = new Set(['mouse_click', 'mouse_down', 'mouse_up', 'mouse_wheel', 'key_press', 'key_down', 'key_up', 'key_combo', 'text']);
 
 /** Close code for an operator removed from the session (or whose invitation ended). */
 export const CLOSE_PARTICIPANT_REMOVED = 4003;
@@ -246,6 +326,10 @@ interface Sink {
   perms?: FleetPermissions;
   /** The operator listens to the computer's sound. */
   audio?: boolean;
+  /** WebRTC video: offer relayed, or video playing (then this viewer gets no JPEG frames). */
+  rtc?: 'offered' | 'active' | null;
+  /** The last fallback reason audited for this viewer (a repeat is not audited again). */
+  rtcLast?: string | null;
 }
 
 interface Room {
@@ -273,6 +357,10 @@ interface Room {
   recorder: RecordingWriter | null;
   recordingId: string | null;
   audioOn: boolean;
+  /** The agent's hello said it can send WebRTC video. */
+  rtcSupported: boolean;
+  /** The session is being recorded (rd_session.recording_id): WebRTC is refused. */
+  recordingOn: boolean;
 }
 
 export interface StreamHubOptions {
@@ -324,10 +412,11 @@ export class StreamHub {
   }
 
   /** Counts for tests and the status route. */
-  stats(endpointId: string): { agent: boolean; viewers: number; peers: number; upstream: boolean; active: boolean } | null {
+  stats(endpointId: string): { agent: boolean; viewers: number; peers: number; upstream: boolean; active: boolean; rtc: number } | null {
     const r = this.rooms.get(endpointId);
     if (!r) return null;
-    return { agent: r.agent !== null, viewers: r.viewers.size, peers: r.peers.size, upstream: r.upstream !== null, active: r.active };
+    const rtc = [...r.viewers].filter((v) => v.rtc === 'active').length;
+    return { agent: r.agent !== null, viewers: r.viewers.size, peers: r.peers.size, upstream: r.upstream !== null, active: r.active, rtc };
   }
 
   private readonly onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
@@ -392,11 +481,16 @@ export class StreamHub {
         recorder: null,
         recordingId: null,
         audioOn: false,
+        rtcSupported: false,
+        recordingOn: Boolean(session?.recording_id),
       };
       this.rooms.set(endpointId, r);
     }
     if (platform) r.platform = platform;
-    if (session) r.permissions = sessionPermissions(session);
+    if (session) {
+      r.permissions = sessionPermissions(session);
+      r.recordingOn = Boolean(session.recording_id);
+    }
     return r;
   }
 
@@ -431,7 +525,7 @@ export class StreamHub {
     markStreamUp(ep.id, sessionId, this.instanceId, this.peerUrl);
     void this.announce(`up|${ep.id}|${sessionId}|${this.instanceId}|${this.peerUrl}`);
     void withTenant(ep.organizationId, (db) =>
-      db.query(`UPDATE fleet_sessions SET transport = 'ws', stream_connected_at = coalesce(stream_connected_at, now()) WHERE endpoint_id = $1 AND public_id = $2`, [ep.id, sessionId]),
+      db.query(`UPDATE fleet_sessions SET transport = CASE WHEN transport = 'webrtc' THEN 'webrtc' ELSE 'ws' END, stream_connected_at = coalesce(stream_connected_at, now()) WHERE endpoint_id = $1 AND public_id = $2`, [ep.id, sessionId]),
     ).catch((err: unknown) => logger.warn({ err }, 'fleet session stream update failed'));
     this.broadcastText(r, { t: 'path', path: 'direct', instance: this.instanceId }, false);
     this.sendViewerCount(r);
@@ -466,7 +560,7 @@ export class StreamHub {
       if (typeof m.t !== 'string' || !AGENT_TEXT_TYPES.has(m.t)) return;
       const text = buf.toString('utf8');
       if (m.t === 'hello') {
-        r.hello = text;
+        this.setHello(r, text, m as { webrtc?: unknown });
         const mode = typeof m.desktop?.mode === 'string' ? m.desktop.mode.slice(0, 40) : null;
         if (mode) {
           void withTenant(r.orgId, (db) => db.query(`UPDATE fleet_sessions SET desktop_mode = $3 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId, mode])).catch(() => undefined);
@@ -500,6 +594,10 @@ export class StreamHub {
       // A clipboard answer goes to the viewer that asked (sink id before the dot).
       const [sinkId, orig] = [m.req.slice(0, m.req.indexOf('.')), m.req.slice(m.req.indexOf('.') + 1)];
       const v = [...r.viewers].find((s) => s.id === sinkId);
+      if (v && m.t === 'rtc_input') {
+        void this.auditRtcInput(r, v, m as Record<string, unknown>).catch((err: unknown) => logger.warn({ err }, 'webrtc input audit failed'));
+        return;
+      }
       if (v) {
         const out: Record<string, unknown> = { ...(JSON.parse(text) as Record<string, unknown>), req: orig };
         this.sendJson(v, out);
@@ -529,6 +627,8 @@ export class StreamHub {
     let delivered = 0;
     for (const s of sinks) {
       if (s.ws.readyState !== WebSocket.OPEN) continue;
+      // Its picture plays over WebRTC (other viewers may still take JPEG frames).
+      if (s.rtc === 'active') continue;
       if (s.stale) {
         if (!meta.full) {
           if (!s.fullAsked && s.ws.bufferedAmount < RESUME_BUFFERED) {
@@ -607,8 +707,15 @@ export class StreamHub {
     }
   }
 
+  /** Viewers that take JPEG frames here (a viewer whose video plays over WebRTC does not). */
+  private jpegViewers(r: Room): number {
+    let n = 0;
+    for (const v of r.viewers) if (v.rtc !== 'active') n++;
+    return n;
+  }
+
   private viewerCount(r: Room): number {
-    let n = r.viewers.size;
+    let n = this.jpegViewers(r);
     for (const p of r.peers) n += p.weight;
     return n;
   }
@@ -620,7 +727,7 @@ export class StreamHub {
       r.sentCount = n;
       r.agent.send(JSON.stringify({ t: 'viewers', count: n }));
     } else if (r.upstream?.readyState === WebSocket.OPEN) {
-      r.upstream.send(JSON.stringify({ t: 'viewers', count: r.viewers.size }));
+      r.upstream.send(JSON.stringify({ t: 'viewers', count: this.jpegViewers(r) }));
     }
   }
 
@@ -680,6 +787,9 @@ export class StreamHub {
       operators: cur.session.operators ?? [cur.session.operator_email],
       recording: Boolean(cur.session.recording_id),
       holder: (cur.session as { operator_user_id?: string }).operator_user_id === who.userId,
+      // WebRTC video: allowed by this server, and the STUN servers the browser may use (none by default).
+      webrtc: env.RD_WEBRTC === 'on',
+      ice_servers: env.RD_WEBRTC_STUN_URLS,
     });
     if (r.agent) {
       this.sendJson(sink, { t: 'path', path: 'direct', instance: this.instanceId });
@@ -705,6 +815,12 @@ export class StreamHub {
     });
     const gone = () => {
       if (!r.viewers.delete(sink)) return;
+      if (sink.rtc) {
+        // The viewer left: the agent closes that peer connection.
+        sink.rtc = null;
+        this.toAgent(r, { t: 'rtc_close', req: `${sink.id}.rtc` });
+        void this.auditViewer(r, sink.user!, 'fleet.session_transport', { event: 'stopped', mode: 'webrtc', reason: 'viewer_left' }).catch(() => undefined);
+      }
       this.sendViewerCount(r);
       this.syncAudio(r);
       this.dropRoomIfEmpty(r);
@@ -865,7 +981,104 @@ export class StreamHub {
         this.syncAudio(r, m.mono === true);
         await this.auditViewer(r, user, 'fleet.session_audio', { on: m.on });
         return;
+      case 'rtc_offer': {
+        const refusal = this.rtcRefusal(r, perms);
+        const control = perms.control && r.permissions.control;
+        if (refusal || !this.toAgent(r, { t: 'rtc_offer', req: `${sink.id}.rtc`, sdp: m.sdp, control, ice_servers: env.RD_WEBRTC_STUN_URLS })) {
+          const code: RtcRefusal = refusal ?? 'webrtc_agent_not_connected';
+          this.sendJson(sink, { t: 'rtc_refused', code, error: RTC_REFUSAL_MESSAGES[code] });
+          await this.auditViewer(r, user, 'fleet.session_transport', { event: 'refused', mode: 'webrtc', code });
+          return;
+        }
+        sink.rtc = 'offered';
+        return;
+      }
+      case 'rtc_ice':
+        if (sink.rtc) this.toAgent(r, { t: 'rtc_ice', req: `${sink.id}.rtc`, candidate: m.candidate });
+        return;
+      case 'rtc_active': {
+        if (sink.rtc !== 'offered') return;
+        sink.rtc = 'active';
+        sink.rtcLast = null;
+        this.sendViewerCount(r);
+        const encoder = m.encoder ?? null;
+        await withTenant(user.orgId, async (db) => {
+          await db.query(
+            `UPDATE fleet_sessions SET transport = 'webrtc', rtc_encoder = coalesce($3, rtc_encoder), rtc_started_at = coalesce(rtc_started_at, now())
+              WHERE endpoint_id = $1 AND public_id = $2`,
+            [r.endpointId, r.sessionId, encoder],
+          );
+          await this.auditIn(db, r, user, 'fleet.session_transport', { event: 'started', mode: 'webrtc', encoder });
+        });
+        return;
+      }
+      case 'rtc_fallback':
+        await this.endRtc(r, sink, m.reason, 'fallback');
+        return;
+      case 'rtc_close':
+        if (sink.rtc) await this.endRtc(r, sink, 'closed_by_viewer', 'stopped');
+        return;
+      case 'rtc_perms':
+        // Only the hub decides what a viewer may do.
+        return;
     }
+  }
+
+  /** Why an offer cannot be relayed now (null: it can). Checked again on the instance holding the agent. */
+  private rtcRefusal(r: Room, perms: FleetPermissions | null): RtcRefusal | null {
+    if (env.RD_WEBRTC === 'off') return 'webrtc_disabled';
+    if (!r.active) return 'webrtc_session_not_active';
+    if (perms && !perms.view) return 'profile_forbids_view';
+    if (r.recordingOn || r.recorder) return 'webrtc_recording_active';
+    if (!r.rtcSupported) return 'webrtc_unsupported';
+    return null;
+  }
+
+  /**
+   * A viewer goes back to JPEG (fallback) or stops WebRTC: the agent drops the peer, the viewer
+   * counts as a JPEG viewer again and gets a full frame first. Audited with the reason.
+   */
+  private async endRtc(r: Room, sink: Sink, reason: string, event: 'fallback' | 'stopped'): Promise<void> {
+    const had = sink.rtc ?? null;
+    sink.rtc = null;
+    if (had) {
+      this.toAgent(r, { t: 'rtc_close', req: `${sink.id}.rtc` });
+      sink.stale = true;
+      sink.fullAsked = true;
+      this.sendViewerCount(r);
+      this.toAgent(r, { t: 'full' });
+    }
+    if (event === 'fallback' && sink.rtcLast === reason) return;
+    sink.rtcLast = reason;
+    const user = sink.user;
+    if (!user) return;
+    await withTenant(user.orgId, async (db) => {
+      if (event === 'fallback') await db.query(`UPDATE fleet_sessions SET rtc_fallback_reason = $3 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId, reason]);
+      await this.auditIn(db, r, user, 'fleet.session_transport', { event, mode: event === 'fallback' ? 'jpeg' : 'webrtc', reason, had_webrtc: had !== null });
+    });
+  }
+
+  /** Input the agent applied (or refused) from a viewer's data channel: audited like the socket path. */
+  private async auditRtcInput(r: Room, sink: Sink, m: Record<string, unknown>): Promise<void> {
+    const user = sink.user;
+    const kind = typeof m.kind === 'string' ? m.kind : '';
+    if (!user || !sink.rtc || !RTC_INPUT_KINDS.has(kind)) return;
+    if (typeof m.refused === 'string') {
+      const code: ProfileRefusalCode = 'profile_forbids_control';
+      await this.auditViewer(r, user, 'fleet.session_refused_action', { kind, code, needs: refusalFlag(code), via: 'webrtc' });
+      return;
+    }
+    const out: Record<string, unknown> = { kind };
+    if (m.button === 'left' || m.button === 'right' || m.button === 'middle') out.button = m.button;
+    if (typeof m.display_index === 'number' && Number.isInteger(m.display_index) && m.display_index >= 0 && m.display_index <= 16) out.display_index = m.display_index;
+    if (m.double === true) out.double = true;
+    await this.auditViewer(r, user, 'endpoint.rd_input', { via: 'webrtc', ...payloadForAudit('rd_input', out) });
+  }
+
+  private setHello(r: Room, text: string, m: { webrtc?: unknown }): void {
+    r.hello = text;
+    const w = m.webrtc as { supported?: unknown } | undefined;
+    r.rtcSupported = w?.supported === true;
   }
 
   private notConnected(r: Room, sink: Sink, tool: string): void {
@@ -991,6 +1204,15 @@ export class StreamHub {
       }
       if (parsed.data.t === 'audio') sink.audio = parsed.data.on;
       if (parsed.data.t === 'input') r.recorder?.input(parsed.data.ev as { kind: string });
+      if (parsed.data.t.startsWith('rtc_') && !('req' in parsed.data && parsed.data.req)) return;
+      if (parsed.data.t === 'rtc_offer') {
+        // Checked again here (this instance knows the recording and the agent's hello first-hand).
+        const refusal = this.rtcRefusal(r, null);
+        if (refusal) {
+          this.sendJson(sink, { t: 'rtc_state', req: parsed.data.req, state: 'failed', code: refusal, reason: RTC_REFUSAL_MESSAGES[refusal] });
+          return;
+        }
+      }
       this.toAgent(r, parsed.data);
     });
     const gone = () => {
@@ -1039,7 +1261,7 @@ export class StreamHub {
       }
       if (typeof m.t !== 'string' || !AGENT_TEXT_TYPES.has(m.t)) return;
       const text = buf.toString('utf8');
-      if (m.t === 'hello') r.hello = text;
+      if (m.t === 'hello') this.setHello(r, text, m as { webrtc?: unknown });
       this.routeAgentText(r, m, text, false);
     });
     const gone = () => {
@@ -1112,6 +1334,15 @@ export class StreamHub {
         // every viewer is told so the recording mark shows in the console too.
         if (!r) return;
         const id = parts[2] && UUID.test(parts[2]) ? parts[2] : null;
+        r.recordingOn = id !== null;
+        if (id) {
+          // Recording needs the picture on the server path: every WebRTC viewer here goes back to JPEG.
+          for (const v of r.viewers) {
+            if (!v.rtc) continue;
+            this.sendJson(v, { t: 'rtc_closed', reason: 'recording' });
+            void this.endRtc(r, v, 'recording', 'fallback').catch((err: unknown) => logger.warn({ err }, 'webrtc fallback audit failed'));
+          }
+        }
         this.broadcastText(r, { t: 'recording', on: id !== null }, false);
         void this.syncRecording(r, id);
         void this.refreshOperators(r);
@@ -1141,6 +1372,15 @@ export class StreamHub {
         continue;
       }
       v.perms = perms;
+      if (v.rtc) {
+        if (!perms.view) {
+          this.sendJson(v, { t: 'rtc_closed', reason: 'profile_forbids_view' });
+          await this.endRtc(r, v, 'profile_forbids_view', 'stopped').catch(() => undefined);
+        } else {
+          // A hand-over or a narrower invitation: the agent applies it to that viewer's data channel.
+          this.toAgent(r, { t: 'rtc_perms', req: `${v.id}.rtc`, control: perms.control && r.permissions.control });
+        }
+      }
       this.sendJson(v, {
         t: 'operators',
         operators: s.operators ?? [s.operator_email],
