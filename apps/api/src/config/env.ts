@@ -125,6 +125,12 @@ const schema = z.object({
   /** The data folder shared with the engine (set by the engine and the desktop app). Updates are staged in <NIGAFIY_DATA_DIR>/updates. The legacy LD_DATA_DIR is still read (env-compat.ts). */
   NIGAFIY_DATA_DIR: optionalNonEmpty,
   /**
+   * Where the API keeps files outside the database (uploaded Android APKs: <dir>/apks/<org id>/<sha256>).
+   * Default <NIGAFIY_DATA_DIR>/files. Back it up with the database (docs/operations/backup-restore-and-key-rotation.md).
+   * Read live by infrastructure/file-store.ts (also by the migrator), listed here for documentation and validation.
+   */
+  NIGAFIY_FILES_DIR: optionalNonEmpty,
+  /**
    * Which Nigafiy programs this install offers (GET /platform/programs): "all" (default: one desktop
    * install carries every program until Milestone 5 ships one installer per program) or a comma list
    * such as "hub,radar,watch". Hub is always installed. Only decides which UI is offered, never which

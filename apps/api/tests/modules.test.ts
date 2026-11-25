@@ -18,6 +18,7 @@ describe('module registry', () => {
       [
         ['collector-watch', 15_000, 727101, 'collectors'],
         ['config-backup', 300_000, 727122, 'config-backup'],
+        ['fleet-apk-file-sweep', 21_600_000, 727174, 'endpoints'],
         ['fleet-jobs-scheduler', 15_000, 727172, 'endpoints'],
         ['fleet-patch-scheduler', 30_000, 727173, 'endpoints'],
         ['fleet-reach-sweep', 30_000, 727171, 'endpoints'],
@@ -81,6 +82,7 @@ describe('GET /api/v1/system/modules', () => {
     expect(jobs.map((j) => j.name).sort()).toEqual([
       'collector-watch',
       'config-backup',
+      'fleet-apk-file-sweep',
       'fleet-jobs-scheduler',
       'fleet-patch-scheduler',
       'fleet-reach-sweep',
