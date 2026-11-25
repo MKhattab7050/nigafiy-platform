@@ -2,7 +2,9 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sha256 } from '../src/common/crypto.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { recoveryCodeHash } from '../src/modules/auth/mfa.ts';
 import { base32Decode, hotp, timeStep, totp } from '../src/modules/auth/totp.ts';
 import { CSRF, type TestAccount, app, newAccount } from './helpers.ts';
 
@@ -104,6 +106,37 @@ describe('MFA replay protection and lockout', () => {
     expect(reused.status).toBe(401);
     expect((await b2.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t2.body.mfa_token, code: recovery[1] })).status).toBe(200);
     expect((await auditRows(a.organizationId, 'auth.login_mfa')).map((r) => r.metadata?.method)).toEqual(['recovery_code', 'recovery_code']);
+  });
+
+  it('issues 80-bit recovery codes, stores only per-user hashes, and lets a racing reuse through once (EXT-5)', async () => {
+    const a = await newAccount('mfa-recovery-v2');
+    const { recovery } = await enableMfa(a);
+    expect(recovery).toHaveLength(8);
+    for (const c of recovery) expect(c).toMatch(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/);
+    const uid = await userId(a.email);
+    const stored = (await systemPool.query<{ code_hash: string }>(`SELECT code_hash FROM user_recovery_codes WHERE user_id = $1`, [uid])).rows.map((r) => r.code_hash);
+    expect(stored).toHaveLength(8);
+    expect(stored.join(' ')).not.toMatch(/[A-Z]{4}-/); // never the plain code
+    expect(stored).not.toContain(sha256(recovery[0]!.replace(/-/g, ''))); // salted with the user id
+    expect(stored).toContain(recoveryCodeHash(uid, recovery[0]!));
+
+    // Two sign-ins race with the same code: exactly one ends in a session.
+    const [b1, b2] = [request.agent(app), request.agent(app)];
+    const [t1, t2] = await Promise.all([login(b1, a.email), login(b2, a.email)]);
+    const results = await Promise.all([
+      b1.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t1.body.mfa_token, code: recovery[0] }),
+      b2.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t2.body.mfa_token, code: recovery[0] }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+
+    // An 8-character code issued before EXT-5 keeps working once.
+    await systemPool.query(`INSERT INTO user_recovery_codes (user_id, code_hash) VALUES ($1, $2)`, [uid, sha256('ABCD2345')]);
+    const b3 = request.agent(app);
+    const t3 = await login(b3, a.email);
+    expect((await b3.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t3.body.mfa_token, code: 'abcd-2345' })).status).toBe(200);
+    const b4 = request.agent(app);
+    const t4 = await login(b4, a.email);
+    expect((await b4.post('/api/v1/auth/login/mfa').set(CSRF).send({ mfa_token: t4.body.mfa_token, code: 'ABCD-2345' })).status).toBe(401);
   });
 
   it('locks the account for 15 minutes after five wrong codes across sign-in attempts, then lets a correct code in', async () => {
