@@ -25,6 +25,9 @@ const helperEnv = "ENGINE_TEST_HELPER"
 
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(helperEnv); mode != "" {
+		// Before anything else: a stop request (SIGTERM on POSIX) may come as soon as the helper
+		// reports ready, and must not kill it before waitForStop is reached.
+		signal.Notify(termC, syscall.SIGTERM)
 		os.Exit(helperMain(mode))
 	}
 	os.Exit(m.Run())
@@ -121,9 +124,9 @@ func helperMain(mode string) int {
 
 // waitForStop returns when the engine asks the child to stop: stdin closed (Windows and POSIX) or,
 // on POSIX, SIGTERM, which the supervisor sends as well (process_other.go requestStop).
+var termC = make(chan os.Signal, 1)
+
 func waitForStop() {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM)
 	closed := make(chan struct{})
 	go func() {
 		io.Copy(io.Discard, os.Stdin)
@@ -131,7 +134,7 @@ func waitForStop() {
 	}()
 	select {
 	case <-closed:
-	case <-sig:
+	case <-termC:
 	}
 }
 

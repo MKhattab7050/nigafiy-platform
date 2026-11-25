@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -37,6 +38,7 @@ func helperMain(mode string) int {
 	case mode == "hang":
 		// A child that ignores the stop request (SIGTERM too, on POSIX): only the kill ends it.
 		signal.Ignore(syscall.SIGTERM)
+		fmt.Println(helperReady)
 		time.Sleep(time.Hour)
 		return 0
 	case mode == "token":
@@ -72,6 +74,7 @@ func helperMain(mode string) int {
 func waitForStop() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM)
+	fmt.Println(helperReady)
 	closed := make(chan struct{})
 	go func() {
 		io.Copy(io.Discard, os.Stdin)
@@ -80,6 +83,54 @@ func waitForStop() {
 	select {
 	case <-closed:
 	case <-sig:
+	}
+}
+
+// helperReady is printed once a helper's stop handling is in place. A test that stops a child
+// right after starting it waits for it: on POSIX the stop request is a SIGTERM, which would
+// otherwise kill the helper before its handler exists (seen on the Linux CI, 0.2 ms after start).
+const helperReady = "helper ready"
+
+// readyWriter passes output through and closes ready when the helper says it is ready.
+type readyWriter struct {
+	next  io.Writer
+	ready chan struct{}
+	once  sync.Once
+	seen  strings.Builder
+	mu    sync.Mutex
+}
+
+func newReadyWriter(next io.Writer) *readyWriter {
+	if next == nil {
+		next = io.Discard
+	}
+	return &readyWriter{next: next, ready: make(chan struct{})}
+}
+
+func (w *readyWriter) Write(b []byte) (int, error) {
+	w.mu.Lock()
+	if w.seen.Len() < 4096 {
+		w.seen.Write(b)
+		if strings.Contains(w.seen.String(), helperReady) {
+			w.once.Do(func() { close(w.ready) })
+		}
+	}
+	w.mu.Unlock()
+	return w.next.Write(b)
+}
+
+func (w *readyWriter) Flush() {
+	if f, ok := w.next.(interface{ Flush() }); ok {
+		f.Flush()
+	}
+}
+
+func (w *readyWriter) wait(t *testing.T) {
+	t.Helper()
+	select {
+	case <-w.ready:
+	case <-time.After(10 * time.Second):
+		t.Fatal("helper never said it was ready")
 	}
 }
 
@@ -114,10 +165,13 @@ func TestRealProcessExitCodeIsRecorded(t *testing.T) {
 func TestRealProcessHangIsKilledOnStop(t *testing.T) {
 	spec := helperSpec(t, "hang")
 	spec.Graceful = true
+	rw := newReadyWriter(nil)
+	spec.Output = rw
 	c := New(spec, Options{Policy: fastPolicy()})
 	defer c.Close()
 	c.Start()
 	st := waitFor(t, c, "running", inState(Running))
+	rw.wait(t)
 	pid := st.Pid
 	start := time.Now()
 	c.Stop()
@@ -142,11 +196,13 @@ func TestRealProcessStopsGracefullyOnStdinClose(t *testing.T) {
 	spec := helperSpec(t, "stdin")
 	spec.Graceful = true
 	spec.StopTimeout = 20 * time.Second
-	spec.Output = logs.NewLineWriter(out, nil)
+	rw := newReadyWriter(logs.NewLineWriter(out, nil))
+	spec.Output = rw
 	c := New(spec, Options{Policy: fastPolicy()})
 	defer c.Close()
 	c.Start()
 	waitFor(t, c, "running", inState(Running))
+	rw.wait(t)
 	start := time.Now()
 	c.Stop()
 	if took := time.Since(start); took > 10*time.Second {
