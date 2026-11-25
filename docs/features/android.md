@@ -49,7 +49,7 @@ The web shows each action only where the agent's reported mode allows it, and th
    - **App enrollment QR**: `nigafiy://enroll?server=<url>&token=<ldea_…>&pin=<sha256>`. The phone's camera
      app opens the Nigafiy agent through its `nigafiy://enroll` intent filter, so the agent needs no
      camera permission and no QR library. The same three values can be typed by hand.
-   - **Device Owner QR** (only when the server has an agent APK to serve, `NIGAFIY_ANDROID_APK_PATH`): the
+   - **Device Owner QR** (only when the server has an agent APK to serve: `NIGAFIY_ANDROID_APK`, default `agents/android-agent/app/build/outputs/apk/release/app-release.apk`): the
      Android provisioning JSON with the component name, the APK download URL
      (`/api/v1/agent/android/agent.apk`), its SHA-256 and the enrollment in
      `PROVISIONING_ADMIN_EXTRAS_BUNDLE`.
@@ -111,3 +111,92 @@ outside the build shell). Checksums are SHA-256 and matched the publisher's own 
 (`android-sdk-license`). The owner accepted it on 2026-11-25 ("Yes, accept it"), for these three packages
 only. `android-sdk-preview-license` and every other license were not accepted. No emulator and no
 system image were downloaded.
+
+## 8. As built (2026-11-25)
+
+**Android app** (`agents/android-agent`, Kotlin, framework APIs only, no third-party library):
+- `core/`: plain JVM module (protocol, JSON, enrollment link, TLS pin check, gateway client, compliance
+  rules, command parsing). Unit-tested on the JVM: 27 tests.
+- `app/`: the Android app (minSdk 26, target/compile 36, `com.nigafiy.agent` 0.1.0): `AgentService`
+  (foreground service, heartbeat 30 s, long poll), `Executor` (lock, password policy, camera, install,
+  uninstall, wipe, release), `Facts` (inventory and the six compliance checks), `Store` (credential
+  encrypted with an Android Keystore AES-GCM key), `Provisioning` (Device Owner admin extras),
+  `MainActivity` (enroll by link or by hand, status, battery exemption), `BootReceiver`.
+
+**API** (migration `045_android_endpoints.sql`):
+- `endpoints.platform` accepts `android`; the phone's own state is kept in `endpoints.android`.
+- Android has no CPU load for apps: `cpu_pct` is stored as NULL (never 0), and a CPU monitoring rule on a
+  phone reads "not measured", never a breach.
+- Generic endpoint commands are refused on a phone (`unsupported_by_platform`) except "refresh inventory".
+- `POST /api/v1/endpoints/:id/android/actions` with `lock` / `password_policy` / `camera` (technician),
+  `install_apk` / `uninstall` (admin), `wipe` / `release` (admin, MFA step-up always, second-admin approval
+  when the Fleet group asks for approvals). Refusals: `android_requires_device_owner`,
+  `android_self_uninstall`, `endpoint_offline`, and every Fleet group rule (audited as
+  `fleet.policy_refused`). The step-up code never reaches the audit log.
+- Approvals: `GET /api/v1/fleet/android/requests`, `POST /api/v1/fleet/android/requests/:id/approve|deny`
+  (not by the requester; requests expire; rows cannot be deleted).
+- APKs pushed from Fleet: `GET|POST /api/v1/fleet/android/apks`, `DELETE /api/v1/fleet/android/apks/:id`
+  (100 MiB max, must be a zip/APK, de-duplicated by SHA-256). A phone may download an APK
+  (`/api/v1/agent/android/apks/:id`) only while it has an open install command for it.
+- `GET /api/v1/agent/android/agent.apk` serves the Nigafiy agent itself for QR provisioning (with its
+  SHA-256 in `X-Content-SHA256`); `GET /api/v1/fleet/android/provisioning` gives the web what the
+  Device Owner QR needs.
+
+**Web** (EN and AR, RTL): Android in the enroll dialog (app-link QR plus the three values to copy;
+Device Owner QR or, when no APK is built, the `adb` command), the phone panel on the endpoint page
+(mode, facts, actions shown only when the mode allows them, APK upload, remove app, erase / stop
+management with reason and code), requests on the endpoint and on Fleet → Approvals, Android in the
+platform mix and filters, and a guide section (Add a computer to Fleet → Android phones). The QR codes
+are drawn by Nigafiy's own encoder (`features/endpoints/components/android/qr.ts`), checked by a test that
+reads every code back.
+
+**Build:** `pnpm android:keystore` once (creates `.data/android/release.jks` and
+`keystore.properties`, random passwords, never committed, never printed), then `pnpm build:android`
+(JVM tests, debug APK, release APK, then `aapt2 dump badging` and `apksigner verify`). `pnpm test:android`
+runs the JVM tests only (no SDK needed).
+
+| APK | Path | Signed by |
+| --- | --- | --- |
+| debug | `agents/android-agent/app/build/outputs/apk/debug/app-debug.apk` | the SDK's debug key (`CN=Android Debug`) |
+| release | `agents/android-agent/app/build/outputs/apk/release/app-release.apk` | the local release key (`CN=Nigafiy Agent, O=Nigafiy (local key)`, RSA 3072, APK Signature Scheme v2) |
+
+## 9. Owner steps
+
+1. Build: `pnpm android:keystore` (once; back up `.data/android/` somewhere safe), then
+   `pnpm build:android`. The release APK lands at the path above; the API serves it to phones.
+2. Use **HTTPS** for the server phones reach (Nigafiy LAN TLS); Android refuses plain `http://` except
+   loopback. The enroll dialog warns when the address will be refused.
+3. **Regular app (any phone):** copy `app-release.apk` to the phone, install it (allow "install unknown
+   apps" for the file manager once, then switch it off again), open Fleet → Managed computers → Enroll
+   endpoint → Android, scan the first QR with the phone's camera (or type server, token and pin in the
+   app). You get inventory and compliance; no lock, wipe, camera, password or app control.
+4. **Device Owner (a test phone you may erase):**
+   - QR: factory-reset the phone, tap the welcome screen six times, connect to Wi-Fi, scan the second
+     QR. Android downloads the app from the server, checks its SHA-256 and enrolls it.
+   - Or adb: on a phone with no accounts added, enable USB debugging, `adb install app-release.apk`, then
+     `adb shell dpm set-device-owner com.nigafiy.agent/.admin.NigafiyAdminReceiver`, then enroll as in 3,
+     then switch USB debugging off (Fleet flags it as non-compliant).
+   - What is lost without Device Owner: lock, screen-lock policy, camera, silent app install and removal,
+     erase. "Stop management" removes Device Owner without a factory reset.
+5. Try every action once on the test phone and watch the result in the endpoint's commands tab.
+
+## 10. What ran here and what never ran
+
+Ran on this PC, for real:
+- Kotlin JVM unit tests of `core` (27, pass).
+- The debug and release APK builds (Gradle 9.9.2, AGP, build-tools 36.0.0), inspected with
+  `aapt2 dump badging` (package, version, SDK levels, permissions) and `apksigner verify --print-certs`
+  (signature v2 verifies; release signer is the local key).
+- The API tests for Android (`apps/api/tests/fleet-android.test.ts`, 13 tests on a real PostgreSQL: the
+  phone side is played by the test through the real agent protocol) and the full API suite.
+- Web unit tests (the QR encoder read back by a decoder; the enrollment codes) and a Playwright walk of
+  the phone's page and the enroll dialog in English (light) and Arabic (RTL, dark), with a phone seeded
+  through the agent protocol.
+
+Never ran:
+- The app on any Android phone or emulator (no real phone was touched; no emulator or system image
+  is approved). So nothing on the phone side has been seen working: enrollment from the app, the
+  foreground service and long poll under Doze, Keystore storage, TLS pinning on a device, any
+  Device Owner action (lock, password, camera, install, uninstall, wipe, release), QR provisioning by
+  Android's setup wizard, and the boot / update restart. Treat the first test-phone run as the first
+  real test.
