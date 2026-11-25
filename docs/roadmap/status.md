@@ -246,7 +246,7 @@ six phases. Status against it:
 Milestones 2, 3 and 4, the spec gap work and the parity audit (2026-11-23) are done. The audit found no rule breach in the code (no AI, no simulated data in product paths, no button without a handler, no TODO); this file was the one place that contradicted the code, fixed here.
 
 **Open gaps, most important first (owner picks the order):**
-1. **Fleet Pro** waves 1–3 are built (`035`–`037`, `042`, `043`). Not built, by the owner's choice: WebRTC, H.264, the TURN relay and 60 fps / 4K streaming; the picture stays WebSocket + JPEG. Everything listed as "Never run" above needs the owner's own second computer, an elevated install or a real update cycle.
+1. **Fleet Pro** waves 1–3 are built (`035`–`037`, `042`, `043`). WebRTC H.264 video on the LAN was added later (`044`, see item 5); not built, by the owner's choice: the TURN relay and 60 fps / 4K streaming; WebSocket + JPEG stays as the fallback and for recorded sessions. Everything listed as "Never run" above needs the owner's own second computer, an elevated install or a real update cycle.
 2. **Router controls** were closed per driver on 2026-11-24 (R1, R2; `docs/features/router-controls.md` has the matrix with the vendor source of every control). What is still "not supported" is missing from that firmware's documented interface, or refused for safety, each with its note. Every new control is checked only against protocol test doubles; none ran on a real router. Where a router can block but not schedule, Nigafiy still applies the schedule itself by blocking and unblocking.
 
    | Driver | Rename | Wi-Fi | Reserv. | Port fwd | Reboot | Rate limit | Schedule |

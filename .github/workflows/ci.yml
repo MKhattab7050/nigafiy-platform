@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   # The product ships as Windows programs, so the main gate runs on Windows.
+  # Cost note: on a private repository, minutes on Windows runners count double (2x) against the
+  # account's included Actions minutes.
   verify:
     name: Typecheck, lint, tests, build
     runs-on: windows-latest
@@ -48,6 +50,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Brand check (old product name)
+        run: pnpm check:brand
+
       - name: Go vet
         shell: bash
         run: |
@@ -70,8 +75,18 @@ jobs:
       - name: Desktop tests
         run: pnpm --filter @nigafiy/desktop test
 
-      - name: Web production build
-        run: pnpm --filter @nigafiy/web build
+      - name: Brand tests
+        run: pnpm --filter @nigafiy/brand test
+
+      - name: Web unit tests
+        run: pnpm --filter @nigafiy/web test:unit
+
+      - name: Build (brand files, then the web production build)
+        run: pnpm build
+
+      - name: Generated brand sources match the commit
+        shell: bash
+        run: git diff --exit-code -- packages/brand/svg packages/brand/src
 
       - name: Web browser smoke tests (EN + AR/RTL, CSP)
         run: pnpm test:web
