@@ -29,7 +29,14 @@ export function markStreamDown(endpointId: string, instance: string): void {
   if (m.size === 0) connected.delete(endpointId);
 }
 
-export function clearStream(endpointId: string): void {
+/** Forgets the endpoint's stream; with `sessionId`, only entries of that session. */
+export function clearStream(endpointId: string, sessionId: string | null = null): void {
+  const m = connected.get(endpointId);
+  if (!m) return;
+  if (sessionId !== null) {
+    for (const [instance, e] of m) if (e.sessionId === sessionId) m.delete(instance);
+    if (m.size > 0) return;
+  }
   connected.delete(endpointId);
 }
 

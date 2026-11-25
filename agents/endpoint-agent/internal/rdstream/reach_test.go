@@ -77,12 +77,12 @@ func TestEndCurrentSessionFromTheTray(t *testing.T) {
 	ui := &fakeUI{}
 	d := &toolDesktop{fakeDesktop: newFakeDesktop(ui)}
 	notified := make(chan string, 1)
-	shells := 0
-	var recordingsBy []string
+	shells := 0                          // the tray event is handled synchronously (emit returns after it)
+	recordingsBy := make(chan string, 1) // OnRecordings runs on its own goroutine
 	m := NewManager(Config{ServerURL: "http://127.0.0.1:1", Credential: func() string { return "x" }, Desktop: d,
 		NotifyEnded:  func(_ context.Context, s string) error { notified <- s; return nil },
 		OnEndSession: func() { shells++ },
-		OnRecordings: func(user string) { recordingsBy = append(recordingsBy, user) }})
+		OnRecordings: func(user string) { recordingsBy <- user }})
 	if res := m.Open(context.Background(), OpenRequest{SessionID: "s9", Operator: "tech"}); res.Banner != "shown" {
 		t.Fatalf("open %+v", res)
 	}
@@ -95,10 +95,18 @@ func TestEndCurrentSessionFromTheTray(t *testing.T) {
 		t.Fatalf("without a session the shells still end: %d", shells)
 	}
 	d.emit(desktop.ToolEvent{Kind: "recordings_request", User: `CORP\sami`}, nil)
-	for i := 0; i < 100 && len(recordingsBy) == 0; i++ {
-		time.Sleep(10 * time.Millisecond)
+	// It used to poll for one second: a loaded machine can take longer to run that goroutine.
+	select {
+	case user := <-recordingsBy:
+		if user != `CORP\sami` {
+			t.Fatalf("recordings for %q", user)
+		}
+	case <-time.After(hangGuard):
+		t.Fatal("Past recordings never reached the agent")
 	}
-	if len(recordingsBy) != 1 || recordingsBy[0] != `CORP\sami` {
-		t.Fatalf("recordings %v", recordingsBy)
+	select {
+	case user := <-recordingsBy:
+		t.Fatalf("a second recordings request for %q", user)
+	default:
 	}
 }

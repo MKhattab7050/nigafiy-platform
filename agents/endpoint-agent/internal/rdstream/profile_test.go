@@ -155,7 +155,7 @@ func TestStreamEnforcesTheProfile(t *testing.T) {
 	}
 	select {
 	case <-finished:
-	case <-time.After(15 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("stream test did not finish")
 	}
 	d.mu.Lock()

@@ -143,6 +143,20 @@ const transportAudits = async (orgId: string) =>
   );
 const settle = () => new Promise((r) => setTimeout(r, 300));
 
+/**
+ * The hub writes audit rows and session counters after it has relayed the message (fire and
+ * forget), so a fixed pause is not enough on a loaded machine: read again until the rows are there.
+ */
+async function eventually<T>(read: () => Promise<T>, done: (v: T) => boolean, what: string, ms = 15_000): Promise<T> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const v = await read();
+    if (done(v)) return v;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}; got ${JSON.stringify(v)}`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 /** Offer → answer → active, as a browser and an agent do it; returns the agent-side routing id. */
 async function startRtc(viewer: Peer, agent: Peer, encoder = 'Media Foundation H.264 (hardware: Test MFT)'): Promise<string> {
   const before = agent.texts.filter((m) => m.t === 'rtc_offer').length;
@@ -230,7 +244,14 @@ describe('WebRTC video signalling (stream hub)', () => {
     agent.send({ t: 'rtc_input', req, kind: 'mouse_click', button: 'left', display_index: 1, double: true });
     agent.send({ t: 'rtc_input', req, kind: 'mouse_click', refused: 'profile_forbids_control' });
     agent.send({ t: 'rtc_input', req, kind: 'launch_rockets' });
-    await settle();
+    // The refused one is the third message: once it is written, the two before it are too (the hub
+    // writes a room's audit rows in order).
+    const refused = await eventually(
+      async () => (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'fleet.session_refused_action'`, [a.organizationId])).rows,
+      (rows) => rows.length > 0,
+      'the refused input audit row',
+    );
+    expect(refused.map((r) => r.metadata)).toEqual([expect.objectContaining({ via: 'webrtc', code: 'profile_forbids_control', kind: 'mouse_click' })]);
     expect(viewer.texts.some((m) => m.t === 'rtc_input')).toBe(false);
     const inputs = (await systemPool.query(`SELECT user_email, metadata FROM audit_logs WHERE organization_id = $1 AND action = 'endpoint.rd_input' ORDER BY created_at, id`, [a.organizationId])).rows;
     expect(inputs.map((r) => r.metadata)).toEqual([
@@ -238,8 +259,6 @@ describe('WebRTC video signalling (stream hub)', () => {
       expect.objectContaining({ via: 'webrtc', kind: 'mouse_click', button: 'left', display_index: 1, double: true }),
     ]);
     expect(inputs[0]!.user_email).toBe(a.email);
-    const refused = (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'fleet.session_refused_action'`, [a.organizationId])).rows;
-    expect(refused.map((r) => r.metadata)).toEqual([expect.objectContaining({ via: 'webrtc', code: 'profile_forbids_control', kind: 'mouse_click' })]);
 
     // ICE failed in the browser: back to JPEG, the agent drops the peer and sends a full frame.
     viewer.send({ t: 'rtc_fallback', reason: 'ice_failed' });
@@ -250,8 +269,15 @@ describe('WebRTC video signalling (stream hub)', () => {
     expect(viewer.frames).toBe(0);
     agent.ws.send(packet(2), { binary: true });
     await viewer.until(() => viewer.frames === 1, 'JPEG frame after the fallback');
-    await settle();
-    expect(await systemPool.query(`SELECT transport, rtc_encoder, rtc_fallback_reason, rtc_started_at IS NOT NULL AS started FROM fleet_sessions WHERE public_id = $1`, [session]).then((r) => r.rows[0])).toEqual({
+    const sessionRow = await eventually(
+      () =>
+        systemPool
+          .query(`SELECT transport, rtc_encoder, rtc_fallback_reason, rtc_started_at IS NOT NULL AS started FROM fleet_sessions WHERE public_id = $1`, [session])
+          .then((r) => r.rows[0]),
+      (row) => row?.rtc_fallback_reason != null,
+      'the fallback reason on the session row',
+    );
+    expect(sessionRow).toEqual({
       transport: 'webrtc',
       rtc_encoder: HELLO_RTC.webrtc.encoder,
       rtc_fallback_reason: 'ice_failed',
@@ -269,8 +295,7 @@ describe('WebRTC video signalling (stream hub)', () => {
     await agent2.until(() => agent2.last('viewers')?.count === 0, 'viewers = 0');
     viewer.ws.close();
     expect((await agent2.text('rtc_close')).req).toBe(req2);
-    await settle();
-    expect((await transportAudits(a.organizationId)).map((m) => [m.event, m.mode, m.code ?? m.reason ?? m.encoder ?? null])).toEqual([
+    expect((await eventually(() => transportAudits(a.organizationId), (rows) => rows.length >= 5, 'five transport audit rows')).map((m) => [m.event, m.mode, m.code ?? m.reason ?? m.encoder ?? null])).toEqual([
       ['refused', 'webrtc', 'webrtc_unsupported'],
       ['started', 'webrtc', HELLO_RTC.webrtc.encoder],
       ['fallback', 'jpeg', 'ice_failed'],
@@ -304,8 +329,7 @@ describe('WebRTC video signalling (stream hub)', () => {
     await agent.until(() => agent.last('viewers')?.count === 1, 'JPEG viewer again');
     viewer.send({ t: 'rtc_offer', sdp: OFFER });
     expect((await viewer.text('rtc_refused')).code).toBe('webrtc_recording_active');
-    await settle();
-    const events = (await transportAudits(a.organizationId)).map((m) => [m.event, m.reason ?? m.code ?? null]);
+    const events = (await eventually(() => transportAudits(a.organizationId), (rows) => rows.length >= 3, 'three transport audit rows')).map((m) => [m.event, m.reason ?? m.code ?? null]);
     expect(events).toEqual([
       ['started', null],
       ['fallback', 'recording'],
@@ -358,8 +382,11 @@ describe('WebRTC video signalling (stream hub)', () => {
     expect(req).toMatch(/^[0-9a-f]{32}\.rtc$/);
     await agent.until(() => agent.last('viewers')?.count === 0, 'viewers = 0');
     agent.send({ t: 'rtc_input', req, kind: 'key_press', display_index: 0 });
-    await settle();
-    const inputs = (await systemPool.query(`SELECT user_email, metadata FROM audit_logs WHERE organization_id = $1 AND action = 'endpoint.rd_input'`, [a.organizationId])).rows;
+    const inputs = await eventually(
+      async () => (await systemPool.query(`SELECT user_email, metadata FROM audit_logs WHERE organization_id = $1 AND action = 'endpoint.rd_input'`, [a.organizationId])).rows,
+      (rows) => rows.length > 0,
+      'the input audit row',
+    );
     expect(inputs).toHaveLength(1);
     expect(inputs[0]).toMatchObject({ user_email: a.email, metadata: { via: 'webrtc', kind: 'key_press' } });
     viewer.send({ t: 'rtc_fallback', reason: 'no_video' });

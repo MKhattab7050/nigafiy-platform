@@ -54,8 +54,9 @@ Each instance announces the agent sockets it holds on the channel `ld_rd_stream`
 `up|E|S|instance|peerUrl` and `down|E|S|instance`. A new instance asks with `who|E|instance`. When an
 operator connects to an instance that does not hold the agent's socket, that instance opens one peer
 socket to the instance that does (`/api/v1/internal/rd-peer`). Every frame then passes over that
-socket; the operator is never redirected. Session changes (`state|E|…`, `end|E`) are published on
-COMMIT.
+socket; the operator is never redirected. Session changes (`state|E|state|S`, `end|E|S`) are published on
+COMMIT and name the session: a late notification about an earlier session never touches a newer
+session of the same endpoint.
 
 Set `RD_PEER_URL` on each instance to an address the other instances can reach. The default is
 `http://127.0.0.1:$PORT`, which only works when every instance runs on one host. A test covers two

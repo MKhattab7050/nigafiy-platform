@@ -193,9 +193,15 @@ func wsServer(t *testing.T, onConn func(c *srvConn, in <-chan msgIn, r *http.Req
 	}))
 }
 
+// hangGuard bounds every wait in these tests for something the code under test (or the loopback
+// network stack) does. Waits return as soon as it happens; the guard only turns a hang into a
+// failure. It is long because a loaded machine (several test suites at once) can stall these
+// goroutines for seconds, and no test here asserts how fast anything is.
+const hangGuard = 30 * time.Second
+
 func next(t *testing.T, in <-chan msgIn, want string) msgIn {
 	t.Helper()
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(hangGuard)
 	for {
 		select {
 		case m, ok := <-in:
@@ -274,11 +280,11 @@ func TestSessionConsentBannerStreamInputClipboardAndServerEnd(t *testing.T) {
 	}
 	select {
 	case <-finished:
-	case <-time.After(15 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("stream test did not finish")
 	}
 	// The server's end closes the session here: banner removed.
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(hangGuard)
 	hidden := func() bool { ui.mu.Lock(); defer ui.mu.Unlock(); return len(ui.hidden) > 0 }
 	for (m.Active() != "" || !hidden()) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
@@ -327,7 +333,7 @@ func TestEndSessionButtonNotifiesTheServerAndClosesLocally(t *testing.T) {
 		if s != "s7" {
 			t.Fatalf("notified %s", s)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("End session was not reported to the server")
 	}
 	if m.Active() != "" {
@@ -372,7 +378,7 @@ func TestClosingWhileTheConsentDialogIsUpWithdrawsIt(t *testing.T) {
 		if res.Consent != "unavailable" || res.Banner != "not_shown" || res.Stream != "not_started" || m.Active() != "" {
 			t.Fatalf("%+v active=%q", res, m.Active())
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("Open did not return after the session was closed")
 	}
 }
