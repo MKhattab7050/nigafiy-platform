@@ -133,6 +133,30 @@ class MainActivity : Activity() {
                 setOnClickListener { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) }
             })
         }
+        // The optional phone controls: each one is the person's own switch in Android's Settings.
+        root.addView(text(getString(R.string.controls_title), 18f))
+        root.addView(text(getString(R.string.controls_screen), 13f))
+        val controlOn = ControlService.isEnabled(this)
+        root.addView(text(getString(if (controlOn) R.string.controls_control_on else R.string.controls_control_off), 13f))
+        root.addView(Button(this).apply {
+            text = getString(if (controlOn) R.string.action_accessibility_off else R.string.action_accessibility)
+            setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        })
+        if (Build.VERSION.SDK_INT >= 30) {
+            val filesOn = android.os.Environment.isExternalStorageManager()
+            root.addView(text(getString(if (filesOn) R.string.controls_files_on else R.string.controls_files_off), 13f))
+            root.addView(Button(this).apply {
+                text = getString(if (filesOn) R.string.action_files_off else R.string.action_files)
+                setOnClickListener {
+                    try {
+                        startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+                    } catch (_: Exception) {
+                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    }
+                }
+            })
+        }
+        root.addView(text(getString(R.string.controls_ring_message), 13f))
     }
 
     // What was typed, kept across redraws (an error, a refused token, rotation) so nothing is lost.

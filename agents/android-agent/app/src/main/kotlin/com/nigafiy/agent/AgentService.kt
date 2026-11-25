@@ -50,6 +50,7 @@ class AgentService : Service() {
         facts = Facts(this, store)
         executor = Executor(this, store, facts)
         seen = SeenCommands(store.seenCommands)
+        ScreenShare.endReporter = { id -> pool.execute { try { gateway()?.endSession(id) } catch (e: Exception) { store.lastError = e.message } } }
         channel(this)
         showManagementNotification()
         startInForeground(getString(R.string.notif_enrolling, store.server ?: store.pendingEnrollment?.server ?: "…"))
@@ -212,7 +213,9 @@ class AgentService : Service() {
         for (cmd in commands) {
             if (!seen.take(cmd.id)) continue
             store.seenCommands = seen.snapshot()
-            worker.execute {
+            // Asking the person can take a minute: it must not hold back captures, closes or other commands.
+            val queue: (Runnable) -> Unit = if (cmd is com.nigafiy.agent.core.AgentCommand.SessionOpen) { r -> Thread(r, "nigafiy-share-request").start() } else worker::execute
+            queue {
                 val r = executor.run(cmd, g)
                 report(g, listOf(r.outcome))
                 if (r.refresh) { forceApps = true; pool.execute { heartbeat() } }

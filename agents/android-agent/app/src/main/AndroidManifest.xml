@@ -4,7 +4,11 @@
   network (gateway), foreground service (the persistent "Managed by Nigafiy" notification), boot
   (restart after a reboot), installed apps (inventory), install/delete packages (Device Owner
   actions pushed from Fleet), battery optimisation (the user may exempt the agent from Doze).
-  There is no camera, location, contacts, SMS, accessibility or microphone permission.
+  Phone controls (docs/features/android.md §11), each switched on by the person: screen view
+  (MediaProjection: Android's own dialog every session, foreground service type mediaProjection),
+  remote control (an accessibility service the person turns on; gestures only, no window content),
+  file manager (All files access, granted by the person in Settings), ring and message (notifications).
+  There is no camera, location, contacts, SMS or microphone permission.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
@@ -14,6 +18,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -104,5 +112,34 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Device management agent: keeps the connection to the organisation's Nigafiy server so IT commands arrive without a push service" />
         </service>
+
+        <activity
+            android:name=".ShareRequestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="com.nigafiy.agent.share" />
+
+        <service
+            android:name=".ScreenCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".ControlService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service" />
+        </service>
+
+        <receiver
+            android:name=".PhoneControlReceiver"
+            android:exported="false" />
     </application>
 </manifest>

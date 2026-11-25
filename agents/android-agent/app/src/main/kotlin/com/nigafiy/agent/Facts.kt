@@ -28,6 +28,7 @@ import com.nigafiy.agent.core.DeviceInfo
 import com.nigafiy.agent.core.InstalledApp
 import com.nigafiy.agent.core.Mode
 import com.nigafiy.agent.core.NetInterface
+import com.nigafiy.agent.core.PhoneFeatures
 import com.nigafiy.agent.core.SecurityFacts
 import com.nigafiy.agent.core.UnknownSourcesFacts
 import java.net.Inet4Address
@@ -77,6 +78,10 @@ class Facts(private val ctx: Context, private val store: Store) {
             passwordComplexityRequired = if (mode == Mode.DEVICE_OWNER) store.passwordComplexity ?: "none" else null,
             batteryOptimisationExempt = read { pm.isIgnoringBatteryOptimizations(ctx.packageName) },
             notificationsAllowed = read { nm.areNotificationsEnabled() },
+            features = PhoneFeatures.supported(Build.VERSION.SDK_INT),
+            allFilesAccess = if (Build.VERSION.SDK_INT >= 30) read { Environment.isExternalStorageManager() } else null,
+            accessibilityEnabled = read { ControlService.isEnabled(ctx) },
+            screenCapture = read { !dpm.getScreenCaptureDisabled(null) },
         )
     }
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Remote control (ControlService): gestures and global actions only. No event types, no window
+  content (canRetrieveWindowContent=false), no key filtering: Nigafiy never sees the screen's
+  text or what the person types.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/control_service_description"
+    android:summary="@string/control_service_description"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="false"
+    android:canRequestFilterKeyEvents="false"
+    android:notificationTimeout="0" />
