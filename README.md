@@ -323,9 +323,10 @@ lint, tests, build) passing on GitHub.
 
 Only exercised against protocol test doubles, fixtures or loopback, never on real hardware: 15 of the
 16 router drivers, SNMP switches, SSO, config restore on every vendor, the agent on Linux and macOS,
-WebRTC in a real browser, the engine's Windows service mode, the agent installer, and the Android
-agent (built and unit-tested, never run on a phone or emulator). The website is built but not hosted,
-and no release has been published. [docs/roadmap/status.md](docs/roadmap/status.md) lists exactly what
+WebRTC between two computers (it ran in a real browser on one PC only), the engine's Windows service
+mode, the agent installer, and the Android agent on a real phone (it ran on an Android 16 emulator as
+Device Owner). The website is built but not hosted; version 1.0.0 is an internal release, not
+published. [docs/roadmap/status.md](docs/roadmap/status.md) lists exactly what
 ran for real and what did not.
 
 </details>
