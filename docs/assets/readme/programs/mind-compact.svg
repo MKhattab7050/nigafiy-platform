@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 136" width="300" height="136" role="img" aria-labelledby="t">
+<title id="t">Nigafiy Mind</title>
+<defs>
+<linearGradient id="light" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".2"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<style>text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', Tahoma, Helvetica, Arial, sans-serif}</style>
+</defs>
+<rect x="6" y="4" width="288" height="128" rx="16" fill="#C239B3"/>
+<rect x="6" y="4" width="288" height="128" rx="16" fill="url(#light)"/>
+<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" transform="translate(127 21) scale(1.9167)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="150" y="112" text-anchor="middle" font-size="36" font-weight="700" fill="#fff">Mind</text>
+</svg>
