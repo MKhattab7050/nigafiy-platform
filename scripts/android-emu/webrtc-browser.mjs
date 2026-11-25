@@ -89,7 +89,7 @@ try {
       const r = { connectionState: pc.connectionState, iceConnectionState: pc.iceConnectionState };
       const rep = await pc.getStats();
       const byId = new Map();
-      rep.forEach((s) => byId.set(s.id, s));
+      for (const s of rep.values()) byId.set(s.id, s);
       rep.forEach((s) => {
         if (s.type === 'inbound-rtp' && s.kind === 'video') {
           r.video = { framesDecoded: s.framesDecoded, framesReceived: s.framesReceived, frameWidth: s.frameWidth, frameHeight: s.frameHeight, framesPerSecond: s.framesPerSecond, bytesReceived: s.bytesReceived, packetsLost: s.packetsLost, keyFramesDecoded: s.keyFramesDecoded, decoderImplementation: s.decoderImplementation, codec: byId.get(s.codecId)?.mimeType };
@@ -109,7 +109,7 @@ try {
   await page.waitForTimeout(3000);
   result.framesDecodedLater = await page.evaluate(async () => {
     let n = null;
-    for (const pc of window.__pcs ?? []) (await pc.getStats()).forEach((s) => s.type === 'inbound-rtp' && s.kind === 'video' && (n = s.framesDecoded));
+    for (const pc of window.__pcs ?? []) for (const s of (await pc.getStats()).values()) if (s.type === 'inbound-rtp' && s.kind === 'video') n = s.framesDecoded;
     return n;
   });
   // Is something drawn on the console canvas (not a blank picture)?
@@ -142,7 +142,7 @@ try {
     result.input = { before: { x: before.x, y: before.y }, points };
     result.input.dataChannelAfter = await page.evaluate(async () => {
       const out = [];
-      for (const pc of window.__pcs ?? []) (await pc.getStats()).forEach((s) => s.type === 'data-channel' && out.push({ state: s.state, messagesSent: s.messagesSent, bytesSent: s.bytesSent }));
+      for (const pc of window.__pcs ?? []) for (const s of (await pc.getStats()).values()) if (s.type === 'data-channel') out.push({ state: s.state, messagesSent: s.messagesSent, bytesSent: s.bytesSent });
       return out;
     });
   }
