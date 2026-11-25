@@ -3,7 +3,7 @@
 //
 //  - Dashboard window: the Nigafiy web app, loaded from the configured server.
 //    It is remote content, so it runs sandboxed with no preload and no desktop access.
-//  - Collector panel: a local page that manages the bundled lan-collector program on this computer.
+//  - Collector panel: a local page that manages the Sensor on this computer (`nigafiy-engine sensor`).
 //  - Tray icon: the collector keeps monitoring while the windows are closed.
 //  - Local mode (running from a source checkout, no remote server configured): opening the app starts
 //    Nigafiy itself on this computer (database, API, web app), signs in with a local account,
@@ -68,7 +68,6 @@ const CHOOSER_URL = pathToFileURL(CHOOSER_FILE).href;
 const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
 const PANEL_URL = pathToFileURL(PANEL_FILE).href;
 const ICON = path.join(__dirname, '..', 'assets', 'icon.png');
-const BINARY_NAME = process.platform === 'win32' ? 'nigafiy-sensor.exe' : 'nigafiy-sensor';
 
 /** What this launch asked for: `--program=<id>` or a `nigafiy://` link (Hub by default). */
 const launch = launchRequest(process.argv);
@@ -114,10 +113,14 @@ function makeStack({ script, nodePath, env, dataDir }) {
   return new LocalStack({ script, nodePath, env, onStatus });
 }
 
+/**
+ * The Sensor is the engine executable run as `nigafiy-engine sensor` (one program for both,
+ * docs/architecture/engine-sensor.md). The path is returned even when the file is missing, so the
+ * panel can say the program is missing from this installation.
+ */
 function collectorBinary() {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'collector', BINARY_NAME)
-    : path.join(__dirname, '..', '..', '..', 'collectors', 'lan-collector', 'bin', BINARY_NAME);
+  const name = process.platform === 'win32' ? 'nigafiy-engine.exe' : 'nigafiy-engine';
+  return app.isPackaged ? path.join(process.resourcesPath, 'engine', name) : path.join(__dirname, '..', '..', '..', 'engine', 'bin', name);
 }
 
 function serverOrigin() {
@@ -697,6 +700,7 @@ if (!app.requestSingleInstanceLock()) {
     if (app.isPackaged && !STORE) app.setAsDefaultProtocolClient(PROTOCOL);
     collector = new CollectorManager({
       binaryPath: collectorBinary(),
+      binaryArgs: ['sensor'],
       // In a source checkout the collector identity is shared with `pnpm local`.
       dataDir: repoRoot ? path.join(repoRoot, '.data', 'collector') : path.join(app.getPath('userData'), 'collector'),
     });

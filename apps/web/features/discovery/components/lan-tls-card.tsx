@@ -40,7 +40,7 @@ function TlsBody({ s }: { s: TlsStatus }) {
   const host = serverHost(s);
   const server = `https://${host.includes(':') ? `[${host}]` : host}:${s.https_port}`;
   const pin = s.pin_sha256;
-  const collector = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nNIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token>${pin ? ` \\\nNIGAFIY_SENSOR_TLS_PIN_SHA256=${pin}` : ''} \\\n./nigafiy-sensor -config collector.yaml`;
+  const collector = `NIGAFIY_SENSOR_SERVER_URL=${server} \\\nNIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token>${pin ? ` \\\nNIGAFIY_SENSOR_TLS_PIN_SHA256=${pin}` : ''} \\\n./nigafiy-engine sensor -config collector.yaml`;
   const agent = `nigafiy-agent install -server ${server} -token <token>${pin ? ` -tls-pin ${pin}` : ''}`;
   return (
     <div className="space-y-3">

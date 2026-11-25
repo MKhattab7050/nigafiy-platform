@@ -1,6 +1,7 @@
 'use strict';
-// Runs and supervises the bundled lan-collector binary. No Electron imports here, so this file
-// can be tested with plain Node.
+// Runs and supervises the Sensor: the bundled nigafiy-engine executable started with the `sensor`
+// subcommand (binaryArgs), the same flags the old standalone program took. No Electron imports
+// here, so this file can be tested with plain Node.
 const { EventEmitter } = require('node:events');
 const { spawn, execFile } = require('node:child_process');
 const fs = require('node:fs');
@@ -47,10 +48,11 @@ function parseCidrs(input) {
 }
 
 class CollectorManager extends EventEmitter {
-  /** @param {{ binaryPath: string, dataDir: string }} options */
-  constructor({ binaryPath, dataDir }) {
+  /** @param {{ binaryPath: string, binaryArgs?: string[], dataDir: string }} options binaryArgs come before the Sensor's own flags (['sensor'] for nigafiy-engine) */
+  constructor({ binaryPath, binaryArgs = [], dataDir }) {
     super();
     this.binaryPath = binaryPath;
+    this.binaryArgs = [...binaryArgs];
     this.dataDir = dataDir;
     this.stateDir = path.join(dataDir, 'state');
     this.configPath = path.join(dataDir, 'collector.yaml');
@@ -107,7 +109,7 @@ class CollectorManager extends EventEmitter {
     fs.writeFileSync(probe, this.renderConfig(next), { mode: 0o600 });
     try {
       await new Promise((resolve, reject) => {
-        execFile(this.binaryPath, ['-config', probe, '-check-config'], { timeout: 10_000, windowsHide: true }, (err, _stdout, stderr) => {
+        execFile(this.binaryPath, [...this.binaryArgs, '-config', probe, '-check-config'], { timeout: 10_000, windowsHide: true }, (err, _stdout, stderr) => {
           if (err) reject(new Error(this.redact(stderr.trim() || err.message)));
           else resolve();
         });
@@ -189,7 +191,7 @@ class CollectorManager extends EventEmitter {
     delete env.NIGAFIY_SENSOR_ENROLLMENT_TOKEN;
     delete env.LAN_COLLECTOR_ENROLLMENT_TOKEN;
     if (token) env.NIGAFIY_SENSOR_ENROLLMENT_TOKEN = token;
-    const child = spawn(this.binaryPath, ['-config', this.configPath], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(this.binaryPath, [...this.binaryArgs, '-config', this.configPath], { env, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
     this.child = child;
     const startedAt = Date.now();
 
