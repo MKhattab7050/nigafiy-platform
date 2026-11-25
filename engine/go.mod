@@ -1,6 +1,6 @@
 module github.com/nigafiy/engine
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/nigafiy/sensor v0.0.0-00010101000000-000000000000

@@ -178,7 +178,9 @@ describe('swapInRestoredDatabase (rename swap, outside a transaction block)', ()
   });
 });
 
-describe('pg_dump / pg_restore (needs the PostgreSQL client tools)', () => {
+// Each test builds and migrates one or two scratch databases and runs pg_dump/pg_restore: 5–23 s alone
+// on a developer PC, and past vitest's default 30 s under load, so these get 120 s.
+describe('pg_dump / pg_restore (needs the PostgreSQL client tools)', { timeout: 120_000 }, () => {
   const needsTools = () => {
     if (!tools) {
       console.warn(`[backup-restore.test] skipped: ${toolsMissing.slice(0, 120)}…`);

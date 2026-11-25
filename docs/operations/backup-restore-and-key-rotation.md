@@ -36,6 +36,9 @@ Install them once:
 - **Windows:** the EDB PostgreSQL installer (<https://www.postgresql.org/download/windows/>); in
   the component list select only **Command Line Tools**. They land in
   `C:\Program Files\PostgreSQL\<major>\bin`, which the tool finds by itself.
+- **Windows, no installer:** the EDB binaries zip (<https://www.enterprisedb.com/download-postgresql-binaries>,
+  for example `postgresql-18.6-2-windows-x64-binaries.zip`); unzip anywhere and point
+  `NIGAFIY_PG_BIN_DIR` (or `--pg-bin`) at its `pgsqlin`. No admin rights needed.
 - **Debian / Ubuntu:** add the apt.postgresql.org repository, then
   `sudo apt install postgresql-client-18`.
 - **RHEL / Fedora:** `sudo dnf install postgresql18` from the PGDG repository.
@@ -176,3 +179,10 @@ with the key that was in effect then. Restore it, then rotate it again if needed
 PostgreSQL client tools are installed — backup, bad-archive refusal, end-to-end restore and a
 failing pg_restore). The pg_dump/pg_restore tests are skipped, with a message saying so, on a
 machine without the client tools.
+
+**Ran for real (2026-11-25):** with the EDB PostgreSQL 18.6 binaries
+(`NIGAFIY_PG_BIN_DIR=D:\nigafiy-tools\pg18\pgsql\bin`) against the embedded PostgreSQL 18 server,
+all 13 tests pass, including the 5 that run pg_dump/pg_restore: backup to a verified archive,
+refusal of a non-archive and of a non-Nigafiy archive, end-to-end restore with the swap, and a
+failing pg_restore that leaves the live database untouched. These 5 take 5–23 s each, so they run
+with a 120 s timeout.
