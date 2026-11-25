@@ -25,6 +25,7 @@ New installers (the endpoint agent) say Nigafiy.
 The Store package and an NSIS install of the desktop use the same loopback ports, so only one of them
 runs at a time. The Store copy keeps its own data in its package folder and leaves an NSIS profile
 alone (microsoft-store.md).
+
 ## Desktop app: NSIS
 
 `oneClick: false`, per-user by default, the folder can be changed, English and Arabic
@@ -269,3 +270,10 @@ network) — only `--smoke`; the interactive installer pages (Choose programs, t
 and the Modify chooser — only silent mode; the first-run "move my data" dialog (an explicit
 `--user-data-dir` never asks); an all-users NSIS install; the MSI install, upgrade and `PROGRAMS=`;
 the agent installer and the agent's install/upgrade/rollback on a real service.
+
+**Microsoft Store packages (Builder S1, 2026-11-25, worktree `worktree-store-msix`):** both MSIX
+packages (desktop 213.4 MB, Quick Support 7.2 MB) were built with the `--local-test` identity, signed
+with the same test certificate and inspected (manifest, capabilities, firewall rules, files, English
+and Arabic strings). Installing them was refused (`0x800B0109`, certificate not trusted; Developer
+Mode off), and the Windows App Certification Kit needs administrator rights, so neither ran. Details
+and the owner's steps: [microsoft-store.md](microsoft-store.md), "What ran here vs never ran".

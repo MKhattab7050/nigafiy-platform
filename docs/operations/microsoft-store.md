@@ -153,8 +153,10 @@ below happens on Microsoft's pages, in his name.
    or in the environment: `NIGAFIY_STORE_PUBLISHER`, `NIGAFIY_STORE_PUBLISHER_DISPLAY_NAME`,
    `NIGAFIY_STORE_DESKTOP_IDENTITY_NAME`, `NIGAFIY_STORE_QUICK_SUPPORT_IDENTITY_NAME`. The build refuses
    to run without them, and refuses a `LocalTest` name; nothing is invented.
-4. **Version 1 or later.** The Store refuses a first number of 0, and the desktop is 0.1.0 today. Raise
-   `apps/desktop/package.json` to `1.0.0` (or pass `--version 1.0.0`); the fourth number is always 0.
+4. **Version 1 or later.** The Store refuses a first number of 0, and the desktop is 0.1.0 today, so
+   a Store build stops with "the Store does not accept a first number of 0". Raise the `version` in
+   `apps/desktop/package.json` to `1.0.0` (so `Nigafiy.exe`, the in-app version and the package
+   agree); the fourth number is always 0 and every later upload needs a higher version.
 5. **Build** on a Windows PC with the Windows 10/11 SDK installed (no download; the build uses the
    installed `makeappx` and `makepri`):
    - Desktop: `pnpm build:engine`, `pnpm build:collector`, then
@@ -166,7 +168,8 @@ below happens on Microsoft's pages, in his name.
      `apps/desktop/release/Nigafiy-Quick-Support-1.0.0-x64.msix`.
    Store builds are left unsigned on purpose (Microsoft re-signs them).
 6. **Run the Windows App Certification Kit** (Start → Windows App Cert Kit, it asks for administrator
-   rights) on each `.msix` and fix what it reports. It could not run in the build session (below).
+   rights) on each `.msix` and fix what it reports. It did not run in the build session: it needs
+   administrator rights ("What ran here vs never ran").
 7. **Upload** each `.msix` in its product's submission → Packages.
 8. **Store listing in English and Arabic** (Policy 10.7: every declared language needs its own
    description): name, description, at least one screenshot, the **privacy policy URL** (Policy
@@ -197,3 +200,66 @@ named `Nigafiy.LocalTest.*`, signed with the certificate whose thumbprint is in
 go to the Store. To install one, Windows needs that certificate in **Local Machine → Trusted People**
 (administrator rights): `Add-AppxPackage` refuses it otherwise with `0x800B0109`. That trust is the
 owner's decision on his own test PC; remove the certificate again afterwards.
+
+What the owner does to try a local test package on his own PC (all of it his choice, as
+administrator; the build session did none of it):
+
+1. Export the public part of the test certificate:
+   `Export-Certificate -Cert Cert:\CurrentUser\My\<thumbprint> -FilePath nigafiy-test.cer`.
+2. In an administrator PowerShell:
+   `Import-Certificate -FilePath nigafiy-test.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople`.
+3. As the normal user: `Add-AppxPackage -Path apps\desktop\release\Nigafiy-0.1.0-x64-local-test.msix`,
+   start "Nigafiy" from the Start menu, check that the dashboard opens, that the profile is in
+   `%LOCALAPPDATA%\Packages\Nigafiy.LocalTest.Hub_<id>\LocalState\Nigafiy`, that Settings → Updates
+   says updates come from the Microsoft Store, and that a `nigafiy://` link opens the app. For Quick
+   Support: install its package, copy a link from Fleet → Help requests → Quick Support → Copy
+   Microsoft Store link and open it.
+4. Remove: `Get-AppxPackage Nigafiy.LocalTest* | Remove-AppxPackage`, then (administrator)
+   `Remove-Item Cert:\LocalMachine\TrustedPeople\<thumbprint>`.
+
+Only one Nigafiy desktop can run at a time (same ports): quit an NSIS copy first.
+
+## What ran here vs never ran (2026-11-25)
+
+**Ran for real on this PC (Windows 11 Pro 10.0.26200, Windows SDK 10.0.26100.0 already installed,
+nothing downloaded):**
+
+- Engine, sensor and Quick Support built from source; `dist:msix:local-test` ran the backend bundle,
+  electron-builder `--win dir` and `build-msix.cjs desktop --local-test`. The first run stopped with
+  `ENOBUFS` (MakeAppx prints one line per file); fixed in `build-msix.cjs`, then both packages built:
+  - `Nigafiy-0.1.0-x64-local-test.msix`: 213.4 MB, 10 690 program files under `app\` (10 699 files in
+    the package with manifest, assets, `resources.pri`, block map, signature and `CodeIntegrity.cat`).
+  - `Nigafiy-Quick-Support-0.1.0-x64-local-test.msix`: 7.2 MB, `nigafiy-support.exe` byte-identical
+    (SHA-256) to the built program.
+- MakeAppx accepted both manifests (it validates them against the schema while packing). Signed with
+  the free self-signed test certificate (`CN=Nigafiy Test I1 Nigafiy Code Signing`, no time stamp)
+  through the installed `signtool.exe`. `Get-AuthenticodeSignature` reads that signer back on both
+  files, status `UnknownError` ("terminated in a root certificate which is not trusted"), as expected
+  for a certificate that is not trusted on this PC.
+- `makeappx unpack` of both packages and a read of what came out: identity `Nigafiy.LocalTest.Hub` /
+  `Nigafiy.LocalTest.QuickSupport` with the certificate's subject as publisher, version 0.1.0.0,
+  `runFullTrust` as the only capability, `nigafiy://` / `nigafiy-support:` protocols, the three
+  firewall rules for `app\resources\collector\nigafiy-sensor.exe` (UDP 5678, UDP 53, TCP 53,
+  domain and private only), `app\Nigafiy.exe`, the engine, the sensor, `local.mjs` and `app.asar`
+  present. `makepri dump` shows English and Arabic display names, descriptions and protocol names.
+- A Store build without Partner Center values stops ("Store identity not configured …"), and one
+  with a `LocalTest` name stops too.
+- `Add-AppxPackage` of the Quick Support test package as the normal user: refused with
+  `0x800B0109` ("The root certificate of the signature in the app package or bundle must be
+  trusted"); nothing was installed (`Get-AppxPackage Nigafiy.LocalTest*` is empty). Developer Mode is
+  off on this PC and the certificate is in no machine store; trusting it needs administrator rights,
+  so the build session went no further (the owner's steps are above).
+
+**Never ran:**
+
+- The Windows App Certification Kit: `appcert.exe` 10.0.26100.2454 is installed but its manifest
+  says `requireAdministrator`, so it was not started (no UAC prompt from a build session). The owner
+  runs it (step 6) before uploading.
+- Installing, starting or removing either package; so neither the desktop app inside a package
+  (LocalState profile, engine/PostgreSQL/API/web/sensor started from `WindowsApps`, the firewall
+  rules, the Store notice, the update card's Store message on a real install) nor Quick Support
+  opened from a `nigafiy-support:` link has run for real. These are covered by tests only
+  (`apps/desktop/test/store-package.test.cjs`, `msix.test.cjs`, engine `update` package tests, the
+  agent's `quicksupport` link tests, `platform-updates` and `fleet-reach` API tests).
+- A Store build with real Partner Center values, an upload, certification, and Microsoft's
+  re-signing: they need the owner's account.
