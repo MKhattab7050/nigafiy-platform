@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 16" width="1200" height="16" role="img" aria-label="Section divider">
+<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0.000" stop-color="#1466E6"/><stop offset="0.167" stop-color="#0099BC"/><stop offset="0.333" stop-color="#C27C0E"/><stop offset="0.500" stop-color="#D13438"/><stop offset="0.667" stop-color="#7A4FD6"/><stop offset="0.833" stop-color="#C239B3"/><stop offset="1.000" stop-color="#2E8540"/></linearGradient>
+<linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".2" stop-color="#fff"/><stop offset=".8" stop-color="#fff"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<linearGradient id="shine" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset=".5" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="m"><rect width="1200" height="16" fill="url(#fade)"/></mask></defs>
+<style>.shine{animation:run 7s cubic-bezier(.45,0,.4,1) infinite}@keyframes run{0%{transform:translateX(-200px)}60%,100%{transform:translateX(1200px)}}@media (prefers-reduced-motion: reduce){.shine{animation:none!important;display:none}}</style>
+<g mask="url(#m)"><rect x="0" y="7" width="1200" height="2" rx="1" fill="url(#g)" opacity="0.7"/>
+<rect class="shine" x="0" y="6" width="200" height="4" rx="2" fill="url(#shine)" opacity=".7"/></g>
+</svg>

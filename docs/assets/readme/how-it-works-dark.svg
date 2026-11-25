@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 288" width="1000" height="288" role="img" aria-labelledby="t d">
+<title id="t">How Nigafiy works</title>
+<desc id="d">Four steps: discover every device, watch it and explain incidents with evidence, alert the right people, act on the router, switch, DNS or computer.</desc>
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0F1830"/><stop offset="1" stop-color="#0A1122"/></linearGradient>
+<linearGradient id="tileLight" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1.5" cy="1.5" r="1.1" fill="#22325A"/></pattern>
+<filter id="sh" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000000" flood-opacity="0.4"/></filter>
+<marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="#3D5285" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<marker id="arrowA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="#4C8DFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<marker id="arrowP" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="#7A4FD6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+<marker id="arrowR" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1.5 1.5L8.5 5L1.5 8.5" fill="none" stroke="#D13438" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></marker>
+
+<style>
+text{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', Tahoma, Helvetica, Arial, sans-serif}
+.pk{animation-name:pk;animation-iteration-count:infinite;animation-timing-function:cubic-bezier(.45,0,.4,1)}
+@keyframes pk{0%{stroke-dashoffset:8}62%,100%{stroke-dashoffset:-101}}
+
+.hl{animation:hl 10s ease-in-out infinite;opacity:0}
+@keyframes hl{0%{opacity:0}4%,22%{opacity:1}30%,100%{opacity:0}}
+.pk{animation-name:pk4}
+@keyframes pk4{0%{stroke-dashoffset:8}7.5%,100%{stroke-dashoffset:-101}}
+.alarm{animation:alarm 2.4s ease-in-out infinite}
+@keyframes alarm{0%,100%{opacity:1}50%{opacity:.35}}
+.newdev{animation:alarm 3s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}.pk{display:none}.rm-show{opacity:1!important}}
+</style>
+</defs>
+<rect x=".5" y=".5" width="999" height="287" rx="20" fill="url(#bg)" stroke="#1E2A45"/>
+<rect x="1" y="1" width="998" height="286" rx="20" fill="url(#dots)" opacity=".55"/>
+<path d="M240 68H264" fill="none" stroke="#3D5285" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/><path class="pk glow" style="animation-duration:10s;animation-delay:-8.3s" d="M240 68H264" pathLength="100" fill="none" stroke="#C27C0E" stroke-width="7" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8" opacity=".22"/><path class="pk" style="animation-duration:10s;animation-delay:-8.3s" d="M240 68H264" pathLength="100" fill="none" stroke="#C27C0E" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8"/><path d="M488 68H512" fill="none" stroke="#3D5285" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/><path class="pk glow" style="animation-duration:10s;animation-delay:-5.8s" d="M488 68H512" pathLength="100" fill="none" stroke="#D13438" stroke-width="7" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8" opacity=".22"/><path class="pk" style="animation-duration:10s;animation-delay:-5.8s" d="M488 68H512" pathLength="100" fill="none" stroke="#D13438" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8"/><path d="M736 68H760" fill="none" stroke="#3D5285" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)"/><path class="pk glow" style="animation-duration:10s;animation-delay:-3.3s" d="M736 68H760" pathLength="100" fill="none" stroke="#7A4FD6" stroke-width="7" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8" opacity=".22"/><path class="pk" style="animation-duration:10s;animation-delay:-3.3s" d="M736 68H760" pathLength="100" fill="none" stroke="#7A4FD6" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 300" stroke-dashoffset="8"/>
+<g>
+<rect x="24" y="26" width="208" height="236" rx="16" fill="#131D36" stroke="#26365C" filter="url(#sh)"/>
+<rect class="hl" style="animation-delay:0.00s" x="24" y="26" width="208" height="236" rx="16" fill="none" stroke="#0099BC" stroke-width="2"/>
+<g><rect x="44" y="46" width="44" height="44" rx="11" fill="#0099BC"/><rect x="44" y="46" width="44" height="44" rx="11" fill="url(#tileLight)"/><path d="M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3.5 0a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0M12 12l5.5-5.5" transform="translate(53.9 55.9) scale(1.0083)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="212" y="73" text-anchor="end" font-size="15" font-weight="700" fill="#8E9BBD" font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace" letter-spacing="1">01</text>
+<text x="44" y="124" font-size="21" font-weight="700" fill="#EEF3FF">Discover</text>
+<text x="44" y="151" font-size="14.5" fill="#C3CDE5">The Sensor finds and</text>
+<text x="44" y="172" font-size="14.5" fill="#C3CDE5">names every device</text>
+<rect x="40" y="194" width="176" height="48" rx="10" fill="#0E1630" stroke="#26365C"/><rect x="51.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="65.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="79.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="93.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="107.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="121.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="135.5" y="204" width="9" height="9" rx="2.5" fill="#4C8DFF" opacity="0.55"/><rect x="149.5" y="204" width="9" height="9" rx="2.5" fill="#2E8540" opacity="1" class="newdev" style="animation-delay:0s"/><rect x="163.5" y="204" width="9" height="9" rx="2.5" fill="#2E8540" opacity="1" class="newdev" style="animation-delay:0.3s"/><text x="52" y="233" font-size="13" font-weight="600" fill="#EEF3FF">21 devices</text><text x="204" y="233" text-anchor="end" font-size="12.5" font-weight="700" fill="#2E8540">2 new</text>
+</g>
+<g>
+<rect x="272" y="26" width="208" height="236" rx="16" fill="#131D36" stroke="#26365C" filter="url(#sh)"/>
+<rect class="hl" style="animation-delay:2.50s" x="272" y="26" width="208" height="236" rx="16" fill="none" stroke="#C27C0E" stroke-width="2"/>
+<g><rect x="292" y="46" width="44" height="44" rx="11" fill="#C27C0E"/><rect x="292" y="46" width="44" height="44" rx="11" fill="url(#tileLight)"/><path d="M3 12h4l2-5 4 10 2-5h6" transform="translate(301.9 55.9) scale(1.0083)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="460" y="73" text-anchor="end" font-size="15" font-weight="700" fill="#8E9BBD" font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace" letter-spacing="1">02</text>
+<text x="292" y="124" font-size="21" font-weight="700" fill="#EEF3FF">Watch</text>
+<text x="292" y="151" font-size="14.5" fill="#C3CDE5">Checks turn evidence</text>
+<text x="292" y="172" font-size="14.5" fill="#C3CDE5">into clear incidents</text>
+<rect x="288" y="194" width="176" height="48" rx="10" fill="#0E1630" stroke="#26365C"/><path d="M300 219.2L309.2 215.6L318.4 218L327.6 213.2L336.8 216.8L346 214.4L355.2 218L364.4 215.6L371.8 216.8L379.1 219.2L392 216.8" fill="none" stroke="#C27C0E" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="392" cy="216.8" r="4.5" fill="#D13438" class="alarm"/><text x="452" y="224" text-anchor="end" font-size="12" font-weight="700" fill="#D13438">refused</text>
+</g>
+<g>
+<rect x="520" y="26" width="208" height="236" rx="16" fill="#131D36" stroke="#26365C" filter="url(#sh)"/>
+<rect class="hl" style="animation-delay:5.00s" x="520" y="26" width="208" height="236" rx="16" fill="none" stroke="#D13438" stroke-width="2"/>
+<g><rect x="540" y="46" width="44" height="44" rx="11" fill="#D13438"/><rect x="540" y="46" width="44" height="44" rx="11" fill="url(#tileLight)"/><path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0" transform="translate(549.9 55.9) scale(1.0083)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="708" y="73" text-anchor="end" font-size="15" font-weight="700" fill="#8E9BBD" font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace" letter-spacing="1">03</text>
+<text x="540" y="124" font-size="21" font-weight="700" fill="#EEF3FF">Alert</text>
+<text x="540" y="151" font-size="14.5" fill="#C3CDE5">Email, chat apps and</text>
+<text x="540" y="172" font-size="14.5" fill="#C3CDE5">signed webhooks</text>
+<rect x="536" y="194" width="176" height="48" rx="10" fill="#0E1630" stroke="#26365C"/><rect x="546" y="206" width="50" height="24" rx="12" fill="#131D36" stroke="#26365C"/><text x="571" y="222.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#C3CDE5">Email</text><rect x="604" y="206" width="50" height="24" rx="12" fill="#131D36" stroke="#26365C"/><text x="629" y="222.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#C3CDE5">Slack</text><rect x="662" y="206" width="43.2" height="24" rx="12" fill="#131D36" stroke="#26365C"/><text x="683.6" y="222.5" text-anchor="middle" font-size="12.5" font-weight="600" fill="#C3CDE5">ntfy</text>
+</g>
+<g>
+<rect x="768" y="26" width="208" height="236" rx="16" fill="#131D36" stroke="#26365C" filter="url(#sh)"/>
+<rect class="hl" style="animation-delay:7.50s" x="768" y="26" width="208" height="236" rx="16" fill="none" stroke="#7A4FD6" stroke-width="2"/>
+<g><rect x="788" y="46" width="44" height="44" rx="11" fill="#7A4FD6"/><rect x="788" y="46" width="44" height="44" rx="11" fill="url(#tileLight)"/><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4" transform="translate(797.9 55.9) scale(1.0083)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+<text x="956" y="73" text-anchor="end" font-size="15" font-weight="700" fill="#8E9BBD" font-family="ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace" letter-spacing="1">04</text>
+<text x="788" y="124" font-size="21" font-weight="700" fill="#EEF3FF">Act</text>
+<text x="788" y="151" font-size="14.5" fill="#C3CDE5">Fix it from Guard or</text>
+<text x="788" y="172" font-size="14.5" fill="#C3CDE5">Fleet, every step audited</text>
+<rect x="784" y="194" width="176" height="48" rx="10" fill="#0E1630" stroke="#26365C"/><text x="796" y="223" font-size="13" font-weight="700" fill="#EEF3FF">DNS block</text><rect x="864" y="206" width="86" height="24" rx="12" fill="#2E8540" fill-opacity=".14" stroke="#2E8540" stroke-opacity=".5"/><path d="M5 12.5l4.5 4.5L19 7.5" transform="translate(871.5 211.5) scale(0.5417)" fill="none" stroke="#2E8540" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="890" y="222.5" font-size="12" font-weight="700" fill="#2E8540">read back</text>
+</g>
+</svg>

@@ -151,15 +151,42 @@ raw copies are sealed, a changed community shows as a changed fingerprint, legac
 job). Not verified against configurations from real devices; vendor syntax not covered by a rule
 (an unusual keyword) would stay visible — report it and add a rule.
 
-## Restore (migration 041)
+## Restore (migrations 041, 047)
 
-An administrator can write an earlier version back to the device. Only **Juniper Junos** is supported,
-because Junos can apply a configuration with `commit confirmed`: if the change is not confirmed in time,
-the device rolls it back by itself. Every other vendor shows **"Restore not supported"** with the reason;
-download the version and restore it by hand. No other vendor is attempted.
+An administrator can write an earlier version back to the device. Only vendors that replace the
+configuration as a whole **and** roll it back by themselves when the change is not confirmed are supported:
+
+| Driver | Method (`RESTORE_METHODS`) | Device-side rollback |
+| --- | --- | --- |
+| Juniper Junos | `junos_commit_confirmed` | `commit confirmed N`: rolls back unless confirmed within N minutes |
+| Cisco IOS XE | `iosxe_configure_replace` | `configure replace … revert trigger error timer N` (see "Cisco IOS XE restore") |
+| VyOS / Ubiquiti EdgeOS | `vyos_commit_confirm` | `commit-confirm N`: reboots into the saved configuration unless `confirm` follows (see "VyOS / EdgeOS restore") |
+| OpenWrt | `openwrt_uci_apply_rollback` | rpcd `uci apply` with rollback: copies the previous packages back unless `uci confirm` follows (see "OpenWrt restore") |
+
+Every other vendor shows **"Restore not supported"** with its own reason (EN + AR; `UNSUPPORTED_REASONS`
+in `restore.ts`, mirrored in the web strings; see "Why other vendors are not restored"). Download the
+version and restore it by hand. No other vendor is attempted.
 
 **Before anything is sent** (`restore.ts`, checked at preview and again at request):
-- the vendor is Junos (`driver`, or the detected driver);
+- the vendor has a restore method (`driver`, or the detected driver; `RESTORE_METHODS` in `restore.ts`
+  must match the collector's `internal/configbackup/restore.go`);
+- the version belongs to this device. Two checks (migration `047_config_restore_identity.sql`):
+  - **hardware identity** (Junos, VyOS / EdgeOS, OpenWrt; `IDENTITY_DRIVERS`): every backup also reads the
+    model and serial number the device reports (`internal/configbackup/identity.go`: Junos `show version` /
+    `show chassis hardware`, VyOS and EdgeOS `show version`, OpenWrt `ubus call system board`, which gives
+    a model only), stored on the run and the version. The preview shows both identities and `match`,
+    `mismatch` or `unknown`. Anything but `match` needs `allow_other_device` (alias `force_other_device`)
+    **and** the device's serial (or model, or address when nothing is known) typed as
+    `confirm_other_device`; otherwise 409 `device_identity_mismatch` / `device_identity_unknown` or 422
+    `confirm_other_device_mismatch`. The check runs again after the backup before the restore (a device
+    swapped in meanwhile fails the restore with `device_mismatch`, nothing changed) and once more by the
+    collector on the device itself before it changes anything;
+  - **host name**: when the host name the configuration declares (IOS `hostname X`, Junos `host-name X;`)
+    differs from the latest backup's, the preview shows both names (`other_device`) and the same forced
+    confirmation is needed, typing the version's host name (409 `other_device` otherwise);
+
+  the forced case is recorded on the restore (`forced_other_device`, `identity_check`) and in the
+  `config_backup.restore.request` audit row;
 - the target is ready (in an authorized scope, credentials set and accepted, host key not changed);
 - the SSH host key is pinned (a restore never trusts a key on first use);
 - a sealed raw copy of the version exists (versions stored before raw copies existed cannot be restored);
@@ -183,7 +210,8 @@ download the version and restore it by hand. No other vendor is attempted.
    key changed, vendor changed, raw copy gone), the command is withdrawn and the restore fails
    (`withdrawn`, audited).
 5. The collector (`configrestore.go`) writes the restore id to its at-most-once ledger before touching the
-   device. It never starts an expired command. Then `Restore()` runs: `configure exclusive`,
+   device. It never starts an expired command. Then `Restore()` runs the vendor's method; for Junos:
+   `configure exclusive`,
    `load override terminal`, `commit confirmed N`. It reads the configuration back over a **second** SSH
    session and compares it with the restored text. If they match, it runs `commit` (confirm). If not, or if
    the second session fails, it runs `rollback 1` + `commit` (rolled back).
@@ -210,5 +238,114 @@ now" text. The **Restores** card lists every restore with its status, reason, fl
   changed.
 - `internal/agent/configrestore_test.go`: at-most-once, expiry, nothing leaked.
 
+- `internal/configbackup/restore_test.go`: another device refused unless forced (Junos), the method table.
+
 **Not tested:** it has never run against a real Junos device. Junos output and prompt text were modelled
 from the documentation, not captured from a device.
+
+### VyOS / EdgeOS restore (`internal/configbackup/restore_vyos.go`, method `vyos_commit_confirm`)
+
+Sources: VyOS documentation (docs.vyos.io, 1.3 / 1.4 / 1.5: `configure`, `set`, `delete`,
+`commit-confirm <minutes>`, `confirm`, `discard`, `save`, `show configuration commands`) and the Ubiquiti
+EdgeOS CLI (1.10 / 2.0, the same Vyatta commands). Backups are the `set` lines of
+`show configuration commands`, which configuration mode accepts back.
+
+What the device guarantees: `commit-confirm N` activates the candidate and schedules a reboot in N
+minutes; `confirm` cancels it. The reboot loads the saved boot configuration, so Nigafiy runs `save`
+right before the restore: the device's own rollback point is exactly what it ran before. (VyOS 1.4+ can
+reload instead of reboot, `system config-management commit-confirm action reload`; Nigafiy does not
+change that setting.)
+
+Steps: identity (`show version`) and the configuration before the restore; `configure`, `save`; `delete`
+every top-level node and apply every `set` line of the version in the candidate (a refused line runs
+`discard` and stops, nothing active); `commit-confirm N`. A second, fresh SSH session reads the
+configuration back: equal → `confirm`, `save`. Different or unreadable → the previous lines are applied
+again and committed, and only when a third session reads exactly the previous configuration back is the
+reboot cancelled with `confirm`; otherwise the timer reboots into the saved previous configuration.
+Prerequisite: an account that may enter configuration mode. The automatic way back is a **reboot** (a
+short outage) when Nigafiy cannot reach or prove the device after the commit.
+
+Tested only with the SSH protocol double in `restore_vyos_test.go` (verified and saved, read-back
+differs → undone and proven, unreachable after commit → timer left running, refusals, identity parsing
+and mismatch) and the API side in `tests/config-restore.test.ts`. **Never run against a real VyOS or
+EdgeOS device.**
+
+### OpenWrt restore (`internal/configbackup/restore_openwrt.go`, method `openwrt_uci_apply_rollback`)
+
+Sources: OpenWrt rpcd `uci.c` (methods `apply {rollback, timeout}`, `confirm`, `rollback`) and
+`session.c`, the OpenWrt ubus documentation (openwrt.org/docs/techref/ubus). This is the mechanism LuCI
+uses for "Save & Apply"; it exists since rpcd 2018 (OpenWrt 18.06), older images are refused.
+
+What the device guarantees: `uci apply` with rollback snapshots `/etc/config/<package>` of every package
+the ubus session staged changes for, commits them, reloads the services and arms a timer; unless
+`uci confirm` (same session) arrives in time, rpcd copies the snapshot back and reloads again.
+
+Steps (each command on its own SSH exec channel; values go through stdin, never on a command line):
+`/etc/openwrt_release` must name OpenWrt; identity (`ubus call system board`); rpcd must offer
+apply / confirm / rollback; the version and the device must have the same packages and the version must
+not change `rpcd` itself; a ubus session is created and granted uci read / write; each differing package
+is rebuilt section by section in the session (nothing active yet; a refused call reverts the session);
+`uci apply` with rollback and N minutes. A second SSH connection reads `uci export` back: equal →
+`uci confirm`; otherwise `uci rollback`, and a third connection must read the previous configuration back.
+
+Limits (shown in the dialog): the timer lives in the rpcd process, so a **reboot or an rpcd restart**
+inside the window keeps the restored configuration; a version that adds or removes whole packages is
+refused. Prerequisite: root SSH access (or an account allowed to call `ubus` uci / session).
+
+Tested only with the SSH/ubus protocol double in `restore_openwrt_test.go` (apply confirmed, read-back
+differs → rolled back and proven, unreachable after apply → rpcd timer left, refusals, `uci export`
+quoting, identity parsing) and the API side in `tests/config-restore.test.ts` (model-only identity, a
+rolled back restore, the Wi-Fi key kept out of the preview). **Never run against a real OpenWrt device.**
+
+### Why other vendors are not restored
+
+Checked against each vendor's documented mechanisms (2026-11-25). A vendor moves to the table above only
+when it can replace the configuration as a whole and roll back by itself.
+
+| Vendor | Reason |
+| --- | --- |
+| MikroTik RouterOS | `/import` of an export merges (RouterOS 7 `dry-run` only simulates); a full replace is `/system reset-configuration run-after-reset=` with a reboot and no way back; Safe Mode undoes only when the session drops (TCP timeout about 9 min) and keeps the 100 most recent actions, then leaves Safe Mode **without undoing anything** (help.mikrotik.com, "Configuration Management"). |
+| Fortinet FortiOS | `execute restore config` and the REST `system/config/restore` reboot into the restored file and save it; revert mode (`set cfg-save revert`, `cfg-revert-timeout`) undoes only unsaved CLI edits; pasted `show` output merges (Fortinet CLI reference "cfg save"). |
+| Cisco NX-OS | `configure replace bootflash:<file> commit-timeout` (9.3(1)+) needs a file on bootflash; the collector does not transfer files to NX-OS. |
+| Cisco ASA | No commit-confirmed or rollback; a full replace means erasing the configuration and reloading. |
+| Aruba ArubaOS-Switch / AOS-CX | ArubaOS-Switch applies every line at once; AOS-CX has `checkpoint auto`, but a whole replace needs a checkpoint or file copied by TFTP / SFTP. |
+| Huawei VRP | V8 `commit trial` / `configuration replace file` need a file on flash; V5 has neither. |
+| Dell OS10 / OS6, Palo Alto PAN-OS | Replace only from a transferred file; no rollback timer (PAN-OS commit has no confirmed mode). |
+| pfSense, OPNsense, UniFi | Not configuration-backup drivers (they appear only under router controls). None offers a timed rollback either: pfSense restores `config.xml` or a Config History entry from the GUI or console with no timer, and pfSense-pkg-RESTAPI v2 documents no restore endpoint; OPNsense's API `core/backup/revert_backup` reverts to a history entry at once, with no confirm timer; UniFi restores a whole-controller `.unf` backup and restarts the controller, not one device's configuration. |
+
+### Cisco IOS XE restore (`internal/configbackup/restore_iosxe.go`, method `iosxe_configure_replace`)
+
+Source: Cisco "Configuration Replace and Configuration Rollback" configuration guide (IOS XE 16.x/17.x) and
+the `configure replace`, `configure confirm`, `configure revert` and `archive` command references.
+
+Prerequisites on the device (each is checked, and nothing is changed when one is missing):
+- IOS XE ("show version" must say "Cisco IOS XE Software") and a privilege-15 account (the prompt must
+  reach `#`, after `enable` when the account logs in at `>`);
+- the configuration archive (`archive` with ` path …`): without it IOS XE refuses the rollback timer, so
+  Nigafiy refuses first;
+- `ip scp server enable` and exec authorization for the account (the file is copied over SCP).
+
+Steps (each one is reported in the restore's steps):
+1. checks above, on the host-key-pinned SSH connection;
+2. the version is copied to `bootflash:nigafiy-restore.cfg` (`flash:` when the device has no `bootflash:`)
+   over SCP on the same connection, and the device's own `verify /md5` must match the MD5 of what was sent;
+3. `configure replace bootflash:nigafiy-restore.cfg force revert trigger error timer N` (N = 1–10 minutes,
+   from the dialog); it must end with "Rollback Done";
+4. a **second**, fresh SSH session reads `show running-config`. Only when that works and equals the
+   restored text (ignoring `!` comment lines, the "Building configuration" / "Current configuration"
+   header and the measured `ntp clock-period`) is the change kept: `configure confirm`, then
+   `write memory` (only now, after the verified change), then the temporary file is deleted;
+5. otherwise `configure revert now` puts the previous configuration back at once, and the running
+   configuration is read again to prove it (status `rolled_back`). When the revert cannot be proven (or
+   the session ends during the replace, or `configure confirm` fails), the error says so and that the
+   device reverts by itself when its N-minute timer ends; nothing is saved with `write memory`.
+   A release that does not accept the `revert trigger error timer` syntax is refused with nothing changed.
+
+Tested only with the SSH/SCP protocol double in `restore_iosxe_test.go`: verified then saved, `flash:`
+fallback (and the default 5-minute timer), read-back differs or the second session is refused after the
+replace (reverted, nothing confirmed or saved), refusals with nothing changed (classic IOS, no archive
+path, a release without the timer syntax, SCP server off, an upload whose `verify /md5` differs), a
+command of the file failing (device reverts, proven by read-back, temporary file removed, no secret in
+the error), and the configuration comparison helpers. `tests/config-restore.test.ts` covers the API side (method offered,
+another device's configuration refused unless forced with the second typed confirmation).
+**Never run against a real IOS XE device**; prompts and messages were modelled from Cisco's documentation.

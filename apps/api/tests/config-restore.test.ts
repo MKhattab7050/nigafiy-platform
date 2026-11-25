@@ -1,6 +1,7 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { systemPool } from '../src/infrastructure/db.ts';
+import { RESTORE_METHODS, UNSUPPORTED_REASONS } from '../src/modules/configbackup/restore.ts';
 import { CSRF, addScope, heartbeat, newAccount, newCollector, setRole, type TestCollector, telemetry } from './helpers.ts';
 
 // Administrator-confirmed configuration restore (modules/configbackup/restore.ts). The collector side
@@ -41,7 +42,9 @@ async function commands(c: TestCollector, kind: string) {
   return (hb.body.commands as { id: string; kind: string; payload: Record<string, unknown> }[]).filter((x) => x.kind === kind);
 }
 
-async function backup(c: TestCollector, runId: string, targetId: string, config: string) {
+const SRX = { model: 'srx300', serial: 'CV1234AF0123' };
+
+async function backup(c: TestCollector, runId: string, targetId: string, config: string, identity: { model?: string; serial?: string } | null = SRX) {
   const t = await telemetry(c, [
     {
       type: 'config_backup_result',
@@ -53,6 +56,7 @@ async function backup(c: TestCollector, runId: string, targetId: string, config:
       host_key: { sha256: KEY, type: 'ssh-ed25519' },
       host_key_status: 'matched',
       commands: ['show configuration | no-more'],
+      ...(identity ? { device_identity: identity } : {}),
       config_gzip_b64: gz(config),
     },
   ]);
@@ -61,7 +65,61 @@ async function backup(c: TestCollector, runId: string, targetId: string, config:
 
 const restoreOf = (a: { agent: import('supertest').Agent }, id: string) => a.agent.get(`/api/v1/config-backup/restores/${id}`);
 
+const ios = (hostname: string, desc: string) => `version 17.9
+hostname ${hostname}
+!
+enable secret 9 ${ROOT_HASH}
+!
+archive
+ path bootflash:archive
+!
+interface GigabitEthernet1
+ description ${desc}
+!
+end
+`;
+
 describe('configuration restore', () => {
+  it('offers Cisco IOS XE configure replace and refuses the configuration of another device unless forced with a second confirmation', async () => {
+    const a = await newAccount('cb-restore-ios');
+    await addScope(a, '192.168.71.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({ site_id: a.siteId, targets: [{ address: '192.168.71.1', name: 'edge-isr', driver: 'cisco_ios' }], credentials: { username: 'netops', password: PASSWORD } });
+    expect(added.status).toBe(201);
+    const id = added.body.items[0].id as string;
+    await backup(c, added.body.queued[0].run_id, id, ios('old-branch-rtr', 'uplink'));
+    const run2 = await a.agent.post(`/api/v1/config-backup/targets/${id}/run`).set(CSRF).send({});
+    await backup(c, run2.body.run_id, id, ios('edge-isr', 'uplink'));
+    const versions = (await a.agent.get(`/api/v1/config-backup/targets/${id}/versions`)).body.items as { id: string; number: number }[];
+    const v1 = versions.find((v) => v.number === 1)!;
+
+    const preview = await a.agent.get(`/api/v1/config-backup/targets/${id}/restore-preview?version_id=${v1.id}`);
+    expect(preview.body).toMatchObject({ supported: true, possible: true, method: 'iosxe_configure_replace', other_device: { current: 'edge-isr', version: 'old-branch-rtr' } });
+
+    const req = (body: Record<string, unknown>) => a.agent.post(`/api/v1/config-backup/targets/${id}/restore`).set(CSRF).send({ version_id: v1.id, confirm: 'edge-isr', reason: 'Back to the branch router configuration', ...body });
+    const refused = await req({});
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('other_device');
+    const wrong = await req({ force_other_device: true, confirm_other_device: 'edge-isr' });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error.code).toBe('confirm_other_device_mismatch');
+    expect(await commands(c, 'config_backup')).toHaveLength(0);
+
+    const ok = await req({ force_other_device: true, confirm_other_device: 'old-branch-rtr', confirm_minutes: 2 });
+    expect(ok.status).toBe(202);
+    expect(ok.body).toMatchObject({ status: 'pre_backup', method: 'iosxe_configure_replace', confirm_minutes: 2 });
+    await backup(c, ok.body.pre_run_id, id, ios('edge-isr', 'uplink'));
+    const [cmd] = await commands(c, 'config_restore');
+    expect(cmd!.payload).toMatchObject({ driver: 'cisco_ios', confirm_minutes: 2 });
+    expect(gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8')).toContain('hostname old-branch-rtr');
+    const audit = (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'config_backup.restore.request'`, [a.organizationId])).rows[0];
+    expect(audit.metadata.other_device).toEqual({ current: 'edge-isr', version: 'old-branch-rtr' });
+  });
+
   it('restores a Junos version after a fresh backup, verifies it by the read-back, and audits every step', async () => {
     const a = await newAccount('cb-restore');
     await addScope(a, '192.168.70.0/24');
@@ -75,7 +133,7 @@ describe('configuration restore', () => {
         site_id: a.siteId,
         targets: [
           { address: '192.168.70.1', name: 'edge-srx', driver: 'juniper_junos' },
-          { address: '192.168.70.2', name: 'core-sw', driver: 'cisco_ios' },
+          { address: '192.168.70.2', name: 'core-sw', driver: 'cisco_asa' },
         ],
         credentials: { username: 'netops', password: PASSWORD },
       });
@@ -106,7 +164,8 @@ describe('configuration restore', () => {
     // Preview: the diff from the latest backup (v2) to v1, with the device name to type.
     const preview = await a.agent.get(`/api/v1/config-backup/targets/${srx}/restore-preview?version_id=${v1.id}`);
     expect(preview.status).toBe(200);
-    expect(preview.body).toMatchObject({ possible: true, supported: true, method: 'junos_commit_confirmed', confirm_text: 'edge-srx', blocker: null });
+    expect(preview.body).toMatchObject({ possible: true, supported: true, method: 'junos_commit_confirmed', confirm_text: 'edge-srx', blocker: null, other_device_block: null });
+    expect(preview.body.identity).toEqual({ version: { model: 'srx300', serial: 'CV1234AF0123' }, device: { model: 'srx300', serial: 'CV1234AF0123' }, check: 'match' });
     expect(preview.body.current.number).toBe(2);
     expect(preview.body.added).toBe(1);
     expect(preview.body.removed).toBe(1);
@@ -117,7 +176,7 @@ describe('configuration restore', () => {
     const swPreview = await a.agent.get(`/api/v1/config-backup/targets/${sw}/restore-preview?version_id=${swVersion}`);
     expect(swPreview.body).toMatchObject({ supported: false, possible: false, method: null });
     expect(swPreview.body.blocker.code).toBe('restore_unsupported');
-    expect(swPreview.body.blocker.message).toContain('Cisco IOS');
+    expect(swPreview.body.blocker.message).toContain('Cisco ASA');
     const swRestore = await a.agent.post(`/api/v1/config-backup/targets/${sw}/restore`).set(CSRF).send({ version_id: swVersion, confirm: 'core-sw', reason: 'Roll back the change' });
     expect(swRestore.status).toBe(409);
     expect(swRestore.body.error.code).toBe('restore_unsupported');
@@ -159,6 +218,8 @@ describe('configuration restore', () => {
       host_key_sha256: KEY,
       driver: 'juniper_junos',
       confirm_minutes: 3,
+      expected_identity: SRX,
+      allow_other_device: false,
     });
     // The real (unsanitized) v1 text goes to the collector, and only there.
     const pushed = gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8');
@@ -292,5 +353,212 @@ describe('configuration restore', () => {
     expect(e.error).toContain('Nothing was changed');
     const actions = (await systemPool.query(`SELECT action FROM audit_logs WHERE organization_id = $1 AND action LIKE 'config_backup.restore.%'`, [a.organizationId])).rows.map((x) => x.action);
     expect(actions).toEqual(expect.arrayContaining(['config_backup.restore.withdrawn', 'config_backup.restore.expired']));
+  });
+
+  it('restores VyOS / EdgeOS with commit-confirm, refuses a version from another device unless forced, and explains every unsupported vendor', async () => {
+    const a = await newAccount('cb-restore-3');
+    await addScope(a, '192.168.72.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({
+        site_id: a.siteId,
+        targets: [
+          { address: '192.168.72.1', name: 'edge-er', driver: 'vyos_edgeos' },
+          { address: '192.168.72.2', name: 'mt-hex', driver: 'mikrotik_routeros' },
+          { address: '192.168.72.3', name: 'old-srx', driver: 'juniper_junos' },
+        ],
+        credentials: { username: 'ubnt', password: PASSWORD },
+      });
+    expect(added.status).toBe(201);
+    const id = (name: string) => added.body.items.find((t: { name: string }) => t.name === name).id as string;
+    const first = (tid: string) => added.body.queued.find((q: { target_id: string }) => q.target_id === tid).run_id as string;
+    const er = id('edge-er');
+    const A = { model: 'EdgeRouter X 5-Port', serial: '7483C2AAAAAA' };
+    const B = { model: 'EdgeRouter X 5-Port', serial: '7483C2BBBBBB' };
+    const E1 = `set system host-name 'edge-er'\nset system login user ubnt authentication encrypted-password '${ROOT_HASH}'\nset interfaces ethernet eth0 description 'WAN'\n`;
+    const E2 = E1.replace("'WAN'", "'WAN (new ISP)'");
+    await backup(c, first(er), er, E1, A);
+    const run2 = await a.agent.post(`/api/v1/config-backup/targets/${er}/run`).set(CSRF).send({});
+    await backup(c, run2.body.run_id, er, E2, A);
+    const versions = (await a.agent.get(`/api/v1/config-backup/targets/${er}/versions`)).body.items as { id: string; number: number; sha256: string }[];
+    const v1 = versions.find((v) => v.number === 1)!;
+    const post = (body: Record<string, unknown>) => a.agent.post(`/api/v1/config-backup/targets/${er}/restore`).set(CSRF).send(body);
+    const preview = () => a.agent.get(`/api/v1/config-backup/targets/${er}/restore-preview?version_id=${v1.id}`);
+
+    let p = (await preview()).body;
+    expect(p).toMatchObject({ supported: true, possible: true, driver: 'vyos_edgeos', method: 'vyos_commit_confirm', other_device_block: null, other_device_confirm_text: null });
+    expect(p.identity.check).toBe('match');
+
+    // The device behind the address was replaced: same model, another serial.
+    const run3 = await a.agent.post(`/api/v1/config-backup/targets/${er}/run`).set(CSRF).send({});
+    await backup(c, run3.body.run_id, er, E2, B);
+    p = (await preview()).body;
+    expect(p.identity).toEqual({ version: A, device: B, check: 'mismatch' });
+    expect(p.other_device_block.code).toBe('device_identity_mismatch');
+    expect(p.other_device_confirm_text).toBe(B.serial);
+    const base = { version_id: v1.id, confirm: 'edge-er', reason: 'Back to the old ISP settings' };
+    const refused = await post(base);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('device_identity_mismatch');
+    const wrong = await post({ ...base, allow_other_device: true, confirm_other_device: A.serial });
+    expect(wrong.status).toBe(422);
+    expect(wrong.body.error.code).toBe('confirm_other_device_mismatch');
+    const forced = await post({ ...base, allow_other_device: true, confirm_other_device: B.serial, confirm_minutes: 2 });
+    expect(forced.status).toBe(202);
+    expect(forced.body).toMatchObject({ method: 'vyos_commit_confirm', forced_other_device: true, identity_check: 'mismatch' });
+    await backup(c, forced.body.pre_run_id, er, E2, B);
+    const pending = (await restoreOf(a, forced.body.id)).body;
+    expect(pending.status).toBe('pending');
+    const [cmd] = await commands(c, 'config_restore');
+    expect(cmd!.payload).toMatchObject({ driver: 'vyos_edgeos', confirm_minutes: 2, expected_identity: A, allow_other_device: true });
+    expect(gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8')).toContain(ROOT_HASH);
+    await backup(c, pending.verify_run_id, er, E1, B);
+    const ok = await telemetry(c, [
+      {
+        type: 'config_restore_result',
+        ts: now(),
+        restore_id: forced.body.id,
+        target_id: er,
+        ok: true,
+        method: 'vyos_commit_confirm',
+        loaded: true,
+        committed: true,
+        confirmed: true,
+        rolled_back: false,
+        read_back: true,
+        device_identity: B,
+        steps: ['save: the configuration before the restore is the boot configuration (the rollback point)', 'commit-confirm 2: active', 'confirm: reboot timer cancelled'],
+      },
+    ]);
+    expect(ok.body).toMatchObject({ accepted: 1 });
+    expect((await restoreOf(a, forced.body.id)).body).toMatchObject({ status: 'verified', device_serial: B.serial, forced_other_device: true });
+    const req = (await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1 AND action = 'config_backup.restore.request'`, [a.organizationId])).rows[0];
+    expect(req.metadata).toMatchObject({ forced_other_device: true, identity_check: 'mismatch', method: 'vyos_commit_confirm' });
+
+    // Requested for a matching device, but another one answers the backup before the restore: refused.
+    const v3 = (await a.agent.get(`/api/v1/config-backup/targets/${er}/versions`)).body.items.find((v: { number: number }) => v.number === 2).id;
+    const vRestore = await a.agent.post(`/api/v1/config-backup/targets/${er}/restore`).set(CSRF).send({ version_id: v3, confirm: 'edge-er', reason: 'Back to the new ISP settings' });
+    // Version 2 was recorded with A, the device is now B: forced again, then the device changes back to A.
+    expect(vRestore.body.error.code).toBe('device_identity_mismatch');
+    const again = await a.agent
+      .post(`/api/v1/config-backup/targets/${er}/restore`)
+      .set(CSRF)
+      .send({ version_id: v3, confirm: 'edge-er', reason: 'Back to the new ISP settings', allow_other_device: true, confirm_other_device: B.serial });
+    expect(again.status).toBe(202);
+    await backup(c, again.body.pre_run_id, er, E1, { model: 'EdgeRouter 4', serial: '7483C2CCCCCC' });
+    // Forced, so the restore continues: the collector checks again on the device.
+    expect((await restoreOf(a, again.body.id)).body.status).toBe('pending');
+    await systemPool.query(`UPDATE config_backup_restores SET status = 'failed', completed_at = now() WHERE id = $1`, [again.body.id]);
+    await commands(c, 'config_restore');
+
+    // Not forced: a device that changed between request and the backup before the restore stops it.
+    const srx = id('old-srx');
+    await backup(c, first(srx), srx, V1, SRX);
+    const srx2 = await a.agent.post(`/api/v1/config-backup/targets/${srx}/run`).set(CSRF).send({});
+    await backup(c, srx2.body.run_id, srx, V2, SRX);
+    const sv1 = (await a.agent.get(`/api/v1/config-backup/targets/${srx}/versions`)).body.items.find((v: { number: number }) => v.number === 1).id;
+    const sReq = await a.agent.post(`/api/v1/config-backup/targets/${srx}/restore`).set(CSRF).send({ version_id: sv1, confirm: 'old-srx', reason: 'Undo the description change' });
+    expect(sReq.status).toBe(202);
+    await backup(c, sReq.body.pre_run_id, srx, V2, { model: 'srx300', serial: 'CV9999ZZ0000' });
+    const sR = (await restoreOf(a, sReq.body.id)).body;
+    expect(sR).toMatchObject({ status: 'failed', error_kind: 'device_mismatch', identity_check: 'mismatch' });
+    expect(sR.error).toContain('Nothing was changed');
+    expect(await commands(c, 'config_restore')).toHaveLength(0);
+
+    // A version without a recorded identity: "unknown", forced with the address when nothing is known.
+    await systemPool.query(`UPDATE config_backup_versions SET device_model = NULL, device_serial = NULL WHERE target_id = $1`, [srx]);
+    await systemPool.query(`UPDATE config_backup_runs SET device_model = NULL, device_serial = NULL WHERE target_id = $1`, [srx]);
+    const up = (await a.agent.get(`/api/v1/config-backup/targets/${srx}/restore-preview?version_id=${sv1}`)).body;
+    expect(up.identity.check).toBe('unknown');
+    expect(up.other_device_block.code).toBe('device_identity_unknown');
+    expect(up.other_device_confirm_text).toBe('192.168.72.3');
+
+    // Every unsupported vendor names its reason.
+    const mt = id('mt-hex');
+    await backup(c, first(mt), mt, '/system identity set name=mt-hex\n', null);
+    const mtv = (await a.agent.get(`/api/v1/config-backup/targets/${mt}/versions`)).body.items[0].id;
+    const mp = (await a.agent.get(`/api/v1/config-backup/targets/${mt}/restore-preview?version_id=${mtv}`)).body;
+    expect(mp).toMatchObject({ supported: false, driver: 'mikrotik_routeros', method: null });
+    expect(mp.blocker.message).toContain('RouterOS has no atomic replace');
+    expect(mp.blocker.message).toContain('100 most recent actions');
+    expect(mp.blocker.message).toContain('Download the version and restore it by hand');
+    // The reasons the web shows come from the same table: one per backup driver without a restore method.
+    expect(Object.keys(UNSUPPORTED_REASONS).filter((d) => RESTORE_METHODS[d])).toEqual([]);
+    expect(UNSUPPORTED_REASONS.fortinet_fortios).toContain('cfg-save revert');
+  });
+  it('restores OpenWrt with rpcd uci apply rollback (model-only identity), records a rolled back restore and keeps the Wi-Fi key out of the preview', async () => {
+    const a = await newAccount('cb-restore-owrt');
+    await addScope(a, '192.168.73.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({ site_id: a.siteId, targets: [{ address: '192.168.73.1', name: 'owrt-ap', driver: 'openwrt' }], credentials: { username: 'root', password: PASSWORD } });
+    expect(added.status).toBe(201);
+    const tid = added.body.items[0].id as string;
+    const WIFI_KEY = 'Wifi-Key-That-Only-The-Collector-Sees-77';
+    const MODEL = { model: 'TP-Link Archer C7 v5' };
+    const U1 = `package network
+
+config interface 'lan'
+	option proto 'static'
+	option ipaddr '192.168.73.1'
+
+package wireless
+
+config wifi-iface 'default_radio0'
+	option ssid 'home'
+	option key '${WIFI_KEY}'
+`;
+    const U2 = U1.replace("'home'", "'home-new'");
+    await backup(c, added.body.queued[0].run_id, tid, U1, MODEL);
+    const run2 = await a.agent.post(`/api/v1/config-backup/targets/${tid}/run`).set(CSRF).send({});
+    await backup(c, run2.body.run_id, tid, U2, MODEL);
+    const v1 = ((await a.agent.get(`/api/v1/config-backup/targets/${tid}/versions`)).body.items as { id: string; number: number }[]).find((v) => v.number === 1)!;
+    const preview = await a.agent.get(`/api/v1/config-backup/targets/${tid}/restore-preview?version_id=${v1.id}`);
+    expect(preview.body).toMatchObject({ supported: true, possible: true, driver: 'openwrt', method: 'openwrt_uci_apply_rollback', other_device_block: null });
+    expect(preview.body.identity).toEqual({ version: { model: MODEL.model, serial: null }, device: { model: MODEL.model, serial: null }, check: 'match' });
+    expect(JSON.stringify(preview.body)).not.toContain(WIFI_KEY);
+
+    const req = await a.agent.post(`/api/v1/config-backup/targets/${tid}/restore`).set(CSRF).send({ version_id: v1.id, confirm: 'owrt-ap', reason: 'Back to the old SSID', confirm_minutes: 3 });
+    expect(req.status).toBe(202);
+    expect(req.body).toMatchObject({ method: 'openwrt_uci_apply_rollback', identity_check: 'match', forced_other_device: false });
+    await backup(c, req.body.pre_run_id, tid, U2, MODEL);
+    const pending = (await restoreOf(a, req.body.id)).body;
+    expect(pending.status).toBe('pending');
+    const [cmd] = await commands(c, 'config_restore');
+    expect(cmd!.payload).toMatchObject({ driver: 'openwrt', confirm_minutes: 3, expected_identity: { model: MODEL.model }, allow_other_device: false });
+    expect(gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8')).toContain(WIFI_KEY);
+
+    // The device answered the read-back with something else: the collector rolled it back.
+    await backup(c, pending.verify_run_id, tid, U2, MODEL);
+    const res = await telemetry(c, [
+      {
+        type: 'config_restore_result',
+        ts: now(),
+        restore_id: req.body.id,
+        target_id: tid,
+        ok: false,
+        method: 'openwrt_uci_apply_rollback',
+        loaded: true,
+        committed: true,
+        confirmed: false,
+        rolled_back: true,
+        read_back: true,
+        device_identity: MODEL,
+        steps: ['staged in a ubus session: wireless', 'uci apply with rollback 180 s: active', 'uci rollback: previous configuration committed again'],
+        error: { kind: 'command_failed', message: 'the configuration read back differs from the restored one; the previous configuration was put back' },
+      },
+    ]);
+    expect(res.body).toMatchObject({ accepted: 1 });
+    expect((await restoreOf(a, req.body.id)).body).toMatchObject({ status: 'rolled_back', committed: true, confirmed: false, rolled_back: true, error_kind: 'command_failed' });
+    const actions = (await systemPool.query(`SELECT action FROM audit_logs WHERE organization_id = $1 AND action LIKE 'config_backup.restore.%'`, [a.organizationId])).rows.map((x) => x.action);
+    expect(actions).toContain('config_backup.restore.request');
+    const logs = JSON.stringify((await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1`, [a.organizationId])).rows);
+    expect(logs).not.toContain(WIFI_KEY);
   });
 });

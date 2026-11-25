@@ -131,6 +131,9 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
     set('detection', JSON.stringify(item.detection));
   }
 
+  // The device identity (model / serial) the collector read alongside the configuration, if any.
+  const model = (item.ok && item.device_identity?.model) || null;
+  const serial = (item.ok && item.device_identity?.serial) || null;
   let outcome: 'first' | 'changed' | 'unchanged' | null = null;
   let versionId: string | null = null;
   let errorKind = item.error?.kind ?? null;
@@ -158,7 +161,11 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
       if (latest && latest.sha256 === norm.sha256) {
         outcome = 'unchanged';
         versionId = latest.id;
-        await db.query(`UPDATE config_backup_versions SET last_seen_at = greatest(last_seen_at, $2), confirmations = confirmations + 1 WHERE id = $1`, [latest.id, at]);
+        await db.query(
+          `UPDATE config_backup_versions SET last_seen_at = greatest(last_seen_at, $2), confirmations = confirmations + 1,
+                  device_model = coalesce(device_model, $3), device_serial = coalesce(device_serial, $4) WHERE id = $1`,
+          [latest.id, at, model, serial],
+        );
         await db.query(
           `INSERT INTO config_backup_raw (target_id, sha256, organization_id, raw_enc) VALUES ($1,$2,$3,$4) ON CONFLICT (target_id, sha256) DO NOTHING`,
           [t.id, norm.sha256, c.organizationId, encryptSecret(raw.text)],
@@ -193,9 +200,10 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
         }
         versionId = (
           await db.query<{ id: string }>(
-            `INSERT INTO config_backup_versions (organization_id, target_id, number, sha256, captured_at, last_seen_at, run_id, collector_id, driver, added_lines, removed_lines)
-             VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10) RETURNING id`,
-            [c.organizationId, t.id, (latest?.number ?? 0) + 1, norm.sha256, at, run.id, c.id, item.detection?.driver || null, latest ? added : 0, latest ? removed : 0],
+            `INSERT INTO config_backup_versions (organization_id, target_id, number, sha256, captured_at, last_seen_at, run_id, collector_id, driver, added_lines, removed_lines,
+                                                 device_model, device_serial)
+             VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+            [c.organizationId, t.id, (latest?.number ?? 0) + 1, norm.sha256, at, run.id, c.id, item.detection?.driver || null, latest ? added : 0, latest ? removed : 0, model, serial],
           )
         ).rows[0]!.id;
         outcome = latest ? 'changed' : 'first';
@@ -257,9 +265,10 @@ async function processBackupResult(db: Db, c: CollectorContext, item: ConfigBack
   }
   await db.query(`UPDATE config_backup_targets SET ${sets.join(', ')} WHERE id = $1`, vals);
   await db.query(
-    `UPDATE config_backup_runs SET status = $2, outcome = $3, version_id = $4, host_key_status = $5, error_kind = $6, error = $7, duration_ms = $8, completed_at = $9
+    `UPDATE config_backup_runs SET status = $2, outcome = $3, version_id = $4, host_key_status = $5, error_kind = $6, error = $7, duration_ms = $8, completed_at = $9,
+            device_model = $10, device_serial = $11
       WHERE id = $1`,
-    [run.id, ok ? 'ok' : 'failed', outcome, versionId, item.host_key_status ?? null, ok ? null : errorKind, ok ? null : errorText, item.duration_ms ?? null, at],
+    [run.id, ok ? 'ok' : 'failed', outcome, versionId, item.host_key_status ?? null, ok ? null : errorKind, ok ? null : errorText, item.duration_ms ?? null, at, model, serial],
   );
 }
 

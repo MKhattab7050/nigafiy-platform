@@ -1,182 +1,265 @@
-# Nigafiy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/hero-dark.svg">
+    <img alt="Nigafiy: know your network, understand every incident. Seven programs on one local engine." src="docs/assets/readme/hero.svg" width="100%">
+  </picture>
+</p>
 
-**Know your network. Understand every incident.**
+<h3 align="center">Free, Windows-first network and endpoint management for IT teams and MSPs.<br>On your own machines, in English and Arabic, with no cloud panel and no AI.</h3>
 
-Network intelligence and IT infrastructure monitoring for IT administrators and MSPs. A lightweight Go
-collector runs inside the customer network and reports — over outbound HTTPS only — to a multi-tenant
-cloud platform.
+<p align="center">
+  <a href="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Platform: Windows 10 and 11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
+  <img alt="English and Arabic" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
+  <img alt="No AI, deterministic rules" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
+  <img alt="Status: pre-release 0.1.0" src="https://img.shields.io/badge/status-pre--release%200.1.0-C27C0E">
+</p>
 
-> **Status: Phases 1, 2, 3 and 4 (core platform + network intelligence + endpoint management + remote administration).** Everything listed under "What works" is implemented, connected
-> to the real backend and tested. Everything else in the product vision is listed honestly under
-> [docs/roadmap/status.md](docs/roadmap/status.md) and is **not** in the UI.
+<p align="center">
+  <a href="#quick-start"><b>Quick start</b></a> ·
+  <a href="#screenshots"><b>Screenshots</b></a> ·
+  <a href="#programs"><b>Programs</b></a> ·
+  <a href="#architecture"><b>Architecture</b></a> ·
+  <a href="docs/README.md"><b>Docs</b></a> ·
+  <a href="#security"><b>Security</b></a> ·
+  <a href="docs/roadmap/status.md"><b>Status</b></a> ·
+  <a href="README.ar.md"><b>العربية</b></a>
+</p>
 
-## What works today
+<br>
 
-| Area | Implemented |
-| --- | --- |
-| Accounts | Registration, login, logout, HttpOnly session cookie, scrypt password hashing, CSRF defence, rate limiting |
-| Tenancy | Organizations, memberships, roles (owner / admin / technician / viewer), **PostgreSQL Row Level Security** on every tenant table |
-| Sites & scopes | Sites, authorized network scopes (private ranges only, ≤ /20, explicit attestation, audit trail) |
-| Collector | Single-use enrollment token → per-collector credential, heartbeat, config + command polling, on-disk buffering, backoff, graceful shutdown |
-| Discovery | ICMP sweep (rate + concurrency limited) + host neighbour (ARP) table + reverse DNS; MAC vendor from the IEEE registry |
-| Device inventory | Identity tracking across IP changes, new / offline / online / IP-changed / "IP answered by a different MAC" events, IP history, 7-day availability, tags, owner, notes, manual classification |
-| Monitoring | ICMP (latency, loss, jitter), TCP port, DNS resolution checks; explainable state machine with flap damping; history charts 15 min → 30 days |
-| Dashboard | Overview computed from stored data only, fault-domain hint (LAN vs WAN vs DNS), real-time updates over SSE |
-| Events | Timeline with the evidence behind every event, filters, time ranges |
-| Notifications | Email (SMTP / STARTTLS / TLS, AES-256-GCM credentials) and signed webhooks (HMAC-SHA256) with retry + backoff and SSRF protection |
-| Incidents | Automatic correlation of alerts into incidents, auto-resolution, assignment, notes, before/during/after replay |
-| Network Doctor | Deterministic, evidence-backed root-cause rules (LAN / gateway / WAN-ISP / DNS / service / device / collector) with confidence and next steps |
-| IT Toolbox | On-demand network probes run from the site collector: ICMP ping, TCP port check, 19-port common IT/management service scanner, DNS lookup, reverse DNS, and hop-by-hop traceroute |
-| Time Machine | State of the network at any recorded moment; comparison of two periods; 90-day charts from hourly roll-ups |
-| Topology | Evidence-based map (internet → gateway → switches / subnets → devices) using routing tables, ARP, SNMP forwarding tables and LLDP; every link marked observed or inferred |
-| Device controls | Approve devices (unreviewed / known / unwanted, one or all at once): unknown devices joining raise a warning, an unwanted device coming back raises a critical alert. Mute alerts per device, one-click "monitor every minute" (follows IP changes), Wake-on-LAN through the collector (only inside an authorized range), one-click IT Toolbox probes, and guidance plus the MAC and router link to block a device on the router. Nigafiy never disconnects or interferes with devices itself |
-| Managed endpoints | Company computers running the agent: **Windows**, **Linux**, **macOS** (`agents/endpoint-agent`). Per-platform capability list, compliance from measured evidence only (`unknown` when nothing was measured), **Remote File Manager** (browse, search, chunked upload/download with SHA-256 verification, create, rename, copy, move, delete; never overwrites; protected-path, link and UNC guards), **Remote Desktop** (Windows GDI / Linux X11 / macOS view-only, session notice on screen, audit), processes, services, packages (`winget`/`apt-get`/`brew`), event logs, allow-listed diagnostics, power actions and user messages. Phones and tablets (iOS/Android) are not managed |
-| Access control (any router) | The collector can answer DNS for the network (point the router's DHCP DNS at it). Block categories (ads & malware, adult, gambling, social, video, games, chat) and sites for the whole network, per profile (Kids, Guests, Focus templates) or per device; pause the internet for a device or a profile; bedtimes; per-device activity (requests, blocked names). Encrypted-DNS endpoints are blocked so devices fall back to the rules. A device using a VPN or its own DNS can bypass it, and speed limits need router control — both stated in the UI |
-| Smart insights | Rule-based summary on the Overview: network score with the reasons behind it, and the few things worth doing now (unwanted devices online, devices to review, silent collector, router/internet/DNS problems, IP changes, important devices offline or unmonitored), each with evidence and a one-click action |
-| Port Detective | Reads managed switches over SNMP (read-only): port state, speed, traffic rate & error history charts, the devices on each port, LLDP neighbours; answers "which port is this device plugged into" with confidence and evidence. Needs a switch with SNMP enabled |
-| IPAM | Per-subnet address map: observed, documented and free addresses, subnet plan (VLAN, gateway, DHCP pool, DNS), static / reserved records, conflict detection + automatic conflict events with evidence, address history, CSV export, subnet calculator |
-| Other | Audit log, English + Arabic (true RTL), responsive layout, retention job |
+Nigafiy finds and monitors every device on the network, explains incidents with deterministic,
+evidence-backed rules, controls routers, switches and DNS access, and manages and supports company
+computers (Windows, Linux, macOS) through an enrolled agent with remote desktop, files, shell and
+patching. Seven programs share one local engine, and the data stays on the organization's own machines.
 
-## Use it on your home network: desktop app
+<a id="screenshots"></a>
 
-Install **Nigafiy** (`apps/desktop`, installer built with `pnpm --filter @nigafiy/desktop dist`) and
-open it. Nothing else is needed — the installer carries the database, API, web app and collector, and runs
-them with the app's own built-in Node.js.
+<p align="center">
+  <img alt="The Hub dashboard: network score, devices online, open incidents, failing checks, managed computers and 24-hour availability" src="docs/assets/readme/screens/dashboard-en-light.webp" width="100%">
+</p>
 
-On first open it starts everything on this computer (loopback only, ports 47100/47130/47133, data in the
-user profile), signs in with a local account it creates for you (random password, encrypted with Windows
-DPAPI), finds the network you are connected to and **asks once whether to scan it**. Say yes and the
-dashboard opens with your devices appearing within about a minute. Every later open goes straight to the
-dashboard. Closing the window keeps monitoring in the tray; **Quit** from the tray stops everything.
+<table>
+  <tr>
+    <td width="33%" valign="top"><img alt="Radar: every device with its address, vendor, type and status" src="docs/assets/readme/screens/radar-devices-en-light.webp" width="100%"><p align="center"><b>Radar</b><br><sub>every device, identified by MAC across IP changes</sub></p></td>
+    <td width="33%" valign="top"><img alt="Watch: an internet outage incident with the Network Doctor's root cause and the evidence for it" src="docs/assets/readme/screens/watch-incident-en-light.webp" width="100%"><p align="center"><b>Watch</b><br><sub>incidents with a root cause and the evidence behind it</sub></p></td>
+    <td width="33%" valign="top"><img alt="Fleet: a managed Windows computer with live load, hardware, session and power controls" src="docs/assets/readme/screens/fleet-endpoint-en-light.webp" width="100%"><p align="center"><b>Fleet</b><br><sub>live state and controls for every managed computer</sub></p></td>
+  </tr>
+</table>
 
-Building the installer needs Node.js 24, pnpm, Go 1.24 and this repository:
+<p align="center"><sub>Real screens of the web console, filled with the <a href="scripts/seed-simulated.mjs">simulated demo organization</a> (invented devices and telemetry). The same console in Arabic, right to left, in the dark theme: <a href="README.ar.md#screenshots">README.ar.md</a>.</sub></p>
 
-```bash
-pnpm --filter @nigafiy/desktop dist
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/divider-dark.svg">
+  <img alt="" src="docs/assets/readme/divider.svg" width="100%">
+</picture>
 
-Running the desktop app from the repository (`pnpm --filter @nigafiy/desktop start`) does the same
-using the repository's code and your system Node.js 24, and shares `.data/` with `pnpm local`.
+## How it works
 
-## Use it on your home network: one command (no desktop app)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/how-it-works-dark.svg">
+  <img alt="How it works: 1 discover every device, 2 watch it and turn evidence into incidents, 3 alert by email, chat apps and signed webhooks, 4 act from Guard or Fleet" src="docs/assets/readme/how-it-works.svg" width="100%">
+</picture>
 
-Requirements: Node.js ≥ 24 and Go ≥ 1.24 (Go builds the collector; pnpm is installed for you if missing).
+## Programs
 
-On Windows, double-click **`Start Nigafiy.cmd`**. On any system:
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/hub.svg" width="52" alt=""><br><b>Nigafiy Hub</b><br><sub>Home, sign-in, settings and the engine</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/radar.svg" width="52" alt=""><br><b>Nigafiy Radar</b><br><sub>See every device on the network</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/watch.svg" width="52" alt=""><br><b>Nigafiy Watch</b><br><sub>Monitor, and understand what went wrong</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/guard.svg" width="52" alt=""><br><b>Nigafiy Guard</b><br><sub>Protect and control the network</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/fleet.svg" width="52" alt=""><br><b>Nigafiy Fleet</b><br><sub>Manage and support company computers</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/mind.svg" width="52" alt=""><br><b>Nigafiy Mind</b><br><sub>Knowledge, playbooks and automation</sub></td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/toolbox.svg" width="52" alt=""><br><b>Nigafiy Toolbox</b><br><sub>Quick network tools</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/sensor.svg" width="52" alt=""><br><b>Nigafiy Sensor</b><br><sub>Network collector, one per site</sub></td>
+    <td align="center" valign="top" width="33%"><img src="packages/brand/svg/programs/agent.svg" width="52" alt=""><br><b>Nigafiy Agent</b><br><sub>On every managed computer</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>The Sensor runs as <code>nigafiy-engine sensor</code>; the Agent runs on Windows, Linux and macOS. The program list is defined once in <a href="packages/shared-types/src/programs.ts"><code>programs.ts</code></a>; icons and accents come from <a href="packages/brand"><code>packages/brand</code></a>.</sub></p>
+
+### What each program does
+
+<details>
+<summary><img src="packages/brand/svg/programs/radar.svg" width="18" alt=""> <b>Radar</b>: discovery and inventory</summary>
+<br>
+
+- ICMP sweep, neighbour table, mDNS, SSDP, NetBIOS and passive DHCP names
+- One identity per device by MAC, across IP changes; IPv4 and IPv6
+- Topology with observed and inferred links, single points of failure; IPAM; switch ports
+
+</details>
+
+<details>
+<summary><img src="packages/brand/svg/programs/watch.svg" width="18" alt=""> <b>Watch</b>: monitoring, incidents and notifications</summary>
+<br>
+
+- Ping, TCP, DNS, HTTP/HTTPS, TLS expiry and SNMP OID checks
+- Events with evidence; incidents correlated and resolved automatically; Network Doctor; Time Machine
+- Email, signed webhooks, Telegram, Slack, Discord and ntfy; escalation policies; maintenance windows
+
+</details>
+
+<details>
+<summary><img src="packages/brand/svg/programs/guard.svg" width="18" alt=""> <b>Guard</b>: control and protection</summary>
+<br>
+
+- DNS access control for any router
+- 16 router drivers, with a read-back after every change
+- Switch port control over SNMP; security checks; SSH config backup with Junos and IOS XE restore
+
+</details>
+
+<details>
+<summary><img src="packages/brand/svg/programs/fleet.svg" width="18" alt=""> <b>Fleet</b>: company computers</summary>
+<br>
+
+- Agent for Windows, Linux and macOS; evidence-only compliance
+- Remote desktop with consent and an on-screen banner (WebSocket JPEG, WebRTC H.264 on Windows)
+- Files, shell, scripts, jobs and patches; access policies with MFA step-up and second-admin approval
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/fleet-remote-desktop-dark.svg">
+  <img alt="Remote desktop flow: the technician starts a session, the API checks the access policy, the Agent dials out and picks up the command, the user consents, frames flow over WebSocket or WebRTC, and the session is audited" src="docs/assets/readme/fleet-remote-desktop.svg" width="100%">
+</picture>
+
+</details>
+
+<details>
+<summary><img src="packages/brand/svg/programs/mind.svg" width="18" alt=""> <b>Mind</b> and <img src="packages/brand/svg/programs/toolbox.svg" width="18" alt=""> <b>Toolbox</b></summary>
+<br>
+
+- Mind: knowledge memory, approval-gated playbooks, an automation catalogue. No AI
+- Toolbox: ping, TCP port, common ports, DNS, reverse DNS, traceroute from the site Sensor, subnet calculator
+
+</details>
+
+Area by area, with links to every feature page: [docs/features/capabilities.md](docs/features/capabilities.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/divider-dark.svg">
+  <img alt="" src="docs/assets/readme/divider.svg" width="100%">
+</picture>
+
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/architecture-dark.svg">
+  <img alt="Architecture: on the admin's Windows PC, loopback only, nigafiy-engine supervises the web console, the API, PostgreSQL with Row Level Security and the local Sensor. Sensors at other sites and Agents on managed computers dial out to the API; the Sensor reaches the LAN with ICMP, ARP, SNMP, SSH and router APIs." src="docs/assets/readme/architecture.svg" width="100%">
+</picture>
+
+The server never opens a connection into a customer network: Sensors and Agents dial out and poll for
+commands from a closed list. More diagrams (ports, discovery, enrollment, remote desktop, router
+changes, config restore, updates, distribution, sign-in) are in
+[docs/architecture/flowcharts.md](docs/architecture/flowcharts.md); the written architecture is in
+[docs/architecture/overview.md](docs/architecture/overview.md).
+
+## Quick start
+
+**Prerequisites:** Node.js 24+, Go 1.27.3+ (pnpm 10 is installed for you by `pnpm local` when missing).
+No Docker, PostgreSQL or Redis needed.
 
 ```bash
 pnpm local
 ```
 
-The first time, it:
+On Windows you can double-click `Start Nigafiy.cmd` instead. The first run installs dependencies,
+creates `.env`, starts the database, API and web app on this computer, asks you to confirm your
+network, creates your account and opens http://localhost:3100.
 
-1. installs dependencies and creates `.env` with fresh secrets,
-2. starts the database, API and web app on this computer,
-3. finds the network this computer is connected to (for example `192.168.1.0/24`) and **asks you to
-   confirm it is your network**,
-4. asks for an email and password (your account lives only in the local database),
-5. authorizes that one range and enrolls this computer as its collector, then opens http://localhost:3100.
-
-Every later run is just `pnpm local` (or the double-click): everything starts, the collector resumes, and the
-browser opens. Ctrl+C (or closing the window) stops it all. Data stays in `.data/` (database, collector
-identity, logs in `.data/logs`). Options: `--no-open`, `--no-collector`, `--prod` (optimized web build),
-`--token <token>` (enroll with a token created in the web app instead of the guided setup).
-
-Notes: everything runs on this computer and listens on localhost only. Phone names come from passive DHCP
-listening (UDP 67) and appear when a phone reconnects to Wi-Fi. On Linux, ICMP and port 67 need extra
-privileges (`CAP_NET_RAW`, `CAP_NET_BIND_SERVICE`).
-
-## Run the parts separately (development)
-
-Requirements: Node.js ≥ 24, pnpm ≥ 10, Go ≥ 1.24.
+<details>
+<summary><b>Development: run each part in its own terminal</b></summary>
 
 ```bash
 pnpm install
+cp .env.example .env      # then set APP_ENCRYPTION_KEY and the lan_app password
+pnpm dev:db               # PostgreSQL on 5433
+pnpm dev:api              # API on 4100
+pnpm dev:web              # web on 3100
 ```
+
+</details>
+
+<details>
+<summary><b>The gate every change passes</b></summary>
 
 ```bash
-cp .env.example .env
+pnpm typecheck
+pnpm lint
+pnpm check:brand
+pnpm test                 # API integration tests, real PostgreSQL + RLS
+pnpm test:collector       # Sensor (Go)
+pnpm test:agent           # Agent (Go)
+pnpm test:engine          # Engine (Go)
+pnpm build
 ```
 
-Edit `.env`: set `APP_ENCRYPTION_KEY` (the file shows how to generate one) and change the `lan_app` password.
-Then, in three terminals:
+</details>
 
-```bash
-pnpm dev:db
-```
+<details>
+<summary><b>Repository map</b></summary>
 
-```bash
-pnpm dev:api
-```
+| Path | What it is |
+| --- | --- |
+| [`apps/api`](apps/api) | API: Node 24 (native TypeScript), Express 5, Zod, PostgreSQL with Row Level Security, background jobs |
+| [`apps/web`](apps/web) | Web console for all seven programs: Next.js 16, React 19, Tailwind 4, EN + AR |
+| [`apps/desktop`](apps/desktop) | Windows desktop app (Electron): program windows, tray, local mode, NSIS / MSI / MSIX packaging |
+| [`engine`](engine) | `nigafiy-engine` (Go): supervises database, API, web and Sensor; Windows service; control API; update helper; program launchers |
+| [`collectors/lan-collector`](collectors/lan-collector) | The Sensor (Go): discovery, checks, SNMP, DNS filter, router drivers, config backup, Toolbox |
+| [`agents/endpoint-agent`](agents/endpoint-agent) | The Agent (Go) for Windows, Linux and macOS, plus Quick Support (`nigafiy-support`) |
+| [`packages/shared-types`](packages/shared-types) | API contract types, program list and route table shared by API and web |
+| [`packages/brand`](packages/brand) | Logo, program icons and colour tokens |
+| [`packaging`](packaging) | Endpoint agent NSIS script |
+| [`scripts`](scripts) | `pnpm local`, brand check, e2e smoke, README art and screenshots, installers, release and signing |
+| [`docs`](docs) | Architecture, features, operations, security, roadmap |
+| [`.github`](.github) | CI workflow, issue and pull request templates |
 
-```bash
-pnpm dev:web
-```
+</details>
 
-Open http://localhost:3100, create an account, then go to **Discovery & Collectors**:
+The desktop installer, the Sensor on another machine, every build target and every test command:
+[docs/getting-started.md](docs/getting-started.md).
 
-1. Authorize the network range you own (for example `192.168.1.0/24`).
-2. Add a collector — you get a one-time enrollment token.
-3. Build and start the collector on a machine inside that network:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/divider-dark.svg">
+  <img alt="" src="docs/assets/readme/divider.svg" width="100%">
+</picture>
 
-```bash
-pnpm build:engine
-```
+## Security
 
-```bash
-NIGAFIY_SENSOR_ENROLLMENT_TOKEN=<token> ./engine/bin/nigafiy-engine sensor -config collectors/lan-collector/configs/collector.example.yaml
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/security-dark.svg">
+  <img alt="Security layers: every request passes sign-in (scrypt, TOTP MFA, SSO, rate limits), server-side role checks, PostgreSQL Row Level Security per organization, AES-256-GCM sealed secrets and an append-only audit log. Sensors and Agents only dial out over HTTPS; the server never connects into a site." src="docs/assets/readme/security.svg" width="100%">
+</picture>
 
-The engine and the Sensor are one executable, `nigafiy-engine`: `nigafiy-engine sensor` is the
-Sensor alone, with the same flags and `NIGAFIY_SENSOR_*` settings the old `nigafiy-sensor` had
-(docs/architecture/engine-sensor.md).
+Every control and where it lives: [docs/security/model.md](docs/security/model.md). To report a
+vulnerability, see [SECURITY.md](SECURITY.md).
 
-(For a local test against the dev API use `server_url: http://localhost:4100` with `allow_insecure_http: true`.)
+## Documentation and status
 
-`pnpm dev:db` starts a real PostgreSQL server from npm-distributed binaries, stored in `.data/pg`.
-With Docker available, `docker compose up` provides PostgreSQL (TimescaleDB image) and Redis instead —
-that compose file has **not** been exercised in the environment this repository was built in.
+- 📚 **[Documentation index](docs/README.md)**: architecture, features, operations, security and roadmap
+- 🧭 **[Project status](docs/roadmap/status.md)**: what is built, what ran on real hardware, what is tested only
+- 🗺️ **[Flowcharts](docs/architecture/flowcharts.md)**: every flow that exists in the code, with links to it
+- 🤝 **[Contributing](CONTRIBUTING.md)**: the internal workflow
 
-## Tests
+<details>
+<summary><b>Honest status: tested for real versus tests only</b></summary>
+<br>
 
-```bash
-pnpm test
-```
+Many features have only been exercised against protocol test doubles, fixtures or loopback, not on real
+hardware: for example 15 of the 16 router drivers (Cisco IOS XE controls included), SNMP switches, SSO,
+config restore (Junos and IOS XE), the agent on Linux and macOS, WebRTC in a real browser, the engine's
+Windows service mode and the MSI / agent installers. Discovery, checks and smart checks ran on a real
+LAN; the Windows agent ran against the real API; one router (Zyxel VMG3625-T50B) was controlled for
+real. The GitHub CI workflow has not run yet. [docs/roadmap/status.md](docs/roadmap/status.md) lists
+exactly what ran for real and what did not.
 
-API integration tests: real HTTP → Express → SQL → RLS against a throw-away PostgreSQL. No mocks.
+</details>
 
-```bash
-pnpm test:collector
-```
+## License
 
-Collector unit + lifecycle tests (enrollment, outage buffering, reconnect, scope limits).
-
-```bash
-node scripts/e2e-smoke.mjs
-```
-
-`node scripts/seed-simulated.mjs` fills a clearly-labelled *simulated* organization for looking at the UI.
-
-End-to-end against a running stack with the **real collector binary**, using the loopback range
-`127.0.0.0/29` as a permitted test network (requires `ALLOW_LOOPBACK_SCOPES=true` in `.env`).
-
-## Repository layout
-
-```
-apps/api                 Cloud API — Node 24 (native TypeScript), Express 5, PostgreSQL
-apps/web                 Web app — Next.js 16, React 19, Tailwind 4, Recharts
-collectors/lan-collector Edge network collector — Go (ICMP, ARP, DHCP, DNS filter, SNMP, Toolbox)
-agents/endpoint-agent    Per-machine IT management & remote control agent — Go
-packages/shared-types    API contract types shared by api and web
-docs/                    Architecture, protocol, database, security, roadmap
-scripts/                 e2e smoke test and simulated demo seed
-```
-
-## Documentation
-
-- [Architecture & technical assessment](docs/architecture/overview.md)
-- [Database design](docs/architecture/database.md)
-- [Collector architecture & protocol v1](docs/collector/protocol.md)
-- [Security model](docs/security/model.md)
-- [Status, gaps, risks and roadmap](docs/roadmap/status.md)
-- [Desktop app (dashboard + bundled collector)](docs/desktop/README.md)
+Not yet chosen: all rights reserved until then.

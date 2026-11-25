@@ -37,6 +37,9 @@ type device struct {
 	pubKey       ssh.PublicKey
 	// cliFn replaces the generic CLI (restore tests emulate Junos configuration mode).
 	cliFn func(ch ssh.Channel)
+	// execFn handles exec channels itself (the IOS XE restore test emulates the SCP sink, the OpenWrt
+	// restore test ubus); it returns the exit status.
+	execFn func(cmd string, ch ssh.Channel) uint32
 
 	authCalls atomic.Int32
 	execSeen  []string
@@ -152,6 +155,12 @@ func (s *server) session(ch ssh.Channel, reqs <-chan *ssh.Request) {
 			s.dev.mu.Lock()
 			s.dev.execSeen = append(s.dev.execSeen, p.Cmd)
 			s.dev.mu.Unlock()
+			if s.dev.execFn != nil {
+				_ = req.Reply(true, nil)
+				status := s.dev.execFn(p.Cmd, ch)
+				_, _ = ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
+				return
+			}
 			out, ok := s.dev.exec[p.Cmd]
 			_ = req.Reply(true, nil)
 			status := uint32(0)

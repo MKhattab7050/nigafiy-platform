@@ -7,7 +7,7 @@
 //     exchange, before any credential is sent;
 //   - a backup sends only the closed per-vendor command lists in drivers.go; never an arbitrary
 //     command. The one code path that changes a device is the administrator-confirmed restore in
-//     restore.go (Junos only, commit confirmed, verified over a second session);
+//     restore.go (Junos commit confirmed, VyOS / EdgeOS commit-confirm; verified over a second session);
 //   - output is bounded in size and time; credentials are never logged or returned.
 package configbackup
 
@@ -40,6 +40,7 @@ const (
 	ErrProtocol         = "protocol"
 	ErrInvalidArgument  = "invalid_argument"
 	ErrEmptyConfig      = "empty_config"
+	ErrDeviceMismatch   = "device_mismatch"
 	defaultPort         = 22
 	defaultDialTimeout  = 10 * time.Second
 	defaultHandshake    = 20 * time.Second
@@ -142,6 +143,8 @@ type Result struct {
 	Detection     *Detection
 	Config        string
 	Commands      []string
+	// Identity is the model / serial the device reported (identity.go); nil when not read.
+	Identity *DeviceIdentity
 }
 
 // Run performs one read-only backup.
@@ -578,5 +581,9 @@ func runShell(ctx context.Context, sh *shell, d *Driver, prompt string, t Target
 		parts = append(parts, out)
 		res.Commands = append(res.Commands, cmd)
 	}
-	return finish(res, parts)
+	if err := finish(res, parts); err != nil {
+		return err
+	}
+	res.Identity = readIdentity(ctx, sh, d.ID, prompt)
+	return nil
 }

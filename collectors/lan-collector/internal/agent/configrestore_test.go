@@ -113,3 +113,52 @@ func TestConfigRestoreExpiredOrFailed(t *testing.T) {
 		t.Fatal("read_back must be false")
 	}
 }
+
+func TestConfigRestorePassesIdentityAndVyOSReadBackCommand(t *testing.T) {
+	a := newTestAgent(t, "http://127.0.0.1:1", t.TempDir(), "tok", &recordingProber{})
+	var got configbackup.RestoreSpec
+	a.deps.ConfigRestore = func(_ context.Context, _ configbackup.Target, spec configbackup.RestoreSpec, _ configbackup.Options) (*configbackup.RestoreResult, error) {
+		got = spec
+		return &configbackup.RestoreResult{
+			Method: configbackup.RestoreMethodVyOS, Loaded: true, Committed: true, Confirmed: true,
+			Identity: &configbackup.DeviceIdentity{Model: "EdgeRouter X 5-Port", Serial: "7483C2123456"},
+			Config:   "set system host-name 'edge-old'\n",
+		}, nil
+	}
+	cfg, _ := gzipBase64("set system host-name 'edge-old'\n")
+	payload, _ := json.Marshal(map[string]any{
+		"restore_id": "8b0f3c1e-0000-4111-8222-000000000003", "verify_run_id": "8b0f3c1e-1111-4222-8333-944455556666", "target_id": "8b0f3c1e-aaaa-4bbb-8ccc-9ddddeeeeeee",
+		"address": "192.168.50.21", "port": 22, "username": "ubnt", "password": "x", "host_key_sha256": "SHA256:" + strings.Repeat("B", 43), "host_key_type": "ssh-ed25519",
+		"driver": "vyos_edgeos", "config_gzip_b64": cfg, "confirm_minutes": 2, "expires_at": time.Now().Add(time.Minute).UTC(),
+		"expected_identity": map[string]any{"model": "EdgeRouter X 5-Port", "serial": "7483C2000000"}, "allow_other_device": true,
+	})
+	a.configRestore(context.Background(), cloud.Command{ID: "cmd-v", Kind: cmdConfigRestore, Payload: payload})
+	if got.ExpectedIdentity == nil || got.ExpectedIdentity.Serial != "7483C2000000" || !got.AllowOtherDevice {
+		t.Fatalf("expected identity / force not passed: %+v", got)
+	}
+	items := restoreItems(t, a)
+	if len(items) != 2 {
+		t.Fatalf("items: %v", items)
+	}
+	if cmds, _ := items[0]["commands"].([]any); len(cmds) != 1 || cmds[0] != "show configuration commands | cat" {
+		t.Fatalf("verification commands: %v", items[0]["commands"])
+	}
+	for _, it := range items {
+		id, _ := it["device_identity"].(map[string]any)
+		if id["serial"] != "7483C2123456" {
+			t.Fatalf("device identity not reported: %v", it)
+		}
+	}
+}
+
+func TestReadBackCommandPerMethod(t *testing.T) {
+	for method, want := range map[string]string{
+		configbackup.RestoreMethodJunos:   "show configuration | no-more",
+		configbackup.RestoreMethodVyOS:    "show configuration commands | cat",
+		configbackup.RestoreMethodOpenWrt: "uci export",
+	} {
+		if got := readBackCommand(method); got != want {
+			t.Errorf("%s: %q", method, got)
+		}
+	}
+}

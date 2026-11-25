@@ -370,7 +370,7 @@ export const GUIDE_EN: GuideContent = [
           'pfSense: needs the REST API v2 package; user name `api-key` with the API key as password, or an administrator account.',
           'FortiGate: user name `api` with a REST API administrator token as password, or an administrator account.',
           'MikroTik: RouterOS v7 with the REST API turned on. OpenWrt: ubus over HTTP (usually user `root`). UniFi: a local administrator account.',
-          'Cisco IOS XE: RESTCONF turned on and a privilege-15 account. Read-only.',
+          'Cisco IOS XE: release 16.6 or later, RESTCONF turned on and a privilege-15 account. Port forwards need NAT already set up by the administrator.',
         ],
       },
       { kind: 'h', id: 'families', text: 'Supported routers' },
@@ -390,12 +390,12 @@ export const GUIDE_EN: GuideContent = [
           ['Ubiquiti UniFi', 'UniFi OS consoles and self-hosted UniFi Network'],
           ['TP-Link Omada', 'Hardware and software controllers'],
           ['OpenWrt, OPNsense, pfSense, FortiGate', 'Firewalls and open-source routers'],
-          ['Cisco IOS XE', 'Read-only (connected clients and DHCP)'],
+          ['Cisco IOS XE', 'Routers and L3 gateways with RESTCONF (release 16.6 or later)'],
         ],
       },
       {
         kind: 'p',
-        text: 'Every family except Cisco can list connected devices and block or unblock a device. What else each one can do depends on what the router itself offers:',
+        text: 'Every family can list connected devices and block or unblock a device. What else each one can do depends on what the router itself offers:',
       },
       {
         kind: 'table',
@@ -414,7 +414,7 @@ export const GUIDE_EN: GuideContent = [
           ['Huawei (home/ISP)', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 'No', 'No'],
           ['D-Link, TP-Link, ZTE', 'No', 'Yes', 'Yes', 'Yes', 'Yes', 'No', 'No'],
           ['Huawei 4G/5G', 'No', 'Yes', 'No', 'Yes', 'Yes', 'No', 'No'],
-          ['Cisco IOS XE', 'No', 'No', 'No', 'No', 'No', 'No', 'No'],
+          ['Cisco IOS XE', 'Via reservation', 'No', 'Yes', 'Yes', 'No', 'Yes', 'Yes'],
         ],
       },
       {
@@ -555,7 +555,7 @@ export const GUIDE_EN: GuideContent = [
           'Access control: a DNS filter run by the Sensor. With it on, you can pause a device’s internet and block ads and malware. A paused device stays on the Wi-Fi; only websites and apps stop.',
           'Routers & gateways: see "Reach your router".',
           'Switch port control: turn a switch port off or on, change its VLAN or quarantine a device, over SNMP.',
-          'Config backup: copies of your switches’ and routers’ configuration over SSH, with passwords removed and the differences between copies. Restoring a copy works for Juniper Junos only.',
+          'Config backup: copies of your switches’ and routers’ configuration over SSH, with passwords removed and the differences between copies. Restoring a copy works for Juniper Junos and Cisco IOS XE, which roll a configuration back by themselves when it is not confirmed.',
         ],
       },
       {

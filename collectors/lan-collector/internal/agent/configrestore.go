@@ -15,7 +15,8 @@ import (
 )
 
 // config_restore: an administrator-confirmed restore of one configuration version
-// (configbackup.Restore: Junos only, commit confirmed, verified over a second SSH session).
+// (configbackup.Restore: Junos commit confirmed or VyOS / EdgeOS commit-confirm, verified over a
+// second SSH session).
 //
 //   - the command arrives with the SSH credentials and the configuration text, both used only in
 //     memory for this one restore, never cached, logged or reported;
@@ -33,6 +34,33 @@ type configRestorePayload struct {
 	VerifyRunID    string `json:"verify_run_id"`
 	ConfigGzipB64  string `json:"config_gzip_b64"`
 	ConfirmMinutes int    `json:"confirm_minutes"`
+	// The device identity recorded with the version, and whether the administrator confirmed
+	// restoring onto a device whose identity differs.
+	ExpectedIdentity *configbackup.DeviceIdentity `json:"expected_identity"`
+	AllowOtherDevice bool                         `json:"allow_other_device"`
+}
+
+// identityItem is the protocol form of a device identity (printable, bounded).
+func identityItem(d *configbackup.DeviceIdentity) map[string]any {
+	out := map[string]any{}
+	if d.Model != "" {
+		out["model"] = printable(d.Model, 100)
+	}
+	if d.Serial != "" {
+		out["serial"] = printable(d.Serial, 100)
+	}
+	return out
+}
+
+// readBackCommand is the command the restore read the configuration back with (per method).
+func readBackCommand(method string) string {
+	switch method {
+	case configbackup.RestoreMethodVyOS:
+		return "show configuration commands | cat"
+	case configbackup.RestoreMethodOpenWrt:
+		return "uci export"
+	}
+	return "show configuration | no-more"
 }
 
 func gunzipBase64(s string) (string, error) {
@@ -93,7 +121,9 @@ func (a *Agent) configRestore(ctx context.Context, cmd cloud.Command) {
 		Driver: p.Driver,
 	}
 	started := time.Now()
-	res, rerr := a.deps.ConfigRestore(ctx, target, configbackup.RestoreSpec{Config: text, ConfirmMinutes: p.ConfirmMinutes}, a.configBackupOptions())
+	res, rerr := a.deps.ConfigRestore(ctx, target, configbackup.RestoreSpec{
+		Config: text, ConfirmMinutes: p.ConfirmMinutes, ExpectedIdentity: p.ExpectedIdentity, AllowOtherDevice: p.AllowOtherDevice,
+	}, a.configBackupOptions())
 	text = ""
 	if res == nil {
 		res = &configbackup.RestoreResult{}
@@ -112,7 +142,14 @@ func (a *Agent) configRestore(ctx context.Context, cmd cloud.Command) {
 		if encoded, gzErr := gzipBase64(res.Config); gzErr == nil && len(encoded) <= maxConfigGzipB64 {
 			item["ok"] = true
 			item["config_gzip_b64"] = encoded
-			item["commands"] = []string{"show configuration | no-more"}
+			cmds := res.ReadBackCommands
+			if len(cmds) == 0 {
+				cmds = []string{readBackCommand(res.Method)}
+			}
+			item["commands"] = cmds
+			if res.Identity.Known() {
+				item["device_identity"] = identityItem(res.Identity)
+			}
 		} else {
 			item["ok"] = false
 			item["error"] = map[string]any{"kind": configbackup.ErrOutputTooLarge, "message": "the configuration read back is too large to upload"}
@@ -134,6 +171,9 @@ func (a *Agent) configRestore(ctx context.Context, cmd cloud.Command) {
 	result["steps"] = steps
 	if res.HostKey != nil {
 		result["host_key"] = res.HostKey
+	}
+	if res.Identity.Known() {
+		result["device_identity"] = identityItem(res.Identity)
 	}
 	result["ok"] = rerr == nil
 	if rerr != nil {
