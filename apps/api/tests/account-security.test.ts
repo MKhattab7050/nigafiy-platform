@@ -462,3 +462,68 @@ describe('password reset', () => {
     expect((await login(request.agent(app), victim.email)).status).toBe(200);
   });
 });
+
+describe('Only an owner adds, promotes, demotes or removes an administrator (SEC-04)', () => {
+  it('admin: 403 + audited refusal on every admin path; still manages technicians and viewers; owner can', async () => {
+    const owner = await newAccount('sec04');
+    const admin = await addMember(owner, 'admin');
+    const admin2 = await addMember(owner, 'admin');
+    const tech = await addMember(owner, 'technician');
+    const viewer = await addMember(owner, 'viewer');
+    const roleOf = async (id: string) =>
+      (await systemPool.query<{ role: string; status: string }>(`SELECT role, status FROM memberships WHERE organization_id = $1 AND user_id = $2`, [owner.organizationId, id])).rows[0];
+    const expectRefused = (r: { status: number; body: { error?: { code?: string } } }) => {
+      expect(r.status).toBe(403);
+      expect(r.body.error?.code).toBe('owner_required');
+    };
+
+    // Invite a second admin account of one's own: refused, nothing stored.
+    const accomplice = `accomplice-${Math.random().toString(36).slice(2, 8)}@example.test`;
+    expectRefused(await admin.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: accomplice, role: 'admin' }));
+    expect((await systemPool.query(`SELECT 1 FROM invitations WHERE lower(email) = $1`, [accomplice])).rowCount).toBe(0);
+    // Promote a colluding technician: refused, role unchanged.
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'admin' }));
+    expect(await roleOf(tech.id)).toEqual({ role: 'technician', status: 'active' });
+    // Demote, deactivate or remove another admin: refused.
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${admin2.id}`).set(CSRF).send({ role: 'viewer' }));
+    expectRefused(await admin.agent.patch(`/api/v1/team/members/${admin2.id}`).set(CSRF).send({ status: 'deactivated' }));
+    expectRefused(await admin.agent.delete(`/api/v1/team/members/${admin2.id}`).set(CSRF));
+    expect(await roleOf(admin2.id)).toEqual({ role: 'admin', status: 'active' });
+    // Owner management stays owner-only, as before.
+    expect((await admin.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'owner' })).status).toBe(403);
+
+    const refused = await auditRows(owner.organizationId, 'team.admin_change_refused');
+    expect(refused.map((r) => r.metadata?.what)).toEqual(['invite', 'role_change', 'role_change', 'status_change', 'remove']);
+    expect(refused.every((r) => r.user_id === admin.id && r.metadata?.actor_role === 'admin')).toBe(true);
+    expect(refused[0]!.metadata).toMatchObject({ email: accomplice, role: 'admin' });
+    expect(refused[1]).toMatchObject({ target_id: tech.id, metadata: { requested_role: 'admin' } });
+
+    // Technicians and viewers are still the admin's to manage.
+    expect((await admin.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: `t-${Math.random().toString(36).slice(2, 8)}@example.test`, role: 'technician' })).status).toBe(201);
+    expect((await admin.agent.patch(`/api/v1/team/members/${viewer.id}`).set(CSRF).send({ role: 'technician' })).status).toBe(200);
+    expect((await admin.agent.patch(`/api/v1/team/members/${viewer.id}`).set(CSRF).send({ role: 'viewer' })).status).toBe(200);
+
+    // The owner can do all of it.
+    expect((await owner.agent.post('/api/v1/team/invitations').set(CSRF).send({ email: accomplice, role: 'admin' })).status).toBe(201);
+    expect((await owner.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'admin' })).status).toBe(200);
+    expect((await owner.agent.patch(`/api/v1/team/members/${tech.id}`).set(CSRF).send({ role: 'technician' })).status).toBe(200);
+    expect((await owner.agent.delete(`/api/v1/team/members/${admin2.id}`).set(CSRF)).status).toBe(204);
+    expect(await auditRows(owner.organizationId, 'team.admin_change_refused')).toHaveLength(5);
+  });
+
+  it('an admin invitation sent by a non-owner (before this rule) cannot be accepted', async () => {
+    const owner = await newAccount('sec04-legacy');
+    const admin = await addMember(owner, 'admin');
+    const email = `legacy-${Math.random().toString(36).slice(2, 8)}@example.test`;
+    const token = `legacy-${Math.random().toString(36).slice(2)}`;
+    await systemPool.query(
+      `INSERT INTO invitations (organization_id, email, role, token_hash, invited_by, invited_by_name, expires_at)
+       VALUES ($1,$2,'admin',$3,$4,'admin',now() + interval '1 day')`,
+      [owner.organizationId, email, sha256(token), admin.id],
+    );
+    const acc = await request.agent(app).post(`/api/v1/auth/invitations/${token}/accept`).set(CSRF).send({ password: PASSWORD });
+    expect(acc.status).toBe(403);
+    expect(acc.body.error.code).toBe('invitation_needs_owner');
+    expect((await systemPool.query(`SELECT 1 FROM users WHERE lower(email) = $1`, [email])).rowCount).toBe(0);
+  });
+});

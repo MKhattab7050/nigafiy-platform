@@ -500,6 +500,19 @@ authRouter.post('/invitations/:token/accept', credentialLimiter, async (req, res
     if (!inv) {
       throw new AppError(404, 'invitation_not_found', 'This invitation link is invalid or has expired');
     }
+    // SEC-04: an administrator (or owner) invitation counts only while the person who sent it is an
+    // active owner here (covers invitations an administrator sent before only owners could).
+    if (inv.role === 'admin' || inv.role === 'owner') {
+      const inviter = await db.query(
+        `SELECT 1 FROM invitations i
+           JOIN memberships m ON m.organization_id = i.organization_id AND m.user_id = i.invited_by
+          WHERE i.id = $1 AND m.role = 'owner' AND m.status = 'active'`,
+        [inv.id],
+      );
+      if (!inviter.rowCount) {
+        throw new AppError(403, 'invitation_needs_owner', 'This administrator invitation was not sent by an owner of the organization. Ask an owner for a new one.');
+      }
+    }
 
     const existingRes = await db.query<{ id: string; email: string; password_hash: string; mfa_secret_enc: string | null }>(
       `SELECT id, email, password_hash, mfa_secret_enc FROM users WHERE lower(email) = lower($1)`,

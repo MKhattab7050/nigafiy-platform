@@ -41,7 +41,9 @@ export function TeamManagement() {
     }
   };
 
-  const availableRoles = ROLES.filter((r) => r !== 'owner' || me.role === 'owner');
+  // SEC-04: only an owner assigns (or takes away) owner and admin; the API enforces the same.
+  const isOwner = me.role === 'owner';
+  const availableRoles = ROLES.filter((r) => isOwner || (r !== 'owner' && r !== 'admin'));
 
   return (
     <Card title={t('settings.team.title')}>
@@ -123,6 +125,7 @@ export function TeamManagement() {
                     {t('settings.team.inviteBtn')}
                   </Button>
                 </div>
+                {!isOwner && <p className="text-xs text-muted">{t('settings.team.adminOwnerOnly')}</p>}
               </form>
 
               {createdInvite && (
@@ -171,7 +174,7 @@ export function TeamManagement() {
                 <ul className="divide-y divide-line rounded-md border border-line">
                   {team.members.map((m) => {
                     const isSelf = m.id === me.user.id;
-                    const canManageMember = m.role !== 'owner' || me.role === 'owner';
+                    const canManageMember = isOwner || (m.role !== 'owner' && m.role !== 'admin');
                     return (
                       <li key={m.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-[13px]">
                         <div className="min-w-44">
@@ -220,7 +223,7 @@ export function TeamManagement() {
                             </Badge>
                           )}
 
-                          {canManageMember && (m.role !== 'admin' || me.role === 'owner') && (
+                          {canManageMember && (
                             <Button
                               size="sm"
                               variant="ghost"
