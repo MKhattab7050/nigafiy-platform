@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A plain shield mark (app and notification icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF0F766E"
+        android:pathData="M12,1L3,5v6c0,5.55 3.84,10.74 9,12 5.16,-1.26 9,-6.45 9,-12V5L12,1z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8,7h2.2l3.6,6.2V7H16v10h-2.2L10.2,10.8V17H8z" />
+</vector>

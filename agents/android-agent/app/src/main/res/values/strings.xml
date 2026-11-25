@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nigafiy Agent</string>
+    <string name="admin_label">Nigafiy device management</string>
+    <string name="admin_description">Lets your organisation\'s Nigafiy Fleet lock this phone, require a screen lock, turn the camera off, install or remove work apps and erase the phone. Every action is logged in Fleet.</string>
+    <string name="channel_name">Device management</string>
+    <string name="channel_description">Shown while Nigafiy manages this phone</string>
+    <string name="notif_title">Managed by Nigafiy</string>
+    <string name="notif_regular">Connected to %1$s. Inventory and security checks only.</string>
+    <string name="notif_owner">Connected to %1$s. Your organisation manages this phone.</string>
+    <string name="notif_offline">Cannot reach %1$s: %2$s</string>
+    <string name="notif_enrolling">Enrolling with %1$s…</string>
+    <string name="title_enroll">Enroll this phone</string>
+    <string name="enroll_hint">Open Fleet → Endpoints → Enroll → Android and scan the QR code with the camera, or type the three values here.</string>
+    <string name="field_server">Nigafiy server (https://…)</string>
+    <string name="field_token">Enrollment token (ldea_…)</string>
+    <string name="field_pin">Certificate pin (optional, 64 hex characters)</string>
+    <string name="action_enroll">Enroll</string>
+    <string name="enrolling">Enrolling…</string>
+    <string name="enroll_failed">Enrollment failed: %1$s</string>
+    <string name="enrolled_title">This phone is managed by Nigafiy</string>
+    <string name="status_server">Server: %1$s</string>
+    <string name="status_endpoint">Endpoint ID: %1$s</string>
+    <string name="status_mode_owner">Mode: Device Owner (lock, wipe, camera, screen-lock policy and app installs available to your IT)</string>
+    <string name="status_mode_regular">Mode: regular app (inventory and security checks only; IT cannot lock or erase this phone)</string>
+    <string name="status_last">Last contact: %1$s</string>
+    <string name="status_never">Last contact: not yet</string>
+    <string name="status_error">Last error: %1$s</string>
+    <string name="action_battery">Allow Nigafiy to run in the background</string>
+    <string name="action_notifications">Allow the management notification</string>
+    <string name="what_is_sent">What Nigafiy reads: model, Android version and security patch, storage, memory, battery, network addresses, installed apps and the security settings listed in Fleet. It never reads messages, photos, files, contacts, location or what you type.</string>
+    <string name="wipe_notice">Your organisation erased this phone through Nigafiy.</string>
+</resources>
