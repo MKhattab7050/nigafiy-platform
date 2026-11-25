@@ -925,6 +925,93 @@ Where the code is:
   - A browser opening a recording link.
   - The player page and the two-pane manager in a browser against a running API and agent.
 
+## WebRTC video (2026-11-25)
+
+Owner decision (2026-11-25): the picture becomes smooth video (H.264 over WebRTC) instead of JPEG
+tiles over the WebSocket. Builder W1, branch `worktree-webrtc`. The WebSocket + JPEG path stays, and
+it is the automatic fallback: nothing in it was removed.
+
+### Design
+- **LAN first, no relay.** The browser and the agent form one direct peer connection on the LAN with
+  host candidates only. There is no TURN relay, and no public STUN server is used by default. An
+  administrator may set one or more STUN URLs (`RD_WEBRTC_STUN_URLS`, `stun:`/`stuns:` only, empty by
+  default). TURN is deliberately not offered: a relay would carry the picture through a third
+  machine, and the product rule is LAN-first. Where no direct path exists, the session uses the
+  JPEG path, which already works through the API.
+- **Signalling over what exists.** No new socket and no new port on the API. The operator's browser
+  sends `rtc_offer` (SDP), `rtc_ice`, `rtc_active`, `rtc_fallback` and `rtc_close` on its existing
+  stream socket. The hub checks them and relays them to the agent's existing stream socket (or over
+  the peer link to the instance that holds it). The agent answers with `rtc_answer`, `rtc_ice` and
+  `rtc_state`. Each message carries the viewer's routing id the way clipboard requests do
+  (`req = "<viewer sink>.rtc"`), so an answer reaches only the browser that asked. SDP and ICE
+  candidates are validated with zod (size caps, `v=0` SDP, candidate grammar) and are not audited
+  themselves (they hold LAN addresses only); every decision about them is.
+- **Who offers.** The browser makes the offer: one receive-only video transceiver (H.264) and one
+  ordered, reliable data channel `input`. The agent answers with one send-only H.264 track.
+- **Checked before any offer is relayed** (hub, then again on the instance holding the agent):
+  the session is `active` (consent, refuse window and approval are behind it); the viewer is still a
+  participant with `view`; the agent's hello says `webrtc.supported`; WebRTC is not switched off on
+  the API (`RD_WEBRTC=off`); and the session is not being recorded (see Recording). A refusal goes back
+  as `rtc_refused` with a code and is audited as `fleet.session_transport` (`event: refused`).
+- **Input on the data channel** uses the same rules as the socket path. The agent accepts an event
+  only when the session's profile has `control`, the session was opened with control, and the
+  permissions the hub attached to that viewer's offer (the participant's own, narrower for a
+  view-only colleague) have `control`. The hub sends `rtc_perms` whenever a participant's permissions
+  change (hand-over, invitation change), and `rtc_close` when the viewer leaves or is removed, so the
+  agent drops that peer. Events are validated by the agent with the same kinds, ranges and key
+  allow-list as before (`remotedesktop.ValidateInput`). Because the API does not see these events,
+  the agent reports every event except pointer moves on the socket as `rtc_input` (kind, button,
+  display; never a key, a code or text), and the hub writes `endpoint.rd_input` with `via: webrtc`
+  exactly as it does for the socket path. Clipboard, chat, tools and settings stay on the socket.
+- **Fallback rules.** The viewer stays on (or goes back to) JPEG when: the agent does not offer
+  WebRTC (Linux, macOS, an agent older than this, `RD_WEBRTC=off`), the browser has no
+  `RTCPeerConnection` or cannot decode H.264, the offer is refused, no answer comes within 8 s, no
+  video frame is decoded within 10 s, ICE reaches `failed` or `disconnected` for 5 s, the agent's
+  encoder fails (`rtc_state failed`, with the reason), or recording is switched on. The browser sends
+  `rtc_fallback` with the reason; the hub audits it (`fleet.session_transport`, `mode: jpeg`) and
+  counts the viewer as a JPEG viewer again, so the agent sends it frames (a full frame first). The
+  JPEG path keeps its own fallback to HTTP frames.
+- **Counting viewers.** Once a viewer sends `rtc_active` (the first video frame was decoded), the hub
+  stops counting it in `viewers`, so the agent does not encode JPEG for it. When every viewer is on
+  WebRTC the JPEG encoder idles.
+- **Agent encoder.** H.264 through Windows Media Foundation's built-in encoder MFT, called through
+  COM with `golang.org/x/sys/windows` and `syscall` (pure Go, no cgo). A hardware encoder is tried
+  first; the Microsoft software encoder is next. Windows N editions without the Media Feature Pack
+  have no encoder: the agent then says `webrtc.supported: false` with the reason, and the viewer
+  uses JPEG. An encoder that fails during a session ends that peer with `rtc_state failed`. The
+  picture is converted to NV12 in Go. One encoder per session feeds every WebRTC viewer of that
+  session; a new viewer or a picture-loss report (PLI) asks for a key frame.
+- **Caps and quality.** Frame rate up to 30 fps (`MaxFPS`, the operator may ask for less), the
+  operator's scale as a resolution cap, and a longest edge of 1920 px. The bitrate starts at
+  4 Mbit/s and follows the RTCP receiver reports of every viewer: more than 10 % loss steps it down by
+  a fifth, less than 2 % lets it climb by a tenth, between 300 kbit/s and 8 Mbit/s.
+- **Several monitors.** The display choice (`settings`) is the same as for JPEG. A different display
+  or size restarts the encoder at a key frame; the browser's video element follows the new size.
+- **Linux and macOS** keep the JPEG path. A pure-Go H.264 encoder does not exist, and the platform
+  encoders (VA-API, VideoToolbox) are C APIs that need cgo, which this build does not have.
+
+### How every existing guarantee survives
+| Guarantee | With WebRTC |
+| --- | --- |
+| Consent dialog, refuse window, second-admin approval | Unchanged. An offer is relayed only while the session is `active`, which happens only after them. |
+| Access policy, MFA step-up, IP allow-list, hours | Unchanged at session start and at join. The offer check re-reads participation and `view`. |
+| Operator banner, recording mark | Unchanged: shown by the agent for the session, whatever the transport. |
+| Privacy screen | Unchanged: the video encoder reads the same capture as JPEG, and the privacy window is excluded from capture the same way. |
+| View-only colleagues | Their offer carries `control: false`; the agent drops their data-channel input. |
+| End hotkey (Ctrl+Alt+Shift+E), End on the banner, session end | Closing the session closes every peer connection on the agent before the banner goes. |
+| Removed colleague | Their socket closes (4003) and the hub sends `rtc_close`, so their peer is closed. |
+| Audit | `fleet.session_transport` for offer refused, WebRTC started (encoder), fallback (reason) and WebRTC stopped; `endpoint.rd_input` (`via: webrtc`) for every input except pointer moves; `fleet_sessions.transport` becomes `webrtc` and keeps the encoder and the last fallback reason (migration `044`). |
+
+### Recording
+The API cannot see a direct peer stream. **Choice: the server path stays for recorded sessions.**
+While a session is being recorded (rule `required`, or the holder switched recording on), the hub
+refuses every offer with `webrtc_recording_active`. When recording is switched on during a WebRTC
+session, the hub sends `rtc_close` to the agent and `rtc_closed` (reason `recording`) to every
+WebRTC viewer, counts them as JPEG viewers again and asks for a full frame, so the recording gets
+the picture. A required recording is never dropped. Recording on the agent was not chosen: it would
+need a second encrypted writer and upload path, and a recording that fails on the agent would be
+noticed only after the session.
+
 ## Target feature set
 
 ### 1. Live session (the AnyDesk core)
