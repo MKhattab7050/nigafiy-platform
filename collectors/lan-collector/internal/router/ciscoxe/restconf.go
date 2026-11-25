@@ -285,11 +285,11 @@ func (d *Driver) lan(ctx context.Context, op string) (iface, error) {
 		return iface{}, err
 	}
 	for _, i := range all {
-		if i.Addr == d.target.Address && i.Prefix.IsValid() {
+		if i.Addr == d.routerAddr() && i.Prefix.IsValid() {
 			return i, nil
 		}
 	}
-	return iface{}, router.Errorf(router.ErrUnsupported, op, "no interface has the router address %s as its primary address, so Nigafiy cannot tell which interface is the LAN", d.target.Address)
+	return iface{}, router.Errorf(router.ErrUnsupported, op, "no interface has the router address %s as its primary address, so Nigafiy cannot tell which interface is the LAN", d.routerAddr())
 }
 
 // writable checks the firmware version before any change.

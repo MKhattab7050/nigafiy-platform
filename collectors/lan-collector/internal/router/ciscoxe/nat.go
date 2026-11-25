@@ -128,7 +128,7 @@ func (d *Driver) natInterfaces(ctx context.Context, op string) (iface, netip.Add
 	var outside netip.Addr
 	found := false
 	for _, i := range all {
-		if i.Addr == d.target.Address && i.Prefix.IsValid() {
+		if i.Addr == d.routerAddr() && i.Prefix.IsValid() {
 			lan, found = i, true
 		}
 		if i.NATOut && i.Addr.IsValid() && !outside.IsValid() {
@@ -136,7 +136,7 @@ func (d *Driver) natInterfaces(ctx context.Context, op string) (iface, netip.Add
 		}
 	}
 	if !found {
-		return iface{}, netip.Addr{}, router.Errorf(router.ErrUnsupported, op, "no interface has the router address %s as its primary address", d.target.Address)
+		return iface{}, netip.Addr{}, router.Errorf(router.ErrUnsupported, op, "no interface has the router address %s as its primary address", d.routerAddr())
 	}
 	if !lan.NATIn || !outside.IsValid() {
 		return iface{}, netip.Addr{}, router.Errorf(router.ErrUnsupported, op, "NAT is not set up on this router (\"ip nat inside\" on the LAN interface and \"ip nat outside\" on an interface with a static IPv4 address); Nigafiy never turns NAT on")
@@ -190,7 +190,7 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 			}
 		}
 	}
-	r, err := router.ValidatePortForward(rule, same, lan.Prefix, d.target.Address)
+	r, err := router.ValidatePortForward(rule, same, lan.Prefix, d.routerAddr())
 	if err != nil {
 		return router.Change{}, err
 	}

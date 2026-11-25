@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -50,6 +51,16 @@ type Driver struct {
 	creds      router.CredentialSource
 	authHeader []byte
 	info       *router.Info
+	// lanAddr is the router's LAN address when it differs from the address it is reached at (tests
+	// reach the double on loopback); zero: the target address.
+	lanAddr netip.Addr
+}
+
+func (d *Driver) routerAddr() netip.Addr {
+	if d.lanAddr.IsValid() {
+		return d.lanAddr
+	}
+	return d.target.Address
 }
 
 // New builds a Cisco IOS XE RESTCONF driver for t.
@@ -207,14 +218,14 @@ func (d *Driver) Capabilities(ctx context.Context) (router.Capabilities, error) 
 	var lan *iface
 	natOut := false
 	for i := range all {
-		if all[i].Addr == d.target.Address && all[i].Prefix.IsValid() {
+		if all[i].Addr == d.routerAddr() && all[i].Prefix.IsValid() {
 			lan = &all[i]
 		}
 		natOut = natOut || (all[i].NATOut && all[i].Addr.IsValid())
 	}
 	if lan == nil {
 		for _, c := range writes {
-			set(c, false, fmt.Sprintf("no interface has the router address %s as its primary address, so the LAN interface is unknown", d.target.Address))
+			set(c, false, fmt.Sprintf("no interface has the router address %s as its primary address, so the LAN interface is unknown", d.routerAddr()))
 		}
 		return caps, nil
 	}

@@ -270,7 +270,7 @@ func (d *Driver) Block(ctx context.Context, mac string) (router.Change, error) {
 	if err != nil {
 		return router.Change{}, err
 	}
-	if ip == d.target.Address {
+	if ip == d.routerAddr() {
 		return router.Change{}, router.Errorf(router.ErrInvalidArgument, "block", "%s is the router itself", ip)
 	}
 	applied, existed, err := d.changePair(ctx, "block", "block", m, ip, "")

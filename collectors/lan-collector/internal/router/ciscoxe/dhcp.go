@@ -133,7 +133,7 @@ func (d *Driver) AddReservation(ctx context.Context, mac, ip string) (router.Cha
 	for _, p := range ps {
 		existing = append(existing, router.Reservation{ID: p.ID, MAC: p.MAC, IP: p.IP, Enabled: true})
 	}
-	m, addr, err := router.ValidateReservation(mac, ip, existing, lan.Prefix, d.target.Address)
+	m, addr, err := router.ValidateReservation(mac, ip, existing, lan.Prefix, d.routerAddr())
 	if err != nil {
 		return router.Change{}, err
 	}
