@@ -123,3 +123,77 @@ and [Detect package identity](https://learn.microsoft.com/en-us/windows/msix/det
 2. **Privacy policy URL** (Policy 10.5.1, required for desktop apps) and support contact details
    (Company accounts).
 3. Two Store products: "Nigafiy" and "Nigafiy Quick Support" (two name reservations).
+
+## Owner step by step
+
+Nobody but the owner creates the account, accepts Microsoft's agreements or uploads. Everything
+below happens on Microsoft's pages, in his name.
+
+1. **Open the developer account** at `https://storedeveloper.microsoft.com` (other entry points show
+   the old paid flow). Choose **Company** (to publish as "Nigafiy": the business's D-U-N-S number or
+   registration papers, and an e-mail address on the business's own domain; review takes 2–5
+   business days) or **Individual** (ID + selfie; the Store shows the owner's own name, and Policy
+   10.14 may make a certifier ask for a Company account). Both are free. This choice cannot be
+   changed later.
+2. **Reserve two names** in Partner Center → Apps and games → New product → MSIX or PWA app:
+   `Nigafiy` and `Nigafiy Quick Support`. Arabic display names are added per language in the listing.
+3. **Copy the identity** of each product (the product → Product management → Product identity):
+   `Package/Identity/Name`, `Package/Identity/Publisher` (`CN=…`) and
+   `Package/Properties/PublisherDisplayName`. Put them in `.data/store/identity.json` (not committed):
+
+   ```json
+   {
+     "publisher": "CN=…",
+     "publisherDisplayName": "…",
+     "desktop": { "identityName": "…" },
+     "quickSupport": { "identityName": "…" }
+   }
+   ```
+
+   or in the environment: `NIGAFIY_STORE_PUBLISHER`, `NIGAFIY_STORE_PUBLISHER_DISPLAY_NAME`,
+   `NIGAFIY_STORE_DESKTOP_IDENTITY_NAME`, `NIGAFIY_STORE_QUICK_SUPPORT_IDENTITY_NAME`. The build refuses
+   to run without them, and refuses a `LocalTest` name; nothing is invented.
+4. **Version 1 or later.** The Store refuses a first number of 0, and the desktop is 0.1.0 today. Raise
+   `apps/desktop/package.json` to `1.0.0` (or pass `--version 1.0.0`); the fourth number is always 0.
+5. **Build** on a Windows PC with the Windows 10/11 SDK installed (no download; the build uses the
+   installed `makeappx` and `makepri`):
+   - Desktop: `pnpm build:engine`, `pnpm build:collector`, then
+     `pnpm --filter @nigafiy/desktop dist:msix` → `apps/desktop/release/Nigafiy-<version>-x64.msix`.
+     Build without `NIGAFIY_SIGN_THUMBPRINT` set, so the programs inside are not signed with the
+     organisation's test certificate; Microsoft signs the package.
+   - Quick Support: `pnpm build:agent`, then
+     `node apps/desktop/scripts/build-msix.cjs quick-support --version 1.0.0` →
+     `apps/desktop/release/Nigafiy-Quick-Support-1.0.0-x64.msix`.
+   Store builds are left unsigned on purpose (Microsoft re-signs them).
+6. **Run the Windows App Certification Kit** (Start → Windows App Cert Kit, it asks for administrator
+   rights) on each `.msix` and fix what it reports. It could not run in the build session (below).
+7. **Upload** each `.msix` in its product's submission → Packages.
+8. **Store listing in English and Arabic** (Policy 10.7: every declared language needs its own
+   description): name, description, at least one screenshot, the **privacy policy URL** (Policy
+   10.5.1, required for desktop apps) and, for a Company account, support contact details. The
+   package already carries the English and Arabic display names and descriptions.
+9. **Restricted capability `runFullTrust`.** The submission asks why. Desktop: "Nigafiy is a desktop
+   network-management app; it runs its own local database, API and web interface and a network sensor
+   as ordinary Windows programs on this computer." Quick Support: "an attended remote-support program:
+   the person starts it from a link, reads a code and PIN to their IT contact and accepts the
+   session."
+10. **Certification** (Microsoft's documentation: security tests, technical compliance, content
+    review; usually up to a few business days). What to expect for Nigafiy: the `runFullTrust`
+    review; the desktop's firewall rules for `nigafiy-sensor.exe` (inbound UDP 5678, TCP/UDP 53,
+    domain and private networks); Quick Support's remote-control nature (it only runs after the
+    person opens a link and accepts the session, with the Nigafiy banner and End session on screen).
+    A refusal comes with the policy number; answer it in the submission notes.
+11. **After publishing**, the Store listing link is the public download. For Quick Support, the person
+    installs it once from the Store; each time, the technician sends the link from Fleet → Help
+    requests → Quick Support → Copy Microsoft Store link.
+
+### Local test packages (this PC only)
+
+`pnpm --filter @nigafiy/desktop dist:msix:local-test` and
+`node apps/desktop/scripts/build-msix.cjs quick-support --local-test --version 0.1.0` build packages
+named `Nigafiy.LocalTest.*`, signed with the certificate whose thumbprint is in
+`NIGAFIY_SIGN_THUMBPRINT` (for example the free self-signed test certificate from
+`New-NigafiySigningCert.ps1`; `NIGAFIY_SIGN_NO_TIMESTAMP=1` skips the time-stamp server). These never
+go to the Store. To install one, Windows needs that certificate in **Local Machine → Trusted People**
+(administrator rights): `Add-AppxPackage` refuses it otherwise with `0x800B0109`. That trust is the
+owner's decision on his own test PC; remove the certificate again afterwards.
