@@ -30,10 +30,10 @@ const DEADLOCK_RETRIES = 2;
  * agent's result upload and an operator's action can touch the same rows in different order).
  * Callbacks passed here must therefore only have database side effects.
  */
-async function inTransaction<T>(pool: pg.Pool, begin: string, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
+async function inTransaction<T>(pool: pg.Pool, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await runTransaction(pool, begin, setup, fn);
+      return await runTransaction(pool, setup, fn);
     } catch (err) {
       if ((err as { code?: string }).code !== DEADLOCK_DETECTED || attempt >= DEADLOCK_RETRIES) throw err;
       logger.warn({ attempt: attempt + 1 }, 'transaction deadlocked; retrying');
@@ -41,10 +41,10 @@ async function inTransaction<T>(pool: pg.Pool, begin: string, setup: ((c: pg.Poo
   }
 }
 
-async function runTransaction<T>(pool: pg.Pool, begin: string, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
+async function runTransaction<T>(pool: pg.Pool, setup: ((c: pg.PoolClient) => Promise<void>) | null, fn: (db: Db) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query(begin);
+    await client.query('BEGIN');
     if (setup) await setup(client);
     const result = await fn(client);
     await client.query('COMMIT');
@@ -57,31 +57,12 @@ async function runTransaction<T>(pool: pg.Pool, begin: string, setup: ((c: pg.Po
   }
 }
 
-/** Canonical UUID text, the only form the one-round-trip tenant start accepts. */
-const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * The statement that opens a tenant transaction in ONE round trip: `BEGIN` and the transaction-local
- * `set_config` sent together as one simple-protocol message (node-postgres sends a query without
- * parameters that way, and PostgreSQL runs its statements in order). Same two statements, same
- * order, same transaction-local setting as before, so RLS behaves exactly as with two round trips.
- * The organization id goes in as a literal, so it is accepted ONLY as a canonical UUID (hex digits
- * and hyphens, nothing to escape); anything else returns null and the caller uses the parameterized
- * two-round-trip start.
- */
-export function tenantBeginSql(organizationId: string): string | null {
-  return CANONICAL_UUID.test(organizationId) ? `BEGIN; SELECT set_config('app.current_org', '${organizationId}', true)` : null;
-}
-
 /** Run `fn` in a transaction that can only see and write data of `organizationId`. */
 export function withTenant<T>(organizationId: string, fn: (db: Db) => Promise<T>): Promise<T> {
-  // set_config(..., true) is transaction-local: it cannot leak to the next user of the pooled connection.
-  const oneTrip = tenantBeginSql(organizationId);
-  if (oneTrip) return inTransaction(appPool, oneTrip, null, fn);
   return inTransaction(
     appPool,
-    'BEGIN',
     async (c) => {
+      // set_config(..., true) is transaction-local: it cannot leak to the next user of the pooled connection.
       await c.query(`SELECT set_config('app.current_org', $1, true)`, [organizationId]);
     },
     fn,
@@ -90,7 +71,7 @@ export function withTenant<T>(organizationId: string, fn: (db: Db) => Promise<T>
 
 /** Platform-level transaction (bypasses tenant RLS). Keep usage minimal and always filter explicitly. */
 export function withSystem<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  return inTransaction(systemPool, 'BEGIN', null, fn);
+  return inTransaction(systemPool, null, fn);
 }
 
 export async function closePools(): Promise<void> {
