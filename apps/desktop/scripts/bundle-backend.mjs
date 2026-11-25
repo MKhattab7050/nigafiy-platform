@@ -7,7 +7,7 @@
 // The packaged app runs all of it with Electron's own Node (ELECTRON_RUN_AS_NODE), so the person
 // installing it needs nothing else.
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const desktop = path.resolve(import.meta.dirname, '..');
@@ -31,8 +31,10 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 
 // 1. The engine, which is also the Sensor (`nigafiy-engine sensor`; docs/architecture/engine-sensor.md),
-//    bundled as resources/engine. CGO off, as in the release build.
-run('go', ['build', '-trimpath', '-o', path.join(root, 'engine/bin', win ? 'nigafiy-engine.exe' : 'nigafiy-engine'), './cmd/nigafiy-engine'], {
+//    bundled as resources/engine. CGO off and main.Version stamped with the desktop version, as in the
+//    release build (scripts/release/release.mjs builds and signs it again after this script).
+const desktopVersion = JSON.parse(readFileSync(path.join(desktop, 'package.json'), 'utf8')).version;
+run('go', ['build', '-trimpath', '-ldflags', `-s -w -X main.Version=${desktopVersion}`, '-o', path.join(root, 'engine/bin', win ? 'nigafiy-engine.exe' : 'nigafiy-engine'), './cmd/nigafiy-engine'], {
   cwd: path.join(root, 'engine'),
   env: { CGO_ENABLED: '0' },
 });

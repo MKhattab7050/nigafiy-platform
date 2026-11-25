@@ -77,11 +77,13 @@ try {
   console.log(`[release] Nigafiy ${version} -> ${outDir}`);
   // One executable for the engine and the Sensor (docs/architecture/engine-sensor.md); main.Version
   // stamps both (the Sensor reports it to the server).
+  // bundle-backend.mjs builds the engine too, so build and sign it here AFTER that script: otherwise its
+  // unsigned build would replace the signed one inside the package.
+  run('node', ['scripts/bundle-backend.mjs'], DESKTOP);
   const engineExe = path.join(ROOT, 'engine', 'bin', 'nigafiy-engine.exe');
   run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', engineExe, './cmd/nigafiy-engine'], path.join(ROOT, 'engine'), goEnv);
   if (!signFiles([engineExe])) fail('the engine executable was not signed');
 
-  run('node', ['scripts/bundle-backend.mjs'], DESKTOP);
   const targets = has('--no-msi') ? ['nsis'] : ['nsis', 'msi'];
   run('pnpm', ['exec', 'electron-builder', '--win', ...targets, '--publish', 'never'], DESKTOP);
 
