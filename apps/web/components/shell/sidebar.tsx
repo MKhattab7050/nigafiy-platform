@@ -4,6 +4,8 @@ import clsx from 'clsx';
 import { LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+// The component file, not the feature index: the shell must not pull the guide's content into every page.
+import { GuideNavLink } from '@/features/guide/components/help-button';
 import { type Feature, type NavBadge, isActiveRoute } from '@/features/registry';
 import { api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
@@ -165,6 +167,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </p>
           </div>
         </div>
+        <GuideNavLink labelClassName={RAIL_LABEL} />
         <button type="button" onClick={() => void signOut()} className="group relative mt-1 flex h-9 w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 text-[13px] text-muted hover:bg-raised hover:text-fg lg:rail:justify-center lg:rail:px-0">
           <LogOut className="size-4 shrink-0 rtl:-scale-x-100" aria-hidden />
           <span className={RAIL_LABEL}>{t('top.signOut')}</span>
