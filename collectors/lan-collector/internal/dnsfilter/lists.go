@@ -138,7 +138,10 @@ func ParseHosts(r io.Reader) map[string]struct{} {
 		}
 		d = Normalize(d)
 		if d == "" || !strings.Contains(d, ".") || d == "0.0.0.0" || strings.HasPrefix(d, "localhost") || strings.HasSuffix(d, ".local") ||
-			d == "broadcasthost" || strings.Trim(d, "0123456789.") == "" {
+			d == "broadcasthost" || strings.Trim(d, "0123456789.") == "" ||
+			// An empty label ("a..b", ".a", "a." left by "a..") can never equal a normalized question
+			// name, so the entry would silently block nothing (found by FuzzParseHosts).
+			strings.HasPrefix(d, ".") || strings.HasSuffix(d, ".") || strings.Contains(d, "..") {
 			continue
 		}
 		set[d] = struct{}{}
