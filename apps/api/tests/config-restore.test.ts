@@ -429,4 +429,76 @@ describe('configuration restore', () => {
     expect(mp).toMatchObject({ supported: false, driver: 'mikrotik_routeros', method: null });
     expect(mp.blocker.message).toContain('RouterOS has no atomic replace');
   });
+  it('restores OpenWrt with rpcd uci apply rollback (model-only identity), records a rolled back restore and keeps the Wi-Fi key out of the preview', async () => {
+    const a = await newAccount('cb-restore-owrt');
+    await addScope(a, '192.168.73.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c);
+    const added = await a.agent
+      .post('/api/v1/config-backup/targets')
+      .set(CSRF)
+      .send({ site_id: a.siteId, targets: [{ address: '192.168.73.1', name: 'owrt-ap', driver: 'openwrt' }], credentials: { username: 'root', password: PASSWORD } });
+    expect(added.status).toBe(201);
+    const tid = added.body.items[0].id as string;
+    const WIFI_KEY = 'Wifi-Key-That-Only-The-Collector-Sees-77';
+    const MODEL = { model: 'TP-Link Archer C7 v5' };
+    const U1 = `package network
+
+config interface 'lan'
+	option proto 'static'
+	option ipaddr '192.168.73.1'
+
+package wireless
+
+config wifi-iface 'default_radio0'
+	option ssid 'home'
+	option key '${WIFI_KEY}'
+`;
+    const U2 = U1.replace("'home'", "'home-new'");
+    await backup(c, added.body.queued[0].run_id, tid, U1, MODEL);
+    const run2 = await a.agent.post(`/api/v1/config-backup/targets/${tid}/run`).set(CSRF).send({});
+    await backup(c, run2.body.run_id, tid, U2, MODEL);
+    const v1 = ((await a.agent.get(`/api/v1/config-backup/targets/${tid}/versions`)).body.items as { id: string; number: number }[]).find((v) => v.number === 1)!;
+    const preview = await a.agent.get(`/api/v1/config-backup/targets/${tid}/restore-preview?version_id=${v1.id}`);
+    expect(preview.body).toMatchObject({ supported: true, possible: true, driver: 'openwrt', method: 'openwrt_uci_apply_rollback', other_device_block: null });
+    expect(preview.body.identity).toEqual({ version: { model: MODEL.model, serial: null }, device: { model: MODEL.model, serial: null }, check: 'match' });
+    expect(JSON.stringify(preview.body)).not.toContain(WIFI_KEY);
+
+    const req = await a.agent.post(`/api/v1/config-backup/targets/${tid}/restore`).set(CSRF).send({ version_id: v1.id, confirm: 'owrt-ap', reason: 'Back to the old SSID', confirm_minutes: 3 });
+    expect(req.status).toBe(202);
+    expect(req.body).toMatchObject({ method: 'openwrt_uci_apply_rollback', identity_check: 'match', forced_other_device: false });
+    await backup(c, req.body.pre_run_id, tid, U2, MODEL);
+    const pending = (await restoreOf(a, req.body.id)).body;
+    expect(pending.status).toBe('pending');
+    const [cmd] = await commands(c, 'config_restore');
+    expect(cmd!.payload).toMatchObject({ driver: 'openwrt', confirm_minutes: 3, expected_identity: { model: MODEL.model }, allow_other_device: false });
+    expect(gunzipSync(Buffer.from(cmd!.payload.config_gzip_b64 as string, 'base64')).toString('utf8')).toContain(WIFI_KEY);
+
+    // The device answered the read-back with something else: the collector rolled it back.
+    await backup(c, pending.verify_run_id, tid, U2, MODEL);
+    const res = await telemetry(c, [
+      {
+        type: 'config_restore_result',
+        ts: now(),
+        restore_id: req.body.id,
+        target_id: tid,
+        ok: false,
+        method: 'openwrt_uci_apply_rollback',
+        loaded: true,
+        committed: true,
+        confirmed: false,
+        rolled_back: true,
+        read_back: true,
+        device_identity: MODEL,
+        steps: ['staged in a ubus session: wireless', 'uci apply with rollback 180 s: active', 'uci rollback: previous configuration committed again'],
+        error: { kind: 'command_failed', message: 'the configuration read back differs from the restored one; the previous configuration was put back' },
+      },
+    ]);
+    expect(res.body).toMatchObject({ accepted: 1 });
+    expect((await restoreOf(a, req.body.id)).body).toMatchObject({ status: 'rolled_back', committed: true, confirmed: false, rolled_back: true, error_kind: 'command_failed' });
+    const actions = (await systemPool.query(`SELECT action FROM audit_logs WHERE organization_id = $1 AND action LIKE 'config_backup.restore.%'`, [a.organizationId])).rows.map((x) => x.action);
+    expect(actions).toContain('config_backup.restore.request');
+    const logs = JSON.stringify((await systemPool.query(`SELECT metadata FROM audit_logs WHERE organization_id = $1`, [a.organizationId])).rows);
+    expect(logs).not.toContain(WIFI_KEY);
+  });
 });

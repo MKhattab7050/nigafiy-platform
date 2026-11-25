@@ -24,8 +24,10 @@ import { expireStale, loadTarget, loadVersion, onlineCollector, queueRun, READIN
 //      (verify run); the restore is `verified` only when that version is the restored one.
 //
 // Only vendors that replace the configuration as a whole and roll it back by themselves are
-// supported: Juniper Junos (`commit confirmed`) and VyOS / Ubiquiti EdgeOS (`commit-confirm`, which
-// reboots into the saved configuration; the collector saves the running one first). Every other
+// supported: Juniper Junos (`commit confirmed`), VyOS / Ubiquiti EdgeOS (`commit-confirm`, which
+// reboots into the saved configuration; the collector saves the running one first) and OpenWrt (rpcd
+// `uci apply` with rollback: the changes are staged in a ubus session, rpcd puts the snapshot of the
+// previous packages back unless `uci confirm` follows). Every other
 // vendor gets an honest "restore not supported" with the vendor-specific reason (UNSUPPORTED_REASONS).
 //
 // The device identity (model / serial, read by the collector next to every backup of these vendors)
@@ -34,7 +36,11 @@ import { expireStale, loadTarget, loadVersion, onlineCollector, queueRun, READIN
 // second typed confirmation.
 
 /** Driver → restore method. Must match the collector (internal/configbackup/restore.go). */
-export const RESTORE_METHODS: Readonly<Record<string, string>> = { juniper_junos: 'junos_commit_confirmed', vyos_edgeos: 'vyos_commit_confirm' };
+export const RESTORE_METHODS: Readonly<Record<string, string>> = {
+  juniper_junos: 'junos_commit_confirmed',
+  vyos_edgeos: 'vyos_commit_confirm',
+  openwrt: 'openwrt_uci_apply_rollback',
+};
 
 /**
  * Why each other driver cannot be restored safely (the web shows the same reasons in EN and AR).
@@ -59,8 +65,6 @@ export const UNSUPPORTED_REASONS: Readonly<Record<string, string>> = {
     'Dell OS10 replaces the running configuration only from a file ("copy <file> running-configuration") on a server or in the switch’s home directory, which the Nigafiy collector does not transfer, and documents no automatic rollback timer.',
   dell_os6:
     'Dell OS6 applies every CLI line at once; replacing the configuration needs a file copied to the startup configuration and a reload, without an automatic rollback.',
-  openwrt:
-    'OpenWrt’s apply-with-rollback (rpcd "uci apply" with rollback, used by LuCI) works only on changes staged through an authenticated ubus session; "uci import" from the shell writes /etc/config directly without a rollback timer.',
   paloalto_panos:
     'PAN-OS loads a full configuration only from a saved file ("load config from") imported by SCP / TFTP, and its commit has no confirmed mode or automatic rollback timer.',
 };
@@ -89,7 +93,7 @@ function unsupported(t: TargetRow): RestoreBlocker | null {
     const why = UNSUPPORTED_REASONS[driver] ?? 'This vendor has no safe way to replace the configuration as a whole with an automatic rollback.';
     return {
       code: 'restore_unsupported',
-      message: `Restore is not supported for ${driverName(driver) ?? driver}. ${why} Nigafiy restores only Juniper Junos ("commit confirmed") and VyOS / EdgeOS ("commit-confirm"), which roll back by themselves when the restore is not confirmed. Download the version and restore it by hand.`,
+      message: `Restore is not supported for ${driverName(driver) ?? driver}. ${why} Nigafiy restores only Juniper Junos ("commit confirmed"), VyOS / EdgeOS ("commit-confirm") and OpenWrt (rpcd "uci apply" with rollback), which roll back by themselves when the restore is not confirmed. Download the version and restore it by hand.`,
     };
   }
   return null;

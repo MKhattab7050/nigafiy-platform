@@ -48,7 +48,7 @@ export const HOST_KEY_FINGERPRINT = /^SHA256:[A-Za-z0-9+/]{43}$/;
 
 /**
  * The hardware model and serial number the device reported (collector internal/configbackup/identity.go;
- * Junos and VyOS / EdgeOS). Read with read-only commands, never part of the configuration text.
+ * Junos, VyOS / EdgeOS and OpenWrt, which reports a model only). Read with read-only commands, never part of the configuration text.
  */
 export const deviceIdentitySchema = z.object({ model: clean(100).optional(), serial: clean(100).optional() }).strict();
 export type DeviceIdentity = z.infer<typeof deviceIdentitySchema>;
