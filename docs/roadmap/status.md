@@ -177,7 +177,7 @@ Milestone 4 (2026-11-22, programs; plan `docs/superpowers/plans/2026-11-21-nigaf
 | Redis rate limits | — | Skipped (no Redis) |
 | Android APK files on disk (migration 048: store, move, sweep, repair) | Real disk and real PostgreSQL inside the test suite | Never with a running server, real uploads or a phone |
 | Website (`apps/site`, static export, EN/AR) | Served on 127.0.0.1 and walked in Edge; screenshots captured from the real web app against a test database | Not hosted anywhere (no domain or host yet); no release published, so every download says "Not released yet" |
-| Desktop on Electron 42 (Node 24) | Packaged `--local-smoke` on scratch ports (2026-11-25); NSIS, MSI, MSIX built and signed with the test certificate | Installers not installed again since the upgrade (owner reruns `run-elevated.ps1`) |
+| Desktop on Electron 42 (Node 24) | Packaged `--local-smoke` on scratch ports; NSIS, MSI, MSIX built and signed with the test certificate; MSI, both MSIX and WACK installed, checked and removed by the owner elevated (run `20261125-155648`): 64 pass, 0 fail, 1 skip | NSIS not reinstalled since the upgrade |
 | Dependency and Go vulnerability scans | `pnpm audit`: 2 moderate left (minimatch in electron-builder, build machine only); `govulncheck` v1.10.0: none in agent, Sensor, engine (Go 1.27.4) | — |
 | Notifications to Telegram, Slack, Discord, ntfy | — | Local test servers |
 | GitHub CI workflow | Passes on GitHub (run 45581032770, 2026-11-25: typecheck, lint, tests, build in 17 min) | — |
