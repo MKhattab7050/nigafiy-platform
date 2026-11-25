@@ -5,6 +5,7 @@ import type { EndpointPlatform, FleetPermissions, RemoteDesktopSession, Role } f
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';
+import { CLOSE_POLICY, DEFAULT_WS_LIMITS, MessageRate, SocketCounter, heartbeat, type WsLimits } from '../../../common/ws-guard.ts';
 import { AppError } from '../../../common/http.ts';
 import { env } from '../../../config/env.ts';
 import { systemPool, withTenant } from '../../../infrastructure/db.ts';
@@ -369,12 +370,22 @@ export interface StreamHubOptions {
   instanceId?: string;
   /** Remote shell sockets on the same listener (default: this process's shell hub). */
   shell?: ShellHub;
+  /** Message rate, connection count and heartbeat limits (tests make them small). */
+  limits?: Partial<WsLimits>;
 }
 
 export class StreamHub {
   readonly instanceId: string;
   readonly peerUrl: string;
+  /** Agents and other instances: binary frames. */
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME_BYTES });
+  /** Operators' browsers send text only; the largest is a clipboard picture. */
+  private readonly viewerWss = new WebSocketServer({ noServer: true, maxPayload: MAX_TEXT_BYTES });
+  readonly limits: WsLimits;
+  /** Upgrades still being authenticated, per remote address (both hubs on this listener). */
+  private readonly pending = new SocketCounter();
+  /** Open viewer sockets per signed-in user. */
+  private readonly perUser = new SocketCounter();
   private readonly rooms = new Map<string, Room>();
   private readonly servers = new Set<Server>();
   private unsubscribe: (() => void) | null = null;
@@ -384,6 +395,7 @@ export class StreamHub {
 
   constructor(opts: StreamHubOptions) {
     this.shell = opts.shell ?? shellHub();
+    this.limits = { ...DEFAULT_WS_LIMITS, ...opts.limits };
     this.instanceId = opts.instanceId ?? randomUUID();
     this.peerUrl = opts.peerUrl.replace(/\/+$/, '');
   }
@@ -421,30 +433,46 @@ export class StreamHub {
 
   private readonly onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     const url = new URL(req.url ?? '/', 'http://localhost');
-    // Remote shell sockets (Fleet Pro, fleet-shell/hub.ts) share the listener.
-    if (this.shell.handles(url.pathname)) {
-      socket.on('error', () => undefined);
-      this.shell.handleUpgrade(req, socket, head, url, reject);
-      return;
-    }
+    const isShell = this.shell.handles(url.pathname);
     const viewer = VIEWER_PATH.exec(url.pathname);
-    if (url.pathname !== AGENT_PATH && url.pathname !== PEER_PATH && !viewer) {
+    if (!isShell && url.pathname !== AGENT_PATH && url.pathname !== PEER_PATH && !viewer) {
       reject(socket, 404, 'not_found', 'No WebSocket here');
       return;
     }
     socket.on('error', () => undefined);
+    // Each upgrade costs a credential or session lookup before it is accepted: one address may
+    // have only a few in flight (EXT-2). Released when the upgrade is settled or the socket goes.
+    const release = this.pending.acquire(req.socket.remoteAddress ?? 'unknown', this.limits.maxPendingPerAddress);
+    if (!release) {
+      reject(socket, 429, 'rate_limited', 'Too many connections are being opened from this address');
+      return;
+    }
+    socket.once('close', release);
+    // Remote shell sockets (Fleet Pro, fleet-shell/hub.ts) share the listener.
+    if (isShell) {
+      void this.shell.handleUpgrade(req, socket, head, url, reject).finally(release);
+      return;
+    }
     const task = url.pathname === AGENT_PATH ? this.acceptAgent(req, socket, head, url) : url.pathname === PEER_PATH ? this.acceptPeer(req, socket, head, url) : this.acceptViewer(req, socket, head, url, viewer![1]!);
-    task.catch((err: unknown) => {
-      if (err instanceof AppError) reject(socket, err.status, err.code, err.message);
-      else {
-        logger.error({ err }, 'remote desktop stream upgrade failed');
-        reject(socket, 500, 'internal_error', 'Stream upgrade failed');
-      }
-    });
+    task
+      .catch((err: unknown) => {
+        if (err instanceof AppError) reject(socket, err.status, err.code, err.message);
+        else {
+          logger.error({ err }, 'remote desktop stream upgrade failed');
+          reject(socket, 500, 'internal_error', 'Stream upgrade failed');
+        }
+      })
+      .finally(release);
   };
 
-  private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<WebSocket> {
-    return new Promise((resolve) => this.wss.handleUpgrade(req, socket, head, (ws) => resolve(ws)));
+  /** Accepts the socket and starts its heartbeat (a socket that stops answering pings is ended). */
+  private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, server: WebSocketServer = this.wss): Promise<WebSocket> {
+    return new Promise((resolve) =>
+      server.handleUpgrade(req, socket, head, (ws) => {
+        heartbeat(ws, this.limits.pingMs);
+        resolve(ws);
+      }),
+    );
   }
 
   private async currentSession(orgId: string, endpointId: string): Promise<{ session: RemoteDesktopSession | null; platform: EndpointPlatform } | null> {
@@ -763,7 +791,15 @@ export class StreamHub {
     // possibly narrower, permissions) may watch.
     const perms = await withTenant(who.organizationId, (db) => participantAccess(db, cur.session as never, who.userId));
     if (!perms) throw new AppError(403, 'not_a_participant', 'You are not in this session: ask the operator holding it to invite you');
-    const ws = await this.upgrade(req, socket, head);
+    // Connection count (EXT-2): viewers of one session, and sockets of one user.
+    const existing = this.rooms.get(endpointId);
+    if (existing && existing.sessionId === sessionId && existing.viewers.size >= this.limits.maxPerSession) {
+      throw new AppError(429, 'too_many_viewers', 'This session already has as many viewers as it can take');
+    }
+    const releaseUser = this.perUser.acquire(who.userId, this.limits.maxPerUser);
+    if (!releaseUser) throw new AppError(429, 'too_many_streams', 'You have too many remote desktop windows open: close one first');
+    socket.once('close', releaseUser);
+    const ws = await this.upgrade(req, socket, head, this.viewerWss);
     const r = this.room(endpointId, who.organizationId, sessionId, cur.platform, cur.session);
     if (!r.agent) r.active = (cur.session.state ?? 'active') === 'active';
     const sink: Sink = {
@@ -806,12 +842,26 @@ export class StreamHub {
     this.sendViewerCount(r);
 
     // Messages are handled one at a time (input order matters; audits are written in order).
+    // A browser that floods the socket loses the extra messages, then the socket (EXT-2).
     let chain = Promise.resolve();
+    let queued = 0;
+    const rate = new MessageRate(this.limits.softPerSecond, this.limits.hardPerSecond);
     ws.on('message', (data, isBinary) => {
-      if (isBinary) return;
+      const verdict = rate.take();
+      if (verdict === 'close' || queued >= this.limits.maxQueued) {
+        ws.close(CLOSE_POLICY, 'too many messages');
+        return;
+      }
+      if (verdict === 'drop' || isBinary) return;
       const buf = toBuffer(data);
       if (buf.length > MAX_TEXT_BYTES) return;
-      chain = chain.then(() => this.onViewerMessage(r, sink, buf)).catch((err: unknown) => logger.warn({ err }, 'remote desktop viewer message failed'));
+      queued++;
+      chain = chain
+        .then(() => this.onViewerMessage(r, sink, buf))
+        .catch((err: unknown) => logger.warn({ err }, 'remote desktop viewer message failed'))
+        .finally(() => {
+          queued--;
+        });
     });
     const gone = () => {
       if (!r.viewers.delete(sink)) return;
