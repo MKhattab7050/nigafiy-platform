@@ -12,7 +12,7 @@
   <img alt="المنصة: Windows 10 و11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
   <img alt="العربية والإنجليزية" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
   <img alt="بلا ذكاء اصطناعي" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
-  <img alt="الحالة: إصدار تجريبي 0.1.0" src="https://img.shields.io/badge/status-pre--release%200.1.0-C27C0E">
+  <img alt="الإصدار 1.0.0، إصدار داخلي" src="https://img.shields.io/badge/version-1.0.0%20internal-C27C0E">
 </p>
 
 <p align="center" dir="rtl">

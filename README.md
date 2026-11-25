@@ -12,7 +12,7 @@
   <img alt="Platform: Windows 10 and 11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
   <img alt="English and Arabic" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
   <img alt="No AI, deterministic rules" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
-  <img alt="Status: pre-release 0.1.0" src="https://img.shields.io/badge/status-pre--release%200.1.0-C27C0E">
+  <img alt="Version 1.0.0, internal release" src="https://img.shields.io/badge/version-1.0.0%20internal-C27C0E">
 </p>
 
 <p align="center">
