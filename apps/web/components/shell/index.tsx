@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useSession } from '@/lib/app';
 import { useProgramId } from '@/lib/programs-context';
 import { useTheme } from '@/lib/theme';
+import { ShellPartBoundary } from './part-boundary';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
 
@@ -42,17 +43,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh transition-[padding] duration-200 lg:ps-60 lg:rail:ps-[4.25rem]">
       <aside className="fixed inset-y-0 start-0 z-30 hidden w-60 border-e border-line bg-surface transition-[width] duration-200 lg:block lg:rail:w-[4.25rem]">
-        <Sidebar />
+        <ShellPartBoundary part="sidebar">
+          <Sidebar />
+        </ShellPartBoundary>
       </aside>
       {open && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true">
           <div className="absolute inset-0 animate-enter bg-[rgb(5_9_14/0.55)]" onClick={() => setOpen(false)} aria-hidden />
           <aside className="absolute inset-y-0 start-0 w-72 max-w-[85vw] animate-enter border-e border-line bg-surface shadow-[var(--shadow-overlay)]">
-            <Sidebar onClose={() => setOpen(false)} />
+            <ShellPartBoundary part="sidebar">
+              <Sidebar onClose={() => setOpen(false)} />
+            </ShellPartBoundary>
           </aside>
         </div>
       )}
-      <TopBar onMenu={() => setOpen(true)} />
+      <ShellPartBoundary part="topBar">
+        <TopBar onMenu={() => setOpen(true)} />
+      </ShellPartBoundary>
       <main key={pathname} className="mx-auto w-full min-w-0 max-w-[1480px] animate-enter px-4 py-6 lg:px-8 lg:py-7">
         {children}
       </main>
