@@ -135,13 +135,20 @@ function Invoke-Msiexec([string[]]$arguments, [string]$logName) {
   return $p.ExitCode
 }
 
+function Invoke-Reg([string[]]$arguments) {
+  # Runs reg.exe and returns its exit code. Windows PowerShell 5.1 turns a native program's stderr into
+  # error records, and with ErrorActionPreference = 'Stop' a missing key ("unable to find the specified
+  # registry key") would end the whole test. Only the exit code decides here.
+  $ErrorActionPreference = 'Continue'
+  & reg.exe @arguments *> $null
+  return $LASTEXITCODE
+}
+
 function Export-RegKey([string]$regPath, [string]$name) {
   # reg.exe export of a key, or $null when the key does not exist.
-  & reg.exe query $regPath *> $null
-  if ($LASTEXITCODE -ne 0) { return $null }
+  if ((Invoke-Reg @('query', $regPath)) -ne 0) { return $null }
   $file = Join-Path $TestRoot "backup-$name.reg"
-  & reg.exe export $regPath $file /y | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw "reg export $regPath failed" }
+  if ((Invoke-Reg @('export', $regPath, $file, '/y')) -ne 0) { throw "reg export $regPath failed" }
   return $file
 }
 
@@ -150,10 +157,9 @@ function Restore-RegKey([string]$regPath, [string]$stateName) {
   # not exist then. The state value is "absent" or the backup file.
   $before = Get-StateValue $stateName
   if ($null -eq $before) { return }
-  & reg.exe delete $regPath /f *> $null
+  [void](Invoke-Reg @('delete', $regPath, '/f')) # fails harmlessly when the key is already gone
   if ($before -ne 'absent') {
-    & reg.exe import $before *> $null
-    if ($LASTEXITCODE -ne 0) { throw "reg import $before failed" }
+    if ((Invoke-Reg @('import', $before)) -ne 0) { throw "reg import $before failed" }
     Remove-Item -LiteralPath $before -Force -ErrorAction SilentlyContinue
   }
   Set-StateValue $stateName $null
