@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';
 import { AppError } from '../../../common/http.ts';
 import { env } from '../../../config/env.ts';
-import { systemPool, withTenant } from '../../../infrastructure/db.ts';
+import { type Db, systemPool, withTenant } from '../../../infrastructure/db.ts';
 import { logger } from '../../../infrastructure/logger.ts';
 import { onNotification } from '../../../infrastructure/pg-listen.ts';
 import { readCookie, resolveSessionToken, SESSION_COOKIE } from '../../auth/index.ts';
@@ -361,6 +361,8 @@ interface Room {
   rtcSupported: boolean;
   /** The session is being recorded (rd_session.recording_id): WebRTC is refused. */
   recordingOn: boolean;
+  /** Audit rows of this room's operators are written one after another, in the order they happened. */
+  auditChain: Promise<void>;
 }
 
 export interface StreamHubOptions {
@@ -483,6 +485,7 @@ export class StreamHub {
         audioOn: false,
         rtcSupported: false,
         recordingOn: Boolean(session?.recording_id),
+        auditChain: Promise.resolve(),
       };
       this.rooms.set(endpointId, r);
     }
@@ -1002,7 +1005,7 @@ export class StreamHub {
         sink.rtcLast = null;
         this.sendViewerCount(r);
         const encoder = m.encoder ?? null;
-        await withTenant(user.orgId, async (db) => {
+        await this.inAuditOrder(r, user.orgId, async (db) => {
           await db.query(
             `UPDATE fleet_sessions SET transport = 'webrtc', rtc_encoder = coalesce($3, rtc_encoder), rtc_started_at = coalesce(rtc_started_at, now())
               WHERE endpoint_id = $1 AND public_id = $2`,
@@ -1052,7 +1055,7 @@ export class StreamHub {
     sink.rtcLast = reason;
     const user = sink.user;
     if (!user) return;
-    await withTenant(user.orgId, async (db) => {
+    await this.inAuditOrder(r, user.orgId, async (db) => {
       if (event === 'fallback') await db.query(`UPDATE fleet_sessions SET rtc_fallback_reason = $3 WHERE endpoint_id = $1 AND public_id = $2`, [r.endpointId, r.sessionId, reason]);
       await this.auditIn(db, r, user, 'fleet.session_transport', { event, mode: event === 'fallback' ? 'jpeg' : 'webrtc', reason, had_webrtc: had !== null });
     });
@@ -1153,7 +1156,25 @@ export class StreamHub {
   }
 
   private async auditViewer(r: Room, user: ViewerUser, action: string, metadata: Record<string, unknown>): Promise<void> {
-    await withTenant(user.orgId, (db) => this.auditIn(db, r, user, action, metadata));
+    await this.inAuditOrder(r, user.orgId, (db) => this.auditIn(db, r, user, action, metadata));
+  }
+
+  /**
+   * Runs a transaction that writes an operator's audit row after the room's earlier ones.
+   * Messages are handled concurrently, so each insert in its own transaction could commit (and
+   * take its created_at) in any order: two key presses, or a fallback and the refusal after it,
+   * could read back swapped. Chained per room, the rows follow the order of the events. A failed
+   * transaction does not hold up the next one; its caller still sees the error.
+   */
+  private inAuditOrder(r: Room, orgId: string, fn: (db: Db) => Promise<unknown>): Promise<void> {
+    const run = r.auditChain.then(async () => {
+      await withTenant(orgId, fn);
+    });
+    r.auditChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   private async auditIn(db: { query: (q: string, v: unknown[]) => Promise<unknown> }, r: Room, user: ViewerUser, action: string, metadata: Record<string, unknown>): Promise<void> {
