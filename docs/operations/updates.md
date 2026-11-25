@@ -51,6 +51,9 @@ key. It prints `NIGAFIY_UPDATE_PUBLIC_KEY=...` for every installation. Back the 
 anyone holding it can publish manifests every install accepts; losing it means shipping a new
 public key to every install by hand.
 
+Nigafiy's key was created on 2026-11-25 on the owner's release PC (private key outside the repository, backed up offline by the owner). Its public key, for every install:
+`NIGAFIY_UPDATE_PUBLIC_KEY=zS4UgEBIF2FdOJqXdoRlUf2OiXlf2v1Antnoa2cVr9w=`
+
 ## Manifest
 
 ```json
