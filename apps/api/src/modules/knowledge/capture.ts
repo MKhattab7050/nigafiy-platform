@@ -1,6 +1,6 @@
 import type { Diagnosis } from '@nigafiy/shared-types';
 import { auditSystem } from '../../common/audit.ts';
-import { type Db, withTenant } from '../../infrastructure/db.ts';
+import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { automationEnabled } from '../automation/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
@@ -11,9 +11,10 @@ import { addRevision } from './repo.ts';
  * comments by people — becomes a knowledge *candidate*, pre-filled from the incident and its
  * Network Doctor diagnosis so that a technician only has to confirm it.
  *
- * Reads the incidents module's tables only (no change to how incidents work). Runs on demand,
- * whenever the knowledge list, counts or suggestions are read (the sidebar badge polls them), so a
- * candidate appears seconds after the incident is resolved. Each incident is captured once
+ * Reads the incidents module's tables only (no change to how incidents work). Runs as the
+ * `knowledge-capture` background job (every CAPTURE_EVERY_MS, see captureAllOrganizations), never
+ * inside a GET: reading the knowledge list, counts, suggestions or an entry writes nothing. A new
+ * candidate reaches open pages through the realtime `events` notification. Each incident is captured once
  * (knowledge_captured ledger), unless a published entry was already marked as the fix used.
  * Gated by the `suggest.knowledge_from_incidents` automation and recorded with auditSystem().
  */
@@ -242,11 +243,43 @@ export async function captureCandidates(db: Db, organizationId: string): Promise
   return written;
 }
 
-/** Run a capture pass for one organization in its own transaction; a failure never breaks the read that triggered it. */
-export async function syncCandidates(organizationId: string): Promise<void> {
+/** Run a capture pass for one organization in its own transaction; a failure is logged and never stops the other organizations. */
+export async function syncCandidates(organizationId: string): Promise<number> {
   try {
-    await withTenant(organizationId, (db) => captureCandidates(db, organizationId));
+    return await withTenant(organizationId, (db) => captureCandidates(db, organizationId));
   } catch (err) {
     logger.warn({ err, organizationId }, 'knowledge candidate capture failed');
+    return 0;
   }
+}
+
+/** How often the `knowledge-capture` job looks for new or changed resolved incidents. */
+export const CAPTURE_EVERY_MS = 15_000;
+/** Organizations handled per run; the rest follow on the next run. */
+const ORGS_PER_RUN = 200;
+
+/**
+ * The `knowledge-capture` job: one set-based query (schema owner, read-only) finds the organizations
+ * that have an uncaptured resolved incident with human text or an untouched candidate whose incident
+ * changed; each of them then gets a capture pass under its own tenant (RLS) transaction. Organizations
+ * with nothing to do cost nothing beyond that query.
+ */
+export async function captureAllOrganizations(): Promise<number> {
+  const orgs = await systemPool.query<{ organization_id: string }>(
+    `SELECT i.organization_id FROM incidents i
+      WHERE i.status = 'resolved' AND i.resolved_at > now() - make_interval(days => $1)
+        AND ${HAS_HUMAN_TEXT_SQL}
+        AND NOT EXISTS (SELECT 1 FROM knowledge_captured kc WHERE kc.organization_id = i.organization_id AND kc.incident_id = i.id)
+        AND NOT EXISTS (SELECT 1 FROM knowledge_uses u WHERE u.organization_id = i.organization_id AND u.incident_id = i.id)
+     UNION
+     SELECT k.organization_id FROM knowledge_entries k
+       JOIN incidents i ON i.organization_id = k.organization_id AND i.id = k.incident_id
+      WHERE k.status = 'candidate' AND k.source = 'incident' AND NOT k.edited
+        AND k.source_fingerprint IS DISTINCT FROM ${FINGERPRINT_SQL}
+     LIMIT $2`,
+    [LOOKBACK_DAYS, ORGS_PER_RUN],
+  );
+  let written = 0;
+  for (const { organization_id } of orgs.rows) written += await syncCandidates(organization_id);
+  return written;
 }

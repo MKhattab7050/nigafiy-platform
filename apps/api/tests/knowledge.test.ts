@@ -4,7 +4,7 @@ import path from 'node:path';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { systemPool, withTenant } from '../src/infrastructure/db.ts';
-import { captureCandidates } from '../src/modules/knowledge/capture.ts';
+import { captureAllOrganizations, captureCandidates, syncCandidates } from '../src/modules/knowledge/capture.ts';
 import { type RankCandidate, type RankContext, rankEntries, scoreEntry, textQuery } from '../src/modules/knowledge/ranking.ts';
 import { markdownToText, parseMarkdown, safeHref } from '@nigafiy/shared-types/markdown';
 import { app, CSRF, newAccount, setRole, type TestAccount } from './helpers.ts';
@@ -82,6 +82,9 @@ async function publishedEntry(a: TestAccount, body: Record<string, unknown>): Pr
   return res.body.id;
 }
 
+/** The `knowledge-capture` job's pass for this organization (the API's GET routes never capture). */
+const capture = (a: TestAccount) => syncCandidates(a.organizationId);
+
 // ── automatic capture ──
 
 describe('knowledge capture from incidents', () => {
@@ -91,10 +94,14 @@ describe('knowledge capture from incidents', () => {
     const incident = await addIncident(a, { deviceId: device });
     // Before it is resolved there is nothing to capture, even with comments.
     expect((await a.agent.post(`/api/v1/incidents/${incident}/comments`).set(CSRF).send({ body: 'Checking the router power supply' })).status).toBe(201);
+    expect(await capture(a)).toBe(0);
     expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(0);
 
     const resolved = await a.agent.post(`/api/v1/incidents/${incident}/resolve`).set(CSRF).send({ note: 'Replaced the router power adapter; it had failed.' });
     expect(resolved.status).toBe(200);
+    // Reading never captures: the candidate appears with the job's next pass.
+    expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(0);
+    expect(await capture(a)).toBe(1);
 
     const list = await a.agent.get('/api/v1/knowledge?status=candidate');
     expect(list.status).toBe(200);
@@ -129,6 +136,7 @@ describe('knowledge capture from incidents', () => {
 
     // A later comment refreshes the untouched candidate (new revision, same entry).
     await a.agent.post(`/api/v1/incidents/${incident}/comments`).set(CSRF).send({ body: 'Ordered a spare adapter for the cabinet' });
+    expect(await capture(a)).toBe(1);
     const detail = await a.agent.get(`/api/v1/knowledge/${c.id}`);
     expect(detail.body.fix_steps).toContain('Ordered a spare adapter');
     expect(detail.body.revision).toBe(2);
@@ -145,6 +153,7 @@ describe('knowledge capture from incidents', () => {
     const edited = await a.agent.patch(`/api/v1/knowledge/${c.id}`).set(CSRF).send({ expected_revision: 2, title: 'Router power adapter failure' });
     expect(edited.status).toBe(200);
     await a.agent.post(`/api/v1/incidents/${incident}/comments`).set(CSRF).send({ body: 'Another note' });
+    await capture(a);
     expect((await a.agent.get(`/api/v1/knowledge/${c.id}`)).body).toMatchObject({ title: 'Router power adapter failure', revision: 3 });
   });
 
@@ -153,6 +162,7 @@ describe('knowledge capture from incidents', () => {
     const silent = await addIncident(a, { status: 'resolved' });
     const commented = await addIncident(a, { status: 'resolved', title: 'DNS slow' });
     await a.agent.post(`/api/v1/incidents/${commented}/comments`).set(CSRF).send({ body: 'Switched the forwarder to the ISP resolver' });
+    await capture(a);
     const list = (await a.agent.get('/api/v1/knowledge?status=candidate')).body.items;
     expect(list.map((e: { incident_id: string }) => e.incident_id)).toEqual([commented]);
     expect(list.map((e: { incident_id: string }) => e.incident_id)).not.toContain(silent);
@@ -166,15 +176,48 @@ describe('knowledge capture from incidents', () => {
 
     // Delete (admin): the incident is not captured again.
     expect((await a.agent.delete(`/api/v1/knowledge/${id}`).set(CSRF)).status).toBe(204);
+    await capture(a);
     expect((await a.agent.get('/api/v1/knowledge?status=all')).body.total).toBe(0);
 
     // Automation off for the organization: nothing is captured.
     const off = await a.agent.put('/api/v1/automation/suggest.knowledge_from_incidents').set(CSRF).send({ enabled: false });
     expect(off.status).toBe(200);
     await addIncident(a, { status: 'resolved', note: 'Rebooted the switch', resolutionKind: 'manual' });
+    await capture(a);
     expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(0);
     await a.agent.put('/api/v1/automation/suggest.knowledge_from_incidents').set(CSRF).send({ enabled: true });
+    await capture(a);
     expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(1);
+  });
+});
+
+describe('knowledge reads never write', () => {
+  it('GET list, counts, tags, suggest and detail leave the database unchanged; the capture job does the writing', async () => {
+    const a = await newAccount('kb-readonly');
+    const entry = await publishedEntry(a, { title: 'Reboot the access point', rule_ids: ['gateway-down'] });
+    const incident = await addIncident(a, { status: 'resolved', note: 'Power-cycled the access point', resolutionKind: 'manual' });
+    const snapshot = async () =>
+      (
+        await systemPool.query(
+          `SELECT (SELECT count(*) FROM knowledge_entries WHERE organization_id = $1)::int AS entries,
+                  (SELECT count(*) FROM knowledge_captured WHERE organization_id = $1)::int AS captured,
+                  (SELECT count(*) FROM knowledge_revisions WHERE organization_id = $1)::int AS revisions,
+                  (SELECT count(*) FROM audit_logs WHERE organization_id = $1)::int AS audits,
+                  (SELECT max(updated_at) FROM knowledge_entries WHERE organization_id = $1) AS last_update`,
+          [a.organizationId],
+        )
+      ).rows[0];
+    const before = await snapshot();
+    for (const url of ['/api/v1/knowledge', '/api/v1/knowledge?status=all', '/api/v1/knowledge/counts', '/api/v1/knowledge/tags', `/api/v1/knowledge/suggest?incident_id=${incident}`, `/api/v1/knowledge/${entry}`]) {
+      expect((await a.agent.get(url)).status, url).toBe(200);
+    }
+    expect(await snapshot()).toEqual(before);
+
+    // The job's set-based pass finds this organization and captures the incident once.
+    expect(await captureAllOrganizations()).toBeGreaterThanOrEqual(1);
+    expect(await snapshot()).toMatchObject({ entries: before.entries + 1, captured: before.captured + 1 });
+    expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(1);
+    expect(await capture(a)).toBe(0);
   });
 });
 
@@ -255,6 +298,7 @@ describe('knowledge permissions and workflow', () => {
   it('labels the doctor cause as inferred until a person rewrites or confirms it', async () => {
     const a = await newAccount('kb-cause');
     await addIncident(a, { status: 'resolved', note: 'Rebooted the router', resolutionKind: 'manual' });
+    await capture(a);
     const c = (await a.agent.get('/api/v1/knowledge?status=candidate')).body.items[0];
     expect(c.cause_source).toBe('doctor');
     const kept = await a.agent.patch(`/api/v1/knowledge/${c.id}`).set(CSRF).send({ expected_revision: 1, tags: ['router'] });
@@ -341,6 +385,7 @@ describe('knowledge suggestions', () => {
   it('leaves out the entry captured from the same incident', async () => {
     const a = await newAccount('kb-self');
     const incident = await addIncident(a, { status: 'resolved', note: 'Rebooted the router', resolutionKind: 'manual' });
+    await capture(a);
     const c = (await a.agent.get('/api/v1/knowledge?status=candidate')).body.items[0];
     await a.agent.post(`/api/v1/knowledge/${c.id}/publish`).set(CSRF);
     expect((await a.agent.get(`/api/v1/knowledge/suggest?incident_id=${incident}`)).body.items).toHaveLength(0);

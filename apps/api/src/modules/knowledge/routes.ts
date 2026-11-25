@@ -5,7 +5,6 @@ import { AppError, type AuthContext, auth, forbidden, idParams, notFound, parse,
 import { type Db, systemPool, withTenant } from '../../infrastructure/db.ts';
 import { addActivity } from '../correlation/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
-import { syncCandidates } from './capture.ts';
 import { ENTRY_SELECT, type EntryRow, addRevision, formatEntry, loadEntry } from './repo.ts';
 import { type KnowledgeCreate, createSchema, listQuery, patchSchema, suggestQuery, useParams, useSchema, voteSchema } from './schema.ts';
 import { suggest } from './suggest.ts';
@@ -53,7 +52,6 @@ async function checkLinks(db: Db, body: Partial<Pick<KnowledgeCreate, 'site_id' 
 knowledgeRouter.get('/knowledge', async (req, res) => {
   const ctx = auth(req);
   const q = parse(listQuery, req.query);
-  await syncCandidates(ctx.organizationId);
   const visible = visibleStatuses(ctx);
   const statuses = q.status === 'all' ? visible.filter((s) => s !== 'discarded') : visible.filter((s) => s === q.status);
   const text = q.q?.trim() || null;
@@ -87,7 +85,6 @@ knowledgeRouter.get('/knowledge', async (req, res) => {
 /** Counts per status (the sidebar badge shows candidates waiting for review). */
 knowledgeRouter.get('/knowledge/counts', async (req, res) => {
   const ctx = auth(req);
-  await syncCandidates(ctx.organizationId);
   const visible = visibleStatuses(ctx);
   const rows = await withTenant(ctx.organizationId, (db) =>
     db.query<{ status: string; n: number }>(`SELECT status, count(*)::int AS n FROM knowledge_entries WHERE status = ANY($1::text[]) GROUP BY status`, [visible]),
@@ -113,7 +110,6 @@ knowledgeRouter.get('/knowledge/tags', async (req, res) => {
 knowledgeRouter.get('/knowledge/suggest', async (req, res) => {
   const ctx = auth(req);
   const q = parse(suggestQuery, req.query);
-  await syncCandidates(ctx.organizationId);
   res.json(await withTenant(ctx.organizationId, (db) => suggest(db, ctx.organizationId, ctx.userId, q)));
 });
 
@@ -122,8 +118,6 @@ knowledgeRouter.get('/knowledge/suggest', async (req, res) => {
 knowledgeRouter.get('/knowledge/:id', async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
-  // An untouched incident candidate follows its incident, so refresh it before showing it.
-  await syncCandidates(ctx.organizationId);
   const detail = await withTenant(ctx.organizationId, async (db): Promise<KnowledgeDetail> => {
     const entry = await loadEntry(db, ctx.userId, id);
     if (!entry || !visibleStatuses(ctx).includes(entry.status)) throw notFound('Knowledge entry');
