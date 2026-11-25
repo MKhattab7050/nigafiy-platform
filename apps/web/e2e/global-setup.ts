@@ -1,8 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+// The same throw-away server the API tests use (started with pg_ctl on Windows, where CI runs elevated).
+import { startThrowawayPostgres } from '../../api/tests/pg-server.ts';
 
 /**
  * Starts a throw-away PostgreSQL and the real API for the browser smoke tests, and stops both
@@ -10,8 +11,6 @@ import path from 'node:path';
  * /api to this API, which runs every migration against this database.
  */
 const apiDir = path.resolve(__dirname, '../../api');
-// embedded-postgres is an API dependency; resolve it from there.
-const EmbeddedPostgres = createRequire(path.join(apiDir, 'package.json'))('embedded-postgres').default;
 
 const PG_PORT = Number(process.env.E2E_PG_PORT ?? 5446);
 const API_PORT = Number(process.env.E2E_API_PORT ?? 4146);
@@ -34,19 +33,7 @@ async function waitFor(url: string, api: ChildProcess, timeoutMs: number): Promi
 
 export default async function globalSetup(): Promise<() => Promise<void>> {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'nigafiy-e2e-pg-'));
-  const pg = new EmbeddedPostgres({
-    databaseDir: dir,
-    user: 'postgres',
-    password: 'postgres',
-    port: PG_PORT,
-    persistent: false,
-    initdbFlags: ['--encoding=UTF8', '--locale=C'],
-    onLog: () => undefined,
-    onError: () => undefined,
-  });
-  await pg.initialise();
-  await pg.start();
-  await pg.createDatabase(DB);
+  const pg = await startThrowawayPostgres({ dir, port: PG_PORT, database: DB });
 
   let apiLog = '';
   const api = spawn(process.execPath, ['src/main.ts'], {
@@ -80,9 +67,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       api.kill();
       await new Promise((r) => api.once('exit', r));
     }
-    await pg.stop().catch(() => undefined);
-    // Windows can hold the data directory for a moment after shutdown; cleanup is best effort.
-    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }).catch(() => undefined);
+    await pg.stop();
   };
 
   try {
