@@ -4,20 +4,38 @@
     {
       "name": "db",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:db"],
+      "runtimeArgs": [
+        "dev:db"
+      ],
       "port": 5433
     },
     {
       "name": "api",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:api"],
+      "runtimeArgs": [
+        "dev:api"
+      ],
       "port": 4100
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@nigafiy/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@nigafiy/web",
+        "dev"
+      ],
       "port": 3100
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@nigafiy/site",
+        "serve"
+      ],
+      "port": 3290
     }
   ]
 }
