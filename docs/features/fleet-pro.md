@@ -907,6 +907,15 @@ Where the code is:
   - An upload asks the agent where its own upload stopped, using the new read-only `fs_op` `hash`, and
     continues from there. If the agent cannot continue (it restarted, or the file changed), the upload
     starts again from the beginning, but only after the operator confirms replacing the partial file.
+- **Links swapped in after the check (EXT-8, R-7).** The agent runs as LocalSystem / root, so a local
+  user could swap a folder for a junction or symbolic link between the path check and the action.
+  - Reads, writes, creates and hashes go through a file handle whose real location is checked.
+  - New folder, rename, move and delete (recursive too), listing, search and copying folders open
+    the folder without following links, check its real location against the allowed roots and the
+    protected locations, and act relative to that handle. A rename or move never replaces an
+    existing name. A delete removes a link itself, never what it points at.
+  - A swap is refused with an error; nothing outside the allowed roots is shown, changed or deleted.
+  - Windows race tests ran here (with junctions); Linux tests run in CI; macOS tests never ran.
 - **SHA-256 check.**
   - Uploads: the browser hashes the file and the agent checks the whole file on the last chunk. The
     browser's hash is incremental, in pure TypeScript, so it also works on plain-HTTP origins.
