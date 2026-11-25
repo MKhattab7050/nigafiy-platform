@@ -40,6 +40,7 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
   const query = useQuery<RestorePreview>(`/config-backup/targets/${targetId}/restore-preview${qs({ version_id: version.id })}`, [], 0);
   const [confirm, setConfirm] = useState('');
   const [reason, setReason] = useState('');
+  const [otherConfirm, setOtherConfirm] = useState('');
   const [minutes, setMinutes] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
@@ -48,7 +49,9 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
     setBusy(true);
     setError(null);
     try {
-      await api<Restore>(`/config-backup/targets/${targetId}/restore`, { method: 'POST', body: { version_id: version.id, confirm, reason, confirm_minutes: minutes } });
+      const other = query.data?.other_device;
+      const force = other ? { force_other_device: true, confirm_other_device: otherConfirm } : {};
+      await api<Restore>(`/config-backup/targets/${targetId}/restore`, { method: 'POST', body: { version_id: version.id, confirm, reason, confirm_minutes: minutes, ...force } });
       onDone();
     } catch (e) {
       setError(e as ApiError);
@@ -73,7 +76,7 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
             );
           }
           const diff: Diff | null = p.current ? { from: p.current, to: p.version, identical: p.identical, added: p.added, removed: p.removed, approximate: p.approximate, truncated: p.truncated, hunks: p.hunks } : null;
-          const ok = confirm.trim() === p.confirm_text && reason.trim().length >= 10;
+          const ok = confirm.trim() === p.confirm_text && reason.trim().length >= 10 && (!p.other_device || otherConfirm.trim() === p.other_device.version);
           return (
             <form
               className="space-y-4"
@@ -82,7 +85,15 @@ export function RestoreDialog({ targetId, version, onClose, onDone }: { targetId
                 if (ok) void submit();
               }}
             >
-              <Notice>{fill(t('cb.r.intro'), { n: p.version.number })}</Notice>
+              <Notice>{fill(t(p.method === 'iosxe_configure_replace' ? 'cb.r.introIosxe' : 'cb.r.intro'), { n: p.version.number })}</Notice>
+              {p.other_device && (
+                <div className="space-y-2 rounded-md border border-crit/40 p-3">
+                  <p className="text-[13px] font-medium">{fill(t('cb.r.otherDevice'), { version: ltr(p.other_device.version), current: ltr(p.other_device.current) })}</p>
+                  <Field label={t('cb.r.otherConfirm')} hint={fill(t('cb.r.confirmHint'), { name: ltr(p.other_device.version) })}>
+                    {(id) => <Input id={id} dir="auto" autoComplete="off" value={otherConfirm} onChange={(e) => setOtherConfirm(e.target.value)} />}
+                  </Field>
+                </div>
+              )}
               <div className="space-y-2">
                 <p className="text-xs font-medium text-fg/85">{t('cb.r.diffTitle')}</p>
                 {diff && !diff.identical ? (

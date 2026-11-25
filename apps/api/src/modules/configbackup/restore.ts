@@ -24,10 +24,30 @@ import { expireStale, loadTarget, loadVersion, onlineCollector, queueRun, READIN
 //      (verify run); the restore is `verified` only when that version is the restored one.
 //
 // Only vendors with an automatic device-side rollback are supported: Juniper Junos
-// (`commit confirmed`). Every other vendor gets an honest "restore not supported".
+// (`commit confirmed`) and Cisco IOS XE (`configure replace … revert trigger error timer N`, then
+// `configure confirm` and `write memory` only after the read-back matched; restore_iosxe.go). Every
+// other vendor gets an honest "restore not supported".
+//
+// A version whose device identity (the host name in the configuration) differs from the latest
+// backup is refused unless the administrator forces it with a second confirmation: the host name of
+// the version, typed (`force_other_device` + `confirm_other_device`).
 
 /** Driver → restore method. Must match the collector (internal/configbackup/restore.go). */
-export const RESTORE_METHODS: Readonly<Record<string, string>> = { juniper_junos: 'junos_commit_confirmed' };
+export const RESTORE_METHODS: Readonly<Record<string, string>> = { juniper_junos: 'junos_commit_confirmed', cisco_ios: 'iosxe_configure_replace' };
+
+/** The host name a configuration declares (IOS `hostname X`, Junos `host-name X;`), or null. */
+export function configHostname(text: string): string | null {
+  const m = /^hostname\s+(\S+)\s*$/m.exec(text) ?? /^\s*host-name\s+"?([^";\s]+)"?;\s*$/m.exec(text);
+  return m?.[1] ?? null;
+}
+
+/** Both host names when the version names another device than the latest backup does, else null. */
+function otherDevice(current: string | null | undefined, version: string): { current: string; version: string } | null {
+  if (!current) return null;
+  const a = configHostname(current);
+  const b = configHostname(version);
+  return a && b && a !== b ? { current: a, version: b } : null;
+}
 
 const effectiveDriver = (t: TargetRow) => t.driver ?? t.detected_driver;
 const driverName = (id: string | null) => CONFIG_BACKUP_DRIVERS.find((d) => d.id === id)?.name ?? null;
@@ -52,7 +72,7 @@ function unsupported(t: TargetRow): RestoreBlocker | null {
   if (!RESTORE_METHODS[driver]) {
     return {
       code: 'restore_unsupported',
-      message: `Restore is not supported for ${driverName(driver) ?? driver}. Nigafiy restores only Juniper Junos devices, which apply a configuration with "commit confirmed" and roll it back by themselves when it is not confirmed. Other vendors have no safe automatic rollback: download the version and restore it by hand.`,
+      message: `Restore is not supported for ${driverName(driver) ?? driver}. Nigafiy restores only Juniper Junos ("commit confirmed") and Cisco IOS XE ("configure replace" with a rollback timer) devices, which roll a configuration back by themselves when it is not confirmed. Other vendors have no safe automatic rollback: download the version and restore it by hand.`,
     };
   }
   return null;
@@ -107,6 +127,7 @@ export function restorePreview(req: Request, ctx: AuthContext, targetId: string,
       blocker: block,
       confirm_text: t.name,
       confirm_minutes_default: 5,
+      other_device: otherDevice(current?.content, v.content),
       ...diff,
     };
   });
@@ -122,6 +143,14 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
     const block = await blocker(db, t, v);
     if (block) throw new AppError(409, block.code, block.message);
     if (body.confirm.trim() !== t.name) throw new AppError(422, 'confirm_mismatch', 'Type the device name exactly as shown to confirm the restore');
+    const versionText = (await loadVersion(db, v.id)).content;
+    const other = otherDevice(t.latest_version_id ? (await loadVersion(db, t.latest_version_id)).content : null, versionText);
+    if (other && !body.force_other_device) {
+      throw new AppError(409, 'other_device', `This version is the configuration of "${other.version}", but the device is now "${other.current}". Restore it only if that is intended: force it and type "${other.version}" as the second confirmation.`);
+    }
+    if (other && body.confirm_other_device?.trim() !== other.version) {
+      throw new AppError(422, 'confirm_other_device_mismatch', `Type the host name of the version ("${other.version}") exactly to confirm restoring another device's configuration`);
+    }
     const collector = await onlineCollector(db, t.site_id);
     if (!collector) throw new AppError(409, 'no_collector', 'No collector of this site is online to reach the device');
     const method = RESTORE_METHODS[effectiveDriver(t)!]!;
@@ -142,6 +171,7 @@ export function requestRestore(req: Request, ctx: AuthContext, targetId: string,
       method,
       reason: body.reason,
       confirm_minutes: body.confirm_minutes,
+      other_device: other,
       pre_run_id: run.run_id,
       collector: collector.name,
     });

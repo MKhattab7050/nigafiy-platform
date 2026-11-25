@@ -3,6 +3,7 @@ package ciscoxe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -11,9 +12,16 @@ import (
 	"github.com/nigafiy/sensor/internal/router"
 )
 
-const mechOverview = "Cisco IOS XE RESTCONF interface & hardware operational data (read-only)"
+const mechOverview = "Cisco IOS XE RESTCONF interface & hardware operational data"
 
-var _ router.SettingsReader = (*Driver)(nil)
+var (
+	_ router.SettingsReader     = (*Driver)(nil)
+	_ router.RateLimiter        = (*Driver)(nil)
+	_ router.Scheduler          = (*Driver)(nil)
+	_ router.ReservationManager = (*Driver)(nil)
+	_ router.PortForwarder      = (*Driver)(nil)
+	_ router.Renamer            = (*Driver)(nil)
+)
 
 func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 	ov := &router.Overview{LANIP: d.target.Address.String()}
@@ -83,5 +91,21 @@ func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
 		}
 	}
 
-	return router.Settings{Overview: ov}, nil
+	out := router.Settings{Overview: ov}
+	// Reservations and port forwards: a router without the model (or an older release) leaves them out.
+	if rs, err := d.readReservations(ctx); err == nil {
+		out.Reservations = rs
+	} else if isAuthErr(err) {
+		return router.Settings{}, err
+	}
+	if fs, err := d.readPortForwards(ctx); err == nil {
+		out.PortForwards = fs
+	} else if isAuthErr(err) {
+		return router.Settings{}, err
+	}
+	return out, nil
+}
+
+func isAuthErr(err error) bool {
+	return errors.Is(err, router.ErrBadCredentials) || errors.Is(err, router.ErrNotAuthorized) || errors.Is(err, router.ErrCertificate) || errors.Is(err, router.ErrUnreachable)
 }
