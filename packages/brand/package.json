@@ -2,6 +2,7 @@
   "name": "@nigafiy/brand",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "description": "Nigafiy logo, program glyphs, accent tokens and generated Windows icons",
   "main": "src/tokens.ts",

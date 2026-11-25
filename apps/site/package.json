@@ -2,6 +2,7 @@
   "name": "@nigafiy/site",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "description": "The Nigafiy website: a static Next.js export in English and Arabic (docs/website.md)",
   "scripts": {

@@ -1,0 +1,26 @@
+Nigafiy — Proprietary License
+
+Copyright (c) 2026 MKhattab7050 (Nigafiy). All rights reserved.
+
+This software and its source code, documentation, designs, logos and other files in this
+repository (the "Software") are the property of the copyright holder.
+
+You may view the Software on the website where it is published. No other right is granted.
+Without the copyright holder's prior written permission you may not:
+
+  - use, run or install the Software, except to evaluate it on your own computer;
+  - copy, modify, merge, translate or create derivative works of the Software;
+  - publish, distribute, sublicense, rent, sell or otherwise make the Software available
+    to anyone else;
+  - remove or change this notice, the Nigafiy name or the logos.
+
+Third-party components included in or used by the Software remain under their own licenses
+(for example the fonts under apps/site, which are under the SIL Open Font License 1.1, and the
+packages listed in each package.json / go.mod). This license does not change those licenses.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+For permission, contact the copyright holder through the GitHub repository.

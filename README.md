@@ -262,4 +262,4 @@ exactly what ran for real and what did not.
 
 ## License
 
-Not yet chosen: all rights reserved until then.
+Proprietary: all rights reserved. See [LICENSE](LICENSE). Third-party components keep their own licenses.

@@ -2,6 +2,7 @@
   "name": "@nigafiy/desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "description": "Nigafiy desktop app (Nigafiy Hub): the programs plus the bundled engine, which is also the managed Sensor",
   "author": "Nigafiy",
   "main": "src/main.cjs",
