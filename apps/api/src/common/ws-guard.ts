@@ -6,10 +6,18 @@ import { WebSocket } from 'ws';
  *     library closes the socket with 1009 above it, before the message is buffered whole);
  *   - message rate: a per-socket window (`MessageRate`): above `soft` messages in a second the
  *     extra ones are dropped, above `hard` the socket is closed with 1008;
- *   - connection count: sockets still being authenticated per address (`UpgradeGate`) and open
- *     sockets per user and per session (checked by the hubs);
- *   - idle sockets: a ping every `pingMs`; a socket that answered none of the last two is
- *     terminated (`heartbeat`), so a dead TCP connection does not hold a viewer slot or a shell.
+ *   - queue: messages waiting to be handled per socket (`maxQueued`; the stream hub handles them
+ *     in order, one at a time), above it the socket is closed with 1008;
+ *   - connection count: upgrades still being authenticated per remote address (`SocketCounter`
+ *     in the stream hub, which owns the listener), open viewer sockets per user and per session,
+ *     operator windows per shell (checked by the hubs, refused with HTTP 429);
+ *   - idle sockets: a ping every `pingMs`; a socket that sent no pong and no message by the next
+ *     tick is terminated (`heartbeat`), so a dead TCP connection does not hold a viewer slot or a
+ *     shell for more than two intervals.
+ *
+ * Behind a reverse proxy the remote address is the proxy's: the per-address cap then counts every
+ * upgrade in flight through it. It holds only while a credential or session is checked
+ * (milliseconds), agents reconnect with backoff and jitter, and the default is sized for that.
  */
 
 /** Close code for a client that broke a limit (RFC 6455 "policy violation"). */
@@ -22,7 +30,7 @@ export interface WsLimits {
   hardPerSecond: number;
   /** Messages a socket may have waiting to be handled (audits are written in order). */
   maxQueued: number;
-  /** Ping interval; two unanswered pings end the socket. */
+  /** Ping interval; a socket silent (no pong, no message) for a whole interval is ended. */
   pingMs: number;
   /** Upgrades being authenticated at once from one address. */
   maxPendingPerAddress: number;
@@ -38,7 +46,7 @@ export const DEFAULT_WS_LIMITS: WsLimits = {
   hardPerSecond: 1500,
   maxQueued: 512,
   pingMs: 30_000,
-  maxPendingPerAddress: 16,
+  maxPendingPerAddress: 64,
   maxPerUser: 12,
   maxPerSession: 16,
 };
