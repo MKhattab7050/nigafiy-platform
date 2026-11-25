@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="المنصة: Windows 10 و11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
-  <img alt="العربية والإنجليزية" src="https://img.shields.io/badge/UI-English%20%2B%20%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A%D8%A9-0B2A7A">
+  <img alt="العربية والإنجليزية" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
   <img alt="بلا ذكاء اصطناعي" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
   <img alt="الحالة: إصدار تجريبي 0.1.0" src="https://img.shields.io/badge/status-pre--release%200.1.0-C27C0E">
 </p>
