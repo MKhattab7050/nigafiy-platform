@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -199,10 +200,13 @@ func newRig(t *testing.T, ts *httptest.Server, conns chan *srv, frames chan fram
 	mux := desktop.NewBannerMux(ui)
 	r := &rig{term: newFake(), conns: conns, frames: frames, ended: make(chan ended, 4), mux: mux, ui: ui}
 	r.m = NewManager(Config{
-		ServerURL:     ts.URL,
-		Credential:    func() string { return "cred" },
-		Banner:        mux.SetShells,
-		NotifyEnded:   func(_ context.Context, id, reason string, code *int) error { r.ended <- ended{reason, code}; return nil },
+		ServerURL:  ts.URL,
+		Credential: func() string { return "cred" },
+		Banner:     mux.SetShells,
+		NotifyEnded: func(_ context.Context, id, reason string, code *int) error {
+			r.ended <- ended{reason, code}
+			return nil
+		},
 		StartTerminal: func(int, int) (Terminal, error) { return r.term, nil },
 		CheckEvery:    50 * time.Millisecond,
 	})
@@ -490,5 +494,33 @@ func TestRealTerminal(t *testing.T) {
 		t.Fatal("the shell did not exit")
 	}
 	for range out {
+	}
+}
+
+// A banner that cannot be shown on a computer with a desktop ends the shell before the server is
+// joined: no terminal is left running and nobody can type into it (fail closed).
+func TestBannerFailureRefusesTheShell(t *testing.T) {
+	conns, frames := make(chan *srv, 1), make(chan frame, 64)
+	ts := server(t, conns, frames)
+	defer ts.Close()
+	r := newRig(t, ts, conns, frames)
+	r.m.cfg.Banner = func([]userui.ShellLine, func()) error { return errors.New("no user session") }
+
+	res, err := r.m.Open(context.Background(), OpenRequest{ShellID: shellID, Operator: "admin@corp.example", Reason: "Test", Cols: 80, Rows: 24, IdleTimeoutS: 60})
+	if err == nil || res.Banner != "failed" {
+		t.Fatalf("shell opened without its banner: %+v, %v", res, err)
+	}
+	select {
+	case <-r.term.closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the terminal was left running")
+	}
+	select {
+	case <-conns:
+		t.Fatal("the shell joined the server without a banner")
+	case <-time.After(200 * time.Millisecond):
+	}
+	if r.m.Count() != 0 {
+		t.Fatalf("%d shells still open", r.m.Count())
 	}
 }
