@@ -6,7 +6,7 @@ plugins {
     id("com.android.application")
 }
 
-// Release signing: a key generated on this PC by scripts/android-keystore.mjs into .data/android
+// Release signing: a key generated on this PC by scripts/android/keystore.mjs into .data/android
 // (never committed). Without it the release build is left unsigned and the script says so.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("../../.data/android/keystore.properties")

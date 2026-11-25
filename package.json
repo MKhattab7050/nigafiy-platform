@@ -29,6 +29,9 @@
     "test:engine": "cd engine && go test ./...",
     "build:engine": "cd engine && go build -trimpath -o bin/ ./cmd/nigafiy-engine",
     "build:launchers": "node scripts/build-launchers.mjs",
+    "test:android": "node scripts/android/build.mjs --test-only",
+    "build:android": "node scripts/android/build.mjs",
+    "android:keystore": "node scripts/android/keystore.mjs",
     "build:agent-installer": "node scripts/installers/build-agent-installer.mjs",
     "release": "node scripts/release/release.mjs"
   },
