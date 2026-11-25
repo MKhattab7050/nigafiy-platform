@@ -14,4 +14,4 @@ import { automationRouter } from './routes.ts';
 export const automationModule = defineModule({ name: 'automation', api: automationRouter });
 
 export { AUTOMATIONS, type AutomationKey } from './catalogue.ts';
-export { actedRecently, automationEnabled, automationSetting } from './repo.ts';
+export { actedRecently, automationEnabled, automationSetting, automationSettingsForSites } from './repo.ts';
