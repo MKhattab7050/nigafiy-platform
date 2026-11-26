@@ -49,6 +49,12 @@
     <string name="share_request_text">يطلب %1$s رؤية شاشتك. السبب: %2$s</string>
     <string name="share_action_open">مشاركة شاشتي</string>
     <string name="share_action_refuse">رفض</string>
+    <string name="share_request_sub">لا يُشارك شيء إلا بموافقتك</string>
+    <string name="share_label_who">من يطلب</string>
+    <string name="share_label_reason">السبب</string>
+    <string name="share_card_what">ماذا يحدث إذا شاركت</string>
+    <string name="share_chip_look">مشاهدة فقط</string>
+    <string name="share_chip_control">مشاهدة وتحكم</string>
     <string name="share_screen_who">من: %1$s</string>
     <string name="share_screen_reason">السبب: %1$s</string>
     <string name="share_screen_what">إذا شاركت، يرى شاشتك كاملة بما فيها الإشعارات حتى توقف أنت أو هو المشاركة. سيسألك Android مرة أخرى. لا يُسجَّل شيء على الهاتف.</string>
@@ -104,6 +110,14 @@
     <string name="tab_home">الرئيسية</string>
     <string name="tab_tools">الأدوات</string>
     <string name="tab_settings">الإعدادات</string>
+    <string name="tab_dashboard">اللوحة</string>
+    <string name="alerts_channel">تنبيهات الشبكة</string>
+    <string name="alert_resolved">تم الحل: %1$s</string>
+    <string name="home_alerts_title">تنبيهات الشبكة</string>
+    <string name="home_alerts_none">لا توجد مشاكل في شبكتك. تظهر المشاكل المهمة هنا وكإشعارات.</string>
+    <string name="dashboard_loading">جارٍ فتح اللوحة…</string>
+    <string name="dashboard_error">لم تُفتح اللوحة: %1$s. تأكد أن الهاتف يصل إلى كمبيوتر Nigafiy ثم حاول مرة أخرى.</string>
+    <string name="dashboard_not_admin">هذا الهاتف لم يعد هاتف مسؤول. يمكن للمسؤول أن يجعله كذلك مرة أخرى من Fleet.</string>
     <string name="settings_subtitle">التحكم بالهاتف والإيقاف وتسجيل الخروج</string>
     <string name="tools_title">أدوات الشبكة</string>
     <string name="tools_subtitle">قياسات من هذا الهاتف</string>

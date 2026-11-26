@@ -25,6 +25,11 @@ class Store(ctx: Context) {
     var lastContact: Long get() = prefs.getLong("last_contact", 0); set(v) = prefs.edit().putLong("last_contact", v).apply()
     var lastError: String? get() = prefs.getString("last_error", null); set(v) = prefs.edit().putString("last_error", v).apply()
     var heartbeatSeconds: Int get() = prefs.getInt("heartbeat_s", 30); set(v) = prefs.edit().putInt("heartbeat_s", v.coerceIn(10, 600)).apply()
+    /** "admin" phones show the dashboard and the network's alerts (the server says so in each heartbeat reply). */
+    var phoneRole: String get() = prefs.getString("phone_role", "user") ?: "user"; set(v) = prefs.edit().putString("phone_role", v).apply()
+    /** The last network alerts, newest first, as JSON (the Home tab lists them). */
+    var recentAlerts: String get() = prefs.getString("recent_alerts", "[]") ?: "[]"; set(v) = prefs.edit().putString("recent_alerts", v).apply()
+    val isAdminPhone: Boolean get() = phoneRole == "admin"
     /** What Nigafiy last required (none/low/medium/high), reported back to Fleet. */
     /**
      * The person pressed "Stop everything": nothing runs (no service, no boot or update restart, no

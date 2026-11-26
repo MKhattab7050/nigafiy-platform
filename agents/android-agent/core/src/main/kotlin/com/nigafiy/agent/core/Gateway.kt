@@ -22,6 +22,14 @@ class Gateway(val server: String, private val pin: String?, private var credenti
 
     fun setCredential(c: String?) { credential = c }
 
+    /**
+     * SHA-256 of the server certificate this gateway last talked to over its pinned connection. The
+     * admin phone's dashboard (a WebView, which cannot use the pin itself) accepts exactly that
+     * certificate and nothing else.
+     */
+    @Volatile var lastLeafSha256: String? = null
+        private set
+
     private fun open(path: String, readTimeoutMs: Int): HttpURLConnection {
         val c = URL(server + path).openConnection() as HttpURLConnection
         if (c is HttpsURLConnection) {
@@ -53,6 +61,9 @@ class Gateway(val server: String, private val pin: String?, private var credenti
 
     private fun answer(c: HttpURLConnection): Map<String, Any?> {
         val status = c.responseCode
+        if (c is HttpsURLConnection) {
+            try { lastLeafSha256 = Pin.sha256Hex(c.serverCertificates[0].encoded) } catch (_: Exception) { }
+        }
         val stream = if (status in 200..299) c.inputStream else c.errorStream
         val text = stream?.use { String(it.readBytes(limit = 8 * 1024 * 1024), Charsets.UTF_8) } ?: ""
         if (status !in 200..299) {
@@ -104,6 +115,9 @@ class Gateway(val server: String, private val pin: String?, private var credenti
     }
 
     fun heartbeat(body: Map<String, Any?>) = post("/api/v1/agent/heartbeat", body)
+
+    /** Admin phones: a web session for the dashboard in the app ({cookie, value, expires_at}). */
+    fun dashboardSession() = post("/api/v1/agent/dashboard-session", emptyMap(), readTimeoutMs = 15_000)
 
     /** "Log out" on the device: the server revokes this endpoint and its credential. */
     fun leave() = post("/api/v1/agent/leave", emptyMap(), readTimeoutMs = 8_000)

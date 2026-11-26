@@ -192,6 +192,9 @@ class AgentService : Service() {
             (r["heartbeat_interval_seconds"] as? Long)?.let { store.heartbeatSeconds = it.toInt() }
             store.lastContact = now
             store.lastError = null
+            // Admin phones (migration 066): the dashboard tab and the network's alerts.
+            (r["phone_role"] as? String)?.takeIf { it == "admin" || it == "user" }?.let { store.phoneRole = it }
+            Alerts.show(this, store, Alerts.parse(r["alerts"]))
             val mode = facts.mode()
             show(getString(if (mode == Mode.DEVICE_OWNER) R.string.notif_owner else R.string.notif_regular, store.server))
             @Suppress("UNCHECKED_CAST")

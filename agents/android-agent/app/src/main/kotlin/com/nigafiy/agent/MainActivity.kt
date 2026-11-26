@@ -35,6 +35,8 @@ class MainActivity : Activity() {
     private lateinit var toolsScroll: ScrollView
     private lateinit var navHolder: FrameLayout
     private lateinit var tools: ToolsScreen
+    private lateinit var dashboard: DashboardScreen
+    private var shownRole = "user"
     private var tab = TAB_HOME
     private var lastCheck: NetProbe.CheckResult? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -42,7 +44,9 @@ class MainActivity : Activity() {
     // redrawing it threw away what the person was typing (first real-phone run).
     private val refresh = object : Runnable {
         override fun run() {
-            if (tab != TAB_TOOLS) render()
+            // The server made this phone an admin phone, or a regular one again: redraw the tab bar.
+            if (store.phoneRole != shownRole) showTab(if (tab == TAB_DASHBOARD && !store.isAdminPhone) TAB_HOME else tab)
+            else if (tab != TAB_TOOLS && tab != TAB_DASHBOARD) render()
             if (store.enrolled || store.pendingEnrollment != null) handler.postDelayed(this, 3000)
         }
     }
@@ -61,7 +65,9 @@ class MainActivity : Activity() {
         scroll = ScrollView(this).apply { addView(root); isFillViewport = true }
         tools = ToolsScreen(this, ui) { r -> lastCheck = r }
         toolsScroll = ScrollView(this).apply { addView(tools.view); isFillViewport = true; visibility = View.GONE }
-        val content = FrameLayout(this).apply { addView(scroll); addView(toolsScroll) }
+        dashboard = DashboardScreen(this, ui, store)
+        dashboard.view.visibility = View.GONE
+        val content = FrameLayout(this).apply { addView(scroll); addView(toolsScroll); addView(dashboard.view) }
         navHolder = FrameLayout(this)
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -82,21 +88,49 @@ class MainActivity : Activity() {
         tab = savedInstanceState?.getInt("tab", TAB_HOME) ?: TAB_HOME
         fromLink(intent)
         startAgent()
+        if (tab == TAB_DASHBOARD && !store.isAdminPhone) tab = TAB_HOME
         showTab(tab)
+        openAlert(intent)
     }
 
     private fun showTab(t: Int) {
         if (tab == TAB_TOOLS && t != TAB_TOOLS) tools.onHide()
         tab = t
-        scroll.visibility = if (t == TAB_TOOLS) View.GONE else View.VISIBLE
+        shownRole = store.phoneRole
+        scroll.visibility = if (t == TAB_TOOLS || t == TAB_DASHBOARD) View.GONE else View.VISIBLE
         toolsScroll.visibility = if (t == TAB_TOOLS) View.VISIBLE else View.GONE
+        dashboard.view.visibility = if (t == TAB_DASHBOARD) View.VISIBLE else View.GONE
+        // Admin phones get the dashboard as the second tab (docs/roadmap/2026-11-26-admin-phones.md).
+        val tabs = buildList {
+            add(TAB_HOME to Triple(getString(R.string.tab_home), R.drawable.ic_tab_home) { showTab(TAB_HOME) })
+            if (store.isAdminPhone) add(TAB_DASHBOARD to Triple(getString(R.string.tab_dashboard), R.drawable.ic_tab_dashboard) { showTab(TAB_DASHBOARD) })
+            add(TAB_TOOLS to Triple(getString(R.string.tab_tools), R.drawable.ic_tab_tools) { showTab(TAB_TOOLS) })
+            add(TAB_SETTINGS to Triple(getString(R.string.tab_settings), R.drawable.ic_tab_settings) { showTab(TAB_SETTINGS) })
+        }
         navHolder.removeAllViews()
-        navHolder.addView(ui.tabBar(listOf(
-            Triple(getString(R.string.tab_home), R.drawable.ic_tab_home) { showTab(TAB_HOME) },
-            Triple(getString(R.string.tab_tools), R.drawable.ic_tab_tools) { showTab(TAB_TOOLS) },
-            Triple(getString(R.string.tab_settings), R.drawable.ic_tab_settings) { showTab(TAB_SETTINGS) },
-        ), t))
-        if (t == TAB_TOOLS) tools.onShow() else { render(); scroll.scrollTo(0, 0) }
+        navHolder.addView(ui.tabBar(tabs.map { it.second }, tabs.indexOfFirst { it.first == t }.coerceAtLeast(0)))
+        when (t) {
+            TAB_TOOLS -> tools.onShow()
+            TAB_DASHBOARD -> dashboard.open()
+            else -> { render(); scroll.scrollTo(0, 0) }
+        }
+    }
+
+    /** A tapped network alert opens its page in the dashboard. */
+    private fun openAlert(intent: Intent?) {
+        val path = intent?.getStringExtra(Alerts.EXTRA_PATH)?.takeIf { it.startsWith("/") } ?: return
+        intent.removeExtra(Alerts.EXTRA_PATH)
+        if (!store.isAdminPhone) return
+        if (tab != TAB_DASHBOARD) showTab(TAB_DASHBOARD)
+        dashboard.open(path)
+    }
+
+    @Deprecated("Kept for the 3-button navigation on every Android version this app supports")
+    override fun onBackPressed() {
+        if (tab == TAB_DASHBOARD && dashboard.back()) return
+        if (tab != TAB_HOME) { showTab(TAB_HOME); return }
+        @Suppress("DEPRECATION")
+        super.onBackPressed()
     }
 
     /**
@@ -114,6 +148,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         fromLink(intent)
+        openAlert(intent)
     }
 
     override fun onResume() {
@@ -148,6 +183,7 @@ class MainActivity : Activity() {
             renderSettings()
         } else {
             if (store.enrolled) renderStatus() else if (store.pendingEnrollment != null) renderEnrolling() else renderForm()
+            if (store.enrolled && store.isAdminPhone) dashboard.alertsCard(root) { p -> showTab(TAB_DASHBOARD); dashboard.open(p) }
             renderConnection()
         }
         scroll.post { scroll.scrollTo(0, y) }
@@ -428,5 +464,6 @@ class MainActivity : Activity() {
         const val TAB_HOME = 0
         const val TAB_TOOLS = 1
         const val TAB_SETTINGS = 2
+        const val TAB_DASHBOARD = 3
     }
 }

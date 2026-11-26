@@ -49,6 +49,12 @@
     <string name="share_request_text">%1$s asks to see your screen. Reason: %2$s</string>
     <string name="share_action_open">Share my screen</string>
     <string name="share_action_refuse">Refuse</string>
+    <string name="share_request_sub">Nothing is shared until you agree</string>
+    <string name="share_label_who">Who is asking</string>
+    <string name="share_label_reason">Reason</string>
+    <string name="share_card_what">What happens if you share</string>
+    <string name="share_chip_look">Look only</string>
+    <string name="share_chip_control">Look and control</string>
     <string name="share_screen_who">Who: %1$s</string>
     <string name="share_screen_reason">Reason: %1$s</string>
     <string name="share_screen_what">If you share, they see your whole screen, including notifications, until you or they stop. Android will ask you once more. Nothing is recorded on the phone.</string>
@@ -104,6 +110,14 @@
     <string name="tab_home">Home</string>
     <string name="tab_tools">Tools</string>
     <string name="tab_settings">Settings</string>
+    <string name="tab_dashboard">Dashboard</string>
+    <string name="alerts_channel">Network alerts</string>
+    <string name="alert_resolved">Resolved: %1$s</string>
+    <string name="home_alerts_title">Network alerts</string>
+    <string name="home_alerts_none">No problems on your network. Important problems show up here and as notifications.</string>
+    <string name="dashboard_loading">Opening the dashboard…</string>
+    <string name="dashboard_error">The dashboard did not open: %1$s. Check that this phone can reach the Nigafiy computer, then try again.</string>
+    <string name="dashboard_not_admin">This phone is not an admin phone any more. An admin can make it one again in Fleet.</string>
     <string name="settings_subtitle">Phone controls, stop and log out</string>
     <string name="tools_title">Network tools</string>
     <string name="tools_subtitle">Measured from this phone</string>
