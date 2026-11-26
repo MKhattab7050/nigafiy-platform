@@ -66,10 +66,10 @@ The black "N" circle in screenshots is the Next.js dev indicator, not part of th
 | `pnpm local` runs HEAD | done | `scripts/local.mjs` passes `NIGAFIY_CODE_REV`; `/healthz` returns `started_at` + `rev`; reusing an API warns when its commit differs or API sources changed after it started |
 | Fleet 412 px on phone | done | `Segmented` (`components/ui/controls.tsx`) scrolls sideways; checked 390 px in the browser |
 | Full API suite | green | 567 passed, 10 skipped (after 3ebfd60) |
-| Dashboard: next steps, score reasons, onboarding, explain numbers | running | session `dashboard-guidance` (own worktree; was cut from master by mistake and told to `git reset --hard phase-2-network-intelligence` — verify its base before merging) |
-| Ctrl+K palette, mobile bottom bar, Fleet density | running | session `navigation`, branch `*navigation-palette*` |
-| One meaning per device state | running | session `device-states`, branch `*device-states*` |
-| System Health page, heartbeat setup card, weekly report | running | session `system-health`, branch `*system-health*`; migrations must be 065+ (064 is `064_owner_source.sql`) |
+| Dashboard: next steps, score reasons, onboarding, explain numbers | STOPPED (WIP saved) | session `dashboard-guidance` (own worktree; was cut from master by mistake and told to `git reset --hard phase-2-network-intelligence` — verify its base before merging) |
+| Ctrl+K palette, mobile bottom bar, Fleet density | STOPPED (WIP saved) | session `navigation`, branch `*navigation-palette*` |
+| One meaning per device state | STOPPED (WIP saved) | session `device-states`, branch `*device-states*` |
+| System Health page, heartbeat setup card, weekly report | STOPPED (WIP saved) | session `system-health`, branch `*system-health*`; migrations must be 065+ (064 is `064_owner_source.sql`) |
 | Baselines, alert grouping, topology source, verify-after-fix, "Ask Nigafiy" | not started | the review's "smarter" list beyond explain-numbers and the weekly report |
 | Timeouts for every job (AbortSignal) | partly | statement timeouts + slot release are in; jobs do not take an AbortSignal yet |
 | New release + installed-copy test (day 7) | not started | 1.0.4 in `D:\nigafiy-releases` very likely has the pool bug |
@@ -86,6 +86,26 @@ The worktree sessions use test DB ports 5451–5454; the main checkout used 5449
 | navigation | `local_542abc00-e44e-40d9-b730-83ea5d442c43` | `navigation-palette` | 5452 | Ctrl/⌘+K command palette (pages, devices by name/IP/MAC, incidents, endpoints, actions) replacing the global search, keyboard + ARIA + full-screen on phone; bottom nav < 768 px (Home, Devices, Alerts, Settings, "More"); even Fleet card density. App shell, top bar, search only. Don't edit `Segmented` |
 | device-states | `local_7c9aa137-c0b7-48e2-9050-73cd75b579c8` | `device-states` | 5453 | One shared mapping state → label (en+ar) + badge tone + tooltip for Unknown / Offline / Revoked / Pending, used on every screen; split counts that mix states (Fleet "Offline / Pending"); keep "monitoring off" ≠ "offline"; don't touch trust logic (known/unreviewed, trust_reason). Report lists changed screens |
 | system-health | `local_d222fe4f-1c5a-47d2-9cef-9799a76e924c` | `system-health` | 5454 | System Health page in plain sentences (API, DB, scheduler, late/failing jobs, monitoring gaps, anything to act on; details behind a disclosure) from `/system/modules` + monitor gaps; "Tell me if Nigafiy itself stops" setup card for the existing outside heartbeat (ntfy/Telegram, says what is sent); rule-based weekly report (in-app + optional notification, top 3 improvements) as an idempotent scheduled job with a new lockKey. Migrations 065+. Don't edit `scheduler.ts`, `db.ts`, `app.ts` |
+
+### Where each session stopped (owner said "stop", 2026-11-26 ~16:45)
+
+All four were stopped mid-turn. Their unfinished work is saved as WIP checkpoint commits on their own
+branches (worktrees under `D:\network\.claude\worktrees\`). Nothing was reviewed, tests were not
+confirmed, nothing is merged into `phase-2-network-intelligence`. To resume: send "كمل" to the
+session id (it keeps its context), and add "your work so far is in WIP checkpoint commits on your
+branch; check `git log -3` and `git show --stat HEAD`, then finish what is missing".
+
+| Session | Branch / last commit | Base | Done so far (from the files) | Not started / unknown |
+| --- | --- | --- | --- | --- |
+| dashboard-guidance | `claude/dashboard-guidance-47d0bc` @ e779359 (2 WIP commits) | 3ebfd60 ✓ (reset worked) | API: `overview/guidance.ts` + route in `overview/routes.ts`, types in shared-types, `tests/dashboard-guidance.test.ts`; web: `dashboard/strings.ts`, `dashboard/guidance-text.ts` | the dashboard components themselves (Next box UI, score reasons open, onboarding checklist UI, explain-number popovers); test run not confirmed |
+| navigation | `claude/navigation-palette-0c72d4` @ 292bab1 | 5bcefff | `shell/command-palette.tsx`, `shell/bottom-nav.tsx`, changes to `shell/index.tsx`, `sidebar.tsx`, `top-bar.tsx`, `part-boundary.tsx`, `ui-strings.ts`, `e2e/smoke.spec.ts`, `apps/web/tsconfig.json` (check why) | Fleet card density; browser check en/ar at 390 px. Its `.claude/launch.json` edits (scratch `iso-db`/`iso-api` entries) are left uncommitted on purpose |
+| device-states | `claude/device-states-73c610` @ 9ef50ca | 5bcefff | shared state mapping in `ui/status.tsx`, `ui/tones.ts`, `ui/index.ts`; endpoints screens/text/widget/tones, `fleet-content.tsx`, `device-endpoint-card.tsx`, `fleet-requests-screen.tsx`; `dashboard/status-header.tsx`; `core-strings.ts`, `ui-strings.ts`; API `overview/search.ts` + `tests/search.test.ts`; shared-types | devices list/detail screens (none touched yet), alerts; browser check; list of changed screens |
+| system-health | `claude/system-health-b8f152` @ d21ffac | 5bcefff | API only: `system/health.ts` + `system/index.ts`, new `modules/weekly-report/` (rules, service, routes, job), migration `065_weekly_reports.sql`, registry, `email.ts`, `tests/system-health-weekly.test.ts`, `modules.test.ts`, shared-types | the web System Health page, the heartbeat setup card, the weekly report page; test run not confirmed |
+
+Merge warnings for later: navigation and device-states both edit `shell/top-bar.tsx` and
+`ui-strings.ts`; device-states and dashboard-guidance both touch the dashboard; every branch edits
+`packages/shared-types/src/index.ts` (append-only, should merge cleanly). The three branches cut from
+5bcefff do not have 3ebfd60 / 63 / 65a1e82 — they come in on merge.
 
 ## What is left
 
