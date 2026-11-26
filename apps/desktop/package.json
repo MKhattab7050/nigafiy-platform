@@ -1,6 +1,6 @@
 {
   "name": "@nigafiy/desktop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "license": "UNLICENSED",
   "description": "Nigafiy desktop app (Nigafiy Hub): the programs plus the bundled engine, which is also the managed Sensor",
