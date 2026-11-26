@@ -33,6 +33,7 @@ export function FleetContent({
   onAdd,
   onReissue,
   onRevoke,
+  onPhoneRole,
   onReload,
 }: {
   items: EndpointSummary[];
@@ -47,6 +48,8 @@ export function FleetContent({
   onAdd: () => void;
   onReissue: (id: string) => Promise<void>;
   onRevoke: (id: string) => Promise<void>;
+  /** Phones: admin phone or regular user's phone (migration 066). */
+  onPhoneRole?: (id: string, role: 'user' | 'admin') => Promise<void>;
   onReload?: () => void;
 }) {
   const { locale, t } = useI18n();
@@ -334,6 +337,7 @@ export function FleetContent({
                     </button>
                   )}
                   <Badge tone="info">{tx.platforms[ep.platform] ?? ep.platform}</Badge>
+                  {ep.phone_role === 'admin' && <Badge tone="warn">{t('endpoints.adminPhone')}</Badge>}
                   <StatusBadge status={endpointState(ep)} />
                   {(ep.open_help_requests ?? 0) > 0 && (
                     <Link href="/fleet/requests" className="inline-flex">
@@ -366,6 +370,11 @@ export function FleetContent({
                       >
                         <KeyRound className="size-3.5" aria-hidden />
                         {tx.newToken}
+                      </Button>
+                    )}
+                    {ep.platform === 'android' && ep.status === 'active' && onPhoneRole && (
+                      <Button size="sm" busy={busy === `role-${ep.id}`} onClick={() => void onPhoneRole(ep.id, ep.phone_role === 'admin' ? 'user' : 'admin')}>
+                        {t(ep.phone_role === 'admin' ? 'endpoints.makeUserPhone' : 'endpoints.makeAdminPhone')}
                       </Button>
                     )}
                     <Button

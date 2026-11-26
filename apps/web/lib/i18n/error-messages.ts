@@ -154,6 +154,8 @@ export const ERROR_MESSAGES: Record<string, ErrorText> = {
   invalid_enrollment_token: { en: 'This enrollment code is not valid, was already used, or has expired.', ar: 'رمز التسجيل غير صالح أو استُخدم من قبل أو انتهت صلاحيته.' },
   collector_not_active: { en: 'This Sensor is not connected and active.', ar: 'هذا المستشعر غير مرتبط أو غير نشط.' },
   not_pending: { en: 'A new enrollment code is only for items that have not enrolled yet.', ar: 'رمز التسجيل الجديد مخصص فقط لما لم يُسجَّل بعد.' },
+  not_a_phone: { en: 'Only a phone can be an admin phone.', ar: 'الهاتف وحده يمكن أن يكون هاتف مسؤول.' },
+  not_admin_phone: { en: 'This phone is not an admin phone. An admin can make it one in Fleet.', ar: 'هذا الهاتف ليس هاتف مسؤول. يمكن للمسؤول أن يجعله كذلك من Fleet.' },
   no_collector: NO_COLLECTOR,
   no_collector_online: NO_COLLECTOR,
   too_many_runs: { en: 'Several requests are already waiting on this Sensor. Wait for them to finish.', ar: 'هناك عدة طلبات تنتظر هذا المستشعر بالفعل. انتظر حتى تكتمل.' },

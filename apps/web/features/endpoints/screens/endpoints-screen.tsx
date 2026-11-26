@@ -28,6 +28,8 @@ export function EndpointsScreen() {
   const [chosenSite, setChosenSite] = useState('');
   const [name, setName] = useState('');
   const [platform, setPlatform] = useState<EndpointPlatform>('windows');
+  // Phones: a regular user's phone, or an admin phone (dashboard and alerts in the app; migration 066).
+  const [phoneRole, setPhoneRole] = useState<'user' | 'admin'>('user');
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState<ApiError | null>(null);
@@ -58,6 +60,7 @@ export function EndpointsScreen() {
     setDeviceId(null);
     setName('');
     setPlatform('windows');
+    setPhoneRole('user');
     setShowAdd(true);
   };
 
@@ -76,6 +79,7 @@ export function EndpointsScreen() {
           name: name.trim(),
           platform,
           device_id: deviceId,
+          ...(platform === 'android' ? { phone_role: phoneRole } : {}),
         },
       });
       setShowAdd(false);
@@ -97,6 +101,20 @@ export function EndpointsScreen() {
     try {
       const res = await api<EndpointCreated>(`/endpoints/${id}/enrollment-token`, { method: 'POST' });
       setIssued(res);
+      query.reload();
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function changePhoneRole(id: string, role: 'user' | 'admin') {
+    if (role === 'admin' && !(await confirm(t('endpoints.makeAdminConfirm')))) return;
+    setBusy(`role-${id}`);
+    setError(null);
+    try {
+      await api(`/endpoints/${id}/phone-role`, { method: 'POST', body: { role } });
       query.reload();
     } catch (err) {
       setError(err as ApiError);
@@ -160,6 +178,7 @@ export function EndpointsScreen() {
             onAdd={openBlank}
             onReissue={reissueToken}
             onRevoke={revokeEndpoint}
+            onPhoneRole={changePhoneRole}
             onReload={query.reload}
           />
         )}
@@ -217,6 +236,16 @@ export function EndpointsScreen() {
                 </Select>
               )}
             </Field>
+            {platform === 'android' && (
+              <Field label={t('endpoints.enroll.phoneRole')} hint={t(phoneRole === 'admin' ? 'endpoints.enroll.phoneRole.adminHint' : 'endpoints.enroll.phoneRole.userHint')}>
+                {(id) => (
+                  <Select id={id} value={phoneRole} onChange={(e) => setPhoneRole(e.target.value as 'user' | 'admin')}>
+                    <option value="user">{t('endpoints.enroll.phoneRole.user')}</option>
+                    <option value="admin">{t('endpoints.enroll.phoneRole.admin')}</option>
+                  </Select>
+                )}
+              </Field>
+            )}
             {suggestion && platform === suggestion.suggested_platform && (
               <div className="-mt-2 space-y-1.5">
                 {suggestion.platform_source === 'default' ? (
