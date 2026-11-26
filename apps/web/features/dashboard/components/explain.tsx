@@ -3,6 +3,7 @@
 import clsx from 'clsx';
 import { Info } from 'lucide-react';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Modal } from '@/components/ui';
 import { duration } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -65,11 +66,14 @@ export function Explain({ title, basis, children, className }: { title: string; 
         {children ?? <Info className="size-3.5" aria-hidden />}
         {children && <span className="sr-only"> · {t('dash.explain.open')}</span>}
       </button>
-      {open && (
-        <Modal title={title} onClose={() => setOpen(false)}>
-          <BasisList basis={basis()} />
-        </Modal>
-      )}
+      {/* Portalled: the trigger often sits inside a <p> or <dd>, where a dialog's headings and divs may not go. */}
+      {open &&
+        createPortal(
+          <Modal title={title} onClose={() => setOpen(false)}>
+            <BasisList basis={basis()} />
+          </Modal>,
+          document.body,
+        )}
     </>
   );
 }

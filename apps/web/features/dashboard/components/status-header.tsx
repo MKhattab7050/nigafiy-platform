@@ -82,7 +82,7 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
             {deductions.map((b) => (
               <span key={b.code} className="flex items-baseline justify-between gap-3">
                 <span className="min-w-0 text-muted">{sentence(b)}</span>
-                <span className="shrink-0 font-medium text-crit">{fill(t('dash.why.points'), { points: b.points })}</span>
+                <span className="shrink-0 font-medium text-crit" dir="ltr">{fill(t('dash.why.points'), { points: b.points })}</span>
               </span>
             ))}
           </span>
@@ -123,7 +123,7 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
                       {sentence(b)}
                     </span>
                     <span className="shrink-0 font-medium text-crit">
-                      <span aria-hidden>{fill(t('dash.why.points'), { points: b.points })}</span>
+                      <span aria-hidden dir="ltr">{fill(t('dash.why.points'), { points: b.points })}</span>
                       <span className="sr-only">{fill(t('dash.why.pointsSr'), { points: b.points })}</span>
                     </span>
                   </li>
