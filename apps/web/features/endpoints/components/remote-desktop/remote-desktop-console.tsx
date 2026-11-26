@@ -252,7 +252,10 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
           >
             <canvas
               ref={rd.canvasRef}
-              className={clsx('max-h-[72vh] max-w-full select-none object-contain', !rd.hasPicture && 'hidden', rd.mayControl && 'cursor-crosshair')}
+              className={clsx(
+                'max-h-[72vh] max-w-full select-none object-contain',
+                // Full screen: the picture fills the screen (picture-rect.ts maps taps through the bars).
+                '[:fullscreen_&]:size-full [:fullscreen_&]:max-h-none', !rd.hasPicture && 'hidden', rd.mayControl && 'cursor-crosshair')}
               aria-label={tx.title}
               {...(rd.isPhone ? rd.phoneHandlers : rd.canvasHandlers)}
             />

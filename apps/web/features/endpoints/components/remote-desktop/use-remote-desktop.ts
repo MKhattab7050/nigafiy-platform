@@ -5,6 +5,7 @@ import { useI18n } from '@/lib/i18n';
 import type { ConnectChoice } from '../fleet-policy/connect-dialog';
 import { policyText } from '../fleet-policy/policy-text';
 import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';
+import { canvasPictureBox } from './picture-rect';
 import { pointerThrottle } from './pointer-throttle';
 import { useWebRtcVideo } from './use-webrtc-video';
 
@@ -456,7 +457,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   };
 
   function pointer(e: React.MouseEvent<HTMLCanvasElement> | React.WheelEvent<HTMLCanvasElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = canvasPictureBox(e.currentTarget);
     if (rect.width <= 0 || rect.height <= 0) return null;
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
