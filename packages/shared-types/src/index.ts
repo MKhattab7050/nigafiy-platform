@@ -1139,6 +1139,17 @@ export interface ToolRun {
 // ── Phase 3 & 4: Universal Endpoint Management & Remote Administration ──────
 
 export type EndpointStatus = 'pending' | 'active' | 'revoked';
+/**
+ * The one state a managed computer or phone is shown in (badges, counts, search). Combines the
+ * enrollment status with the agent's connection: revoked (access taken away), pending (enrollment
+ * or the first check-in not finished yet), online, offline (enrolled, not connected right now).
+ */
+export type EndpointState = 'online' | 'offline' | 'pending' | 'revoked';
+export function endpointState(ep: { status: EndpointStatus; connection_state: 'never' | 'online' | 'offline' }): EndpointState {
+  if (ep.status === 'revoked') return 'revoked';
+  if (ep.status === 'pending' || ep.connection_state === 'never') return 'pending';
+  return ep.connection_state;
+}
 /** Platforms a Nigafiy agent runs on (Android: agents/android-agent, migration 045). iOS is not supported. */
 export type EndpointPlatform = 'windows' | 'linux' | 'macos' | 'android';
 export type EndpointComplianceStatus = 'compliant' | 'non_compliant' | 'attention' | 'unknown';

@@ -4,12 +4,12 @@ import clsx from 'clsx';
 import { Ban, KeyRound, LifeBuoy, Plus, Search, ShieldAlert, ShieldCheck, Star } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
+import { type EndpointComplianceStatus, type EndpointPlatform, type EndpointSummary, endpointState } from '@nigafiy/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
 import { PlatformIcon } from '@/components/device-icon';
 import { DeviceLink } from '@/components/device-link';
 import { SetupArt } from '@/components/illustrations';
-import { Badge, Button, Card, EmptyState, Input, Segmented, Select } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, Input, Segmented, Select, StatusBadge, useStatusLabel } from '@/components/ui';
 import { api } from '@/lib/api';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -17,7 +17,7 @@ import { localizeComplianceReason } from '@/lib/localize';
 import { endpointsText } from '../text';
 import { GroupTag, useFleetGroups } from './fleet-policy/group-assign';
 import { policyText } from './fleet-policy/policy-text';
-import { Meter, complianceTone, epTone } from './endpoint-tones';
+import { Meter, complianceTone } from './endpoint-tones';
 import { BulkBar } from './reach/bulk-bar';
 import { reachText } from './reach/reach-text';
 
@@ -50,6 +50,7 @@ export function FleetContent({
   onReload?: () => void;
 }) {
   const { locale, t } = useI18n();
+  const statusLabel = useStatusLabel();
   const tx = endpointsText(locale);
   const px = policyText(locale);
   const rx = reachText(locale);
@@ -68,14 +69,16 @@ export function FleetContent({
   const active = useMemo(() => items.filter((e) => e.status !== 'revoked'), [items]);
 
   const stats = useMemo(() => {
-    const online = active.filter((e) => e.status === 'active' && e.connection_state === 'online').length;
-    const offline = active.length - online;
+    // One state per endpoint (shared mapping): offline and pending are counted apart, never together.
+    const online = active.filter((e) => endpointState(e) === 'online').length;
+    const offline = active.filter((e) => endpointState(e) === 'offline').length;
+    const pending = active.filter((e) => endpointState(e) === 'pending').length;
     const nonCompliant = active.filter((e) => e.compliance_status === 'non_compliant').length;
     const attention = active.filter(
       (e) =>
         e.compliance_status === 'attention' ||
         e.compliance_status === 'non_compliant' ||
-        (e.status === 'active' && e.connection_state === 'offline'),
+        endpointState(e) === 'offline',
     ).length;
     const byPlatform: Record<EndpointPlatform, number> = {
       windows: 0,
@@ -87,7 +90,7 @@ export function FleetContent({
       const p = e.platform ?? 'windows';
       byPlatform[p] = (byPlatform[p] ?? 0) + 1;
     }
-    return { total: active.length, online, offline, nonCompliant, attention, byPlatform };
+    return { total: active.length, online, offline, pending, nonCompliant, attention, byPlatform };
   }, [active]);
 
   const complianceSlices = (['compliant', 'attention', 'non_compliant', 'unknown'] as const).map((c) => ({
@@ -163,8 +166,9 @@ export function FleetContent({
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 p-5 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
           {[
             { label: tx.fleetStats.total, value: stats.total, cls: 'text-fg' },
-            { label: tx.fleetStats.online, value: stats.online, cls: 'text-ok' },
-            { label: tx.fleetStats.offline, value: stats.offline, cls: 'text-muted' },
+            { label: statusLabel('online'), value: stats.online, cls: 'text-ok' },
+            { label: statusLabel('offline'), value: stats.offline, cls: stats.offline > 0 ? 'text-crit' : 'text-fg' },
+            ...(stats.pending > 0 ? [{ label: statusLabel('pending'), value: stats.pending, cls: 'text-warn' }] : []),
             { label: tx.fleetStats.attention, value: stats.attention, cls: stats.attention > 0 ? 'text-warn' : 'text-fg' },
             { label: tx.fleetStats.nonCompliant, value: stats.nonCompliant, cls: stats.nonCompliant > 0 ? 'text-crit' : 'text-ok' },
           ].map((k) => (
@@ -302,15 +306,6 @@ export function FleetContent({
       {/* Endpoint Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {filtered.map((ep) => {
-          const statusLabel =
-            ep.status === 'revoked'
-              ? tx.revoked
-              : ep.status === 'pending'
-                ? tx.pending
-                : ep.connection_state === 'online'
-                  ? tx.online
-                  : tx.offline;
-
           return (
             <Card
               key={ep.id}
@@ -339,7 +334,7 @@ export function FleetContent({
                     </button>
                   )}
                   <Badge tone="info">{tx.platforms[ep.platform] ?? ep.platform}</Badge>
-                  <Badge tone={epTone(ep)}>{statusLabel}</Badge>
+                  <StatusBadge status={endpointState(ep)} />
                   {(ep.open_help_requests ?? 0) > 0 && (
                     <Link href="/fleet/requests" className="inline-flex">
                       <Badge tone="warn">

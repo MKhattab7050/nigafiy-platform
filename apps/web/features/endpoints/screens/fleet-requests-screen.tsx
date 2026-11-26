@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { FleetHelpRequest, FleetQuickSupport } from '@nigafiy/shared-types';
-import { Async, Badge, Button, Card, DataTable, Input, Notice, PageHeader, Select, Tabs, type Tone } from '@/components/ui';
+import { Async, Badge, Button, Card, DataTable, Input, Notice, PageHeader, Select, StatusBadge, Tabs, type Tone } from '@/components/ui';
 import { ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
@@ -85,7 +85,7 @@ export function FleetRequestsScreen() {
                           {tx.helpFrom(r.requested_by, r.endpoint_name)}
                         </Link>
                         <span className="mono text-xs text-muted">{ltr(formatId(r.nigafiy_id))}</span>
-                        {r.connection_state !== 'online' && <Badge tone="idle">{tx.offline}</Badge>}
+                        {r.connection_state !== 'online' && <StatusBadge status="offline" />}
                         <span className="text-xs text-faint" title={absoluteTime(r.created_at, locale)}>
                           {relativeTime(r.created_at, locale)}
                         </span>

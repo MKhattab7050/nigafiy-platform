@@ -2,8 +2,8 @@
 
 import { Cpu } from 'lucide-react';
 import Link from 'next/link';
-import type { DeviceDetail, DeviceType, EndpointSummary } from '@nigafiy/shared-types';
-import { Badge, Card } from '@/components/ui';
+import { type DeviceDetail, type DeviceType, type EndpointSummary, endpointState } from '@nigafiy/shared-types';
+import { Card, StatusBadge } from '@/components/ui';
 import { useApp, useQuery } from '@/lib/app';
 import { pct } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -32,14 +32,11 @@ function DeviceEndpointCardBody({ device, ep }: { device: DeviceDetail; ep: Endp
   const { can } = useApp();
 
   if (ep) {
-    const online = ep.status === 'active' && ep.connection_state === 'online';
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-[13px] font-medium text-fg">{ep.name}</span>
-          <Badge tone={online ? 'ok' : ep.status === 'pending' ? 'warn' : 'crit'}>
-            {ep.status === 'pending' ? tx.pending : online ? tx.online : tx.offline}
-          </Badge>
+          <StatusBadge status={endpointState(ep)} />
         </div>
         {ep.status === 'active' && (
           <div className="grid grid-cols-3 gap-2 rounded-md border border-line bg-bg/60 p-2 text-xs">

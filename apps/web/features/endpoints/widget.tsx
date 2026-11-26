@@ -1,9 +1,9 @@
 'use client';
 
 import { Cpu } from 'lucide-react';
-import type { EndpointComplianceStatus, EndpointPlatform, EndpointSummary } from '@nigafiy/shared-types';
+import { type EndpointComplianceStatus, type EndpointPlatform, type EndpointSummary, endpointState } from '@nigafiy/shared-types';
 import { Donut, Legend, ProportionBar, SERIES } from '@/components/charts';
-import { Async, SectionLabel } from '@/components/ui';
+import { Async, SectionLabel, statusTone, useStatusLabel } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
@@ -11,7 +11,6 @@ import { useReportAttention } from '@/lib/attention';
 import { fill, useI18n } from '@/lib/i18n';
 import { endpointsText } from './text';
 
-const isOnline = (e: EndpointSummary) => e.status === 'active' && e.connection_state === 'online';
 const COMPLIANCE: { key: EndpointComplianceStatus; color: string }[] = [
   { key: 'compliant', color: 'var(--color-ok)' },
   { key: 'attention', color: 'var(--color-warn)' },
@@ -23,6 +22,7 @@ const PLATFORMS: EndpointPlatform[] = ['windows', 'linux', 'macos'];
 /** Dashboard: managed computers — reachability, compliance split and platform mix (GET /endpoints). */
 export default function EndpointsWidget() {
   const { t, tn, locale } = useI18n();
+  const statusLabel = useStatusLabel();
   const tx = endpointsText(locale);
   const { siteId } = useApp();
   const query = useQuery<{ items: EndpointSummary[] }>(`/endpoints${qs({ site_id: siteId })}`, ['devices'], 30_000);
@@ -46,17 +46,18 @@ export default function EndpointsWidget() {
         {({ items }) => {
           const active = items.filter((e) => e.status !== 'revoked');
           if (active.length === 0) return <NextStep text={t('endpoints.widget.none')} label={t('endpoints.widget.enroll')} href="/fleet/endpoints" />;
-          const online = active.filter(isOnline).length;
-          const pending = active.filter((e) => e.status === 'pending').length;
-          const offline = active.length - online - pending;
+          const count = (s: 'online' | 'offline' | 'pending') => active.filter((e: EndpointSummary) => endpointState(e) === s).length;
+          const online = count('online');
+          const pending = count('pending');
+          const offline = count('offline');
           const compliance = COMPLIANCE.map((c) => ({ key: c.key, label: tx.complianceStatus[c.key], value: active.filter((e) => e.compliance_status === c.key).length, color: c.color }));
           const platforms = PLATFORMS.map((p, i) => ({ key: p, label: tx.platforms[p], value: active.filter((e) => e.platform === p).length, color: SERIES[i]! }));
           return (
             <div className="space-y-5">
               <div className="grid grid-cols-3 gap-2">
                 <Metric label={tx.fleetStats.total} value={active.length} />
-                <Metric label={tx.online} value={online} tone={online ? 'ok' : 'idle'} />
-                <Metric label={tx.offline} value={offline} tone={offline ? 'warn' : 'idle'} />
+                <Metric label={statusLabel('online')} value={online} tone={online ? statusTone('online') : 'idle'} />
+                <Metric label={statusLabel('offline')} value={offline} tone={offline ? statusTone('offline') : 'idle'} />
               </div>
               <div>
                 <SectionLabel>{t('dash.compliance')}</SectionLabel>
@@ -76,7 +77,7 @@ export default function EndpointsWidget() {
               </div>
               {pending > 0 && (
                 <p className="tnum text-xs text-muted">
-                  {tx.pending}: {pending}
+                  {statusLabel('pending')}: {pending}
                 </p>
               )}
             </div>

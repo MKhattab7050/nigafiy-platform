@@ -12,7 +12,7 @@ import { useApp } from '@/lib/app';
 import { type Key, useI18n } from '@/lib/i18n';
 import { programById } from '@/lib/programs';
 import { usePrograms } from '@/lib/programs-context';
-import { Badge, ErrorNote, type Tone } from '../ui';
+import { Badge, type ConnState, ErrorNote, StatusBadge, type Tone } from '../ui';
 
 const HIT_GROUPS: SearchHitKind[] = ['device', 'endpoint', 'incident', 'switch', 'subnet', 'scope', 'router', 'knowledge'];
 
@@ -25,6 +25,8 @@ interface Item {
   icon?: LucideIcon;
   site?: string | null;
   status?: string | null;
+  /** Devices and computers: their status uses the shared state badge (same word, tone and tooltip as their pages). */
+  sharedState?: boolean;
   run: () => void;
   /** Pages: also matched by URL; the home-view pages lead the list before anything is typed. */
   route?: string;
@@ -183,6 +185,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
           ltrSubtitle: kind !== 'knowledge',
           site: h.site_name,
           status: h.status,
+          sharedState: h.kind === 'device' || h.kind === 'endpoint',
           run: () => go(h.href),
         })),
       });
@@ -318,7 +321,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
                         </Badge>
                       </span>
                     )}
-                    {it.status && <Badge tone={hitTone(it.status)}>{it.status}</Badge>}
+                    {it.status && (it.sharedState ? <StatusBadge status={it.status as ConnState} /> : <Badge tone={hitTone(it.status)}>{it.status}</Badge>)}
                     {selected && <CornerDownLeft className="size-3.5 shrink-0 text-faint max-sm:hidden rtl:-scale-x-100" aria-hidden />}
                   </div>
                 );

@@ -76,8 +76,8 @@ export const DEVICE_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
 
 export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   device_discovered: { en: 'New device', ar: 'جهاز جديد' },
-  device_offline: { en: 'Device offline', ar: 'انقطاع جهاز' },
-  device_online: { en: 'Device back online', ar: 'عودة جهاز' },
+  device_offline: { en: 'Device offline', ar: 'جهاز غير متصل' },
+  device_online: { en: 'Device back online', ar: 'جهاز عاد متصلًا' },
   device_ip_changed: { en: 'IP changed', ar: 'تغيّر IP' },
   ip_mac_changed: { en: 'IP answered by new MAC', ar: 'MAC جديد لعنوان IP' },
   discovery_baseline: { en: 'Initial discovery', ar: 'الاكتشاف الأولي' },

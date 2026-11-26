@@ -35,10 +35,6 @@ const en = {
   newToken: 'New token',
   revoke: 'Revoke',
   revokeConfirm: 'Revoke this endpoint? Its credential stops working immediately.',
-  online: 'Online',
-  offline: 'Offline',
-  pending: 'Pending enrollment',
-  revoked: 'Revoked',
   loggedInUser: 'Active user',
   noUser: 'No active user session',
   cpu: 'CPU',
@@ -51,8 +47,6 @@ const en = {
   back: 'All endpoints',
   fleetStats: {
     total: 'Total endpoints',
-    online: 'Online',
-    offline: 'Offline / Pending',
     attention: 'Needs attention',
     nonCompliant: 'Compliance issues',
     windows: 'Windows',
@@ -69,7 +63,8 @@ const en = {
     compliant: 'Compliant',
     attention: 'Needs attention',
     non_compliant: 'Non-compliant',
-    unknown: 'Unknown',
+    // Not the connection state "Unknown": no security report from the agent yet.
+    unknown: 'Not checked yet',
   } as Record<EndpointComplianceStatus, string>,
   capabilityStates: {
     supported: 'Supported',
@@ -240,10 +235,6 @@ const ar: Dict = {
   newToken: 'رمز جديد',
   revoke: 'إلغاء الاعتماد',
   revokeConfirm: 'إلغاء اعتماد هذا الجهاز؟ سيتوقف اعتماده عن العمل فورًا.',
-  online: 'متصل',
-  offline: 'غير متصل',
-  pending: 'بانتظار التسجيل',
-  revoked: 'ملغى',
   loggedInUser: 'المستخدم الحالي',
   noUser: 'لا توجد جلسة مستخدم نشطة',
   cpu: 'المعالج',
@@ -256,8 +247,6 @@ const ar: Dict = {
   back: 'كل الأجهزة المُدارة',
   fleetStats: {
     total: 'إجمالي الأجهزة',
-    online: 'متصل الآن',
-    offline: 'غير متصل / بانتظار التسجيل',
     attention: 'يتطلب انتباه',
     nonCompliant: 'غير ممتثل للسياسات',
     windows: 'Windows',
@@ -274,7 +263,7 @@ const ar: Dict = {
     compliant: 'ممتثل (Compliant)',
     attention: 'يتطلب مراجعة',
     non_compliant: 'غير ممتثل',
-    unknown: 'غير معروف',
+    unknown: 'لم يُفحص بعد',
   },
   capabilityStates: {
     supported: 'مدعوم',
