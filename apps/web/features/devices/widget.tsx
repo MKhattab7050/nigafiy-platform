@@ -5,7 +5,7 @@ import type { Device, Overview, Paginated } from '@nigafiy/shared-types';
 import { BarList, Donut, Legend } from '@/components/charts';
 import { DeviceIcon } from '@/components/device-icon';
 import { SetupArt } from '@/components/illustrations';
-import { Async, SectionLabel, StatusBadge } from '@/components/ui';
+import { Async, SectionLabel, StatusBadge, statusColor } from '@/components/ui';
 import { Metric, NextStep, Widget, attentionFrom } from '@/components/widget';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
@@ -52,9 +52,9 @@ export default function DevicesWidget() {
           if (o.devices.total === 0) return <NextStep art={<SetupArt className="h-16 w-28" />} text={t('devices.emptyNone')} label={t('overview.setupCta')} href="/radar/discovery" />;
           const total = o.devices.total;
           const slices = [
-            { key: 'online', label: t('status.online'), value: o.devices.online, color: 'var(--color-ok)' },
-            { key: 'offline', label: t('status.offline'), value: o.devices.offline, color: 'var(--color-crit)' },
-            { key: 'unknown', label: t('status.unknown'), value: o.devices.unknown, color: 'var(--color-idle)' },
+            { key: 'online', label: t('status.online'), value: o.devices.online, color: statusColor('online') },
+            { key: 'offline', label: t('status.offline'), value: o.devices.offline, color: statusColor('offline') },
+            { key: 'unknown', label: t('status.unknown'), value: o.devices.unknown, color: statusColor('unknown') },
           ];
           return (
             <div className="space-y-5">
