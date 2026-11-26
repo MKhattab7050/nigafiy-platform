@@ -9,7 +9,7 @@ import { HEARTBEAT_INTERVAL_SECONDS } from '../repo.ts';
 import { agentCommandResultsSchema, agentEnrollSchema, agentHeartbeatSchema, agentInventorySchema } from '../schema.ts';
 import { requireEndpointAgent } from './auth.ts';
 import { parsePollWaitMs } from './wake.ts';
-import { enrollAgent, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
+import { enrollAgent, leaveFromDevice, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
 import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 import { agentHelpRequestSchema, quickRegisterSchema } from '../fleet-reach/schema.ts';
 import { createHelpRequest } from '../fleet-reach/help-requests.ts';
@@ -110,6 +110,11 @@ agentGatewayRouter.post('/recordings', requireEndpointAgent, async (req, res) =>
 });
 agentGatewayRouter.post('/recordings/link', requireEndpointAgent, async (req, res) => {
   res.json(await agentRecordingLink(req.endpoint!, parse(recordingLinkSchema, req.body)));
+});
+
+// The person logged out in the app on the device: the credential stops working now.
+agentGatewayRouter.post('/leave', requireEndpointAgent, async (req, res) => {
+  res.json({ ok: true, revoked: await leaveFromDevice(req.endpoint!) });
 });
 
 // The person at the computer pressed "End session" on the remote support banner.

@@ -329,6 +329,18 @@ describe('Android actions: Device Owner, roles, policy, MFA, approvals, audit', 
     expect((await audits(a.organizationId, 'endpoint.revoked'))[0]?.metadata).toMatchObject({ reason: 'android_management_stopped', source: 'endpoint_agent' });
   });
 
+  it('"Log out" on the phone revokes it at once; the credential stops working', async () => {
+    const a = await newAccount('android-log-out');
+    const { epId, cred } = await phone(a, 'regular');
+    const r = await request(app).post('/api/v1/agent/leave').set('Authorization', `Bearer ${cred}`).send({});
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, revoked: true });
+    expect((await systemPool.query(`SELECT status, credential_hash FROM endpoints WHERE id = $1`, [epId])).rows[0]).toMatchObject({ status: 'revoked', credential_hash: null });
+    expect((await heartbeat(cred, 'Pixel-Reception', 'regular')).status).toBe(401);
+    expect((await request(app).post('/api/v1/agent/leave').set('Authorization', `Bearer ${cred}`).send({})).status).toBe(401);
+    expect((await audits(a.organizationId, 'endpoint.revoked'))[0]?.metadata).toMatchObject({ reason: 'logged_out_on_device', source: 'endpoint_agent' });
+  });
+
   // Seen on the emulator run: Android accepted wipeDevice, the agent said "erasing", but the phone
   // could not reboot into recovery and kept running.
   it('a phone that reports again without restarting after an erase turns the erase into "failed"', async () => {

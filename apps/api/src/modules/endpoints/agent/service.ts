@@ -388,3 +388,31 @@ export async function recordInventory(ep: EndpointContext, body: AgentInventory)
     await notifyRealtime(db, ep.organizationId, 'devices');
   });
 }
+
+/**
+ * The person logged out in the Nigafiy app on the device ("Log out" on the Android app): the
+ * endpoint is revoked at once, like a confirmed "Stop management", so its credential stops working
+ * and Fleet shows "Revoked" (not just "Offline"). Enrolling again needs a new token.
+ */
+export async function leaveFromDevice(ep: EndpointContext): Promise<boolean> {
+  return withTenant(ep.organizationId, async (db) => {
+    const r = await db.query(
+      `UPDATE endpoints SET status = 'revoked', connection_state = 'offline', revoked_at = now(), credential_hash = NULL, enrollment_token_hash = NULL, rd_session = NULL
+        WHERE id = $1 AND status <> 'revoked'`,
+      [ep.id],
+    );
+    if (!r.rowCount) return false;
+    await auditEndpointEvent(db, ep.organizationId, ep.id, 'endpoint.revoked', { reason: 'logged_out_on_device' });
+    await emitEvent(db, ep.organizationId, {
+      siteId: ep.siteId,
+      deviceId: ep.deviceId,
+      type: 'endpoint_command',
+      severity: 'info',
+      title: `"${ep.name}" was logged out of Nigafiy on the device itself`,
+      details: { endpoint_id: ep.id, reason: 'logged_out_on_device' },
+      source: 'platform',
+      occurredAt: new Date(),
+    });
+    return true;
+  });
+}

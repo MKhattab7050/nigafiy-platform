@@ -105,6 +105,9 @@ class Gateway(val server: String, private val pin: String?, private var credenti
 
     fun heartbeat(body: Map<String, Any?>) = post("/api/v1/agent/heartbeat", body)
 
+    /** "Log out" on the device: the server revokes this endpoint and its credential. */
+    fun leave() = post("/api/v1/agent/leave", emptyMap(), readTimeoutMs = 8_000)
+
     /** Long poll (≤ 25 s on the server). */
     fun poll(waitMs: Int = 25_000): Pair<List<AgentCommand>, List<CommandOutcome>> {
         val c = open("/api/v1/agent/poll?wait_ms=$waitMs", waitMs + 20_000)

@@ -16,22 +16,33 @@ import android.text.format.DateUtils
 import android.view.View
 import android.view.WindowInsets
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.nigafiy.agent.core.Enrollment
 import com.nigafiy.agent.core.Mode
 
-/** Enrollment form (or the `nigafiy://enroll` link from Fleet's QR) and the agent's status. */
+/**
+ * Three tabs: Home (the enrollment form, or the agent's status, and "Your connection"), Tools (the
+ * phone's own network tools, ToolsScreen) and Settings (phone controls, Stop everything, Log out,
+ * privacy).
+ */
 class MainActivity : Activity() {
     private lateinit var store: Store
     private lateinit var root: LinearLayout
     private lateinit var ui: Ui
+    private lateinit var scroll: ScrollView
+    private lateinit var toolsScroll: ScrollView
+    private lateinit var navHolder: FrameLayout
+    private lateinit var tools: ToolsScreen
+    private var tab = TAB_HOME
+    private var lastCheck: NetProbe.CheckResult? = null
     private val handler = Handler(Looper.getMainLooper())
-    // Redraws the status / enrolling screens every 3 s. Never the form: redrawing it threw away what
-    // the person was typing (first real-phone run: "I type them and it erases them").
+    // Redraws Home and Settings every 3 s (never Tools, which updates itself). Never the form either:
+    // redrawing it threw away what the person was typing (first real-phone run).
     private val refresh = object : Runnable {
         override fun run() {
-            render()
+            if (tab != TAB_TOOLS) render()
             if (store.enrolled || store.pendingEnrollment != null) handler.postDelayed(this, 3000)
         }
     }
@@ -47,19 +58,45 @@ class MainActivity : Activity() {
             if (!ui.dark) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         }
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(24)) }
-        val scroll = ScrollView(this).apply { addView(root); setBackgroundColor(ui.bg); isFillViewport = true }
+        scroll = ScrollView(this).apply { addView(root); isFillViewport = true }
+        tools = ToolsScreen(this, ui) { r -> lastCheck = r }
+        toolsScroll = ScrollView(this).apply { addView(tools.view); isFillViewport = true; visibility = View.GONE }
+        val content = FrameLayout(this).apply { addView(scroll); addView(toolsScroll) }
+        navHolder = FrameLayout(this)
+        val outer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ui.bg)
+            addView(content, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(navHolder, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
         if (Build.VERSION.SDK_INT >= 35) {
             // Android 15+ draws an app targeting API 35+ edge to edge: without this the first lines
             // sat under the status bar (first emulator run).
-            scroll.setOnApplyWindowInsetsListener { v, insets ->
+            outer.setOnApplyWindowInsetsListener { v, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 insets
             }
         }
-        setContentView(scroll)
+        setContentView(outer)
+        tab = savedInstanceState?.getInt("tab", TAB_HOME) ?: TAB_HOME
         fromLink(intent)
         startAgent()
+        showTab(tab)
+    }
+
+    private fun showTab(t: Int) {
+        if (tab == TAB_TOOLS && t != TAB_TOOLS) tools.onHide()
+        tab = t
+        scroll.visibility = if (t == TAB_TOOLS) View.GONE else View.VISIBLE
+        toolsScroll.visibility = if (t == TAB_TOOLS) View.VISIBLE else View.GONE
+        navHolder.removeAllViews()
+        navHolder.addView(ui.tabBar(listOf(
+            Triple(getString(R.string.tab_home), R.drawable.ic_tab_home) { showTab(TAB_HOME) },
+            Triple(getString(R.string.tab_tools), R.drawable.ic_tab_tools) { showTab(TAB_TOOLS) },
+            Triple(getString(R.string.tab_settings), R.drawable.ic_tab_settings) { showTab(TAB_SETTINGS) },
+        ), t))
+        if (t == TAB_TOOLS) tools.onShow() else { render(); scroll.scrollTo(0, 0) }
     }
 
     /**
@@ -84,7 +121,9 @@ class MainActivity : Activity() {
         if (store.stopped) startAgent()
         handler.post(refresh)
     }
-    override fun onPause() { super.onPause(); handler.removeCallbacks(refresh) }
+    override fun onPause() { super.onPause(); handler.removeCallbacks(refresh); if (tab == TAB_TOOLS) tools.onHide() }
+
+    override fun onPostResume() { super.onPostResume(); if (tab == TAB_TOOLS) tools.onShow() }
 
     private var prefill: Enrollment? = null
     // Not "error": inside a View's apply { } that name is the view's own TextView.error (first real-phone run).
@@ -103,13 +142,45 @@ class MainActivity : Activity() {
 
     private fun render() {
         // Keep the scroll position across the 3-second redraws.
-        val scroll = root.parent as? ScrollView
-        val y = scroll?.scrollY ?: 0
+        val y = scroll.scrollY
         root.removeAllViews()
-        if (store.enrolled) renderStatus() else if (store.pendingEnrollment != null) renderEnrolling() else renderForm()
+        if (tab == TAB_SETTINGS) {
+            renderSettings()
+        } else {
+            if (store.enrolled) renderStatus() else if (store.pendingEnrollment != null) renderEnrolling() else renderForm()
+            renderConnection()
+        }
+        scroll.post { scroll.scrollTo(0, y) }
+    }
+
+    /** Home: "Your connection" — the Wi-Fi signal now and the last check, with a button to run one. */
+    private fun renderConnection() {
+        val c = ui.card(root, getString(R.string.conn_title))
+        val r = lastCheck
+        if (r != null) {
+            val (title, detail) = tools.verdictText(r.verdict)
+            c.addView(ui.verdict(title, detail, if (r.verdict == com.nigafiy.agent.core.NetTools.Verdict.ALL_GOOD) ui.ok else ui.warn))
+        }
+        val l = try { NetProbe(this).link() } catch (_: Exception) { null }
+        if (l != null) {
+            when {
+                l.onWifi && l.rssi != null -> ui.fact(c, getString(R.string.wifi_signal), tools.signalLine(l.rssi))
+                !l.connected -> ui.fact(c, getString(R.string.wifi_title), getString(R.string.wifi_off))
+                !l.onWifi -> ui.fact(c, getString(R.string.wifi_title), getString(R.string.wifi_off_cell))
+            }
+        }
+        ui.addButton(c, getString(R.string.check_run)) { showTab(TAB_TOOLS); tools.runCheck() }
+        ui.addButton(c, getString(R.string.conn_more_tools), primary = false) { showTab(TAB_TOOLS) }
+    }
+
+    /** Settings: the phone controls, Stop everything and Log out (managed phones), and privacy. */
+    private fun renderSettings() {
+        root.addView(ui.header(getString(R.string.tab_settings), getString(R.string.settings_subtitle), null))
+        if (store.enrolled) renderControls()
         val privacy = ui.card(root, getString(R.string.section_privacy))
         privacy.addView(ui.text(getString(R.string.what_is_sent), 13f, ui.muted))
-        scroll?.post { scroll.scrollTo(0, y) }
+        privacy.addView(ui.text(getString(R.string.tools_privacy), 13f, ui.muted))
+        root.addView(ui.text(getString(R.string.app_version, com.nigafiy.agent.core.Version.NAME), 12f, ui.muted, top = 4).apply { gravity = android.view.Gravity.CENTER })
     }
 
     private fun renderEnrolling() {
@@ -154,7 +225,10 @@ class MainActivity : Activity() {
             if (needNotif) ui.addButton(setup, getString(R.string.action_notifications)) { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) }
             if (needBattery) ui.addButton(setup, getString(R.string.action_battery)) { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
         }
+    }
 
+    private fun renderControls() {
+        val mode = Facts(this, store).mode()
         // The optional phone controls: each one is the person's own switch in Android's Settings.
         val ctl = ui.card(root, getString(R.string.controls_title), getString(R.string.controls_hint))
         ui.control(ctl, getString(R.string.control_screen), null, getString(R.string.chip_asks), getString(R.string.controls_screen))
@@ -191,11 +265,44 @@ class MainActivity : Activity() {
         ui.divider(ctl)
         ui.control(ctl, getString(R.string.control_ring_message), null, getString(R.string.chip_notification), getString(R.string.controls_ring_message))
 
-        // The person's own off switch. Not on a company phone (Device Owner): IT manages that one.
+        // The person's own off switch and log out. Not on a company phone (Device Owner): IT manages that one.
         if (mode != Mode.DEVICE_OWNER) {
             val stop = ui.card(root, getString(R.string.stop_all_title), getString(R.string.stop_all_hint))
             ui.addButton(stop, getString(R.string.action_stop_all)) { confirmStopAll() }
+            val out = ui.card(root, getString(R.string.logout_title), getString(R.string.logout_hint))
+            ui.addButton(out, getString(R.string.action_logout), primary = false) { confirmLogOut() }
         }
+    }
+
+    private fun confirmLogOut() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.logout_confirm_title)
+            .setMessage(R.string.logout_confirm_text)
+            .setPositiveButton(R.string.action_logout) { _, _ -> logOut() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * Log out: the server revokes this phone (POST /agent/leave), then everything stops and the app
+     * forgets its server and credential. Without the server (offline, older version) the phone still
+     * logs out, and says that Nigafiy keeps listing it until it is removed there.
+     */
+    private fun logOut() {
+        val server = store.server ?: return
+        val pin = store.pin
+        val cred = store.credential
+        Thread {
+            val told = try { com.nigafiy.agent.core.Gateway(server, pin, cred).leave(); true } catch (_: Exception) { false }
+            runOnUiThread {
+                try { ScreenShare.stopEverything(this) } catch (_: Exception) { }
+                stopService(Intent(this, AgentService::class.java))
+                getSystemService(android.app.NotificationManager::class.java).cancelAll()
+                store.forget()
+                android.widget.Toast.makeText(this, if (told) R.string.logout_done else R.string.logout_done_offline, android.widget.Toast.LENGTH_LONG).show()
+                showTab(TAB_HOME)
+            }
+        }.start()
     }
 
     private fun confirmStopAll() {
@@ -218,6 +325,7 @@ class MainActivity : Activity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putInt("tab", tab)
         outState.putString("server", draftServer); outState.putString("token", draftToken); outState.putString("pin", draftPin)
     }
 
@@ -314,5 +422,11 @@ class MainActivity : Activity() {
                 render()
             }
         }
+    }
+
+    private companion object {
+        const val TAB_HOME = 0
+        const val TAB_TOOLS = 1
+        const val TAB_SETTINGS = 2
     }
 }

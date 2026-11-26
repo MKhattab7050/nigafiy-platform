@@ -28,7 +28,7 @@ class Ui(private val ctx: Context) {
     private val brandDeep = Color.parseColor("#134E4A")
     val bg = if (dark) Color.parseColor("#0B1214") else Color.parseColor("#F3F6F6")
     private val card = if (dark) Color.parseColor("#141E21") else Color.WHITE
-    private val line = if (dark) Color.parseColor("#22313A") else Color.parseColor("#E3EAEA")
+    val line = if (dark) Color.parseColor("#22313A") else Color.parseColor("#E3EAEA")
     val fg = if (dark) Color.parseColor("#E8F0F0") else Color.parseColor("#10201F")
     val muted = if (dark) Color.parseColor("#93A6A6") else Color.parseColor("#5B6F6E")
     val ok = Color.parseColor("#16A34A")
@@ -59,7 +59,8 @@ class Ui(private val ctx: Context) {
         }, LinearLayout.LayoutParams(dp(52), dp(52)))
         addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), 0, 0, 0)
+            // Relative: in Arabic the text sits left of the logo, and a left padding let it run into it.
+            setPaddingRelative(dp(14), 0, 0, 0)
             addView(TextView(ctx).apply {
                 text = title
                 setTextColor(Color.WHITE)
@@ -120,12 +121,15 @@ class Ui(private val ctx: Context) {
         parent.addView(LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(10), 0, dp(10))
-            addView(TextView(ctx).apply { text = label; textSize = 12f; setTextColor(muted) })
+            addView(TextView(ctx).apply { text = label; textSize = 12f; setTextColor(muted); textDirection = View.TEXT_DIRECTION_LOCALE; textAlignment = View.TEXT_ALIGNMENT_VIEW_START })
             addView(TextView(ctx).apply {
                 text = value
                 textSize = 15f
                 setTextColor(fg)
-                if (ltr) { textDirection = View.TEXT_DIRECTION_LTR; textAlignment = View.TEXT_ALIGNMENT_VIEW_START }
+                // A value that starts with a number or unit ("2.4 GHz · قناة 2") would otherwise sit on the
+                // left in Arabic: follow the app's language unless the value is an address or ID.
+                textDirection = if (ltr) View.TEXT_DIRECTION_LTR else View.TEXT_DIRECTION_LOCALE
+                textAlignment = View.TEXT_ALIGNMENT_VIEW_START
                 if (ltr) { ellipsize = TextUtils.TruncateAt.MIDDLE; maxLines = 2 }
             })
         })
@@ -194,5 +198,87 @@ class Ui(private val ctx: Context) {
             background = round(Color.argb(if (dark) 40 else 22, Color.red(color), Color.green(color), Color.blue(color)), 12)
             setPadding(dp(12), dp(10), dp(12), dp(10))
         }, lp(top = 10))
+    }
+
+    /** The answer of "Check my connection": a coloured title and what to do. */
+    fun verdict(title: String, detail: String, color: Int): View = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        background = round(Color.argb(if (dark) 40 else 22, Color.red(color), Color.green(color), Color.blue(color)), 14)
+        setPadding(dp(14), dp(12), dp(14), dp(12))
+        addView(TextView(ctx).apply { text = title; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(color) })
+        addView(text(detail, 14f, fg, top = 4))
+        layoutParams = lp(top = 10, bottom = 4)
+    }
+
+    /** A small rounded choice ("Router", "Internet"). */
+    fun pill(label: String, onClick: () -> Unit) = TextView(ctx).apply {
+        text = label
+        textSize = 13f
+        typeface = Typeface.DEFAULT_BOLD
+        setTextColor(brand)
+        background = RippleDrawable(ColorStateList.valueOf(Color.parseColor("#220F766E")), round(Color.TRANSPARENT, 16, brand), null)
+        setPadding(dp(14), dp(7), dp(14), dp(7))
+        isClickable = true
+        setOnClickListener { onClick() }
+    }
+
+    /** A big number with its label under it (speed test). */
+    fun bigNumber(label: String, value: String, active: Boolean): View = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(TextView(ctx).apply {
+            text = value; textSize = 28f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(if (active) brand else fg); gravity = Gravity.CENTER
+            textDirection = View.TEXT_DIRECTION_LTR
+        })
+        addView(TextView(ctx).apply { text = label; textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER })
+    }
+
+    /** One device found on the network: name, address, an optional tag and its reply time. */
+    fun deviceRow(parent: LinearLayout, name: String, ip: String, tag: String?, ms: String?) {
+        parent.addView(LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(10), 0, dp(10))
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(ctx).apply { text = name; textSize = 15f; setTextColor(fg); typeface = Typeface.DEFAULT_BOLD; maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+                addView(TextView(ctx).apply { text = ip; textSize = 13f; setTextColor(muted); textDirection = View.TEXT_DIRECTION_LTR; textAlignment = View.TEXT_ALIGNMENT_VIEW_START })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            if (tag != null) addView(chip(tag, brand), LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) })
+            if (ms != null) addView(TextView(ctx).apply { text = ms; textSize = 12f; setTextColor(muted) })
+        })
+        divider(parent)
+    }
+
+    /** The bottom tab bar: icon over label; the chosen tab is tinted and has a soft pill behind its icon. */
+    fun tabBar(tabs: List<Triple<String, Int, () -> Unit>>, selected: Int): LinearLayout = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        setBackgroundColor(card)
+        elevation = dp(8).toFloat()
+        setPadding(dp(8), dp(6), dp(8), dp(8))
+        tabs.forEachIndexed { i, (label, icon, onClick) ->
+            val on = i == selected
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                isClickable = true
+                contentDescription = label
+                background = RippleDrawable(ColorStateList.valueOf(Color.parseColor("#220F766E")), null, round(Color.WHITE, 16))
+                setPadding(0, dp(4), 0, dp(4))
+                setOnClickListener { onClick() }
+                addView(ImageView(ctx).apply {
+                    setImageResource(icon)
+                    imageTintList = ColorStateList.valueOf(if (on) brand else muted)
+                    if (on) background = round(Color.argb(if (dark) 60 else 36, Color.red(brand), Color.green(brand), Color.blue(brand)), 14)
+                    setPadding(dp(16), dp(4), dp(16), dp(4))
+                }, LinearLayout.LayoutParams(dp(60), dp(32)))
+                addView(TextView(ctx).apply {
+                    text = label; textSize = 12f; gravity = Gravity.CENTER
+                    setTextColor(if (on) brand else muted)
+                    if (on) typeface = Typeface.DEFAULT_BOLD
+                }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
     }
 }
