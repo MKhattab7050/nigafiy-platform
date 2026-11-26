@@ -8,6 +8,8 @@ import { watchCollectors } from '../src/modules/collectors/index.ts';
 import { dispatchNotifications } from '../src/modules/notifications/index.ts';
 import { CSRF, type TestAccount, type TestCollector, addScope, app, heartbeat, newAccount, newCollector, sweep, telemetry } from './helpers.ts';
 import { identityName, shortVendor } from '../src/modules/devices/index.ts';
+import { classify } from '../src/modules/devices/classify.ts';
+import { ownerFromName } from '../src/modules/devices/owner-name.ts';
 import { MOBILE_OFFLINE_AFTER_MISSED_SWEEPS } from '../src/modules/ingest/discovery/offline.ts';
 
 afterAll(closePools);
@@ -372,6 +374,59 @@ describe('working things out without asking', () => {
     expect(shortVendor('Zyxel Communications Corporation')).toBe('Zyxel');
     expect(shortVendor('VMware, Inc.')).toBe('VMware');
     expect(shortVendor(null)).toBeNull();
+  });
+
+  it("reads the owner out of a device's own name, and never guesses from ordinary names", () => {
+    const cases: [string, string | null][] = [
+      ["Sara's iPhone", 'Sara'],
+      ['Saras-iPhone.local', 'Sara'],
+      ['Chriss-MacBook-Pro', 'Chris'],
+      ['Ian-Moffats-iPhone', 'Ian Moffat'],
+      ['AHMED-PC', 'Ahmed'],
+      ['Omar-Laptop', 'Omar'],
+      ["Mona's Galaxy S23", 'Mona'],
+      ['iPhone-de-Marie', 'Marie'],
+      ['DESKTOP-U1QD285', null],
+      ['Galaxy-A35-5G', null],
+      ['My-iPhone', null],
+      ['Home-PC', null],
+      ['Living-Room-TV', null],
+      ['printer-office', null],
+      ['iPhone', null],
+    ];
+    for (const [name, owner] of cases) expect([name, ownerFromName(name)]).toEqual([name, owner]);
+  });
+
+  it('uses the network card maker only for makers of one kind of device, and never for private addresses', () => {
+    const facts = (vendor: string, macRandomized = false) => ({ fingerprint: {}, hostname: null, vendor, macRandomized, gatewayOf: null });
+    expect(classify(facts('Hangzhou Hikvision Digital Technology Co.,Ltd.'))).toMatchObject({ type: 'camera', confidence: 'medium' });
+    expect(classify(facts('Espressif Inc.'))).toMatchObject({ type: 'iot', confidence: 'medium' });
+    expect(classify(facts('Synology Incorporated'))).toMatchObject({ type: 'nas' });
+    expect(classify(facts('Brother industries, LTD.'))).toMatchObject({ type: 'printer' });
+    expect(classify(facts('Raspberry Pi Trading Ltd'))).toMatchObject({ type: 'linux_computer' });
+    expect(classify(facts('Ubiquiti Inc'))).toMatchObject({ type: 'access_point', confidence: 'low' });
+    for (const many of ['Apple, Inc.', 'Samsung Electronics Co.,Ltd', 'TP-LINK TECHNOLOGIES CO.,LTD.', 'Intel Corporate', 'Hewlett Packard', 'Xiaomi Communications Co Ltd']) {
+      expect(classify(facts(many))).toBeNull();
+    }
+    // An announced service still wins over the maker.
+    expect(classify({ ...facts('Espressif Inc.'), fingerprint: { services: ['_ipp._tcp'] } })).toMatchObject({ type: 'printer', confidence: 'high' });
+  });
+
+  it('fills in the owner from the name once, and a person clearing it is final', async () => {
+    const a = await newAccount('owner-guess');
+    const scopeId = await addScope(a, '192.168.7.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c, { gateway_ip: '192.168.7.1' });
+    const host = { ip: '192.168.7.40', mac: '00:0c:29:77:00:40', hostname: 'Saras-iPhone' };
+    await telemetry(c, [sweep(scopeId, [host], 30)]);
+    const d = (await devices(a)).find((x) => x.current_ip === host.ip)!;
+    expect(d).toMatchObject({ owner: 'Sara', owner_source: 'name' });
+    // Saving the form unchanged keeps it a guess; clearing it makes it the person's choice.
+    await a.agent.patch(`/api/v1/devices/${d.id}`).set(CSRF).send({ owner: 'Sara' });
+    expect((await a.agent.get(`/api/v1/devices/${d.id}`)).body).toMatchObject({ owner: 'Sara', owner_source: 'name' });
+    await a.agent.patch(`/api/v1/devices/${d.id}`).set(CSRF).send({ owner: null });
+    await telemetry(c, [sweep(scopeId, [host], 20)]);
+    expect((await a.agent.get(`/api/v1/devices/${d.id}`)).body).toMatchObject({ owner: null, owner_source: 'manual' });
   });
 
   it('a known phone back with a new private MAC keeps its name and trust, with no new-device alarm', async () => {

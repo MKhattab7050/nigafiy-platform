@@ -142,6 +142,12 @@ export function classify(f: ClassifyFacts): Classification | null {
     if (hit) return result(type, 'medium', `Its announced name or model contains "${hit}"`);
   }
 
+  // ── the network card's maker (IEEE registry) ──
+  // Weak on its own (a maker is not a model), so only makers that build one kind of device decide,
+  // and never above medium. A randomized MAC has no maker.
+  const maker = !f.macRandomized ? vendorKind(f.vendor) : null;
+  if (maker) return result(maker.type, maker.confidence, `Its network card was made by ${f.vendor}, which ${maker.makes}`);
+
   // ── weakest signal: a randomized MAC and nothing else ──
   if (f.macRandomized) {
     return result(
@@ -151,6 +157,28 @@ export function classify(f: ClassifyFacts): Classification | null {
       'It did not answer any identification protocol — phones usually stay silent while locked',
     );
   }
+  return null;
+}
+
+/**
+ * Makers whose network cards go (almost) only into one kind of device. Makers of many kinds
+ * (Apple, Samsung, Google, Amazon, HP, TP-Link, Xiaomi, Intel...) are deliberately absent.
+ */
+const VENDOR_KINDS: [RegExp, DeviceType, Confidence, string][] = [
+  [/\b(hikvision|dahua|ezviz|uniview|reolink|foscam|amcrest|axis communications|hanwha (techwin|vision)|vivotek|milesight|imou)\b/i, 'camera', 'medium', 'makes security cameras and recorders'],
+  [/\b(synology|qnap|asustor|terramaster|western digital)\b/i, 'nas', 'medium', 'makes network storage (NAS)'],
+  [/\b(brother industries|seiko epson|lexmark|kyocera|ricoh|xerox|zebra technologies|konica minolta)\b/i, 'printer', 'medium', 'makes printers'],
+  [/\bcanon\b/i, 'printer', 'low', 'makes printers (and cameras)'],
+  [/\b(espressif|tuya|allterco|shelly|itead|signify|philips lighting|lumi united|nest labs|ecobee|irobot|broadlink|wyze|tado|netatmo|meross|govee|lifx|sengled|ring llc|arlo)\b/i, 'iot', 'medium', 'makes smart-home devices or the Wi-Fi chips inside them'],
+  [/\b(sonos|roku|vizio|bose|denon|harman)\b/i, 'media_player', 'medium', 'makes TVs, speakers or streaming players'],
+  [/\b(raspberry pi)\b/i, 'linux_computer', 'medium', 'makes Raspberry Pi computers (usually running Linux)'],
+  [/\b(ruckus|aruba|cambium|meraki|aerohive|extreme networks|engenius)\b/i, 'access_point', 'medium', 'makes Wi-Fi access points'],
+  [/\b(ubiquiti)\b/i, 'access_point', 'low', 'makes Wi-Fi access points (and routers and switches)'],
+];
+
+export function vendorKind(vendor: string | null): { type: DeviceType; confidence: Confidence; makes: string } | null {
+  if (!vendor) return null;
+  for (const [re, type, confidence, makes] of VENDOR_KINDS) if (re.test(vendor)) return { type, confidence, makes };
   return null;
 }
 

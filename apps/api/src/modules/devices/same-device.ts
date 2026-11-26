@@ -42,6 +42,7 @@ export interface SameNameDevice {
   trust: 'unreviewed' | 'known' | 'unwanted';
   display_name: string | null;
   owner: string | null;
+  owner_source: 'name' | 'manual' | null;
   is_critical: boolean;
   alerts_muted: boolean;
   last_seen_at: Date;
@@ -53,7 +54,7 @@ export async function devicesWithSameName(db: Db, siteId: string, name: string |
   if (!key) return [];
   const rows = await db.query<SameNameDevice>(
     `SELECT id, coalesce(display_name, hostname, host(current_ip), primary_mac::text) AS label, host(current_ip) AS ip,
-            primary_mac::text AS mac, mac_randomized, status, trust, display_name, owner, is_critical, alerts_muted, last_seen_at
+            primary_mac::text AS mac, mac_randomized, status, trust, display_name, owner, owner_source, is_critical, alerts_muted, last_seen_at
        FROM devices
       WHERE site_id = $1 AND lower(split_part(hostname, '.', 1)) = $2 AND NOT (id = ANY($3::uuid[]))
       ORDER BY last_seen_at DESC LIMIT 5`,
@@ -81,9 +82,11 @@ export async function inheritFromSameName(
   if (!match) return null;
   await db.query(
     `UPDATE devices SET trust = 'known', trust_reason = 'same_name', trust_changed_at = now(),
-            display_name = coalesce(display_name, $2), owner = coalesce(owner, $3), is_critical = is_critical OR $4, alerts_muted = alerts_muted OR $5
+            display_name = coalesce(display_name, $2), owner = coalesce($3, owner),
+            owner_source = CASE WHEN $3::text IS NOT NULL THEN $6 ELSE owner_source END,
+            is_critical = is_critical OR $4, alerts_muted = alerts_muted OR $5
       WHERE id = $1 AND trust = 'unreviewed'`,
-    [deviceId, match.display_name, match.owner, match.is_critical, match.alerts_muted],
+    [deviceId, match.display_name, match.owner, match.is_critical, match.alerts_muted, match.owner_source],
   );
   return match;
 }

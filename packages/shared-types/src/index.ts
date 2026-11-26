@@ -223,6 +223,8 @@ export interface Device {
   /** Ping check created from this device (follows its IP), if any. */
   monitor_check_id: string | null;
   owner: string | null;
+  /** 'name': guessed from the device's announced name; 'manual': set or cleared by a person. */
+  owner_source?: 'name' | 'manual' | null;
   notes: string | null;
   discovery_sources: string[];
   first_seen_at: string;

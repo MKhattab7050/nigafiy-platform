@@ -119,6 +119,11 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                       <Fact label={t('device.hostname')} source={d.hostname ? t(`device.nameSource.${d.name_source ?? 'rdns'}` as Key) : undefined}>
                         {d.hostname ? <span className="mono">{d.hostname}</span> : '—'}
                       </Fact>
+                      {d.owner && (
+                        <Fact label={t('device.owner')} source={d.owner_source === 'name' ? t('device.ownerFromName') : undefined}>
+                          {d.owner}
+                        </Fact>
+                      )}
                       <Fact
                         label={t('device.type')}
                         source={d.type_source === 'inferred' ? `${t('common.inferred')} — ${d.type_evidence ?? ''}` : d.type_source === 'manual' ? t('common.manual') : undefined}

@@ -1,6 +1,7 @@
 import type { Confidence } from '@nigafiy/shared-types';
 import type { Db } from '../../infrastructure/db.ts';
 import { type Fingerprint, bestName, classify, mergeFingerprint } from './classify.ts';
+import { ownerFromNames } from './owner-name.ts';
 
 const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
 
@@ -18,6 +19,8 @@ interface Row {
   fingerprint: Fingerprint;
   trust?: 'unreviewed' | 'known' | 'unwanted';
   trust_reason?: string | null;
+  owner?: string | null;
+  owner_source?: 'name' | 'manual' | null;
   site_id?: string;
 }
 
@@ -36,7 +39,7 @@ export async function applyIdentification(
 ): Promise<void> {
   if (seen.size === 0) return;
   const rows = await db.query<Row>(
-    `SELECT id, site_id, host(current_ip) AS ip, hostname, name_source, vendor, mac_randomized, device_type, type_source, type_confidence, type_evidence, fingerprint, trust, trust_reason
+    `SELECT id, site_id, host(current_ip) AS ip, hostname, name_source, vendor, mac_randomized, device_type, type_source, type_confidence, type_evidence, fingerprint, trust, trust_reason, owner, owner_source
        FROM devices WHERE id = ANY($1)`,
     [[...seen.keys()]],
   );
@@ -81,6 +84,15 @@ export async function applyIdentification(
       set('trust', 'known');
       set('trust_reason', isOwnHost ? 'this_computer' : 'gateway');
       sets.push('trust_changed_at = now()');
+    }
+
+    // Whose it is, from its own name ("Saras-iPhone" -> Sara). Only while nobody set or cleared it.
+    if (!d.owner && !d.owner_source) {
+      const guess = ownerFromNames([fingerprint.hints?.friendly_name, fingerprint.ssdp?.friendly_name, ...(fingerprint.names ?? []).map((n) => n.name), hostname]);
+      if (guess) {
+        set('owner', guess.owner);
+        set('owner_source', 'name');
+      }
     }
 
     if (d.type_source !== 'manual') {

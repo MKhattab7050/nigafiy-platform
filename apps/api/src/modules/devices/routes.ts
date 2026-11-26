@@ -19,7 +19,7 @@ const DEVICE_SELECT = `
   SELECT d.id, d.site_id, s.name AS site_name, d.display_name, d.hostname, host(d.current_ip) AS current_ip,
          d.primary_mac::text AS primary_mac, d.mac_randomized, d.identity_basis, d.vendor, d.device_type, d.type_source,
          d.type_evidence, d.type_confidence, d.name_source, d.fingerprint, d.status, d.is_critical, d.trust, d.trust_changed_at, d.trust_reason, d.alerts_muted,
-         (SELECT c.id FROM monitoring_checks c WHERE c.device_id = d.id ORDER BY c.created_at LIMIT 1) AS monitor_check_id, d.owner, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
+         (SELECT c.id FROM monitoring_checks c WHERE c.device_id = d.id ORDER BY c.created_at LIMIT 1) AS monitor_check_id, d.owner, d.owner_source, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
          coalesce((SELECT array_agg(t.tag ORDER BY t.tag) FROM device_tags t WHERE t.device_id = d.id), '{}') AS tags,
          coalesce((SELECT array_agg(host(a.ip) ORDER BY a.address_scope = 'unique_local', a.ip) FROM device_addresses a
                     WHERE a.device_id = d.id AND family(a.ip) = 6 AND a.address_scope <> 'link_local' AND a.last_seen_at > now() - interval '7 days'), '{}') AS ipv6_addresses
@@ -145,7 +145,11 @@ devicesRouter.patch('/devices/:id', requireRole('technician'), async (req, res) 
       sets.push(`${column} = $${values.length}`);
     };
     if (body.display_name !== undefined) set('display_name', body.display_name || null);
-    if (body.owner !== undefined) set('owner', body.owner || null);
+    if (body.owner !== undefined) {
+      // A person's owner (or a cleared one) is final; saving the form unchanged keeps a guess a guess.
+      set('owner', body.owner || null);
+      sets.push(`owner_source = CASE WHEN owner IS DISTINCT FROM $${values.length} THEN 'manual' ELSE owner_source END`);
+    }
     if (body.notes !== undefined) set('notes', body.notes || null);
     if (body.is_critical !== undefined) set('is_critical', body.is_critical);
     if (body.alerts_muted !== undefined) set('alerts_muted', body.alerts_muted);
