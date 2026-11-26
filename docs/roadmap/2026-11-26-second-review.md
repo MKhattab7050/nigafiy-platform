@@ -119,3 +119,18 @@ Merge warnings for later: navigation and device-states both edit `shell/top-bar.
    alerts and the System Health page on the installed copy (day 7).
 5. Later: the rest of the "smarter" list and AbortSignal for jobs.
 6. Nothing is pushed; push only when the owner says so.
+
+### Resumed 2026-11-26 ~18:45 (owner said "كمل")
+
+The four old sessions were gone (not listed, not archived). Their worktrees were clean (nothing
+unsaved). Four new worktree sessions were started from the WIP branches, each told to finish only
+what is missing, commit on its own branch, not push or merge:
+
+| Name | Session id | Cut from |
+| --- | --- | --- |
+| dashboard-guidance-2 | `local_155613f7-90c0-4f72-8ab8-a53181174624` | `claude/dashboard-guidance-47d0bc` |
+| navigation-2 | `local_ca55eba5-21ba-4118-85f9-c40ffa5eaf5a` | `claude/navigation-palette-0c72d4` |
+| device-states-2 | `local_a7f23d07-7f09-4ce2-9d8e-016d880fbcb8` | `claude/device-states-73c610` |
+| system-health-2 | `local_d30298d1-5640-43f0-a310-badfd036baee` | `claude/system-health-b8f152` |
+
+Their branches are new (`*-2`); the old `claude/*` branches stay as they were.
