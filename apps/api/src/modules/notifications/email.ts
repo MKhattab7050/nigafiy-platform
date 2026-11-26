@@ -56,6 +56,7 @@ export function eventPageUrl(event: Pick<NotificationEvent, 'device_id' | 'check
   const uuid = /^[0-9a-f-]{36}$/i;
   if (event.device_id && uuid.test(event.device_id)) return `${root}/radar/devices/${event.device_id}`;
   if (event.check_id && uuid.test(event.check_id)) return `${root}/watch/monitoring`;
+  if (event.type === 'weekly_report') return `${root}/system/weekly`;
   return `${root}/watch/events?type=${encodeURIComponent(event.type)}`;
 }
 
