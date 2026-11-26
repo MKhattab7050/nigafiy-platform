@@ -45,6 +45,8 @@ export function BottomNav({ onMore, moreOpen }: { onMore: () => void; moreOpen: 
               <Link href={tab.route} aria-current={active ? 'page' : undefined} className={clsx(ITEM, active ? 'font-medium text-fg' : 'text-muted hover:text-fg')}>
                 {/* active marker on the top edge, so the current place reads without colour too */}
                 <span aria-hidden className={clsx('absolute inset-x-4 top-0 h-[3px] rounded-b-full bg-accent transition-opacity', active ? 'opacity-100' : 'opacity-0')} />
+                {/* label first in the DOM so it is read before the badge count; drawn under the icon */}
+                <span className="order-last max-w-full truncate">{t(tab.label)}</span>{' '}
                 <span className="relative">
                   <Icon className={clsx('size-5', active ? 'text-accent-hover' : 'text-faint')} aria-hidden />
                   {badge && (
@@ -54,7 +56,6 @@ export function BottomNav({ onMore, moreOpen }: { onMore: () => void; moreOpen: 
                     />
                   )}
                 </span>
-                <span className="max-w-full truncate">{t(tab.label)}</span>
               </Link>
             </li>
           );

@@ -314,6 +314,8 @@ export function FleetContent({
           return (
             <Card
               key={ep.id}
+              // Even density: every card in a row is the same height, footer pinned to the bottom.
+              className="flex flex-col [&>div]:flex [&>div]:flex-1 [&>div]:flex-col"
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   {canTech && ep.status !== 'revoked' && (
@@ -385,7 +387,7 @@ export function FleetContent({
                 ) : undefined
               }
             >
-              <div className="space-y-3">
+              <div className="flex flex-1 flex-col space-y-3">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   {ep.nigafiy_id && (
                     <span className="text-muted">
@@ -441,7 +443,7 @@ export function FleetContent({
                   </>
                 )}
 
-                <div className="flex items-center justify-between border-t border-line pt-2.5 text-xs">
+                <div className="mt-auto flex items-center justify-between border-t border-line pt-2.5 text-xs">
                   {ep.device_id ? (
                     <DeviceLink id={ep.device_id} className="text-muted hover:text-fg hover:underline">
                       {tx.openDevice}
