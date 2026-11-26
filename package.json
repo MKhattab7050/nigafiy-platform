@@ -21,7 +21,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "biome lint .",
     "check:brand": "node scripts/check-brand.mjs && node --test scripts/check-brand.test.mjs",
-    "test:scripts": "node --test scripts/android/release-apk.test.mjs",
+    "test:scripts": "node --test scripts/android/release-apk.test.mjs scripts/signing/trust-cmd.test.mjs",
     "test": "pnpm --filter @nigafiy/api test",
     "test:web": "pnpm --filter @nigafiy/web test:e2e",
     "build:site": "pnpm --filter @nigafiy/site build",

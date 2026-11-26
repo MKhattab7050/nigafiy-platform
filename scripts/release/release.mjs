@@ -6,6 +6,7 @@
 //       [--key <manifest key .pem> --base-url https://downloads.example.com/1.2.3/ [--notes-url https://...]
 //        [--expect-public-key <base64>]]
 //       [--update-url https://…/manifest.json --update-public-key <base64> | --no-updates]
+//       [--trust-cer <public signing certificate .cer>]
 //
 // Update channel (UX review item 14): every release says where its installs look for updates. It comes
 // from --update-url / --update-public-key, else scripts/release/update-channel.json (copy
@@ -23,6 +24,10 @@
 // Android agent and check its APK (release key, not debug; versionName = the release; not debuggable;
 // --android-cert-sha256 or NIGAFIY_ANDROID_CERT_SHA256 pins the certificate); copy the artefacts with SHA256SUMS
 // into --out (default dist/release/<version>); with --key, sign the update manifest for them.
+// Every release also gets Trust-Nigafiy.cmd (one double-click file with the public certificate inside,
+// scripts/signing/trust-cmd.mjs) and for-IT\ with the .cer and Install-NigafiyTrust.ps1 for Group Policy.
+// The certificate comes from --trust-cer or .data/signing/nigafiy-code-signing.cer and must be the
+// signing certificate (same thumbprint as NIGAFIY_SIGN_THUMBPRINT when that is set).
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -30,6 +35,8 @@ import path from 'node:path';
 import { checkReleaseApk, releaseApkName } from '../android/release-apk.mjs';
 import { CHANNEL_FILE, resolveReleaseChannel } from '../update-channel.mjs';
 import { buildPayload, insideRepo, publicKeyOfPem, sha256File, signPayload } from './manifest-lib.mjs';
+import { FOR_IT_DIR, TRUST_CMD_NAME, buildTrustCmd } from '../signing/trust-cmd.mjs';
+import { X509Certificate } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
@@ -88,6 +95,22 @@ const channelResult = resolveReleaseChannel({
 });
 if (!channelResult.ok) fail(channelResult.error);
 const updateChannel = channelResult.channel;
+
+// The public certificate for Trust-Nigafiy.cmd, checked before anything is built.
+const trustCerPath = path.resolve(opt('--trust-cer') ?? path.join(ROOT, '.data', 'signing', 'nigafiy-code-signing.cer'));
+if (!existsSync(trustCerPath)) fail(`the public certificate ${trustCerPath} is missing (--trust-cer <file.cer>); every release ships ${TRUST_CMD_NAME}.`);
+const trustCerBytes = readFileSync(trustCerPath);
+let trustCmdText;
+try {
+  trustCmdText = buildTrustCmd(trustCerBytes);
+} catch (err) {
+  fail(`${trustCerPath}: ${err.message}`);
+}
+{
+  const want = (process.env.NIGAFIY_SIGN_THUMBPRINT || '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  const have = new X509Certificate(trustCerBytes).fingerprint.replace(/:/g, '').toUpperCase();
+  if (want && want !== have) fail(`${trustCerPath} (thumbprint ${have}) is not the signing certificate ${want}.`);
+}
 
 const run = (cmd, argv, cwd, extraEnv = {}) =>
   execFileSync(cmd, argv, { cwd, stdio: 'inherit', env: { ...process.env, ...extraEnv }, shell: cmd === 'pnpm' || cmd === 'npx' });
@@ -171,6 +194,11 @@ try {
     copyFileSync(f, dest);
     sums.push(`${await sha256File(dest)}  ${name}`);
   }
+  writeFileSync(path.join(outDir, TRUST_CMD_NAME), trustCmdText, 'ascii');
+  sums.push(`${await sha256File(path.join(outDir, TRUST_CMD_NAME))}  ${TRUST_CMD_NAME}`);
+  mkdirSync(path.join(outDir, FOR_IT_DIR), { recursive: true });
+  copyFileSync(trustCerPath, path.join(outDir, FOR_IT_DIR, 'nigafiy-code-signing.cer'));
+  copyFileSync(path.join(ROOT, 'scripts', 'signing', 'Install-NigafiyTrust.ps1'), path.join(outDir, FOR_IT_DIR, 'Install-NigafiyTrust.ps1'));
   writeFileSync(path.join(outDir, 'SHA256SUMS'), `${sums.join('\n')}\n`);
 
   if (keyPath) {

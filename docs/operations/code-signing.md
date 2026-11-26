@@ -45,7 +45,11 @@ can be its own publisher:
    pnpm --filter @nigafiy/desktop dist
    ```
 
-3. **Trust it on each company computer**, as administrator:
+3. **Trust it on each company computer.** Every release folder has `Trust-Nigafiy.cmd` (made by
+   `scripts/release/release.mjs` with `scripts/signing/trust-cmd.mjs`; the public certificate is
+   inside it): double-click it and accept the administrator prompt. `Trust-Nigafiy.cmd /check` only
+   reports, `/remove` takes the trust away. The same step as a script, kept in the release's `for-IT\`
+   folder next to the `.cer`:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File Install-NigafiyTrust.ps1 -CertPath nigafiy-code-signing.cer

@@ -71,7 +71,7 @@
 - **الـ scan على 192.168.1.0/24 بس**، وأي نطاق تاني تسألني الأول.
 - **باسورد الراوتر أنا بس اللي أكتبه.** حساب التجربة `tester@nigafiy.test` باسورده في `D:\network\.data\test-account.txt`.
 - Android: `D:\nigafiy-tools\android-sdk` و`D:\nigafiy-tools\jdk17`، وadb في `platform-tools` (في Git Bash: `MSYS_NO_PATHCONV=1`). التليفون الحقيقي: Samsung A36.
-- الإصدار: `NIGAFIY_SIGN_THUMBPRINT=398443A6F79F824F576A97DC43465E6684426915 JAVA_HOME='D:\nigafiy-tools\jdk17' ANDROID_HOME='D:\nigafiy-tools\android-sdk' node scripts/release/release.mjs --version X`، وبعدين انسخ `dist/release/X` مع الـ `.cer` و`Install-NigafiyTrust.ps1` لـ `D:\nigafiy-releases\X`.
+- الإصدار: `NIGAFIY_SIGN_THUMBPRINT=398443A6F79F824F576A97DC43465E6684426915 JAVA_HOME='D:\nigafiy-tools\jdk17' ANDROID_HOME='D:\nigafiy-tools\android-sdk' node scripts/release/release.mjs --version X`، وبعدين انسخ `dist/release/X` كله لـ `D:\nigafiy-releases\X` (السكربت بيحط فيه `Trust-Nigafiy.cmd` وفولدر `for-IT` فيه الـ `.cer` و`Install-NigafiyTrust.ps1`).
 
 ## 6. طريقة الشغل
 
