@@ -6,11 +6,12 @@ import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.graphics.Typeface
+import android.view.Gravity
+import android.view.View
 import android.view.WindowInsets
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.TextView
 import java.lang.ref.WeakReference
 
 /**
@@ -32,31 +33,56 @@ class ShareRequestActivity : Activity() {
         }
         current = WeakReference(this)
         val req = p.request
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(48, 48, 48, 48) }
-        fun text(s: String, size: Float = 16f) = TextView(this).apply { text = s; textSize = size; setPadding(0, 12, 0, 12) }
-        root.addView(text(getString(R.string.share_request_title), 20f))
-        root.addView(text(getString(R.string.share_screen_who, req.operator)))
-        if (req.reason.isNotEmpty()) root.addView(text(getString(R.string.share_screen_reason, req.reason)))
-        root.addView(text(getString(R.string.share_screen_what)))
-        val controlOn = ControlService.isEnabled(this)
-        root.addView(text(getString(if (req.control && controlOn) R.string.share_screen_control_yes else R.string.share_screen_control_no)))
-        root.addView(Button(this).apply {
-            text = getString(R.string.share_action_open)
-            setOnClickListener { askAndroid() }
+        val ui = Ui(this)
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = ui.bg
+            window.navigationBarColor = ui.bg
+            if (!ui.dark) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
+        val canControl = req.control && ControlService.isEnabled(this)
+
+        // Scrolling part: header, who/why, what happens.
+        val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(ui.dp(16), ui.dp(16), ui.dp(16), ui.dp(8)) }
+        body.addView(ui.header(getString(R.string.share_request_title), getString(R.string.share_request_sub), null))
+        val who = ui.card(body)
+        ui.fact(who, getString(R.string.share_label_who), req.operator, ltr = true)
+        if (req.reason.isNotEmpty()) ui.fact(who, getString(R.string.share_label_reason), req.reason)
+        who.removeViewAt(who.childCount - 1) // no divider under the last fact
+        val what = ui.card(body)
+        what.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(ui.text(getString(R.string.share_card_what), 16f, top = 0).apply { typeface = Typeface.DEFAULT_BOLD },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(ui.chip(getString(if (canControl) R.string.share_chip_control else R.string.share_chip_look), if (canControl) ui.warn else ui.ok))
         })
-        root.addView(Button(this).apply {
-            text = getString(R.string.share_action_refuse)
-            setOnClickListener { refuse() }
-        })
-        val scroll = ScrollView(this).apply { addView(root) }
+        what.addView(ui.text(getString(R.string.share_screen_what), 14f, ui.muted, top = 10))
+        what.addView(ui.text(getString(if (canControl) R.string.share_screen_control_yes else R.string.share_screen_control_no), 14f, ui.muted, top = 8))
+
+        // Buttons stay at the bottom, within thumb reach, whatever the text length.
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ui.dp(16), ui.dp(4), ui.dp(16), ui.dp(16))
+            addView(ui.button(getString(R.string.share_action_open)) { askAndroid() })
+            addView(ui.button(getString(R.string.share_action_refuse), primary = false) { refuse() },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = ui.dp(10) })
+        }
+        val outer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(ui.bg)
+            addView(ScrollView(this@ShareRequestActivity).apply { addView(body); isFillViewport = true },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+            addView(actions)
+        }
         if (Build.VERSION.SDK_INT >= 35) {
-            scroll.setOnApplyWindowInsetsListener { v, insets ->
+            outer.setOnApplyWindowInsetsListener { v, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 insets
             }
         }
-        setContentView(scroll)
+        setContentView(outer)
         getSystemService(android.app.NotificationManager::class.java).cancel(ScreenShare.REQUEST_NOTIFICATION_ID)
     }
 
