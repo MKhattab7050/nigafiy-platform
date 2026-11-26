@@ -305,10 +305,14 @@ test('the help button opens the guide for the page, in English (light) and Arabi
     await expect(page).toHaveURL(/\/guide\/routers/);
     await expect(page.locator('#safety')).toBeVisible();
 
-    // The global search lists guide sections too.
-    await page.getByRole('button', { name: 'Global search' }).click();
-    await page.getByRole('dialog').getByRole('searchbox').fill('Quick Support');
-    await expect(page.locator('[data-search-guide]')).toContainText('Add a computer to Fleet');
+    // The one search (Ctrl+K) lists guide sections too, and opens one with the keyboard.
+    await page.keyboard.press('Control+k');
+    await page.getByRole('dialog').getByRole('combobox').fill('Quick Support');
+    await expect(page.locator('[data-search-group="guide"]')).toContainText('Add a computer to Fleet');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByRole('dialog').getByRole('combobox')).toBeFocused();
     await page.keyboard.press('Escape');
     await page.screenshot({ path: test.info().outputPath('guide-en.png'), fullPage: true });
   });
