@@ -29,6 +29,7 @@
     <string name="status_server">Server: %1$s</string>
     <string name="status_endpoint">Endpoint ID: %1$s</string>
     <string name="status_mode_owner">Device Owner: lock, erase, camera, screen-lock policy and app installs are available to your IT</string>
+    <string name="status_mode_admin">Admin phone: the full Nigafiy dashboard (Fleet included) and network alerts on this phone</string>
     <string name="status_mode_regular">Regular app: inventory, security checks and the controls in Settings; IT cannot lock or erase this phone</string>
     <string name="status_last">Last contact: %1$s</string>
     <string name="status_never">Last contact: not yet</string>

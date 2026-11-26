@@ -81,7 +81,9 @@ class MainActivity : Activity() {
             outer.setOnApplyWindowInsetsListener { v, insets ->
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-                insets
+                // Consumed here: otherwise the dashboard WebView adds the same space again as
+                // env(safe-area-inset-bottom), an empty band under its own bar.
+                WindowInsets.CONSUMED
             }
         }
         setContentView(outer)
@@ -97,6 +99,7 @@ class MainActivity : Activity() {
         if (tab == TAB_TOOLS && t != TAB_TOOLS) tools.onHide()
         tab = t
         shownRole = store.phoneRole
+        updateBack()
         scroll.visibility = if (t == TAB_TOOLS || t == TAB_DASHBOARD) View.GONE else View.VISIBLE
         toolsScroll.visibility = if (t == TAB_TOOLS) View.VISIBLE else View.GONE
         dashboard.view.visibility = if (t == TAB_DASHBOARD) View.VISIBLE else View.GONE
@@ -107,6 +110,8 @@ class MainActivity : Activity() {
             add(TAB_TOOLS to Triple(getString(R.string.tab_tools), R.drawable.ic_tab_tools) { showTab(TAB_TOOLS) })
             add(TAB_SETTINGS to Triple(getString(R.string.tab_settings), R.drawable.ic_tab_settings) { showTab(TAB_SETTINGS) })
         }
+        // The dashboard has its own bottom bar; one bar is enough (Back returns to Home).
+        navHolder.visibility = if (t == TAB_DASHBOARD) View.GONE else View.VISIBLE
         navHolder.removeAllViews()
         navHolder.addView(ui.tabBar(tabs.map { it.second }, tabs.indexOfFirst { it.first == t }.coerceAtLeast(0)))
         when (t) {
@@ -125,10 +130,27 @@ class MainActivity : Activity() {
         dashboard.open(path)
     }
 
-    @Deprecated("Kept for the 3-button navigation on every Android version this app supports")
+    /** Back inside the dashboard first, then to Home; false at Home (the app closes). */
+    private fun handleBack(): Boolean {
+        if (tab == TAB_DASHBOARD && dashboard.back()) return true
+        if (tab != TAB_HOME) { showTab(TAB_HOME); return true }
+        return false
+    }
+
+    // Android 13+ with predictive back (the default from targetSdk 36) never calls onBackPressed:
+    // a callback is registered while there is somewhere to go back to (any tab but Home).
+    private var backCallback: Any? = null
+
+    private fun updateBack() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val cb = (backCallback ?: android.window.OnBackInvokedCallback { handleBack() }.also { backCallback = it }) as android.window.OnBackInvokedCallback
+        onBackInvokedDispatcher.unregisterOnBackInvokedCallback(cb)
+        if (tab != TAB_HOME) onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
+    }
+
+    @Deprecated("Kept for Android 12 and older")
     override fun onBackPressed() {
-        if (tab == TAB_DASHBOARD && dashboard.back()) return
-        if (tab != TAB_HOME) { showTab(TAB_HOME); return }
+        if (handleBack()) return
         @Suppress("DEPRECATION")
         super.onBackPressed()
     }
@@ -247,9 +269,8 @@ class MainActivity : Activity() {
         val phone = ui.card(root, getString(R.string.enrolled_title))
         val mode = Facts(this, store).mode()
         ui.fact(phone, getString(R.string.label_server), store.server ?: "", ltr = true)
-        ui.fact(phone, getString(R.string.label_mode), getString(if (mode == Mode.DEVICE_OWNER) R.string.status_mode_owner else R.string.status_mode_regular))
+        ui.fact(phone, getString(R.string.label_mode), getString(when { store.isAdminPhone -> R.string.status_mode_admin; mode == Mode.DEVICE_OWNER -> R.string.status_mode_owner; else -> R.string.status_mode_regular }))
         ui.fact(phone, getString(R.string.label_last), lastValue)
-        ui.fact(phone, getString(R.string.label_endpoint), store.endpointId ?: "", ltr = true)
         store.lastError?.let { ui.note(phone, getString(R.string.status_error, it)) }
 
         val pm = getSystemService(PowerManager::class.java)
