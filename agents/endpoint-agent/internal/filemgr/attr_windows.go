@@ -37,13 +37,32 @@ func platformRoots() []RootEntry {
 			})
 		}
 	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
+	if home := windowsHome(); home != "" {
 		roots = append(roots, RootEntry{
 			Name:  "Home",
-			Path:  filepath.Clean(home),
+			Path:  home,
 			Label: "User Home Directory",
 		})
 	}
 	return roots
 }
 
+// windowsHome is the folder the file manager opens first. The agent service runs as SYSTEM, whose
+// profile is under System32\config, a forbidden path (the dashboard's first listing failed every
+// time): the computer's user profiles folder is opened instead.
+func windowsHome() string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if h := filepath.Clean(home); !isForbiddenCredentialPath(h) {
+			return h
+		}
+	}
+	drive := os.Getenv("SystemDrive")
+	if drive == "" {
+		drive = "C:"
+	}
+	users := filepath.Join(drive+`\`, "Users")
+	if fi, err := os.Stat(users); err == nil && fi.IsDir() {
+		return users
+	}
+	return ""
+}
