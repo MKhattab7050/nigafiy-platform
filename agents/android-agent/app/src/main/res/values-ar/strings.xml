@@ -29,6 +29,8 @@
     <string name="status_server">الخادم: %1$s</string>
     <string name="status_endpoint">معرّف الجهاز: %1$s</string>
     <string name="status_mode_owner">مالك الجهاز: القفل والمسح والكاميرا وسياسة قفل الشاشة وتثبيت التطبيقات متاحة لفريق تقنية المعلومات</string>
+    <string name="dashboard_saved">تم الحفظ في التنزيلات: %1$s</string>
+    <string name="dashboard_save_failed">تعذّر حفظ %1$s</string>
     <string name="status_mode_admin">هاتف مسؤول: لوحة تحكم Nigafiy كاملة (ومعها Fleet) وتنبيهات الشبكة على هذا الهاتف</string>
     <string name="status_mode_regular">تطبيق عادي: الجرد وفحوص الأمان وأدوات التحكم في الإعدادات؛ لا يستطيع فريق تقنية المعلومات قفل الهاتف أو مسحه</string>
     <string name="status_last">آخر اتصال: %1$s</string>

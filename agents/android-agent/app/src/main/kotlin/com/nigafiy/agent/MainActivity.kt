@@ -148,6 +148,13 @@ class MainActivity : Activity() {
         if (tab != TAB_HOME) onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
     }
 
+    @Deprecated("startActivityForResult is enough for the dashboard's file picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == DashboardScreen.REQ_FILE) dashboard.onFilePicked(resultCode, data)
+    }
+
     @Deprecated("Kept for Android 12 and older")
     override fun onBackPressed() {
         if (handleBack()) return

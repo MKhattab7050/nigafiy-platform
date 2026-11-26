@@ -8,7 +8,19 @@ import android.net.Uri
 import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.view.View
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.util.Base64
+import android.view.ViewGroup
+import android.view.WindowInsets
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.widget.Toast
+import java.io.File
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -33,6 +45,10 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     private var leafSha256: String? = null
     private var sessionAt = 0L
     private var loading = false
+    private var pendingPath: String? = null
+    private var fullView: View? = null
+    private var fullDone: WebChromeClient.CustomViewCallback? = null
+    private var filePick: ValueCallback<Array<Uri>>? = null
 
     init {
         view.addView(status, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -52,6 +68,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
 
     /** Back inside the dashboard first; false when there is nothing to go back to. */
     fun back(): Boolean {
+        if (fullView != null) { fullDone?.onCustomViewHidden(); hideFull(); return true }
         val w = web ?: return false
         if (!w.canGoBack()) return false
         w.goBack()
@@ -59,6 +76,9 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     }
 
     private fun startSession(path: String?) {
+        // A page asked for while the session is still starting (an alert tapped with the app closed)
+        // is opened once it is ready.
+        if (path != null) pendingPath = path
         if (loading) return
         val server = store.server ?: return
         loading = true
@@ -88,9 +108,58 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
                 val w = web ?: makeWebView().also { web = it }
                 status.visibility = View.GONE
                 w.visibility = View.VISIBLE
-                w.loadUrl(server + (path ?: "/"))
+                w.loadUrl(server + (pendingPath ?: "/"))
+                pendingPath = null
             }
         }.start()
+    }
+
+    /** The answer of the file picker an upload opened (MainActivity.onActivityResult). */
+    fun onFilePicked(resultCode: Int, data: Intent?) {
+        filePick?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
+        filePick = null
+    }
+
+    // Full screen (the remote desktop's full-screen button): the page's element covers the whole
+    // screen, system bars hidden, until Back or the page leaves full screen.
+    private fun showFull(v: View, done: WebChromeClient.CustomViewCallback) {
+        if (fullView != null) { done.onCustomViewHidden(); return }
+        fullView = v
+        fullDone = done
+        (act.window.decorView as ViewGroup).addView(v, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (Build.VERSION.SDK_INT >= 30) act.window.insetsController?.hide(WindowInsets.Type.systemBars())
+        // A computer's screen is wide: full screen turns the phone sideways.
+        act.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    }
+
+    private fun hideFull() {
+        val v = fullView ?: return
+        (act.window.decorView as ViewGroup).removeView(v)
+        fullView = null
+        fullDone = null
+        if (Build.VERSION.SDK_INT >= 30) act.window.insetsController?.show(WindowInsets.Type.systemBars())
+        act.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+
+    /** Files the dashboard hands over (downloads from a computer, reports): saved to Downloads. */
+    private inner class Files {
+        @JavascriptInterface
+        fun save(name: String, dataUrl: String) {
+            val safe = name.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim().ifEmpty { "download" }.take(120)
+            val ok = try {
+                val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
+                if (Build.VERSION.SDK_INT >= 29) {
+                    val values = ContentValues().apply { put(MediaStore.Downloads.DISPLAY_NAME, safe) }
+                    val uri = act.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: throw IllegalStateException("no uri")
+                    act.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
+                } else {
+                    val dir = act.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: throw IllegalStateException("no folder")
+                    File(dir, safe).writeBytes(bytes)
+                }
+                true
+            } catch (_: Exception) { false }
+            act.runOnUiThread { Toast.makeText(act, act.getString(if (ok) R.string.dashboard_saved else R.string.dashboard_save_failed, safe), Toast.LENGTH_LONG).show() }
+        }
     }
 
     private fun say(text: String) {
@@ -107,6 +176,22 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
         settings.allowContentAccess = false
         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         setBackgroundColor(ui.bg)
+        addJavascriptInterface(Files(), "NigafiyFiles")
+        // Without a WebChromeClient the page's confirm()/alert() do nothing, and full screen and
+        // file pickers never open.
+        webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(v: View, done: CustomViewCallback) = showFull(v, done)
+            override fun onHideCustomView() = hideFull()
+            override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                filePick?.onReceiveValue(null)
+                filePick = cb
+                return try {
+                    @Suppress("DEPRECATION")
+                    act.startActivityForResult(params.createIntent(), REQ_FILE)
+                    true
+                } catch (_: Exception) { filePick = null; false }
+            }
+        }
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
@@ -124,6 +209,10 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
                     sessionAt = 0
                     startSession("/")
                 }
+            }
+
+            override fun onPageFinished(view: WebView, url: String) {
+                if (sameServer(Uri.parse(url))) view.evaluateJavascript(SAVE_BLOBS, null)
             }
 
             @SuppressLint("WebViewClientOnReceivedSslError")
@@ -158,7 +247,22 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
         }
     }
 
-    private companion object {
+    companion object {
+        const val REQ_FILE = 4711
+
+        // The dashboard saves files through blob: links (<a download>), which a WebView cannot
+        // download: hand them to NigafiyFiles instead. Up to 200 MB. The page's CSP does not allow
+        // fetch() of a blob: URL, so the Blob is kept when the page makes its URL.
+        private const val SAVE_BLOBS = """(function(){if(window.__nfy)return;window.__nfy=1;
+var blobs=new Map(),mk=URL.createObjectURL,rv=URL.revokeObjectURL;
+URL.createObjectURL=function(b){var u=mk.call(URL,b);if(b instanceof Blob)blobs.set(u,b);return u};
+URL.revokeObjectURL=function(u){setTimeout(function(){blobs.delete(u)},60000);return rv.call(URL,u)};
+function grab(a){if(!a||!a.href||a.href.indexOf('blob:')!==0)return false;var b=blobs.get(a.href);if(!b)return false;var n=a.getAttribute('download')||'download';
+if(b.size>209715200){alert('Too big for the phone: '+n);return true}
+var f=new FileReader();f.onload=function(){NigafiyFiles.save(n,f.result)};f.readAsDataURL(b);return true}
+document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a[download]');if(grab(a))e.preventDefault()},true);
+var c=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=function(){if(this.hasAttribute('download')&&grab(this))return;return c.call(this)}})()"""
+
         // A dashboard session lasts the server's session lifetime; ask again after a few hours anyway.
         const val SESSION_REUSE_MS = 4 * 3600_000L
     }
