@@ -13,10 +13,75 @@ import { logger } from './logger.ts';
  *    tables (users / sessions) that the app role cannot read at all, collector credential lookup,
  *    and platform-level jobs that sweep across tenants with set-based SQL.
  */
-export const systemPool = new pg.Pool({ connectionString: env.DATABASE_URL, max: 12, application_name: 'ld-system' });
-export const appPool = new pg.Pool({ connectionString: env.APP_DATABASE_URL, max: 16, application_name: 'ld-app' });
+/**
+ * Waiting for a free connection is bounded: when every connection is busy a request fails after
+ * this long (and the API answers 503) instead of hanging until the browser gives up.
+ */
+export const DB_CONNECT_TIMEOUT_MS = positiveIntFromEnv('DB_CONNECT_TIMEOUT_MS', 5000);
 
-for (const [name, pool] of [['system', systemPool], ['app', appPool]] as const) {
+/**
+ * Statement time limits, enforced by PostgreSQL. Requests go through appPool and must be quick;
+ * systemPool also runs the hourly retention sweep, whose DELETEs can take minutes on a big database.
+ * Migrations, backups and restores use their own connections without a limit.
+ */
+const APP_STATEMENT_TIMEOUT_MS = positiveIntFromEnv('DB_APP_STATEMENT_TIMEOUT_MS', 60_000);
+const SYSTEM_STATEMENT_TIMEOUT_MS = positiveIntFromEnv('DB_SYSTEM_STATEMENT_TIMEOUT_MS', 300_000);
+
+export const systemPool = new pg.Pool({
+  connectionString: env.DATABASE_URL,
+  max: 12,
+  application_name: 'ld-system',
+  connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
+  statement_timeout: SYSTEM_STATEMENT_TIMEOUT_MS,
+});
+export const appPool = new pg.Pool({
+  connectionString: env.APP_DATABASE_URL,
+  max: 16,
+  application_name: 'ld-app',
+  connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
+  statement_timeout: APP_STATEMENT_TIMEOUT_MS,
+});
+
+/**
+ * Connections that only hold the scheduler's advisory locks (a session lock lives as long as its
+ * connection). They are kept apart from systemPool: a job used to hold a systemPool connection for
+ * its whole run, so a dozen jobs starting together took every connection, and both the jobs' own
+ * queries and every sign-in then waited for a connection forever. A lock connection runs only
+ * pg_try_advisory_lock / pg_advisory_unlock; the job's work uses the normal pools.
+ * Sized for the scheduler's concurrent runs plus runs that outlived their slot (scheduler.ts).
+ */
+export const lockPool = new pg.Pool({
+  connectionString: env.DATABASE_URL,
+  max: 8,
+  application_name: 'ld-locks',
+  connectionTimeoutMillis: DB_CONNECT_TIMEOUT_MS,
+  statement_timeout: 10_000,
+});
+
+function positiveIntFromEnv(name: string, fallback: number): number {
+  const n = Number(process.env[name]);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/** True for the error node-postgres raises when no pool connection became free in time. */
+export function isPoolTimeout(err: unknown): boolean {
+  return err instanceof Error && /timeout exceeded when trying to connect/i.test(err.message);
+}
+
+/**
+ * Why a database call failed when the cause is the database being busy or away rather than the
+ * request: `service_busy` (no free connection in time, or a statement ran past its limit) or
+ * `database_unavailable` (refused, reset, starting up or shutting down). Null for any other error.
+ */
+export function databaseUnavailableCode(err: unknown): 'service_busy' | 'database_unavailable' | null {
+  if (isPoolTimeout(err)) return 'service_busy';
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code === '57014') return 'service_busy'; // statement_timeout
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === '57P01' || code === '57P02' || code === '57P03') return 'database_unavailable';
+  return null;
+}
+
+for (const [name, pool] of [['system', systemPool], ['app', appPool], ['locks', lockPool]] as const) {
   pool.on('error', (err) => logger.error({ err, pool: name }, 'idle database client error'));
 }
 
@@ -94,5 +159,5 @@ export function withSystem<T>(fn: (db: Db) => Promise<T>): Promise<T> {
 }
 
 export async function closePools(): Promise<void> {
-  await Promise.allSettled([systemPool.end(), appPool.end()]);
+  await Promise.allSettled([systemPool.end(), appPool.end(), lockPool.end()]);
 }

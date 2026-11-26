@@ -102,7 +102,7 @@ function Backups({ s, reload }: { s: Ready; reload: () => void }) {
     setError(null);
     setDone(null);
     try {
-      const r = await api<{ file: string; bytes: number; key_included: boolean }>('/backups/run', { method: 'POST' });
+      const r = await api<{ file: string; bytes: number; key_included: boolean }>('/backups/run', { method: 'POST', timeoutMs: 0 });
       setDone(fill(t('backups.done'), { file: r.file, size: size(r.bytes) }) + (r.key_included ? '' : ` ${t('backups.doneNoKey')}`));
       reload();
     } catch (err) {
@@ -386,6 +386,7 @@ function RestoreDialog({ initialFile, extension, onClose }: { initialFile: strin
     try {
       await api('/backups/restore', {
         method: 'POST',
+        timeoutMs: 0, // a restore can take minutes
         body: { file, confirm: true, ...(info.needs_passphrase ? { passphrase: pass } : {}), allow_unreadable_secrets: info.key_missing && accept },
       });
       setDone(fill(t('backups.restoreDone'), { when: absoluteTime(info.created_at, locale) }));

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { INCIDENT_KINDS } from '../incidents/kinds.ts';
 
 const label = (max: number) =>
   z
@@ -38,7 +39,7 @@ export const entryFields = {
   fix_steps: z.string().max(20000),
   tags,
   rule_ids: ruleIds,
-  incident_kinds: z.array(z.enum(['network', 'service', 'collector', 'device'])).max(4).transform((xs) => [...new Set(xs)]),
+  incident_kinds: z.array(z.enum(INCIDENT_KINDS)).max(INCIDENT_KINDS.length).transform((xs) => [...new Set(xs)]),
   event_types: eventTypes,
   device_types: list(20, 40),
   vendors: list(20, 80),

@@ -141,6 +141,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       const res = await api<LoginResponse>("/auth/login", {
         method: "POST",
+        timeoutMs: 15_000,
         body: { email, password: form.password },
       });
 
@@ -195,6 +196,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       setRecoverNote(fill(t("ownpw.recoverLeft"), { count: recovered.codes_left }));
       const res = await api<LoginResponse>("/auth/login", {
         method: "POST",
+        timeoutMs: 15_000,
         body: { email: email.trim(), password: form.new_password },
       });
       const nextMfa = await resolveMfaStep(res);

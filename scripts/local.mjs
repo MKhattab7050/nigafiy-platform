@@ -377,10 +377,69 @@ async function runDatabase(reuse) {
 }
 
 // ── 2. API (runs migrations on start) ───────────────────────────────────────
+/**
+ * The commit this checkout is at, plus "+changes" when API or package files differ from it. Null
+ * without git (the installed app runs from a bundle). Given to the API it starts, so a later
+ * `pnpm local` can tell that an API still running from earlier is on older code (a stale API was
+ * tested without anyone knowing).
+ */
+function codeRevision() {
+  if (bundleDir) return null;
+  const git = (args) => spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
+  const head = git(['rev-parse', '--short', 'HEAD']);
+  if (head.status !== 0 || !head.stdout?.trim()) return null;
+  const dirty = git(['status', '--porcelain', '--untracked-files=no', '--', 'apps/api', 'packages']);
+  return `${head.stdout.trim()}${dirty.status === 0 && dirty.stdout.trim() ? '+changes' : ''}`;
+}
+
+/** Newest modification time of the API's source files and of the shared packages it imports. */
+function newestApiSourceMs() {
+  let newest = 0;
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(ts|sql|json)$/.test(e.name)) newest = Math.max(newest, statSync(p).mtimeMs);
+    }
+  };
+  walk(path.join(root, 'apps/api/src'));
+  walk(path.join(root, 'packages'));
+  return newest;
+}
+
+/** Warn when the API that is already running is older than the code in this checkout. */
+async function warnIfStaleApi() {
+  if (bundleDir) return;
+  let info;
+  try {
+    info = await (await fetch(`${apiUrl}/healthz`, { signal: AbortSignal.timeout(3000) })).json();
+  } catch {
+    return;
+  }
+  const rev = codeRevision();
+  const commit = (r) => String(r).replace(/\+changes$/, '');
+  const startedMs = Date.parse(info?.started_at ?? '');
+  const reasons = [];
+  if (rev && info?.rev && commit(info.rev) !== commit(rev)) reasons.push(`it runs commit ${info.rev}, this checkout is at ${rev}`);
+  else if (rev && !info?.rev) reasons.push('it does not say which code it runs (started by an older pnpm local or by another program)');
+  if (Number.isFinite(startedMs) && newestApiSourceMs() > startedMs + 1000) reasons.push(`API source files changed after it started at ${new Date(startedMs).toLocaleTimeString()}`);
+  if (!reasons.length) return;
+  warn(`The API already running at ${apiUrl} may be older than this code: ${reasons.join('; ')}.`);
+  warn('Stop it (Ctrl+C in its terminal, or quit the Nigafiy app) and run pnpm local again to test the current code.');
+}
+
 async function runApi(reuse) {
   if (await httpOk(`${apiUrl}/readyz`)) {
     if (reuse) {
       ok(`API already running at ${apiUrl}`);
+      await warnIfStaleApi();
       return;
     }
     fail(notOurs('An API', apiUrl));
@@ -394,7 +453,7 @@ async function runApi(reuse) {
   const api = start('api', process.execPath, [envArg, 'src/main.ts'], {
     cwd: apiDir,
     // Built-in LAN TLS keeps its CA and server certificate in the data folder (used only when HTTPS_PORT is set in .env).
-    env: { HOST: LOOPBACK, TLS_AUTO_DIR: path.join(dataDir, 'tls') },
+    env: { HOST: LOOPBACK, TLS_AUTO_DIR: path.join(dataDir, 'tls'), NIGAFIY_CODE_REV: codeRevision() ?? '' },
     critical: true,
     onLine: (line) => {
       try {

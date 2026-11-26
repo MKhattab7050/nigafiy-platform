@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { systemPool } from './db.ts';
+import { lockPool } from './db.ts';
 import { logger } from './logger.ts';
 import type { JobDefinition } from './module.ts';
 
@@ -66,6 +66,9 @@ interface MutableHealth {
 const timers: NodeJS.Timeout[] = [];
 const running = new Set<Promise<void>>();
 const health = new Map<string, MutableHealth>();
+/** When a run of any job last ended (finished, failed or skipped), and when startJobs ran. */
+let lastProgressAt: Date | null = null;
+let schedulerStartedAt: Date | null = null;
 
 function healthOf(name: string): MutableHealth {
   let h = health.get(name);
@@ -111,12 +114,69 @@ function recordFailure(job: ScheduledJob, h: MutableHealth, err: unknown): void 
   logger.error({ err, job: job.name, module: job.module }, 'background job failed');
 }
 
+/**
+ * At most this many jobs run at once; the others wait in line (first come, first served). Before,
+ * all ~25 jobs started within seconds of boot and competed with requests for the same connections.
+ */
+export const MAX_CONCURRENT_JOBS = 4;
+/**
+ * A run that lasts longer than this gives its slot back so one stuck job (a router that never
+ * answers) cannot stop every other job. It keeps running and keeps its lock until it ends, and it is
+ * not started again before then; the health report shows it as running / overdue.
+ */
+export const SLOT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Tests only (NODE_ENV=test): every run first waits this long, as real jobs do while a router, the
+ * Internet or a big table answers. On an empty test database jobs end in milliseconds and never
+ * overlap, which hid the connection starvation; tests/boot.test.ts sets it.
+ */
+const SIMULATED_JOB_WAIT_MS = process.env.NODE_ENV === 'test' ? Number(process.env.NIGAFIY_TEST_JOB_WAIT_MS) || 0 : 0;
+
+let freeSlots = MAX_CONCURRENT_JOBS;
+const waiting: Array<() => void> = [];
+
+/** Wait for a free slot; the returned function gives it back (only the first call counts). */
+async function takeSlot(): Promise<() => void> {
+  if (freeSlots > 0) freeSlots--;
+  else await new Promise<void>((resolve) => waiting.push(resolve));
+  let given = false;
+  return () => {
+    if (given) return;
+    given = true;
+    const next = waiting.shift();
+    if (next) next(); // the slot passes straight to the next job in line
+    else freeSlots++;
+  };
+}
+
+/** Jobs waiting for a slot right now (for the health report). */
+export function queuedJobCount(): number {
+  return waiting.length;
+}
+
 /** One run of a job, single-runner across instances. Never rejects. */
 export async function runJobOnce(job: ScheduledJob): Promise<void> {
   const h = healthOf(job.name);
+  const giveBack = await takeSlot();
+  const slotTimer = setTimeout(() => {
+    logger.warn({ job: job.name, module: job.module, after_ms: SLOT_TIMEOUT_MS }, 'background job is taking long; letting other jobs run');
+    giveBack();
+  }, SLOT_TIMEOUT_MS);
+  slotTimer.unref();
+  try {
+    await runLocked(job, h);
+  } finally {
+    clearTimeout(slotTimer);
+    giveBack();
+  }
+}
+
+async function runLocked(job: ScheduledJob, h: MutableHealth): Promise<void> {
   let client: pg.PoolClient | undefined;
   try {
-    client = await systemPool.connect();
+    // Only the advisory lock lives on this connection; the job's queries use the normal pools.
+    client = await lockPool.connect();
     const lock = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [job.lockKey]);
     if (!lock.rows[0]?.locked) {
       h.lastSkippedAt = new Date(); // another instance is running it
@@ -126,6 +186,7 @@ export async function runJobOnce(job: ScheduledJob): Promise<void> {
     h.runs++;
     h.lastStartedAt = new Date();
     try {
+      if (SIMULATED_JOB_WAIT_MS) await new Promise((r) => setTimeout(r, SIMULATED_JOB_WAIT_MS));
       await job.run();
       h.lastSuccessAt = new Date();
       h.consecutiveFailures = 0;
@@ -138,6 +199,7 @@ export async function runJobOnce(job: ScheduledJob): Promise<void> {
     recordFailure(job, h, err);
   } finally {
     client?.release();
+    lastProgressAt = new Date();
   }
 }
 
@@ -163,6 +225,7 @@ function schedule(job: ScheduledJob, initialDelayMs = 1000): void {
 }
 
 export function startJobs(jobs: readonly ScheduledJob[]): void {
+  schedulerStartedAt = new Date();
   for (const [index, job] of jobs.entries()) {
     try {
       schedule(job, 1000 + index * 250);
@@ -178,6 +241,7 @@ export function startJobs(jobs: readonly ScheduledJob[]): void {
 export async function stopJobs(): Promise<void> {
   for (const t of timers) clearInterval(t);
   timers.length = 0;
+  schedulerStartedAt = null;
   for (const h of health.values()) {
     h.scheduled = false;
     h.scheduledAt = null;
@@ -198,6 +262,33 @@ export function overdueAt(everyMs: number, h: Pick<MutableHealth, 'scheduled' | 
   const marks = h.running ? [h.lastStartedAt] : [h.lastStartedAt, h.lastSkippedAt, h.scheduledAt];
   const last = Math.max(...marks.map((d) => d?.getTime() ?? 0));
   return last > 0 ? new Date(last + grace) : null;
+}
+
+export interface SchedulerReadiness {
+  /**
+   * not_running: this process does not schedule jobs (tests, a web-only instance);
+   * ok; degraded: some jobs are overdue but others still finish; stalled: no run of any job has
+   * ended for STALL_AFTER_MS although jobs are scheduled — the scheduler is stuck.
+   */
+  state: 'not_running' | 'ok' | 'degraded' | 'stalled';
+  overdue_jobs: string[];
+  queued: number;
+  last_progress_at: string | null;
+}
+
+/** No run of any job ended for this long while jobs are scheduled = stuck (the fastest jobs run every few seconds). */
+export const STALL_AFTER_MS = 3 * 60_000;
+
+/** Is the scheduler of this process doing its work? Used by /readyz. */
+export function schedulerReadiness(jobs: readonly ScheduledJob[], now: Date = new Date()): SchedulerReadiness {
+  const report = jobHealth(jobs, now);
+  const scheduled = report.filter((j) => j.state !== 'not_scheduled');
+  const overdue = report.filter((j) => j.overdue).map((j) => j.name);
+  const base = { overdue_jobs: overdue, queued: waiting.length, last_progress_at: iso(lastProgressAt) };
+  if (!scheduled.length) return { state: 'not_running', ...base };
+  const since = Math.max(lastProgressAt?.getTime() ?? 0, schedulerStartedAt?.getTime() ?? 0);
+  if (since > 0 && now.getTime() - since > STALL_AFTER_MS) return { state: 'stalled', ...base };
+  return { state: overdue.length ? 'degraded' : 'ok', ...base };
 }
 
 /** Health of the given jobs as seen by this API instance. */

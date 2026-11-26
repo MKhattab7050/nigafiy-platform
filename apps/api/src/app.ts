@@ -4,12 +4,16 @@ import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import { AppError, errorHandler } from './common/http.ts';
 import { env } from './config/env.ts';
-import { systemPool } from './infrastructure/db.ts';
+import { databaseUnavailableCode, systemPool } from './infrastructure/db.ts';
 import { logger } from './infrastructure/logger.ts';
 import { limiterStore } from './infrastructure/rate-limit.ts';
 import type { ModuleManifest } from './infrastructure/module.ts';
+import { schedulerReadiness } from './infrastructure/scheduler.ts';
 import { requireSession } from './modules/auth/index.ts';
 import { modules as registeredModules } from './modules/registry.ts';
+import { scheduledJobsOf } from './modules/system/service.ts';
+
+const PROCESS_STARTED_AT = new Date(Date.now() - process.uptime() * 1000).toISOString();
 
 function trustProxySetting(value: string): boolean | number | string {
   if (value === 'false') return false;
@@ -47,15 +51,23 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
   });
   app.use(helmet());
 
-  // Liveness: the process is up. Readiness: it can reach its database.
-  app.get('/healthz', (_req, res) => void res.json({ status: 'ok' }));
+  // Liveness: the process is up. Readiness: it can reach its database (with a free connection) and,
+  // where this process runs the background jobs, the scheduler is not stuck. The desktop engine
+  // restarts the API after three 503s in a row, which is the cure for both. A few overdue jobs
+  // (a router that answers slowly) are reported as "degraded" with 200: a restart would not help.
+  const jobs = scheduledJobsOf(modules);
+  // started_at / rev let `pnpm local` warn when an API left running from earlier is on older code.
+  app.get('/healthz', (_req, res) => void res.json({ status: 'ok', started_at: PROCESS_STARTED_AT, rev: process.env.NIGAFIY_CODE_REV || null }));
   app.get('/readyz', async (_req, res) => {
+    let database: 'ok' | 'service_busy' | 'database_unavailable' = 'ok';
     try {
       await systemPool.query('SELECT 1');
-      res.json({ status: 'ready' });
-    } catch {
-      res.status(503).json({ status: 'database_unavailable' });
+    } catch (err) {
+      database = databaseUnavailableCode(err) ?? 'database_unavailable';
     }
+    const scheduler = schedulerReadiness(jobs);
+    const ready = database === 'ok' && scheduler.state !== 'stalled';
+    res.status(ready ? 200 : 503).json({ status: ready ? (scheduler.state === 'degraded' ? 'degraded' : 'ready') : 'not_ready', database, scheduler });
   });
 
   // Counters live in Redis when REDIS_URL is set (shared by every API instance), else in memory.

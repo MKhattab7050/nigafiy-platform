@@ -80,10 +80,13 @@ export function Select({ children, className, ...props }: React.SelectHTMLAttrib
   );
 }
 
-/** A small set of mutually exclusive choices (ranges, filters). */
+/**
+ * A small set of mutually exclusive choices (ranges, filters). On a narrow screen the group scrolls
+ * sideways, like Tabs, instead of making the whole page wider than the phone.
+ */
 export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex max-w-full rounded-[var(--radius-control)] border border-line-strong bg-sunken p-0.5">
+    <div role="group" aria-label={label} className="inline-flex min-w-0 max-w-full overflow-x-auto rounded-[var(--radius-control)] border border-line-strong bg-sunken p-0.5 [scrollbar-width:none]">
       {options.map((o) => (
         <button
           key={o.value}
@@ -91,7 +94,7 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
           className={clsx(
-            'h-7 whitespace-nowrap rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-[120ms]',
+            'h-7 shrink-0 whitespace-nowrap rounded-[5px] px-2.5 text-xs font-medium transition-colors duration-[120ms]',
             o.value === value ? 'bg-surface text-fg shadow-[0_0_0_1px_var(--color-line-strong)]' : 'text-muted hover:text-fg',
           )}
         >

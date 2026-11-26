@@ -23,9 +23,18 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * How long a request may take before the screen stops waiting and says the server is not answering
+ * (a spinner that never ends was what people saw when the API hung). Calls that really take long,
+ * such as writing or restoring a backup, pass `timeoutMs: 0` (no limit).
+ */
+export const DEFAULT_TIMEOUT_MS = 60_000;
+
 /** All API access goes through the same-origin /api proxy with the session cookie. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
   let res: Response;
+  const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const signal = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
   try {
     res = await fetch(`/api/v1${path}`, {
       method: init.method ?? 'GET',
@@ -33,9 +42,14 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       headers: { 'X-LD-CSRF': '1', ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
       cache: 'no-store',
+      signal,
     });
-  } catch {
-    // Technical text only: the UI shows the translation of the code (lib/i18n/error-messages.ts).
+  } catch (err) {
+    // Technical text only: the UI shows the translation of the code (lib/i18n/error-messages.ts);
+    // a timeout (status 0) is worded like "can't reach the server", with the code under "Details".
+    if (signal?.aborted || (err as { name?: string } | null)?.name === 'TimeoutError') {
+      throw new ApiError(0, 'request_timeout', `The Nigafiy server did not answer within ${Math.round(timeoutMs / 1000)} s`);
+    }
     throw new ApiError(0, 'network_error', 'Cannot reach the Nigafiy server');
   }
   if (res.status === 204) return undefined as T;

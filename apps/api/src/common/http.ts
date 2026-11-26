@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import type { Role } from '@nigafiy/shared-types';
 import { env, tlsPinSha256 } from '../config/env.ts';
+import { databaseUnavailableCode } from '../infrastructure/db.ts';
 import { tlsStatus } from '../infrastructure/lan-tls.ts';
 import { logger } from '../infrastructure/logger.ts';
 
@@ -108,6 +109,14 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   }
   if (e?.code === '23505') {
     res.status(409).json({ error: { code: 'conflict', message: 'A record with these values already exists', request_id: req.id } });
+    return;
+  }
+  // The database is busy or away: a clear, retryable 503 instead of a generic 500 (or a request that hangs).
+  const unavailable = databaseUnavailableCode(err);
+  if (unavailable) {
+    logger.warn({ err, request_id: req.id, path: req.path, method: req.method, code: unavailable }, 'database unavailable for request');
+    res.setHeader('Retry-After', '5');
+    res.status(503).json({ error: { code: unavailable, message: unavailable === 'service_busy' ? 'The server is busy, try again in a moment' : 'The database is not reachable right now', request_id: req.id } });
     return;
   }
   // Unexpected: log everything server-side, reveal nothing to the client.
