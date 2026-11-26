@@ -3102,3 +3102,70 @@ export interface AndroidProvisioningInfo {
   server_url_source: 'configured' | 'request' | 'lan';
   tls_pin_sha256: string | null;
 }
+
+/** One sentence of a weekly report or System Health; `code` + `params` let the web word it in the user's language, `text` is English. */
+export interface ReportLine {
+  code: string;
+  params: Record<string, string | number>;
+  text: string;
+}
+
+/** A top improvement for next week: an open insight (or a setup step), with where to do it. */
+export interface WeeklyImprovement extends ReportLine {
+  severity: Severity;
+  /** English detail (insights' own; the web localizes insights by code). */
+  detail: string;
+  href: string | null;
+}
+
+export interface WeeklyReport {
+  id: string | null;
+  /** Monday (local) of the week, YYYY-MM-DD. */
+  week_start: string;
+  period_from: string;
+  period_to: string;
+  timezone: string;
+  /** false: "this week so far", worked out now and not stored. */
+  final: boolean;
+  score: number | null;
+  previous_score: number | null;
+  events: ReportLine[];
+  improvements: WeeklyImprovement[];
+  notified_at: string | null;
+  created_at: string | null;
+}
+
+export interface WeeklyReportsView {
+  reports: { week_start: string; score: number | null; created_at: string }[];
+  latest: WeeklyReport | null;
+  settings: { notify: boolean };
+  /** Enabled channels the report would go to when notify is on. */
+  channels: number;
+}
+
+export type SchedulerState = 'ok' | 'degraded' | 'stalled' | 'not_running';
+
+/** GET /system/health: plain answers about Nigafiy itself. */
+export interface SystemHealthReport {
+  checked_at: string;
+  api: { running: true; started_at: string; version: string | null };
+  database: { reachable: boolean; latency_ms: number | null };
+  scheduler: {
+    state: SchedulerState;
+    jobs: number;
+    /** Overdue jobs and since when (the moment they became overdue). */
+    late: { name: string; module: string; since: string }[];
+    /** Jobs whose recent runs failed: since = the first failure after the last success (approximate: last success). */
+    failing: { name: string; module: string; failures: number; last_success_at: string | null; last_error_at: string; message: string }[];
+  };
+  monitoring: {
+    active: boolean;
+    sensors: { id: string; name: string; state: 'never' | 'online' | 'offline'; last_heartbeat_at: string | null }[];
+    last_gap: { kind: 'api' | 'collector'; started_at: string; ended_at: string; duration_seconds: number } | null;
+  };
+  outside_heartbeat: { configured: boolean; ok: boolean | null; last_ping_at: string | null };
+  /** Telegram / ntfy channels that are on (the outside heartbeat card suggests itself once one exists). */
+  instant_channels: number;
+  /** What needs the user, most important first; empty = nothing. */
+  actions: ReportLine[];
+}

@@ -1,18 +1,21 @@
 'use client';
 
 import type { OutsideHeartbeat } from '@nigafiy/shared-types';
-import { HeartPulse, Trash2 } from 'lucide-react';
+import { ExternalLink, HeartPulse, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { Async, Badge, Button, Card, ErrorNote, Field, Input, useConfirm } from '@/components/ui';
+import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, Card, ErrorNote, Field, Input, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useQuery } from '@/lib/app';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 
 /**
- * Optional outside heartbeat (GET/PUT/DELETE /notifications/heartbeat). Nigafiy runs on one computer;
- * when it is off nothing inside can warn anyone, so an outside service that expects a ping every
- * minute does it instead. The saved URL is never shown again (it may hold a secret token), only its host.
+ * "Tell me if Nigafiy itself stops": the optional outside heartbeat (GET/PUT/DELETE /notifications/heartbeat).
+ * Nigafiy runs on one computer; when it is off nothing inside can warn anyone, so an outside service
+ * that expects a ping every minute (and alerts by Telegram or ntfy) does it instead. Never on by
+ * default: it sends requests outside, so the card says exactly what is sent, and setting it up is
+ * one click to open the service plus paste-and-save. The saved URL is never shown again (it may hold
+ * a secret token), only its host.
  */
 export function OutsideHeartbeatCard() {
   const confirm = useConfirm();
@@ -37,15 +40,16 @@ export function OutsideHeartbeatCard() {
 
   return (
     <Card
+      className="scroll-mt-20"
       title={
         <span className="inline-flex items-center gap-2">
           <HeartPulse className="size-4 text-accent" aria-hidden />
-          {t('settings.heartbeat.title')}
+          {t('hb.title')}
         </span>
       }
     >
-      <p className="mb-1 text-[13px] text-muted">{t('settings.heartbeat.intro')}</p>
-      <p className="mb-3 text-xs text-faint">{t('settings.heartbeat.how')}</p>
+      <p className="mb-2 text-[13px] text-muted">{t('hb.intro')}</p>
+      <p className="mb-3 rounded-md border border-line bg-sunken px-3 py-2 text-xs text-muted">{t('hb.sent')}</p>
       {error && (
         <div className="mb-3">
           <ErrorNote error={error} />
@@ -91,6 +95,22 @@ export function OutsideHeartbeatCard() {
                 </Button>
               </div>
             )}
+            {!hb.configured && (
+              <div className="mb-3 space-y-2 text-[13px]">
+                <p className="text-xs text-faint">{t('hb.off')}</p>
+                <p>{t('hb.step1')}</p>
+                <a
+                  href="https://healthchecks.io/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${BUTTON_BASE} ${BUTTON_SIZE.sm} ${BUTTON_VARIANT.secondary}`}
+                >
+                  {t('hb.step1Button')}
+                  <ExternalLink className="size-3.5" aria-hidden />
+                </a>
+                <p>{t('hb.step2')}</p>
+              </div>
+            )}
             <form
               className="flex flex-col gap-3 sm:flex-row sm:items-end"
               onSubmit={(e) => {
@@ -112,6 +132,7 @@ export function OutsideHeartbeatCard() {
                 {t('settings.heartbeat.save')}
               </Button>
             </form>
+            {!hb.configured && <p className="mt-2 text-xs text-faint">{t('hb.otherServices')}</p>}
           </>
         )}
       </Async>

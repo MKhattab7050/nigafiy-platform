@@ -33,6 +33,7 @@ import { createSystemModule } from './system/index.ts';
 import { timeMachineModule } from './timemachine/index.ts';
 import { toolboxModule } from './toolbox/index.ts';
 import { topologyModule } from './topology/index.ts';
+import { weeklyReportModule } from './weekly-report/index.ts';
 
 /**
  * Every module of the API, in mount order. app.ts mounts, per kind and in this order:
@@ -75,5 +76,6 @@ export const modules: readonly ModuleManifest[] = validateModules([
   platformModule,
   backupsModule,
   outsideAccessModule,
+  weeklyReportModule,
   createSystemModule(() => modules),
 ]);

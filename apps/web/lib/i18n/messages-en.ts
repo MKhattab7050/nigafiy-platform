@@ -11,6 +11,7 @@ import { en as outsideAccess } from '../../features/settings/outside-access-stri
 import { en as push } from '../../features/settings/push-strings.ts';
 import { en as calm } from '../../features/settings/calm-strings.ts';
 import { en as telegramLink } from '../../features/settings/telegram-strings.ts';
+import { en as systemHealth } from '../../features/settings/system-health-strings.ts';
 import { en as dashboard } from '../../features/dashboard/strings.ts';
 import { en as devices } from '../../features/devices/strings.ts';
 import { en as discovery } from '../../features/discovery/strings.ts';
@@ -47,6 +48,7 @@ export const messages = {
   ...push,
   ...calm,
   ...telegramLink,
+  ...systemHealth,
   ...dashboard,
   ...devices,
   ...discovery,
