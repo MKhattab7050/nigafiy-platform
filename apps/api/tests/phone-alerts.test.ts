@@ -74,4 +74,14 @@ describe('alerts on admin phones', () => {
     expect(ch.rows[0].min_severity).toBe('warning');
     expect(ch.rows[0].event_types).toContain('device_online');
   });
+
+  it("the channel's Test button reaches the admin phone", async () => {
+    const a = await newAccount('phone-alerts-test');
+    const admin = await phone(a, 'admin', 'Owner phone');
+    const ch = await systemPool.query<{ id: string }>(`SELECT id FROM notification_channels WHERE organization_id = $1 AND kind = 'phone'`, [a.organizationId]);
+    const sent = await a.agent.post(`/api/v1/notification-channels/${ch.rows[0]!.id}/test`).set(CSRF).send({});
+    expect(sent.status).toBe(202);
+    await dispatchNotifications();
+    expect((await beat(admin.cred)).alerts?.map((x) => [x.title, x.resolved])).toEqual([['Test notification from Nigafiy', false]]);
+  });
 });

@@ -33,7 +33,8 @@ export async function ensurePhoneChannel(db: Db, organizationId: string): Promis
 
 /** Hands one delivery to every active admin phone. Returns an error text, or null when done. */
 export async function deliverToPhones(organizationId: string, event: NotificationEvent & { actions?: NotificationAction[] }, organizationName: string): Promise<string | null> {
-  const resolved = event.severity === 'info';
+  // The channel's Test button sends an info event: it is not a "resolved" message, show it as is.
+  const resolved = event.severity === 'info' && event.type !== 'notification_test';
   if (resolved) {
     if (!RESOLVED_TYPES.includes(event.type)) return null;
     const told = await systemPool.query(
