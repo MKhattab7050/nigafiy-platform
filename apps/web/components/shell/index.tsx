@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useFocusTrap } from '@/components/ui/focus-trap';
+import { OwnPasswordBanner } from '@/features/auth';
 import { useSession } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { useProgramId } from '@/lib/programs-context';
@@ -66,6 +67,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <TopBar onMenu={() => setOpen(true)} />
       </ShellPartBoundary>
       <main key={pathname} id="main" tabIndex={-1} className="outline-none mx-auto w-full min-w-0 max-w-[1480px] animate-enter px-4 py-6 lg:px-8 lg:py-7">
+        <OwnPasswordBanner />
         {children}
       </main>
     </div>

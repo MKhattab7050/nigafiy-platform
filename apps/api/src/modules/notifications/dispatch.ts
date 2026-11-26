@@ -12,9 +12,12 @@ import {
   renderDiscordPayload,
   renderNtfyMessage,
   renderSlackPayload,
-  renderTelegramPayload,
 } from './channels.ts';
+import { deliveryActions } from './action-tokens.ts';
 import { type NotificationEvent, type SmtpConfig, renderEmail, sendEmail } from './email.ts';
+import { applyDeliveryPolicy } from './policy.ts';
+import { sendTelegramDelivery } from './telegram.ts';
+import { deliverPush } from './webpush.ts';
 
 const MAX_ATTEMPTS = 6;
 const LEASE_SECONDS = 120;
@@ -47,6 +50,15 @@ interface DueDelivery {
  *  - never follow redirects, short timeout, response body discarded.
  */
 async function post(rawUrl: string, body: string, headers: Record<string, string>): Promise<number> {
+  return send('POST', rawUrl, body, headers);
+}
+
+/** A plain GET with the same SSRF mitigations as `post` (the outside heartbeat ping). Returns the HTTP status. */
+export function getOutbound(rawUrl: string, headers: Record<string, string> = {}): Promise<number> {
+  return send('GET', rawUrl, undefined, headers);
+}
+
+async function send(method: 'GET' | 'POST', rawUrl: string, body: string | undefined, headers: Record<string, string>): Promise<number> {
   const url = new URL(rawUrl);
   const addresses = await lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true });
   const target = addresses[0];
@@ -59,13 +71,14 @@ async function post(rawUrl: string, body: string, headers: Record<string, string
 
   return new Promise<number>((resolve, reject) => {
     const client = url.protocol === 'https:' ? https : http;
-    const req = client.request(url, { method: 'POST', headers, timeout: TIMEOUT_MS, lookup: pinned as never }, (res) => {
+    const req = client.request(url, { method, headers, timeout: TIMEOUT_MS, lookup: pinned as never }, (res) => {
       res.resume();
       res.on('end', () => resolve(res.statusCode ?? 0));
     });
     req.on('timeout', () => req.destroy(new Error('timed out')));
     req.on('error', reject);
-    req.end(body);
+    if (body === undefined) req.end();
+    else req.end(body);
   });
 }
 
@@ -78,11 +91,13 @@ function sanitizeError(err: unknown, secrets: string[]): string {
 }
 
 export async function dispatchNotifications(): Promise<void> {
+  // Calm alerts (item 12): decide new deliveries first; only those the policy passed are sent.
+  await applyDeliveryPolicy();
   // Claim a batch with a lease so the HTTP/SMTP calls happen outside any transaction.
   const due = await systemPool.query<DueDelivery>(
     `WITH claimed AS (
        SELECT id FROM notification_deliveries
-        WHERE status = 'pending' AND next_attempt_at <= now()
+        WHERE status = 'pending' AND policy_at IS NOT NULL AND next_attempt_at <= now()
         ORDER BY next_attempt_at LIMIT 20 FOR UPDATE SKIP LOCKED
      )
      UPDATE notification_deliveries d
@@ -99,7 +114,12 @@ export async function dispatchNotifications(): Promise<void> {
 
   await Promise.all(
     due.rows.map(async (d) => {
-      const ev = d.event as unknown as NotificationEvent;
+      // Buttons (item 9): fresh single-use tokens for this delivery, as `actions`; a failure only drops the buttons.
+      const actions = await deliveryActions(d.id).catch((err: unknown) => {
+        logger.warn({ delivery_id: d.id, err: err instanceof Error ? err.message : String(err) }, 'notification buttons could not be issued');
+        return undefined;
+      });
+      const ev = (actions ? { ...d.event, actions } : d.event) as unknown as NotificationEvent;
       let error: string | null = null;
       const secretsToRedact: string[] = [];
 
@@ -112,14 +132,8 @@ export async function dispatchNotifications(): Promise<void> {
         } else if (d.kind === 'telegram') {
           const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { bot_token: string };
           secretsToRedact.push(secret.bot_token);
-          const base = (d.config.api_base || 'https://api.telegram.org').replace(/\/+$/, '');
-          const payload = JSON.stringify(renderTelegramPayload(ev, d.organization_name, d.config.chat_id ?? '', d.config.message_thread_id));
-          const status = await post(`${base}/bot${secret.bot_token}/sendMessage`, payload, {
-            'Content-Type': 'application/json',
-            'Content-Length': String(Buffer.byteLength(payload)),
-            'User-Agent': 'Nigafiy-Notifications/1',
-          });
-          if (status < 200 || status >= 300) error = `Telegram responded with HTTP ${status}`;
+          // Every chat bound to the channel (item 10: linked by QR) plus the typed chat of older channels.
+          error = await sendTelegramDelivery(d.id, d.organization_name, d.config, secret.bot_token, ev);
         } else if (d.kind === 'slack') {
           const secret = JSON.parse(decryptSecret(d.secret_encrypted)) as { webhook_url: string };
           secretsToRedact.push(secret.webhook_url);
@@ -159,6 +173,9 @@ export async function dispatchNotifications(): Promise<void> {
           }
           const status = await post(`${base}/${encodeURIComponent(topic)}`, msg.body, headers);
           if (status < 200 || status >= 300) error = `ntfy responded with HTTP ${status}`;
+        } else if ((d.kind as string) === 'push') {
+          // Web Push to every phone / browser on this channel (item 11, webpush.ts). 'push' is not yet in channels.ts's kind union.
+          error = await deliverPush(d.id, ev, d.organization_name);
         } else {
           const timestamp = Math.floor(Date.now() / 1000);
           const body = JSON.stringify({ delivery_id: d.id, organization_id: d.organization_id, sent_at: new Date().toISOString(), event: d.event });

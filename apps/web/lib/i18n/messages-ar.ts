@@ -5,6 +5,12 @@ import { ar as core } from './core-strings.ts';
 import { ar as ui } from './ui-strings.ts';
 import { ar as access } from '../../features/access/strings.ts';
 import { ar as auth } from '../../features/auth/strings.ts';
+import { ar as ownPassword } from '../../features/auth/own-password-strings.ts';
+import { ar as dbBackups } from '../../features/settings/backup-strings.ts';
+import { ar as outsideAccess } from '../../features/settings/outside-access-strings.ts';
+import { ar as push } from '../../features/settings/push-strings.ts';
+import { ar as calm } from '../../features/settings/calm-strings.ts';
+import { ar as telegramLink } from '../../features/settings/telegram-strings.ts';
 import { ar as dashboard } from '../../features/dashboard/strings.ts';
 import { ar as devices } from '../../features/devices/strings.ts';
 import { ar as discovery } from '../../features/discovery/strings.ts';
@@ -34,6 +40,12 @@ export const messages = {
   ...ui,
   ...access,
   ...auth,
+  ...ownPassword,
+  ...dbBackups,
+  ...outsideAccess,
+  ...push,
+  ...calm,
+  ...telegramLink,
   ...dashboard,
   ...devices,
   ...discovery,

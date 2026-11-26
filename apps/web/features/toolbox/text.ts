@@ -3,7 +3,7 @@ import type { Locale } from '@/lib/i18n';
 
 const en = {
   title: 'IT Toolbox',
-  subtitle: 'Run on-demand network probes (Ping, TCP port check, DNS lookup, reverse DNS, and Traceroute) directly from the collector inside your site.',
+  subtitle: 'Run on-demand network probes (Ping, TCP port check, DNS lookup, reverse DNS, and Traceroute) directly from the Sensor inside your site.',
   runTitle: 'Run a probe',
   site: 'Site',
   tool: 'Tool',
@@ -16,12 +16,12 @@ const en = {
     traceroute: 'Traceroute',
   } as Record<ToolKind, string>,
   toolHints: {
-    ping: 'Sends 5 ICMP echo requests from the collector and measures latency, loss and jitter.',
+    ping: 'Sends 5 ICMP echo requests from the Sensor and measures latency, loss and jitter.',
     tcp: 'Attempts a TCP handshake to verify whether a service port is open and measures connect time.',
     ports: 'Checks 19 common IT & management TCP ports (SSH, HTTP/S, SMB, RDP, VNC, printers, databases) on a private LAN device.',
-    dns: 'Resolves a domain or hostname using the collector host’s DNS resolver.',
+    dns: 'Resolves a domain or hostname using the Sensor host’s DNS resolver.',
     rdns: 'Looks up the PTR (reverse DNS) record for an IPv4 address.',
-    traceroute: 'Traces the hop-by-hop route from the collector to the target (up to 20 hops).',
+    traceroute: 'Traces the hop-by-hop route from the Sensor to the target (up to 20 hops).',
   } as Record<ToolKind, string>,
   target: 'Target',
   targetPlaceholder: {
@@ -38,17 +38,17 @@ const en = {
   gatewayLabel: 'Gateway',
   run: 'Run probe',
   rerun: 'Run again',
-  running: 'Waiting for the collector to run the probe… (usually 5–30 seconds)',
+  running: 'Waiting for the Sensor to run the probe… (usually 5–30 seconds)',
   viewerNotice: 'Only technicians and admins can run probes. You can inspect past runs below.',
-  noCollector: 'No online collector in this site. Start the collector to run live probes.',
+  noCollector: 'No online Sensor in this site. Start the Sensor to run live probes.',
   status: {
-    pending: 'Running on collector',
+    pending: 'Running on Sensor',
     completed: 'Completed',
     failed: 'Failed',
     expired: 'Timed out',
   } as Record<ToolRunStatus, string>,
   resultTitle: 'Probe result',
-  measuredFrom: 'Measured from collector',
+  measuredFrom: 'Measured from Sensor',
   duration: 'Duration',
   resolvedIp: 'Resolved IP',
   jitter: 'Jitter',
@@ -78,14 +78,14 @@ const en = {
   historyEmpty: 'No probes have been run for this site yet.',
   selectPrompt: 'Run a probe above or select one from the history list to inspect its details.',
   deviceCardTitle: 'On-demand network tools',
-  deviceCardHint: 'Probe this device directly from the site collector.',
+  deviceCardHint: 'Probe this device directly from the site Sensor.',
 };
 
 type Dict = typeof en;
 
 const ar: Dict = {
   title: 'صندوق أدوات الشبكة (IT Toolbox)',
-  subtitle: 'شغّل فحوصات فورية (Ping، فحص منفذ TCP، استعلام DNS، وDNS العكسي، وتتبع المسار Traceroute) مباشرةً من المجمِّع داخل الشبكة.',
+  subtitle: 'شغّل فحوصات فورية (Ping، فحص منفذ TCP، استعلام DNS، وDNS العكسي، وتتبع المسار Traceroute) مباشرةً من المستشعر داخل الشبكة.',
   runTitle: 'تشغيل فحص فوري',
   site: 'الموقع',
   tool: 'الأداة',
@@ -98,12 +98,12 @@ const ar: Dict = {
     traceroute: 'تتبع المسار (Traceroute)',
   },
   toolHints: {
-    ping: 'يرسل 5 حزم ICMP من المجمِّع ويقيس زمن الاستجابة ونسبة الفقد والتذبذب (Jitter).',
+    ping: 'يرسل 5 حزم ICMP من المستشعر ويقيس زمن الاستجابة ونسبة الفقد والتذبذب (Jitter).',
     tcp: 'يختبر فتح اتصال TCP للتأكد من عمل الخدمة على المنفذ ويقيس زمن الاتصال.',
     ports: 'يفحص 19 منفذًا من منافذ الإدارة والخدمات الشائعة (SSH، HTTP/S، SMB، RDP، VNC، الطابعات، قواعد البيانات) على جهاز داخل الشبكة المحلية.',
-    dns: 'يحلّل اسم النطاق أو المضيف باستخدام خادم DNS المُعدّ على جهاز المجمِّع.',
+    dns: 'يحلّل اسم النطاق أو المضيف باستخدام خادم DNS المُعدّ على جهاز المستشعر.',
     rdns: 'يبحث عن سجل PTR (الاسم العكسي) لعنوان IPv4.',
-    traceroute: 'يتتبع مسار الحزم قفزةً بقفزة من المجمِّع إلى الهدف (حتى 20 قفزة).',
+    traceroute: 'يتتبع مسار الحزم قفزةً بقفزة من المستشعر إلى الهدف (حتى 20 قفزة).',
   },
   target: 'الهدف',
   targetPlaceholder: {
@@ -120,17 +120,17 @@ const ar: Dict = {
   gatewayLabel: 'البوابة',
   run: 'شغّل الفحص',
   rerun: 'إعادة الفحص',
-  running: 'بانتظار تنفيذ الفحص من المجمِّع… (يستغرق عادةً 5–30 ثانية)',
+  running: 'بانتظار تنفيذ الفحص من المستشعر… (يستغرق عادةً 5–30 ثانية)',
   viewerNotice: 'تشغيل الفحوصات متاح للفنيين والمسؤولين فقط. يمكنك استعراض نتائج الفحوصات السابقة أدناه.',
-  noCollector: 'لا يوجد مجمِّع متصل في هذا الموقع حاليًا. شغّل المجمِّع لتنفيذ الفحوصات الحية.',
+  noCollector: 'لا يوجد مستشعر متصل في هذا الموقع حاليًا. شغّل المستشعر لتنفيذ الفحوصات الحية.',
   status: {
-    pending: 'قيد التنفيذ لدى المجمِّع',
+    pending: 'قيد التنفيذ لدى المستشعر',
     completed: 'اكتمل',
     failed: 'فشل',
     expired: 'انتهت المهلة',
   },
   resultTitle: 'نتيجة الفحص',
-  measuredFrom: 'قِيس من المجمِّع',
+  measuredFrom: 'قِيس من المستشعر',
   duration: 'المدة',
   resolvedIp: 'عنوان IP المحلَّل',
   jitter: 'التذبذب (Jitter)',
@@ -160,7 +160,7 @@ const ar: Dict = {
   historyEmpty: 'لم يُشغَّل أي فحص في هذا الموقع بعد.',
   selectPrompt: 'شغّل فحصًا من الأعلى أو اختر فحصًا سابقًا من القائمة لعرض تفاصيله.',
   deviceCardTitle: 'أدوات الفحص الفوري (IT Toolbox)',
-  deviceCardHint: 'افحص هذا الجهاز مباشرةً من مجمِّع الموقع.',
+  deviceCardHint: 'افحص هذا الجهاز مباشرةً من مستشعر الموقع.',
 };
 
 export const toolboxText = (locale: Locale): Dict => (locale === 'ar' ? ar : en);

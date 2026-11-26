@@ -2,6 +2,7 @@ import { PROGRAMS_BRAND } from '@nigafiy/brand';
 import type { Metadata } from 'next';
 import { Ltr, ProgramIcon } from '../../../components/brand.tsx';
 import { BundlePicker } from '../../../components/bundle-picker.tsx';
+import { SmartScreenFigure, UacFigure } from '../../../components/windows-warning.tsx';
 import { BUNDLE_PROGRAMS, bundleCommands } from '../../../lib/bundle.ts';
 import { S } from '../../../lib/content/strings.ts';
 import { type Lang, href } from '../../../lib/i18n.ts';
@@ -89,11 +90,15 @@ export default async function Downloads({ params }: Params) {
   const desktop = componentOf(release, 'desktop-windows-x64');
   const version = desktop?.version ?? null;
   const placeholder = '<version>';
+  const setupName = desktop ? fileNameOf(desktop.url) : `Nigafiy Setup ${placeholder}.exe`;
   return (
     <>
       <div className="wrap page-head">
         <h1>{S.downloadsH[lang]}</h1>
         <p className="lead">{S.downloadsLead[lang]}</p>
+        <p data-testid="start-here">
+          <a href={href(lang, 'docs/guide/start-here')}>{S.startHereLink[lang]}</a>
+        </p>
         {release ? (
           <p className="doc-meta" style={{ marginTop: 12 }} data-testid="release-line">
             <span>
@@ -210,12 +215,33 @@ export default async function Downloads({ params }: Params) {
           </p>
         </section>
 
-        <section className="dl-group" aria-labelledby="verify-h">
+        <section className="dl-group" id="windows-warning" aria-labelledby="warn-h">
+          <h2 id="warn-h">{S.warnH[lang]}</h2>
+          <p>{S.warnLead[lang]}</p>
+          <h3>{S.warnSmartScreenH[lang]}</h3>
+          <ol>
+            <li>{S.warnSmartScreen1[lang]}</li>
+            <li>{S.warnSmartScreen2[lang]}</li>
+            <li>{S.warnSmartScreen3[lang]}</li>
+          </ol>
+          <figure style={{ margin: '16px 0', maxWidth: 760 }}>
+            <SmartScreenFigure lang={lang} file={setupName} label={S.warnSmartScreenAlt[lang]} />
+          </figure>
+          <h3>{S.warnUacH[lang]}</h3>
+          <p>{S.warnUacText[lang]}</p>
+          <figure style={{ margin: '16px 0', maxWidth: 440 }}>
+            <UacFigure lang={lang} file={setupName} label={S.warnUacAlt[lang]} />
+          </figure>
+          <p className="muted small">{S.warnNote[lang]}</p>
+        </section>
+
+        <section className="dl-group" id="verify" aria-labelledby="verify-h">
           <h2 id="verify-h">{S.verifyH[lang]}</h2>
           <p>{S.verifyText[lang]}</p>
           <pre>
-            <code>{`Get-FileHash -Algorithm SHA256 "${desktop ? fileNameOf(desktop.url) : `Nigafiy Setup ${placeholder}.exe`}"`}</code>
+            <code>{`Get-FileHash -Algorithm SHA256 "${setupName}"`}</code>
           </pre>
+          <p>{S.verifySums[lang]}</p>
           <p className="muted small">
             <a href={href(lang, 'release-manifest')}>{S.navManifest[lang]}</a>
           </p>

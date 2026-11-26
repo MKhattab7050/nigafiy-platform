@@ -26,6 +26,9 @@ export function weekAvailability(device: DeviceDetail): number | null {
   return known > 0 ? (online / known) * 100 : null;
 }
 
+/** Striped light grey: monitoring itself was off (Nigafiy not running or the Sensor silent), so the device was not observed. */
+const MONITOR_OFF_BAR = 'bg-[repeating-linear-gradient(135deg,var(--color-idle)_0_2px,transparent_2px_5px)] opacity-60';
+
 /** 7-day strip built from recorded status intervals. Gaps = before the device was first seen. */
 export function AvailabilityStrip({ device }: { device: DeviceDetail }) {
   const { t, locale } = useI18n();
@@ -40,7 +43,12 @@ export function AvailabilityStrip({ device }: { device: DeviceDetail }) {
     .filter((s) => s.to > s.from);
   if (!segments.length) return <EmptyState title={t('common.noData')} />;
   const totals = { online: 0, offline: 0, unknown: 0 };
-  for (const s of segments) totals[s.status] += s.to - s.from;
+  let monitorOff = 0;
+  for (const s of segments) {
+    if (s.monitor_off) monitorOff += s.to - s.from;
+    else totals[s.status] += s.to - s.from;
+  }
+  const label = (s: (typeof segments)[number]) => (s.monitor_off ? t('device.monitorOff') : t(`status.${s.status}`));
   const known = totals.online + totals.offline;
   const day = new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', { weekday: 'short' });
   return (
@@ -49,9 +57,9 @@ export function AvailabilityStrip({ device }: { device: DeviceDetail }) {
         {segments.map((s, i) => (
           <span
             key={i}
-            className={clsx('absolute inset-y-1', BAR[statusTone(s.status)])}
+            className={clsx('absolute inset-y-1', s.monitor_off ? MONITOR_OFF_BAR : BAR[statusTone(s.status)])}
             style={{ left: `${((s.from - start) / WEEK_MS) * 100}%`, width: `${Math.max(0.15, ((s.to - s.from) / WEEK_MS) * 100)}%` }}
-            title={`${t(`status.${s.status}`)} · ${absoluteTime(s.started_at, locale)} → ${s.ended_at ? absoluteTime(s.ended_at, locale) : '…'} (${duration(s.started_at, s.ended_at)})`}
+            title={`${label(s)} · ${absoluteTime(s.started_at, locale)} → ${s.ended_at ? absoluteTime(s.ended_at, locale) : '…'} (${duration(s.started_at, s.ended_at)})`}
           />
         ))}
         {/* day boundaries */}
@@ -73,12 +81,18 @@ export function AvailabilityStrip({ device }: { device: DeviceDetail }) {
             {t(`status.${s}`)} {duration(new Date(0).toISOString(), new Date(totals[s]).toISOString())}
           </span>
         ))}
+        {monitorOff > 0 && (
+          <span className="tnum flex items-center gap-1.5" title={t('device.monitorOffHint')}>
+            <span className={`size-2.5 rounded-[2px] border border-line ${MONITOR_OFF_BAR}`} aria-hidden />
+            {t('device.monitorOff')} {duration(new Date(0).toISOString(), new Date(monitorOff).toISOString())}
+          </span>
+        )}
         {known > 0 && <span className="tnum ms-auto text-[13px] font-semibold text-fg">{((totals.online / known) * 100).toFixed(2)}%</span>}
       </div>
       <ChartTable
         caption={t('device.availability')}
         columns={[t('devices.status'), t('chart.time'), '']}
-        rows={segments.map((s) => [t(`status.${s.status}`), `${absoluteTime(s.started_at, locale)} → ${s.ended_at ? absoluteTime(s.ended_at, locale) : '…'}`, duration(s.started_at, s.ended_at)])}
+        rows={segments.map((s) => [label(s), `${absoluteTime(s.started_at, locale)} → ${s.ended_at ? absoluteTime(s.ended_at, locale) : '…'}`, duration(s.started_at, s.ended_at)])}
       />
     </div>
   );

@@ -70,7 +70,9 @@ const telegramInput = z.object({
     .trim()
     .min(1)
     .max(64)
-    .regex(/^(-?\d+|@[A-Za-z0-9_]{4,})$/, 'Enter a numeric chat ID or @channel username'),
+    .regex(/^(-?\d+|@[A-Za-z0-9_]{4,})$/, 'Enter a numeric chat ID or @channel username')
+    // Optional since item 10: without it the chat is linked by scanning a QR code in Settings.
+    .optional(),
   message_thread_id: z.number().int().positive().max(2_147_483_647).optional(),
   api_base: z.url().max(200).optional(),
   ...common,
@@ -106,7 +108,8 @@ const ntfyInput = z.object({
 // Requests without "kind" are webhooks, as before email existed.
 const channelInput = z.union([emailInput, telegramInput, slackInput, discordInput, ntfyInput, webhookInput]);
 
-function assertDestinationUrl(raw: string, allowedHosts?: readonly string[]): URL {
+/** Same rules for every outbound URL a user enters: no credentials in it, https (http only with ALLOW_PRIVATE_WEBHOOKS). */
+export function assertDestinationUrl(raw: string, allowedHosts?: readonly string[]): URL {
   const url = new URL(raw);
   if (url.username || url.password) throw new AppError(400, 'invalid_url', 'Do not put credentials in the URL');
   if (url.protocol !== 'https:' && !(env.ALLOW_PRIVATE_WEBHOOKS && url.protocol === 'http:')) {
@@ -148,9 +151,9 @@ notificationsRouter.post(['/notification-channels', '/notifications/channels'], 
     sealed = encryptSecret(JSON.stringify(password ? { password } : {}));
   } else if (body.kind === 'telegram') {
     if (body.api_base) assertDestinationUrl(body.api_base);
-    url = `telegram://${body.chat_id}`;
+    url = body.chat_id ? `telegram://${body.chat_id}` : 'telegram://linked-chats';
     config = {
-      chat_id: body.chat_id,
+      ...(body.chat_id ? { chat_id: body.chat_id } : {}),
       ...(body.message_thread_id !== undefined ? { message_thread_id: body.message_thread_id } : {}),
       ...(body.api_base ? { api_base: body.api_base.replace(/\/+$/, '') } : {}),
     };
@@ -251,7 +254,8 @@ notificationsRouter.post(['/notification-channels/:id/test', '/notifications/cha
        VALUES ($1,'notification_test','info','Test notification from Nigafiy',$2,'platform',now()) RETURNING id`,
       [ctx.organizationId, JSON.stringify({ requested_by: ctx.userEmail, test: true })],
     );
-    await db.query(`INSERT INTO notification_deliveries (organization_id, channel_id, event_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`, [
+    // A test the user asked for is never held by the calm-alert policy (policy_at set now).
+    await db.query(`INSERT INTO notification_deliveries (organization_id, channel_id, event_id, policy_at) VALUES ($1,$2,$3,now()) ON CONFLICT DO NOTHING`, [
       ctx.organizationId,
       id,
       event.rows[0]!.id,

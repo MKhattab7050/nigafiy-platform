@@ -1,6 +1,7 @@
 import type { CollectorContext, Heartbeat } from '../../common/collector-protocol.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { buildAccessPolicy } from '../access/index.ts';
+import { recordCollectorGap } from '../collectors/index.ts';
 import { withConfigBackupSecrets } from '../configbackup/index.ts';
 import { emitEvent } from '../events/index.ts';
 import { buildSnmpConfig } from '../ports/index.ts';
@@ -18,6 +19,8 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
   const now = new Date();
 
   return withTenant(c.organizationId, async (db) => {
+    // The previous heartbeat, to record a long silence as a monitoring gap (collectors/monitor-gaps.ts).
+    const previous = await db.query<{ last_heartbeat_at: Date | null }>(`SELECT last_heartbeat_at FROM collectors WHERE id = $1 FOR UPDATE`, [c.id]);
     await db.query(
       `UPDATE collectors
           SET last_heartbeat_at = $2, connection_state = 'online', hostname = $3, version = $4, os = $5, arch = $6,
@@ -38,6 +41,7 @@ export function recordHeartbeat(c: CollectorContext, body: Heartbeat, remoteAddr
         body.mndp_status ? JSON.stringify(body.mndp_status) : null,
       ],
     );
+    await recordCollectorGap(db, c, previous.rows[0]?.last_heartbeat_at ?? null, now);
     if (c.connectionState !== 'online') {
       if (c.connectionState === 'offline') {
         await emitEvent(db, c.organizationId, {

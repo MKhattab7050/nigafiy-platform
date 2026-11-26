@@ -150,7 +150,7 @@ describe('discovery ingestion and device identity', () => {
     expect((await events(a, 'device_ip_changed'))[0]!.details).toMatchObject({ previous_ip: '192.168.1.10', new_ip: '192.168.1.11' });
     expect(list.find((d) => d.current_ip === '192.168.1.30')).toMatchObject({ identity_basis: 'mac', primary_mac: '00:0c:29:aa:00:30' });
     // A device nobody has approved, joining after the baseline, is worth a look: warning, not info.
-    expect((await events(a, 'device_discovered')).map((e) => [e.title, e.severity])).toEqual([['Unknown device joined the network: laptop.lan', 'warning']]);
+    expect((await events(a, 'device_discovered')).map((e) => [e.title, e.severity])).toEqual([['New device joined: laptop.lan', 'warning']]);
     expect(list.find((d) => d.current_ip === '192.168.1.20')!.status).toBe('online'); // one missed sweep is not enough
 
     // Sweep 3: phone still silent → offline (2 consecutive misses), with evidence.

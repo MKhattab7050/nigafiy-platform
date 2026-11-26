@@ -9,6 +9,7 @@ import { useApp, useQuery } from '@/lib/app';
 import { browserTimeZone } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { TokenModal } from '../components/token-modal';
+import { SetupGuide, setupStep } from '../components/setup-guide';
 import { SiteSection } from '../components/site-section';
 
 export function DiscoveryScreen() {
@@ -26,10 +27,25 @@ export function DiscoveryScreen() {
     reloadSites();
   };
   const visible = sites.filter((s) => !siteId || s.id === siteId);
+  // While a visible site is still in first-run setup, a friendly line replaces the technical range rules;
+  // nothing is shown until both lists have loaded, so neither text flashes before the other.
+  const scopeList = scopes.data?.items;
+  const collectorList = collectors.data?.items;
+  const settingUp =
+    scopeList && collectorList
+      ? visible.some(
+          (site) =>
+            setupStep(
+              collectorList.filter((c) => c.site_id === site.id),
+              scopeList.filter((s) => s.site_id === site.id),
+            ) !== null,
+        )
+      : undefined;
+  const intro = settingUp === undefined ? undefined : settingUp ? t('discovery.introSetup') : t('discovery.intro');
 
   return (
     <>
-      <PageHeader icon={<Radar className="size-[18px]" aria-hidden />} title={t('discovery.title')} description={t('discovery.intro')} />
+      <PageHeader icon={<Radar className="size-[18px]" aria-hidden />} title={t('discovery.title')} description={intro} />
       <Async query={scopes}>
         {(sc) => (
           <Async query={collectors}>
@@ -40,16 +56,17 @@ export function DiscoveryScreen() {
                     <EmptyState icon={<Radar className="size-8" />} title={t('common.noData')} />
                   </Card>
                 )}
-                {visible.map((site) => (
-                  <SiteSection
-                    key={site.id}
-                    site={site}
-                    scopes={sc.items.filter((s) => s.site_id === site.id)}
-                    collectors={co.items.filter((c) => c.site_id === site.id)}
-                    reload={reload}
-                    onToken={setToken}
-                  />
-                ))}
+                {visible.map((site) => {
+                  const siteScopes = sc.items.filter((s) => s.site_id === site.id);
+                  const siteCollectors = co.items.filter((c) => c.site_id === site.id);
+                  return (
+                    <div key={site.id} className="space-y-4">
+                      {/* First-run steps until this site has a reporting Sensor and a confirmed range. */}
+                      <SetupGuide site={site} collectors={siteCollectors} scopes={siteScopes} reload={reload} />
+                      <SiteSection site={site} scopes={siteScopes} collectors={siteCollectors} reload={reload} onToken={setToken} />
+                    </div>
+                  );
+                })}
                 {can('admin') && (
                   <form
                     className="space-y-2"

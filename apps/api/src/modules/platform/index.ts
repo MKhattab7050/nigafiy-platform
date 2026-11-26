@@ -5,7 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { audit, auditSystem } from '../../common/audit.ts';
 import { auth, parse, requireRole } from '../../common/http.ts';
-import { env } from '../../config/env.ts';
+import { env, ownLanAddresses } from '../../config/env.ts';
 import { defineModule } from '../../infrastructure/module.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
@@ -59,6 +59,37 @@ export function installedPrograms(setting: string = env.NIGAFIY_PROGRAMS): Platf
 router.get('/platform/programs', (req, res) => {
   auth(req);
   res.json(installedPrograms());
+});
+
+/**
+ * Addresses a phone on the same network can open this web app at: WEB_ORIGIN's scheme and port on each
+ * of this machine's LAN IPv4 addresses, kept only when the web app actually answers there (a web
+ * server bound to 127.0.0.1 does not, and then the list is empty). Shown as a QR code in the app.
+ */
+export async function phoneUrls(webOrigin: string = env.WEB_ORIGIN, addrs: Iterable<string> = ownLanAddresses()): Promise<string[]> {
+  let w: URL;
+  try {
+    w = new URL(webOrigin);
+  } catch {
+    return [];
+  }
+  const candidates = [...addrs].filter((a) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a)).map((a) => `${w.protocol}//${a}${w.port ? `:${w.port}` : ''}`);
+  const answers = await Promise.all(
+    candidates.map(async (url) => {
+      try {
+        const res = await fetch(`${url}/`, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(1500) });
+        return res.status < 500 ? url : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return answers.filter((u): u is string => u !== null);
+}
+
+router.get('/platform/phone-access', async (req, res) => {
+  auth(req);
+  res.json({ urls: await phoneUrls() });
 });
 
 router.get('/platform/engine', async (req, res) => {

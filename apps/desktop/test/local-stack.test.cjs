@@ -111,3 +111,83 @@ test('homeNetwork prefers the routed interface when UDP probe succeeds', async (
   }));
   assert.deepEqual(await homeNetwork(), { iface: 'Ethernet', address: '10.0.5.9', cidr: '10.0.4.0/22', private: true });
 });
+
+/** A fake API for signIn: each route answers with what the test sets; records which routes were called. */
+async function fakeApi(routes) {
+  const calls = [];
+  const server = http.createServer((req, res) => {
+    const key = `${req.method} ${req.url.replace('/api/v1', '')}`;
+    calls.push(key);
+    const route = routes[key];
+    if (!route) return res.writeHead(404).end();
+    const headers = { 'Content-Type': 'application/json' };
+    if (route.cookie) headers['Set-Cookie'] = `ld_session=${route.cookie}; Path=/; HttpOnly`;
+    res.writeHead(route.status, headers);
+    res.end(JSON.stringify(route.body ?? {}));
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${server.address().port}`, calls, close: () => server.close() };
+}
+
+test('signIn uses the desktop credential once the owner chose their own password', async () => {
+  const saved = { email: 'owner-1a2b3c4d@nigafiy.local', password: 'random' };
+  const api = await fakeApi({
+    'POST /auth/login': { status: 401, body: { error: { code: 'invalid_credentials' } } },
+    'POST /auth/login/desktop': { status: 200, body: { ok: true }, cookie: 'desk123' },
+  });
+  try {
+    const r = await signIn(api.url, api.url, { load: () => saved, save: () => assert.fail('must not replace the stored account') });
+    assert.equal(r.created, false);
+    assert.equal(r.api.session(), 'desk123');
+    assert.deepEqual(api.calls, ['POST /auth/login', 'POST /auth/login/desktop']);
+  } finally {
+    api.close();
+  }
+});
+
+test('signIn falls back to the sign-in page, never a new account, when the stored password is refused and sign-up is closed', async () => {
+  const saved = { email: 'owner-1a2b3c4d@nigafiy.local', password: 'random' };
+  const api = await fakeApi({
+    'POST /auth/login': { status: 401, body: {} },
+    'POST /auth/login/desktop': { status: 401, body: {} },
+    'GET /auth/options': { status: 200, body: { allow_registration: false } },
+    'POST /auth/register': { status: 201, body: { ok: true } },
+  });
+  try {
+    const r = await signIn(api.url, api.url, { load: () => saved, save: () => assert.fail('must not replace the stored account') });
+    assert.deepEqual(r, { api: null, created: false, needsSignIn: true });
+    assert.ok(!api.calls.includes('POST /auth/register'));
+  } finally {
+    api.close();
+  }
+});
+
+test('signIn asks the person to sign in when two-factor sign-in is on', async () => {
+  const api = await fakeApi({ 'POST /auth/login': { status: 200, body: { ok: false, mfa_required: true, mfa_token: 't' } } });
+  try {
+    const r = await signIn(api.url, api.url, { load: () => ({ email: 'a@b.c', password: 'x' }), save: () => assert.fail() });
+    assert.equal(r.needsSignIn, true);
+    assert.equal(r.api, null);
+  } finally {
+    api.close();
+  }
+});
+
+test('signIn creates the account again when the local database was reset (sign-up open for the first account)', async () => {
+  let saved = { email: 'owner-1a2b3c4d@nigafiy.local', password: 'old' };
+  const api = await fakeApi({
+    'POST /auth/login': { status: 401, body: {} },
+    'POST /auth/login/desktop': { status: 401, body: {} },
+    'GET /auth/options': { status: 200, body: { allow_registration: true } },
+    'POST /auth/register': { status: 201, body: { ok: true }, cookie: 'new1' },
+  });
+  try {
+    const r = await signIn(api.url, api.url, { load: () => saved, save: (next) => { saved = next; } });
+    assert.equal(r.created, true);
+    assert.equal(r.api.session(), 'new1');
+    assert.match(saved.email, /^owner-[0-9a-f]{8}@nigafiy\.local$/);
+    assert.notEqual(saved.password, 'old');
+  } finally {
+    api.close();
+  }
+});

@@ -3,7 +3,8 @@
 import clsx from 'clsx';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { ApiError } from '@/lib/api';
-import { useI18n } from '@/lib/i18n';
+import { type Locale, useI18n } from '@/lib/i18n';
+import { ERROR_UI, errorMessage, errorTechnicalDetails } from '@/lib/i18n/error-messages';
 import { Button } from './controls';
 
 /** A placeholder block with the shape of the content that is coming. */
@@ -54,24 +55,43 @@ export function EmptyState({ icon, title, children, action, illustration }: { ic
   );
 }
 
+/**
+ * The sentence to show for an error in the user's language. An API error is worded from its `code`
+ * (lib/i18n/error-messages.ts), never from the server's technical English; a message a screen
+ * already translated (`localized`) or a plain Error the screen wrote itself is shown as it is.
+ */
+export function errorSentence(error: ApiError | Error, locale: Locale, fallback: string): string {
+  if (!isApiError(error) || error.localized) return error.message || fallback;
+  return errorMessage(error, locale);
+}
+
+const isApiError = (e: ApiError | Error): e is ApiError => typeof (e as ApiError).code === 'string' && 'status' in e;
+
 export function ErrorNote({ error, onRetry }: { error: ApiError | Error | null; onRetry?: () => void }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   if (!error) return null;
-  const details = 'details' in error && error.details ? error.details : [];
+  const sentence = errorSentence(error, locale, t('common.error'));
+  // The original wording, code, field paths and request id stay available for support, behind a toggle.
+  const technical = isApiError(error) ? errorTechnicalDetails(error, locale).filter(([, v]) => v !== sentence) : [];
   return (
     <div role="alert" className="flex items-start gap-2.5 rounded-[var(--radius-control)] border border-crit/30 bg-crit/[0.07] px-3 py-2.5 text-[13px] text-fg">
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-crit" aria-hidden />
       <div className="min-w-0 flex-1">
-        <p>{error.message || t('common.error')}</p>
-        {details.length > 0 && (
-          <ul className="mt-1 list-inside list-disc text-xs text-muted">
-            {details.map((d, i) => (
-              <li key={i}>
-                {d.path ? `${d.path}: ` : ''}
-                {d.message}
-              </li>
-            ))}
-          </ul>
+        <p dir="auto">{sentence}</p>
+        {technical.length > 0 && (
+          <details className="mt-1 text-xs text-muted">
+            <summary className="w-fit cursor-pointer select-none rounded-sm text-faint hover:text-muted focus-visible:outline-2 focus-visible:outline-accent">{ERROR_UI.details[locale]}</summary>
+            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+              {technical.map(([label, value]) => (
+                <div key={`${label}:${value}`} className="contents">
+                  <dt className="text-faint">{label}</dt>
+                  <dd dir="ltr" className="mono min-w-0 break-words text-start">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </details>
         )}
       </div>
       {onRetry && (

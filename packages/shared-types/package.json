@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./markdown": "./src/markdown.ts",
+    "./notification-actions": "./src/notification-actions.ts",
     "./programs": "./src/programs.ts",
     "./routes": "./src/routes.ts"
   },

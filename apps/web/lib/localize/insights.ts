@@ -18,7 +18,7 @@ export function localizeDeductionReason(item: { code: string; reason: string }, 
 
   if (code === 'collector_silent') {
     const m = reason.match(/^Collector (.+) is not reporting$/);
-    return m ? `المجمِّع «${m[1]}» لا يرسل تقارير` : 'مجمِّع لا يرسل تقارير';
+    return m ? `المستشعر «${m[1]}» لا يرسل تقارير` : 'مستشعر لا يرسل تقارير';
   }
   if (code === 'unwanted_online') {
     const m = reason.match(/^(\d+)/);
@@ -56,14 +56,14 @@ export function localizeInsightEvidence(line: string, locale: Locale): string {
     'Marked important': 'مُعلَّم كجهاز مهم',
     'No monitoring check': 'لا يوجد له فحص مراقبة مستمر',
     'The last read failed': 'فشلت آخر قراءة',
-    'The collector reports it is not listening for DNS': 'يُفيد المجمِّع أنه لا يستمع لطلبات DNS',
+    'The collector reports it is not listening for DNS': 'يُفيد المستشعر أنه لا يستمع لطلبات DNS',
     'No DNS questions arrived from any device in the last 30 minutes': 'لم تصل أي طلبات DNS من أي جهاز خلال آخر 30 دقيقة',
     'Access control is off for this network': 'التحكم في الوصول متوقف لهذه الشبكة',
   };
   if (exact[line]) return exact[line]!;
 
   let m = line.match(/^(\d+) collector\(s\), (\d+) authorized range\(s\)$/);
-  if (m) return `${ltr(m[1]!)} مجمِّع، و${ltr(m[2]!)} نطاق مصرَّح به`;
+  if (m) return `${ltr(m[1]!)} مستشعر، و${ltr(m[2]!)} نطاق مصرَّح به`;
 
   m = line.match(/^Last heartbeat (\d+) (min|h|d) ago$/);
   if (m) return `آخر نبض اتصال منذ ${ltr(`${m[1]} ${AR_TIME(m[2]!)}`)}`;

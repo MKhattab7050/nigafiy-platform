@@ -2,6 +2,7 @@ import { type ModuleManifest, validateModules } from '../infrastructure/module.t
 import { accessModule } from './access/index.ts';
 import { authModule } from './auth/index.ts';
 import { automationModule } from './automation/index.ts';
+import { backupsModule } from './backups/index.ts';
 import { collectorsModule } from './collectors/index.ts';
 import { configBackupModule } from './configbackup/index.ts';
 import { correlationModule } from './correlation/index.ts';
@@ -18,6 +19,7 @@ import { knowledgeModule } from './knowledge/index.ts';
 import { maintenanceModule } from './maintenance/index.ts';
 import { monitoringModule } from './monitoring/index.ts';
 import { notificationsModule } from './notifications/index.ts';
+import { outsideAccessModule } from './outside-access/index.ts';
 import { overviewModule } from './overview/index.ts';
 import { platformModule } from './platform/index.ts';
 import { playbooksModule } from './playbooks/index.ts';
@@ -71,5 +73,7 @@ export const modules: readonly ModuleManifest[] = validateModules([
   portfolioModule,
   configBackupModule,
   platformModule,
+  backupsModule,
+  outsideAccessModule,
   createSystemModule(() => modules),
 ]);

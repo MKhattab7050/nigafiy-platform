@@ -12,13 +12,14 @@
 //    (AppUserModelID Nigafiy.<Program>). `--program=<id>` picks the window a launch opens, and
 //    `nigafiy://<program>/<path>` links open that program's window on the path. The protocol is
 //    registered only by a packaged build, never from a source checkout or a test run.
-const { app, BrowserWindow, Menu, Tray, ipcMain, shell, nativeImage, dialog, safeStorage, session } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, shell, nativeImage, dialog, safeStorage, session, powerMonitor, powerSaveBlocker } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { CollectorManager, isLocalServerUrl } = require('./collector-manager.cjs');
 const { LocalStack, findRepoRoot, findNode, signIn, homeNetwork, enrollThisComputer } = require('./local-stack.cjs');
 const { EngineStack, summarizeEngine } = require('./engine-stack.cjs');
+const { trayLine: updateTrayLine, noticeFor: updateNoticeFor, CHECK_EVERY_MS: UPDATE_CHECK_MS } = require('./update-notice.cjs');
 const { readEnv } = require('./env-compat.cjs');
 const { CHOICES, readInstallSettings, selectedIds, writePrograms } = require('./install-settings.cjs');
 const { MOVE_FLAG, findLegacyInstalls, moveProfile, offerText, planProfileMove, prefsStore, shouldOffer } = require('./legacy-import.cjs');
@@ -63,6 +64,11 @@ const SMOKE = process.argv.includes('--smoke');
 const LOCAL_SMOKE = process.argv.includes('--local-smoke');
 // Apps & features "Modify" (the ModifyPath the installer writes): only the program chooser opens.
 const CHOOSE_PROGRAMS = process.argv.includes('--choose-programs');
+// Started by Windows at sign-in: run in the tray and keep monitoring without opening a window.
+const STARTED_HIDDEN = process.argv.includes('--hidden');
+const LOGIN_ITEM = { args: ['--hidden'] };
+/** Sign-in start is set by the app for the normal installed copy (the Store package would need a StartupTask). */
+const CAN_START_AT_LOGIN = app.isPackaged && !STORE && process.platform === 'win32';
 const CHOOSER_FILE = path.join(__dirname, 'chooser', 'index.html');
 const CHOOSER_URL = pathToFileURL(CHOOSER_FILE).href;
 const PANEL_FILE = path.join(__dirname, 'panel', 'index.html');
@@ -434,10 +440,105 @@ function refreshTray() {
       running
         ? { label: 'Stop collector', click: () => void collector.stop() }
         : { label: 'Start collector', enabled: state.enrolled && Boolean(state.settings.serverUrl), click: () => tryStart() },
+      ...updateTrayItems(),
+      { type: 'separator' },
+      ...(CAN_START_AT_LOGIN
+        ? [{ label: 'Start with Windows', type: 'checkbox', checked: app.getLoginItemSettings(LOGIN_ITEM).openAtLogin, click: (item) => setStartAtLogin(item.checked) }]
+        : []),
+      { label: 'Keep this PC awake while monitoring', type: 'checkbox', checked: localPrefsStore().load().keepAwake, click: (item) => setKeepAwake(item.checked) },
       { type: 'separator' },
       { label: 'Quit Nigafiy', click: () => quit() },
     ]),
   );
+}
+
+// ── updates (UX review item 14): a tray line, and one Windows notice per new version ─────────
+let updateStatus = null;
+let updateTimer = null;
+
+function updateTrayItems() {
+  const line = updateTrayLine(updateStatus, app.getLocale());
+  if (!line) return [];
+  return [{ label: line.label, enabled: line.enabled, click: line.opens ? () => showDashboard() : undefined }];
+}
+
+/** Asks the local API (cached there for 6 h) what it knows about updates; the dashboard shows the same status and installs. */
+async function checkUpdates() {
+  const api = localApi;
+  if (!api) return;
+  try {
+    const r = await api.call('GET', '/platform/updates');
+    if (r.status !== 200 || !r.json || api !== localApi) return;
+    updateStatus = r.json;
+    refreshTray();
+    const notice = updateNoticeFor(updateStatus, localPrefsStore().load().notifiedUpdate, app.getLocale());
+    const { Notification } = require('electron');
+    if (notice && Notification.isSupported()) {
+      const n = new Notification({ title: notice.title, body: notice.body });
+      n.on('click', () => showDashboard());
+      n.show();
+      localPrefsStore().save({ notifiedUpdate: notice.version });
+    }
+  } catch {
+    // The tray keeps the last status; the next check tries again.
+  }
+}
+
+function startUpdateChecks() {
+  clearInterval(updateTimer);
+  void checkUpdates();
+  updateTimer = setInterval(() => void checkUpdates(), UPDATE_CHECK_MS);
+}
+
+function stopUpdateChecks() {
+  clearInterval(updateTimer);
+  updateTimer = null;
+  updateStatus = null;
+}
+
+// ── running unattended: start at sign-in, stay awake, come back after sleep ─────────
+function setStartAtLogin(on) {
+  app.setLoginItemSettings({ ...LOGIN_ITEM, openAtLogin: on });
+  localPrefsStore().save({ loginItemDone: true });
+  refreshTray();
+}
+
+/** First run of the installed app: start with Windows (hidden in the tray). Turned off in the tray, it stays off. */
+function ensureStartAtLogin() {
+  if (!CAN_START_AT_LOGIN || localPrefsStore().load().loginItemDone) return;
+  setStartAtLogin(true);
+}
+
+let awakeBlocker = null;
+/** While the Sensor runs (and the owner did not turn it off), Windows does not put the PC to sleep; the screen still turns off. */
+function updateKeepAwake() {
+  const state = collector?.getState();
+  const want = Boolean(state) && (state.status === 'running' || state.status === 'starting') && localPrefsStore().load().keepAwake;
+  if (want && awakeBlocker === null) awakeBlocker = powerSaveBlocker.start('prevent-app-suspension');
+  if (!want && awakeBlocker !== null) {
+    powerSaveBlocker.stop(awakeBlocker);
+    awakeBlocker = null;
+  }
+}
+
+function setKeepAwake(on) {
+  localPrefsStore().save({ keepAwake: on });
+  updateKeepAwake();
+  refreshTray();
+}
+
+function recoverCollector(options) {
+  void collector?.recover(options).catch((err) => {
+    collector.lastError = err.message;
+    collector.emitState();
+  });
+}
+
+function watchPower() {
+  // After sleep the Sensor's sockets and the PC's address may be stale: restart it once the network is back.
+  powerMonitor.on('resume', () => setTimeout(() => recoverCollector({ restartRunning: true }), 8000));
+  // A Sensor that gave up after repeated crashes is tried again every few minutes instead of staying off.
+  setInterval(() => recoverCollector(), 5 * 60_000);
 }
 
 function tryStart(token) {
@@ -501,9 +602,10 @@ function localPrefsStore() {
     load() {
       try {
         const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
-        return raw && typeof raw === 'object' ? { scanDeclined: Boolean(raw.scanDeclined) } : { scanDeclined: false };
+        const r = raw && typeof raw === 'object' ? raw : {};
+        return { scanDeclined: Boolean(r.scanDeclined), loginItemDone: Boolean(r.loginItemDone), keepAwake: r.keepAwake !== false, notifiedUpdate: typeof r.notifiedUpdate === 'string' ? r.notifiedUpdate : null };
       } catch {
-        return { scanDeclined: false };
+        return { scanDeclined: false, loginItemDone: false, keepAwake: true, notifiedUpdate: null };
       }
     },
     save(patch) {
@@ -538,6 +640,7 @@ async function exitLocalMode() {
   localShown = false;
   localError = null;
   localApi = null;
+  stopUpdateChecks();
   localUrls = null;
   await localStack?.stop().catch(() => undefined);
   localStack = null;
@@ -577,7 +680,7 @@ async function enrollOnNetwork(api, net, onProgress) {
 }
 
 async function startLocal() {
-  showDashboard();
+  if (!STARTED_HIDDEN) showDashboard();
   if (hasBundle) {
     // Installed: Electron's own Node runs everything; data lives in the user's profile.
     const dataDir = path.join(app.getPath('userData'), 'data');
@@ -608,9 +711,11 @@ async function startLocal() {
     // Sign in automatically with the app's own account. If this computer was set up from the command
     // line with a personal account instead, the person signs in with that account themselves.
     if (store.load() || !collector.isEnrolled()) {
+      // api is null when the account no longer takes this computer's password (or asks for a second
+      // factor): the web app then shows its sign-in page, and any session the person has stays.
       api = (await signIn(localUrls.apiUrl, localUrls.webUrl, store)).api;
       if (!localMode) return;
-      await session.fromPartition('persist:dashboard').cookies.set({
+      if (api) await session.fromPartition('persist:dashboard').cookies.set({
         url: localUrls.webUrl,
         name: 'ld_session',
         value: api.session(),
@@ -621,6 +726,7 @@ async function startLocal() {
     }
     if (!localMode) return;
     localApi = api;
+    if (api) startUpdateChecks();
     emitPanelState();
     const prefs = localPrefsStore();
     if (collector.binaryAvailable()) {
@@ -647,12 +753,15 @@ async function startLocal() {
     localShown = true;
     emitPanelState();
     refreshTray();
-    if (!dashboard) showDashboard();
-    else await dashboard.webContents.loadURL(startUrl(localUrls.webUrl));
+    if (!dashboard) {
+      if (!STARTED_HIDDEN) showDashboard();
+    } else await dashboard.webContents.loadURL(startUrl(localUrls.webUrl));
     openPending();
   } catch (err) {
     if (!localMode) return;
     setSplash(`Nigafiy could not start:\n${err.message}`, true);
+    // Started hidden at sign-in: a failure must not stay invisible.
+    if (!dashboard) showDashboard();
   }
 }
 
@@ -712,6 +821,7 @@ if (!app.requestSingleInstanceLock()) {
       }
       emitPanelState();
       refreshTray();
+      updateKeepAwake();
     });
 
     handle('collector:state', () => panelState());
@@ -780,6 +890,10 @@ if (!app.requestSingleInstanceLock()) {
     const image = nativeImage.createFromPath(ICON);
     tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image.resize({ width: 16, height: 16 }));
     tray.on('double-click', () => showDashboard());
+    if (!SMOKE && !LOCAL_SMOKE) {
+      ensureStartAtLogin();
+      watchPower();
+    }
     refreshTray();
 
     if (localMode) {
@@ -804,7 +918,7 @@ if (!app.requestSingleInstanceLock()) {
         /* shown in the panel */
       }
     }
-    showDashboard();
+    if (!STARTED_HIDDEN) showDashboard();
     openPending();
 
     if (SMOKE) {

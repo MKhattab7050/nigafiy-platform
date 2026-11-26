@@ -7,6 +7,8 @@ import { Badge, Button, Card, CopyBlock, ErrorNote, Field, Input, Modal, Notice 
 import { type ApiError, api } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { AccountRecoveryCodes, OWN_PASSWORD_PATH } from '@/features/auth';
+import Link from 'next/link';
 
 export function AccountSecurity() {
   const { t } = useI18n();
@@ -169,7 +171,19 @@ export function AccountSecurity() {
           </Button>
         </form>
 
-        {/* Change password */}
+        {/* Change password (the desktop's auto-created account has none the person knows: set one instead) */}
+        {me.user.needs_own_password ? (
+          <div className="space-y-2 border-t border-line pt-4">
+            <h3 className="flex items-center gap-2 text-[13px] font-semibold text-fg">
+              <KeyRound className="size-4 text-muted" aria-hidden />
+              {t('ownpw.title')}
+            </h3>
+            <p className="text-[13px] leading-relaxed text-muted">{t('ownpw.bannerBody')}</p>
+            <Link href={OWN_PASSWORD_PATH} className="text-[13px] font-medium text-accent-hover hover:underline">
+              {t('ownpw.bannerAction')}
+            </Link>
+          </div>
+        ) : (
         <form onSubmit={savePassword} className="space-y-3 border-t border-line pt-4">
           <h3 className="flex items-center gap-2 text-[13px] font-semibold text-fg">
             <KeyRound className="size-4 text-muted" aria-hidden />
@@ -213,6 +227,8 @@ export function AccountSecurity() {
             </Button>
           </div>
         </form>
+        )}
+        <AccountRecoveryCodes />
 
         {/* Two-Factor Authentication */}
         <div className="space-y-3 border-t border-line pt-4">

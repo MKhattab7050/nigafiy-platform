@@ -9,7 +9,9 @@ import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { FetchedCertificate, QueuedRequest, RouterDetail, RouterTransport, SiteRouter } from '../types';
 import { ROUTER_TRANSPORTS, ROUTER_VENDORS } from '../types';
+import { driverMaturity } from '../assistant';
 import { RequestProgress } from './request-progress';
+import { DriverMaturityBadge } from './router-assistant';
 import { Fingerprint, RouterErrorNote } from './text';
 
 export function RouterWizardModal({
@@ -18,12 +20,17 @@ export function RouterWizardModal({
   collectors,
   onClose,
   onSaved,
+  initialVendor,
+  initialAddress,
 }: {
   siteId: string;
   sites?: Site[];
   collectors: Collector[];
   onClose: () => void;
   onSaved: (routerId: string) => void;
+  /** From the router connection assistant: the vendor the gateway named, and its address. */
+  initialVendor?: string | null;
+  initialAddress?: string | null;
 }) {
   const { t, locale } = useI18n();
   const [selectedSiteId, setSelectedSiteId] = useState(siteId);
@@ -32,8 +39,10 @@ export function RouterWizardModal({
   const detectedGateway = detectedCollector?.gateway_ip ?? null;
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [vendor, setVendor] = useState<string>(ROUTER_VENDORS[0].value);
-  const [address, setAddress] = useState(detectedGateway ?? '192.168.1.1');
+  const [vendor, setVendor] = useState<string>(
+    initialVendor && ROUTER_VENDORS.some((v) => v.value === initialVendor) ? initialVendor : ROUTER_VENDORS[0].value,
+  );
+  const [address, setAddress] = useState(initialAddress ?? detectedGateway ?? '192.168.1.1');
   const [name, setName] = useState('');
   const [transport, setTransport] = useState<RouterTransport>('https-pinned');
   const [port, setPort] = useState('');
@@ -213,7 +222,7 @@ export function RouterWizardModal({
                   >
                     {ROUTER_VENDORS.map((v) => (
                       <option key={v.value} value={v.value}>
-                        {v.label}
+                        {driverMaturity(v.value) === 'beta' ? `${v.label} — ${t('routers.assist.beta')}` : v.label}
                       </option>
                     ))}
                   </Select>
@@ -233,9 +242,13 @@ export function RouterWizardModal({
               </Field>
             </div>
 
-            <p className="rounded-[var(--radius-control)] border border-line bg-sunken px-3 py-2 text-xs leading-relaxed text-muted">
-              {t(`routers.vendorNote.${vendor}` as Key)}
-            </p>
+            <div className="space-y-1.5 rounded-[var(--radius-control)] border border-line bg-sunken px-3 py-2 text-xs leading-relaxed text-muted">
+              <div className="flex flex-wrap items-center gap-2">
+                <DriverMaturityBadge maturity={driverMaturity(vendor)} />
+                <span>{t(driverMaturity(vendor) === 'beta' ? 'routers.assist.betaHint' : 'routers.assist.testedHint')}</span>
+              </div>
+              <p>{t(`routers.vendorNote.${vendor}` as Key)}</p>
+            </div>
 
             <Field label={t('routers.name')}>
               {(id) => (

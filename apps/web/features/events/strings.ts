@@ -5,12 +5,12 @@ export const en = {
   'events.evidence': 'Evidence',
   'events.occurred': 'Occurred',
   'events.recorded': 'Recorded by cloud',
-  'events.source.collector': 'Observed by collector',
+  'events.source.collector': 'Observed by Sensor',
   'events.source.platform': 'Detected by platform',
   'events.severity': 'Severity',
   'events.type': 'Event type',
   'events.inMaintenance': 'In maintenance',
-  'events.widget.none': 'No events recorded yet. They appear once a collector reports.',
+  'events.widget.none': 'No events recorded yet. They appear once a Sensor reports.',
 } as const;
 
 export const ar: Record<keyof typeof en, string> = {
@@ -19,10 +19,10 @@ export const ar: Record<keyof typeof en, string> = {
   'events.evidence': 'الأدلة',
   'events.occurred': 'وقت الحدوث',
   'events.recorded': 'سُجّل في السحابة',
-  'events.source.collector': 'رصده المجمِّع',
+  'events.source.collector': 'رصده المستشعر',
   'events.source.platform': 'اكتشفته المنصة',
   'events.severity': 'الخطورة',
   'events.type': 'نوع الحدث',
   'events.inMaintenance': 'أثناء الصيانة',
-  'events.widget.none': 'لا توجد أحداث مسجَّلة بعد. تظهر بعد أن يرسل مجمِّع البيانات.',
+  'events.widget.none': 'لا توجد أحداث مسجَّلة بعد. تظهر بعد أن يرسل مستشعر البيانات.',
 };

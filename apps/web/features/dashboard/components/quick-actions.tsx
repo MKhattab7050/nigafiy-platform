@@ -8,6 +8,8 @@ import { InstallNote, ProgramGlyph } from '@/features/platform';
 import { useI18n } from '@/lib/i18n';
 import { programById } from '@/lib/programs';
 import { usePrograms } from '@/lib/programs-context';
+import { useView } from '@/lib/view';
+import { shownIn } from '@/lib/view-mode';
 
 /**
  * Shortcuts to the tools that have no summary of their own (registry entries marked `quickAction`),
@@ -17,7 +19,8 @@ export function QuickActions() {
   const { t } = useI18n();
   const { can } = useApp();
   const { installed } = usePrograms();
-  const actions = FEATURES.filter((f) => f.quickAction && (!f.minRole || can(f.minRole)));
+  const { view } = useView();
+  const actions = FEATURES.filter((f) => f.quickAction && shownIn(f, view) && (!f.minRole || can(f.minRole)));
   return (
     <section aria-labelledby="quick-title">
       <h2 id="quick-title" className="mb-3 text-[13.5px] font-semibold text-fg">

@@ -344,3 +344,37 @@ describe('MFA, invitations and event pagination', () => {
     expect(new Set(seenIds)).toEqual(new Set(insertedIds));
   });
 });
+
+describe('sign-up modes (ALLOW_REGISTRATION)', () => {
+  const body = { email: 'late@example.test', password: 'correct horse battery', display_name: 'Late', organization_name: 'Late org', site_name: 'Late site' };
+  async function withMode(mode: 'true' | 'false' | 'first', fn: () => Promise<void>): Promise<void> {
+    const { env } = await import('../src/config/env.ts');
+    const before = env.ALLOW_REGISTRATION;
+    env.ALLOW_REGISTRATION = mode;
+    try {
+      await fn();
+    } finally {
+      env.ALLOW_REGISTRATION = before;
+    }
+  }
+
+  it('"first" closes sign-up once any account exists, and the sign-in page hides it', async () => {
+    await newAccount('first-mode'); // the database now has an owner
+    await withMode('first', async () => {
+      expect((await request(app).get('/api/v1/auth/options')).body.allow_registration).toBe(false);
+      const r = await request(app).post('/api/v1/auth/register').set(CSRF).send(body);
+      expect(r.status).toBe(403);
+      expect(r.body.error.code).toBe('registration_disabled');
+    });
+  });
+
+  it('"false" closes it and "true" keeps it open', async () => {
+    await withMode('false', async () => {
+      expect((await request(app).get('/api/v1/auth/options')).body.allow_registration).toBe(false);
+      expect((await request(app).post('/api/v1/auth/register').set(CSRF).send(body)).status).toBe(403);
+    });
+    await withMode('true', async () => {
+      expect((await request(app).get('/api/v1/auth/options')).body.allow_registration).toBe(true);
+    });
+  });
+});

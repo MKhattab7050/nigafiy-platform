@@ -290,6 +290,24 @@ class CollectorManager extends EventEmitter {
     return this.getState();
   }
 
+  /**
+   * Brings the Sensor back after the computer woke up, or after it gave up restarting itself: a Sensor
+   * that should be running (wanted, or set to start on its own and stopped by errors) is started
+   * fresh, so it re-reads the network after sleep. One stopped on purpose stays stopped.
+   * @param {{ restartRunning?: boolean }} [options] restartRunning: also restart one that is running (after sleep its sockets and addresses may be stale).
+   */
+  async recover({ restartRunning = false } = {}) {
+    if (!this.isEnrolled() || !this.settings.serverUrl || !this.binaryAvailable()) return this.getState();
+    const gaveUp = !this.child && !this.wanted && this.status === 'error' && this.settings.autoStart;
+    const waiting = !this.child && this.wanted; // a restart timer is pending
+    if (this.child && !restartRunning) return this.getState();
+    if (!this.child && !gaveUp && !waiting) return this.getState();
+    if (this.child) await this.stop();
+    this.restarts = 0;
+    this.pushLog('info', restartRunning ? 'restarting the collector after the computer woke up' : 'starting the collector again');
+    return this.start();
+  }
+
   getState() {
     return {
       status: this.status,

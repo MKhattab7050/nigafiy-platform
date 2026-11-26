@@ -5,6 +5,7 @@ import type { ProgramId } from '@nigafiy/shared-types/programs';
 
 /** Every section, in reading order. Both languages hold exactly these ids in this order (guide.test.ts). */
 export const GUIDE_SECTION_IDS = [
+  'start-here',
   'getting-started',
   'programs',
   'first-scan',

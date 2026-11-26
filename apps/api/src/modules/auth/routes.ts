@@ -11,6 +11,7 @@ import { logger } from '../../infrastructure/logger.ts';
 import { createDefaultChecks } from '../monitoring/index.ts';
 import { accountMailConfigured, anyAccountMailConfigured, sendAccountEmail } from '../notifications/index.ts';
 import { mfaRouter } from './mfa.ts';
+import { NEEDS_OWN_PASSWORD_SQL, PERSON_CHOSE_PASSWORD_SQL, mountOwnPasswordRoutes } from './own-password.ts';
 import { ssoRouter } from './sso/routes.ts';
 import { SESSION_COOKIE, clearSessionCookie, createSession, readCookie, requireSession } from './session.ts';
 import { webAppUrl } from './team.ts';
@@ -70,10 +71,16 @@ function requireCsrfHeader(req: import('express').Request): void {
   if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
+/** Whether self-service sign-up is open now (ALLOW_REGISTRATION=first: only while no account exists). */
+async function registrationOpen(): Promise<boolean> {
+  if (env.ALLOW_REGISTRATION === 'first') return !(await systemPool.query(`SELECT 1 FROM users LIMIT 1`)).rowCount;
+  return env.ALLOW_REGISTRATION === 'true';
+}
+
 authRouter.get('/options', async (_req, res) => {
   const sso = await systemPool.query(`SELECT 1 FROM identity_providers WHERE enabled LIMIT 1`);
   res.json({
-    allow_registration: env.ALLOW_REGISTRATION,
+    allow_registration: await registrationOpen(),
     account_mail_configured: await anyAccountMailConfigured(),
     sso_available: Boolean(sso.rowCount),
   });
@@ -81,11 +88,17 @@ authRouter.get('/options', async (_req, res) => {
 
 authRouter.post('/register', credentialLimiter, async (req, res) => {
   requireCsrfHeader(req);
-  if (!env.ALLOW_REGISTRATION) throw new AppError(403, 'registration_disabled', 'Self-service registration is disabled');
+  if (!(await registrationOpen())) throw new AppError(403, 'registration_disabled', 'Self-service registration is disabled');
   const body = parse(registerSchema, req.body);
   const passwordHash = await hashPassword(body.password);
 
   const created = await withSystem(async (db) => {
+    if (env.ALLOW_REGISTRATION === 'first') {
+      // Two sign-ups racing for "first" must not both win: serialize them and check again.
+      await db.query(`SELECT pg_advisory_xact_lock(hashtext('nigafiy.first_registration'))`);
+      const any = await db.query(`SELECT 1 FROM users LIMIT 1`);
+      if (any.rowCount) throw new AppError(403, 'registration_disabled', 'Self-service registration is disabled');
+    }
     const existing = await db.query(`SELECT 1 FROM users WHERE lower(email) = $1`, [body.email]);
     if (existing.rowCount) throw new AppError(409, 'email_in_use', 'An account with this email already exists');
     const user = await db.query<{ id: string }>(
@@ -131,7 +144,43 @@ authRouter.post('/login', credentialLimiter, accountLimiter, async (req, res) =>
     logger.warn({ ip: req.ip, account: sha256(body.email).slice(0, 16), known: Boolean(user) }, 'failed login');
     throw new AppError(401, 'invalid_credentials', 'Email or password is incorrect');
   }
+  await completePasswordLogin(req, res, user);
+});
 
+/**
+ * The installed desktop app's own sign-in, after the owner replaced the password it created (see
+ * own-password.ts). Takes only the credential the desktop stored; everything after the password
+ * check (organization, two-factor sign-in, session) is the same as /login.
+ */
+authRouter.post('/login/desktop', credentialLimiter, accountLimiter, async (req, res) => {
+  requireCsrfHeader(req);
+  const body = parse(loginSchema, req.body);
+  const { rows } = await systemPool.query<{
+    id: string;
+    email: string;
+    desktop_password_hash: string;
+    mfa_secret_enc: string | null;
+    mfa_locked_until: Date | null;
+  }>(
+    `SELECT id, email, desktop_password_hash, mfa_secret_enc, mfa_locked_until
+       FROM users WHERE lower(desktop_login_email) = $1 AND desktop_password_hash IS NOT NULL`,
+    [body.email],
+  );
+  const user = rows[0];
+  const valid = await verifyPassword(body.password, user?.desktop_password_hash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !valid) {
+    logger.warn({ ip: req.ip, account: sha256(body.email).slice(0, 16), known: Boolean(user) }, 'failed desktop sign-in');
+    throw new AppError(401, 'invalid_credentials', 'Email or password is incorrect');
+  }
+  await completePasswordLogin(req, res, user);
+});
+
+/** After a correct password: pick the organization, then two-factor sign-in or a session. */
+async function completePasswordLogin(
+  req: import('express').Request,
+  res: import('express').Response,
+  user: { id: string; email: string; mfa_secret_enc: string | null; mfa_locked_until: Date | null },
+): Promise<void> {
   const memberships = await systemPool.query<{
     organization_id: string;
     role: Role;
@@ -190,7 +239,7 @@ authRouter.post('/login', credentialLimiter, accountLimiter, async (req, res) =>
     [orgId, user.id, user.email, req.ip ?? null],
   );
   res.json({ ok: true });
-});
+}
 
 authRouter.post('/logout', async (req, res) => {
   requireCsrfHeader(req);
@@ -203,8 +252,19 @@ authRouter.post('/logout', async (req, res) => {
 authRouter.get('/me', requireSession, async (req, res) => {
   const ctx = auth(req);
   const [user, memberships] = await Promise.all([
-    systemPool.query<{ id: string; email: string; display_name: string; locale: 'en' | 'ar'; mfa_enabled: boolean }>(
-      `SELECT id, email, display_name, locale, (mfa_secret_enc IS NOT NULL) AS mfa_enabled FROM users WHERE id = $1`,
+    systemPool.query<{
+      id: string;
+      email: string;
+      display_name: string;
+      locale: 'en' | 'ar';
+      mfa_enabled: boolean;
+      needs_own_password: boolean;
+      recovery_codes_left: number;
+    }>(
+      `SELECT id, email, display_name, locale, (mfa_secret_enc IS NOT NULL) AS mfa_enabled,
+              ${NEEDS_OWN_PASSWORD_SQL} AS needs_own_password,
+              (SELECT count(*)::int FROM account_recovery_codes c WHERE c.user_id = users.id AND c.used_at IS NULL) AS recovery_codes_left
+         FROM users WHERE id = $1`,
       [ctx.userId],
     ),
     systemPool.query<{ organization_id: string; organization_name: string; kind: string; mfa_required: MfaRequirement; role: Role }>(
@@ -308,7 +368,7 @@ authRouter.post('/password', requireSession, async (req, res) => {
 
   const newHash = await hashPassword(body.new_password);
   await withSystem(async (db) => {
-    await db.query(`UPDATE users SET password_hash = $2, password_changed_at = now() WHERE id = $1`, [
+    await db.query(`UPDATE users SET ${PERSON_CHOSE_PASSWORD_SQL}, password_hash = $2, password_changed_at = now() WHERE id = $1`, [
       ctx.userId,
       newHash,
     ]);
@@ -405,7 +465,8 @@ authRouter.post('/reset-password', credentialLimiter, async (req, res) => {
   await withSystem(async (db) => {
     await db.query(
       `UPDATE users
-          SET password_hash = $2,
+          SET ${PERSON_CHOSE_PASSWORD_SQL},
+              password_hash = $2,
               password_changed_at = now(),
               mfa_locked_until = NULL,
               mfa_failed_attempts = 0
@@ -614,5 +675,6 @@ authRouter.post('/invitations/:token/accept', credentialLimiter, async (req, res
   res.json({ ok: true });
 });
 
+mountOwnPasswordRoutes(authRouter, { credential: credentialLimiter, account: accountLimiter });
 authRouter.use(mfaRouter);
 authRouter.use('/sso', ssoRouter);

@@ -4,6 +4,7 @@ import { DEVICE_TRUSTS, type Device, type DeviceDetail, type DeviceMonitorBulk, 
 import { audit } from '../../common/audit.ts';
 import { AppError, auth, idParams, notFound, parse, requireRole } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
+import { applyMonitorGaps } from '../collectors/index.ts';
 import { EVENT_SELECT } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { resetDeviceType } from './identify.ts';
@@ -100,8 +101,15 @@ devicesRouter.get('/devices/:id', async (req, res) => {
         WHERE device_id = $1 AND coalesce(ended_at, now()) > now() - interval '7 days' ORDER BY started_at`,
       [id],
     );
+    // Periods when monitoring itself was off are not device downtime (or uptime): label them.
+    const gaps = await db.query<{ started_at: Date; ended_at: Date }>(
+      `SELECT started_at, ended_at FROM monitoring_gaps
+        WHERE (site_id IS NULL OR site_id = $1) AND ended_at > now() - interval '7 days' ORDER BY started_at`,
+      [device.site_id],
+    );
+    const labelled = applyMonitorGaps(availability.rows, gaps.rows) as unknown as DeviceDetail['availability'];
     const events = await db.query<NetworkEvent>(`${EVENT_SELECT} WHERE e.device_id = $1 ORDER BY e.occurred_at DESC LIMIT 50`, [id]);
-    return { ...device, ip_history: ipHistory.rows, addresses: addresses.rows, availability: availability.rows, recent_events: events.rows } satisfies DeviceDetail;
+    return { ...device, ip_history: ipHistory.rows, addresses: addresses.rows, availability: labelled, recent_events: events.rows } satisfies DeviceDetail;
   });
   res.json(detail);
 });

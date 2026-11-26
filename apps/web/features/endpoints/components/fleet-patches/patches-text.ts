@@ -161,7 +161,7 @@ const ar: PatchesText = {
     critical: 'حرج',
     security: 'أمني',
     definition: 'تعريفات',
-    update_rollup: 'حزمة تحديثات مجمّعة',
+    update_rollup: 'حزمة تحديثات مستشعرة',
     service_pack: 'حزمة خدمة',
     feature_pack: 'حزمة ميزات',
     update: 'تحديث',

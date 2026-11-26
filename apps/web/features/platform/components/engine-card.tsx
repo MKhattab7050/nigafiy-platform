@@ -253,3 +253,33 @@ export function EngineCard() {
     </Card>
   );
 }
+
+/** Settings: the same update line as the hub home, so "updates are off" or "a new version" is found where people look. */
+export function UpdatesCard() {
+  const { t } = useI18n();
+  const { can } = useApp();
+  const updates = useQuery<PlatformUpdatesResponse>('/platform/updates', [], 3600_000);
+  const [checking, setChecking] = useState(false);
+  const checkNow = async () => {
+    setChecking(true);
+    try {
+      await api('/platform/updates/check', { method: 'POST' });
+      updates.reload();
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <Card title={t('platform.updates')} description={t('platform.updates.desc')}>
+      <Async query={updates} skeleton={<SkeletonBlock lines={2} />}>
+        {(data) => (
+          <div className="space-y-2">
+            <UpdateStatus data={data} checking={checking} onCheck={can('admin') ? checkNow : undefined} />
+            {!data.configured && (data.reason === 'no_source' || data.reason === 'no_key') && <p className="text-xs text-muted">{t('platform.updates.offHint')}</p>}
+            {data.configured && data.ok && data.update_available && <UpdateInstall latest={data.latest_version} canAdmin={can('admin')} />}
+          </div>
+        )}
+      </Async>
+    </Card>
+  );
+}

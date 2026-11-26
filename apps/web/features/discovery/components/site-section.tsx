@@ -4,7 +4,7 @@ import { ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { Collector, CollectorCreated, NetworkScope, Site } from '@nigafiy/shared-types';
 import { Button, Card, ErrorNote, Field, Input, useConfirm } from '@/components/ui';
-import { ApiError, api } from '@/lib/api';
+import { type ApiError, api, localizedApiError } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { absoluteTime, browserTimeZone, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -18,7 +18,7 @@ const SCOPE_ERROR_CODES = ['invalid_cidr', 'too_large', 'not_private', 'ipv6_too
 function localizeScopeError(error: ApiError, t: ReturnType<typeof useI18n>['t']): ApiError {
   const code = error.code === 'invalid_scope' ? error.info?.reason_code : undefined;
   if (typeof code !== 'string' || !(SCOPE_ERROR_CODES as readonly string[]).includes(code)) return error;
-  return new ApiError(error.status, error.code, t(`discovery.scopeError.${code as (typeof SCOPE_ERROR_CODES)[number]}`), error.details, error.info);
+  return localizedApiError(error, t(`discovery.scopeError.${code as (typeof SCOPE_ERROR_CODES)[number]}`));
 }
 
 export function SiteSection({ site, scopes, collectors, reload, onToken }: { site: Site; scopes: NetworkScope[]; collectors: Collector[]; reload: () => void; onToken: (c: CollectorCreated) => void }) {

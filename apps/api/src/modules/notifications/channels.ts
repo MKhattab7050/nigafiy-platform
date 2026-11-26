@@ -1,4 +1,4 @@
-import { type NotificationEvent, eventPageUrl } from './email.ts';
+import { type NotificationEvent, actionApiUrl, actionLandingUrl, eventPageUrl, shownDetails, tokenActions } from './email.ts';
 
 /**
  * Payload renderers for instant notification channels (Telegram, Slack, Discord, ntfy).
@@ -41,7 +41,7 @@ export function escapeSlack(text: string): string {
 
 function summarizeDetails(details: Record<string, unknown>, maxLines = 6): string[] {
   const lines: string[] = [];
-  for (const [k, v] of Object.entries(details)) {
+  for (const [k, v] of shownDetails(details)) {
     if (v === null || v === undefined) continue;
     const label = k.replaceAll('_', ' ');
     let rendered: string;
@@ -62,6 +62,16 @@ function summarizeDetails(details: Record<string, unknown>, maxLines = 6): strin
   return lines;
 }
 
+/** callback_data of a Telegram button: this prefix + the action token (at most 64 bytes in all). */
+export const TELEGRAM_CALLBACK_PREFIX = 'na:';
+
+export interface TelegramRenderOptions {
+  /** True when this API reads the bot's updates, so a pressed inline button reaches it (item 10). */
+  callbacks?: boolean;
+  /** The language the chat was linked in. */
+  language?: 'en' | 'ar';
+}
+
 /** Telegram Bot API sendMessage payload (HTML parse_mode, all dynamic text HTML-escaped). */
 export function renderTelegramPayload(
   event: NotificationEvent,
@@ -69,8 +79,11 @@ export function renderTelegramPayload(
   chatId: string,
   threadId?: number,
   baseUrl?: string,
+  options: TelegramRenderOptions = {},
 ): Record<string, unknown> {
   const emoji = SEVERITY_EMOJI[event.severity] ?? 'ℹ️';
+  const lang = options.language ?? 'en';
+  const buttons = tokenActions(event);
   const where = event.site_name ? `${organizationName} / ${event.site_name}` : organizationName;
   const link = eventPageUrl(event, baseUrl);
   const details = summarizeDetails(event.details);
@@ -84,13 +97,21 @@ export function renderTelegramPayload(
   if (details.length) {
     parts.push('', ...details.map((l) => `• ${escapeHtml(l)}`));
   }
-  parts.push('', `<a href="${escapeHtml(link)}">Open in Nigafiy</a>`);
+  // Without the bot's update stream (another program reads it, or a webhook is set) a pressed button
+  // would never be seen, so the buttons become links to the page that asks before acting.
+  if (buttons.length && !options.callbacks) {
+    parts.push('', ...buttons.map((a) => `▶️ <a href="${escapeHtml(actionLandingUrl(a.token, baseUrl))}">${escapeHtml(a.label[lang])}</a>`));
+  }
+  parts.push('', `<a href="${escapeHtml(link)}">${lang === 'ar' ? 'فتح في Nigafiy' : 'Open in Nigafiy'}</a>`);
   return {
     chat_id: chatId,
     ...(threadId !== undefined ? { message_thread_id: threadId } : {}),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
     text: parts.join('\n').slice(0, 4000),
+    ...(buttons.length && options.callbacks
+      ? { reply_markup: { inline_keyboard: [buttons.map((a) => ({ text: a.label[lang], callback_data: `${TELEGRAM_CALLBACK_PREFIX}${a.token}` }))] } }
+      : {}),
   };
 }
 
@@ -126,6 +147,7 @@ export function renderSlackPayload(event: NotificationEvent, organizationName: s
   blocks.push({
     type: 'actions',
     elements: [
+      ...tokenActions(event).map((a) => ({ type: 'button', text: { type: 'plain_text', text: a.label.en }, url: actionLandingUrl(a.token, baseUrl) })),
       {
         type: 'button',
         text: { type: 'plain_text', text: 'Open in Nigafiy' },
@@ -145,6 +167,11 @@ export function renderDiscordPayload(event: NotificationEvent, organizationName:
   const where = event.site_name ? `${organizationName} / ${event.site_name}` : organizationName;
   const link = eventPageUrl(event, baseUrl);
   const details = summarizeDetails(event.details);
+  // A plain webhook cannot carry buttons; the links open the page that asks before acting.
+  const actionLine = tokenActions(event)
+    .map((a) => `[${a.label.en}](${actionLandingUrl(a.token, baseUrl)})`)
+    .join(' · ');
+  const description = [details.map((l) => `• ${l}`).join('\n'), actionLine].filter(Boolean).join('\n\n');
   return {
     username: 'Nigafiy',
     // Device-supplied text (names, titles) never pings anyone: @everyone, <@id> and <@&role> stay text. EXT-6.
@@ -154,7 +181,7 @@ export function renderDiscordPayload(event: NotificationEvent, organizationName:
         title: `[${event.severity.toUpperCase()}] ${event.title}`.slice(0, 256),
         url: link,
         color,
-        description: details.length ? details.map((l) => `• ${l}`).join('\n').slice(0, 2000) : undefined,
+        description: description ? description.slice(0, 2000) : undefined,
         fields: [
           { name: 'Where', value: where.slice(0, 1000), inline: true },
           { name: 'Event', value: `\`${event.type}\``, inline: true },
@@ -193,6 +220,15 @@ export function renderNtfyMessage(
       'X-Priority': priority,
       'X-Tags': tags,
       'X-Click': link,
+      // ntfy action buttons (at most 3): each POSTs its single-use token straight to the API.
+      ...(tokenActions(event).length
+        ? {
+            'X-Actions': tokenActions(event)
+              .slice(0, 2)
+              .map((a) => `http, ${a.label.en}, ${actionApiUrl(a.token, baseUrl)}, method=POST, clear=true`)
+              .join('; '),
+          }
+        : {}),
     },
   };
 }

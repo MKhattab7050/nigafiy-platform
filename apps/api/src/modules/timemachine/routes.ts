@@ -33,9 +33,12 @@ timeMachineRouter.get('/time-machine/snapshot', async (req, res) => {
   const snapshot = await withTenant(ctx.organizationId, async (db): Promise<Snapshot> => {
     const devices = await db.query<SnapshotDevice>(
       `${DEVICE_AT},
-         coalesce((SELECT a.status FROM availability_history a
+         CASE WHEN EXISTS (SELECT 1 FROM monitoring_gaps g
+                            WHERE (g.site_id IS NULL OR g.site_id = d.site_id) AND g.started_at <= $1 AND g.ended_at > $1)
+              THEN 'unknown' -- monitoring itself was off at that moment: not observed
+              ELSE coalesce((SELECT a.status FROM availability_history a
                     WHERE a.device_id = d.id AND a.started_at <= $1 AND (a.ended_at IS NULL OR a.ended_at > $1)
-                    ORDER BY a.started_at DESC LIMIT 1), 'unknown') AS status
+                    ORDER BY a.started_at DESC LIMIT 1), 'unknown') END AS status
          FROM devices d
         WHERE d.first_seen_at <= $1 AND ($2::uuid IS NULL OR d.site_id = $2)
         ORDER BY d.current_ip NULLS LAST LIMIT 2000`,
@@ -74,7 +77,7 @@ timeMachineRouter.get('/time-machine/snapshot', async (req, res) => {
       incidents: incidents.rows,
       events: events.rows,
       method: [
-        'Device status: the recorded availability interval that contains this moment (no interval → unknown).',
+        'Device status: the recorded availability interval that contains this moment (no interval, or monitoring was off then → unknown).',
         'Device IP: the most recent address first seen on or before this moment.',
         'Check state: the last recorded state transition before this moment; latency and loss are the average of the 10 minutes before it.',
         'Incidents: those opened before and not yet resolved at this moment. Events: ±30 minutes.',

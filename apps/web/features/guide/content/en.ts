@@ -5,6 +5,80 @@ import type { GuideContent } from '../types.ts';
 
 export const GUIDE_EN: GuideContent = [
   {
+    id: 'start-here',
+    group: 'start',
+    program: null,
+    title: 'Start here',
+    summary: 'Install Nigafiy on a Windows computer, see the devices on your network, and get alerts on your phone. No technical knowledge needed.',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'Nigafiy runs on one Windows 10 or 11 computer in your home or office. It finds the devices on your network, tells you when something new joins or something stops working, and keeps everything on that computer. Four short steps get you there.',
+      },
+      { kind: 'h', id: 'install', text: '1. Install it' },
+      {
+        kind: 'steps',
+        items: [
+          'On the computer that stays on most of the time, open the Nigafiy downloads page and download the setup program (`Nigafiy Setup <version>.exe`).',
+          'Open the downloaded file. If Windows shows a blue “Windows protected your PC” window, choose More info, check that the file name is the Nigafiy setup program, then choose Run anyway. The downloads page shows pictures of these windows.',
+          'If Windows then asks whether to allow an app from an “Unknown publisher” to make changes, choose Yes only if you downloaded the file from the Nigafiy downloads page yourself.',
+          'Follow the setup and choose Finish. Nigafiy opens and signs you in on this computer by itself.',
+        ],
+      },
+      {
+        kind: 'note',
+        tone: 'info',
+        text: 'Nigafiy starts by itself when you sign in to Windows and waits in the tray (the small icons near the clock). To open it, select its tray icon. You can turn this off from the tray menu.',
+      },
+      {
+        kind: 'note',
+        tone: 'warn',
+        text: 'Those Windows warnings appear because the setup program is not signed with a certificate Windows already trusts. They do not mean the file is harmful, but only run a file you downloaded from the Nigafiy downloads page. To be sure the file was not changed, compare its SHA-256 with the one on the downloads page (see “Check a download” there).',
+      },
+      { kind: 'h', id: 'password', text: '2. Set your own password' },
+      {
+        kind: 'p',
+        text: 'Nigafiy offers “Set your own password” the first time it opens (you can also find it in Settings). Choose a password you will remember and save the recovery codes it shows on paper or in a password manager. With that password you can open Nigafiy from your phone or another browser, and you keep access if Windows is reinstalled.',
+      },
+      { kind: 'h', id: 'scan', text: '3. See your devices' },
+      {
+        kind: 'steps',
+        items: [
+          'On the Hub dashboard, follow the setup card. It installs the Sensor (the part that looks at the network) on this computer.',
+          'When the card asks, confirm the network range it suggests, for example `192.168.1.0/24`. Nigafiy only looks at networks you confirm.',
+          'Wait a minute. Your devices appear in Radar, Devices. Give the ones you know a name, so a new one stands out.',
+        ],
+      },
+      {
+        kind: 'p',
+        text: 'Phones often stay quiet while they are locked, so they may appear a little later. The section “Your first network scan” explains each step in more detail.',
+      },
+      { kind: 'h', id: 'phone', text: '4. Get alerts on your phone' },
+      {
+        kind: 'steps',
+        items: [
+          'Install the free ntfy app on your phone (Android or iPhone) and subscribe to a topic with a long, hard-to-guess name.',
+          'In Nigafiy, open Watch, Notifications, add an ntfy channel and type the same topic name.',
+          'Choose Send test. When it arrives on your phone, you will get alerts there too.',
+        ],
+      },
+      {
+        kind: 'p',
+        text: 'You can also get alerts by Telegram or email from the same page. To open Nigafiy itself from your phone while you are at home, use the phone card on the Hub dashboard: it shows the address to open on a phone connected to the same Wi-Fi.',
+      },
+      {
+        kind: 'note',
+        tone: 'warn',
+        text: 'Nigafiy watches your network only while that computer is on. If it is off or asleep, nothing is checked and no alerts are sent; when it comes back, Nigafiy shows that monitoring was off for that time.',
+      },
+    ],
+    links: [
+      { href: '/', label: 'Hub dashboard' },
+      { href: '/radar/devices', label: 'Devices' },
+      { href: '/watch/notifications', label: 'Notifications' },
+    ],
+  },
+  {
     id: 'getting-started',
     group: 'start',
     program: null,

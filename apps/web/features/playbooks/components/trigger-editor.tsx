@@ -11,7 +11,7 @@ const TRUSTS = ['unreviewed', 'known', 'unwanted'] as const;
 const CHECK_ROLES = ['gateway', 'internet', 'dns', 'service'] as const;
 const KIND_LABEL = {
   en: { network: 'Network', service: 'Service', collector: 'Collector', device: 'Device' },
-  ar: { network: 'الشبكة', service: 'خدمة', collector: 'مجمِّع', device: 'جهاز' },
+  ar: { network: 'الشبكة', service: 'خدمة', collector: 'مستشعر', device: 'جهاز' },
 } as const;
 const ROLE_LABEL = { en: { gateway: 'Gateway', internet: 'Internet', dns: 'DNS', service: 'Service' }, ar: { gateway: 'البوابة', internet: 'الإنترنت', dns: 'DNS', service: 'خدمة' } } as const;
 

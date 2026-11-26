@@ -95,7 +95,7 @@ const en = {
   pollInterval: 'Read interval (seconds)',
   pollIntervalHint: 'Between 60 seconds and 24 hours.',
   enabled: 'Enabled',
-  enabledHint: 'When disabled, the collector does not read this switch.',
+  enabledHint: 'When disabled, the Sensor does not read this switch.',
   replaceCredentials: 'Replace SNMP credentials',
   replaceCredentialsHint: 'Leave off to keep the saved credentials.',
 };
@@ -197,7 +197,7 @@ const ar: Dict = {
   pollInterval: 'فاصل القراءة (بالثواني)',
   pollIntervalHint: 'من 60 ثانية إلى 24 ساعة.',
   enabled: 'مفعّل',
-  enabledHint: 'عند التعطيل لا يقرأ المجمِّع هذا السويتش.',
+  enabledHint: 'عند التعطيل لا يقرأ المستشعر هذا السويتش.',
   replaceCredentials: 'استبدال بيانات SNMP',
   replaceCredentialsHint: 'اتركه مغلقًا للإبقاء على البيانات المحفوظة.',
 };

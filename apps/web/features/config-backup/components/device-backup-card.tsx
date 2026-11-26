@@ -8,12 +8,20 @@ import { type ApiError, api, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+import { useView } from '@/lib/view';
 import type { Suggestions, Target } from '../types';
 import { TargetStatusBadge } from './status';
 
-/** Device page card: its backup target if there is one, otherwise "Back up this device" when the device is suggested. */
+/**
+ * Device page card: its backup target if there is one, otherwise "Back up this device" when the device is suggested.
+ * The simple (Home) view shows it only for a device that is already backed up, so a home never meets the SSH
+ * prompts; the full view always shows it.
+ */
 export function DeviceBackupCard({ deviceId, siteId }: { deviceId: string; siteId: string }) {
   const { t } = useI18n();
+  const { view } = useView();
+  const targets = useQuery<{ items: Target[] }>(`/config-backup/targets${qs({ site_id: siteId })}`, ['devices'], 60_000);
+  if (view === 'home' && !targets.data?.items.some((x) => x.device_id === deviceId)) return null;
   return (
     <Card title={t('cb.card.title')}>
       <Body deviceId={deviceId} siteId={siteId} />

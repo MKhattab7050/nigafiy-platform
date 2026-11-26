@@ -1,6 +1,7 @@
 import { withSystem } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
+import { collectorWatchInGrace } from './monitor-gaps.ts';
 
 /** A collector heartbeats every 30 s; four missed heartbeats = lost contact. */
 export const COLLECTOR_OFFLINE_AFTER_SECONDS = 120;
@@ -12,8 +13,11 @@ export const COLLECTOR_OFFLINE_AFTER_SECONDS = 120;
  * devices there are up or down, so their status becomes `unknown` — never `offline`.
  */
 export async function watchCollectors(): Promise<void> {
+  // Right after the API started, Sensors have not had a chance to report yet: do not call them lost
+  // (a critical alert for every Sensor after each restart). The gap itself is recorded by monitor-gaps.ts.
+  const inGrace = collectorWatchInGrace();
   await withSystem(async (db) => {
-    const gone = await db.query<{ id: string; organization_id: string; site_id: string; name: string; last_heartbeat_at: Date }>(
+    const gone = inGrace ? { rows: [] } : await db.query<{ id: string; organization_id: string; site_id: string; name: string; last_heartbeat_at: Date }>(
       `UPDATE collectors SET connection_state = 'offline'
         WHERE status = 'active' AND connection_state = 'online'
           AND last_heartbeat_at < now() - make_interval(secs => $1)

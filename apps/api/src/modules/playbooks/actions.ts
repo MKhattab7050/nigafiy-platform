@@ -276,19 +276,18 @@ export async function executeAction(ctx: ActionContext): Promise<ActionOutcome> 
         source: 'platform',
         occurredAt: ctx.now,
       });
-      let channels: number;
       if (p.channel_ids.length) {
         // Only the chosen channels: drop what the severity routing queued, queue the chosen ones.
         await db.query(`DELETE FROM notification_deliveries WHERE event_id = $1 AND status = 'pending' AND NOT (channel_id = ANY($2))`, [eventId, p.channel_ids]);
-        const r = await db.query(
+        await db.query(
           `INSERT INTO notification_deliveries (organization_id, channel_id, event_id)
            SELECT organization_id, id, $2 FROM notification_channels WHERE id = ANY($1) AND enabled ON CONFLICT DO NOTHING`,
           [p.channel_ids, eventId],
         );
-        channels = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM notification_deliveries WHERE event_id = $1`, [eventId])).rows[0]?.n ?? r.rowCount ?? 0;
-      } else {
-        channels = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM notification_deliveries WHERE event_id = $1`, [eventId])).rows[0]?.n ?? 0;
       }
+      // A playbook's notify step is an explicit request: the calm-alert policy does not hold or collapse it.
+      await db.query(`UPDATE notification_deliveries SET policy_at = now() WHERE event_id = $1 AND policy_at IS NULL`, [eventId]);
+      const channels = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM notification_deliveries WHERE event_id = $1`, [eventId])).rows[0]?.n ?? 0;
       return { kind: 'done', input, output: { event_id: eventId, channels_queued: channels, timeline: true } };
     }
 

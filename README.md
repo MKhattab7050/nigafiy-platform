@@ -28,6 +28,12 @@
 
 <br>
 
+> **Not a developer? Start here.** Installing Nigafiy on one Windows computer, seeing your devices and
+> getting alerts on your phone needs no command line. Open the **Start here** page: in the app, choose
+> *User guide* at the bottom of the sidebar; on the Nigafiy website, choose *Docs*. It is in English and
+> Arabic, and the website's Downloads page shows what the Windows warnings look like and how to check a
+> download. Everything below is for developers.
+
 Nigafiy finds and monitors every device on the network, explains incidents with deterministic,
 evidence-backed rules, controls routers, switches and DNS access, and manages and supports company
 computers (Windows, Linux, macOS) and Android phones through enrolled agents, with remote desktop,

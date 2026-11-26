@@ -116,6 +116,40 @@ export const S = {
     en: 'Coming: Nigafiy and Nigafiy Quick Support as Store packages, so Windows shows no “Unknown publisher” warning. Not published yet.',
     ar: 'قريبًا: Nigafiy وNigafiy Quick Support كحزم في المتجر، فلا يُظهر Windows تحذير «ناشر غير معروف». لم يُنشر بعد.',
   },
+  warnH: { en: 'If Windows warns you', ar: 'إن حذّرك Windows' },
+  warnLead: {
+    en: 'The setup program is not signed with a certificate Windows already trusts, so Windows warns before it runs. The warning does not mean the file is harmful; it means Windows cannot tell who published it. Run it only if you downloaded it from this page, and check its SHA-256 below if you want to be sure it was not changed.',
+    ar: 'برنامج الإعداد غير موقّع بشهادة يثق بها Windows مسبقًا، لذلك يحذّر Windows قبل تشغيله. ولا يعني التحذير أن الملف ضار؛ بل يعني أن Windows لا يعرف من نشره. شغّله فقط إن كنت نزّلته من هذه الصفحة، وتحقّق من بصمة SHA-256 أدناه إن أردت التأكد من أنه لم يتغيّر.',
+  },
+  warnSmartScreenH: { en: '“Windows protected your PC”', ar: '«حمى Windows جهاز الكمبيوتر»' },
+  warnSmartScreen1: { en: 'Choose More info (1).', ar: 'اختر «مزيد من المعلومات» (1).' },
+  warnSmartScreen2: {
+    en: 'Check that the app is the Nigafiy setup program you downloaded.',
+    ar: 'تأكد أن التطبيق هو برنامج إعداد Nigafiy الذي نزّلته.',
+  },
+  warnSmartScreen3: { en: 'Choose Run anyway (2).', ar: 'اختر «تشغيل على أي حال» (2).' },
+  warnSmartScreenAlt: {
+    en: 'Drawing of the blue SmartScreen window: first with the More info link (1), then with the app name, “Unknown publisher” and the Run anyway button (2).',
+    ar: 'رسم لنافذة SmartScreen الزرقاء: أولًا مع رابط «مزيد من المعلومات» (1)، ثم مع اسم التطبيق و«ناشر غير معروف» وزر «تشغيل على أي حال» (2).',
+  },
+  warnUacH: { en: '“Unknown publisher”', ar: '«ناشر غير معروف»' },
+  warnUacText: {
+    en: 'Windows then asks whether this app may make changes to your device. Choose Yes (3) to install. Choose No if you did not download the file from this page yourself.',
+    ar: 'ثم يسأل Windows هل يُسمح لهذا التطبيق بإجراء تغييرات على جهازك. اختر «نعم» (3) للتثبيت. واختر «لا» إن لم تكن نزّلت الملف من هذه الصفحة بنفسك.',
+  },
+  warnUacAlt: {
+    en: 'Drawing of the User Account Control window asking whether an app from an unknown publisher may make changes, with the Yes button marked (3).',
+    ar: 'رسم لنافذة التحكم في حساب المستخدم تسأل هل يُسمح لتطبيق من ناشر غير معروف بإجراء تغييرات، مع تحديد زر «نعم» (3).',
+  },
+  warnNote: {
+    en: 'These are simplified drawings; the words can differ slightly between Windows versions. If your organization deploys its own certificate by Group Policy, or once Nigafiy is in the Microsoft Store, these warnings do not appear.',
+    ar: 'هذه رسوم مبسّطة؛ وقد تختلف الكلمات قليلًا بين إصدارات Windows. وإن كانت مؤسستك توزّع شهادتها الخاصة عبر Group Policy، أو عندما يصبح Nigafiy في Microsoft Store، فلا تظهر هذه التحذيرات.',
+  },
+  verifySums: {
+    en: 'Every release also comes with a SHA256SUMS file next to the installers, listing the SHA-256 of each file.',
+    ar: 'ويأتي كل إصدار أيضًا بملف SHA256SUMS بجانب ملفات التثبيت، فيه بصمة SHA-256 لكل ملف.',
+  },
+  startHereLink: { en: 'New to Nigafiy? Start here: install, first scan, alerts on your phone.', ar: 'جديد على Nigafiy؟ ابدأ من هنا: التثبيت، وأول مسح، والتنبيهات على هاتفك.' },
   verifyH: { en: 'Check a download', ar: 'تحقّق من ملف التنزيل' },
   verifyText: {
     en: 'Compare the SHA-256 above with the one Windows computes for the file you downloaded:',

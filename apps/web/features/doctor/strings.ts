@@ -17,11 +17,11 @@ export const en = {
   'dx.affected': 'Affected',
   'dx.devicesOffline': 'devices offline',
   'doctor.title': 'Network Doctor',
-  'doctor.intro': 'A live diagnosis of each site’s path: collector → gateway → internet → DNS. It uses fixed, explainable rules over real measurements and always shows its evidence.',
+  'doctor.intro': 'A live diagnosis of each site’s path: Sensor → gateway → internet → DNS. It uses fixed, explainable rules over real measurements and always shows its evidence.',
   'doctor.runChecks': 'Run checks now',
-  'doctor.runQueued': 'Requested. The collector runs every check on its next check-in; results appear here within about a minute.',
+  'doctor.runQueued': 'Requested. The Sensor runs every check on its next check-in; results appear here within about a minute.',
   'doctor.viewIncident': 'Open incident',
-  'doctor.collectorsOnline': 'collectors reporting',
+  'doctor.collectorsOnline': 'Sensors reporting',
   'doctor.noSites': 'No sites yet.',
 } as const;
 
@@ -43,10 +43,10 @@ export const ar: Record<keyof typeof en, string> = {
   'dx.affected': 'المتأثر',
   'dx.devicesOffline': 'أجهزة غير متصلة',
   'doctor.title': 'طبيب الشبكة',
-  'doctor.intro': 'تشخيص حي لمسار كل موقع: المجمِّع ← البوابة ← الإنترنت ← DNS. يعتمد على قواعد ثابتة قابلة للتفسير فوق قياسات حقيقية ويعرض أدلته دائمًا.',
+  'doctor.intro': 'تشخيص حي لمسار كل موقع: المستشعر ← البوابة ← الإنترنت ← DNS. يعتمد على قواعد ثابتة قابلة للتفسير فوق قياسات حقيقية ويعرض أدلته دائمًا.',
   'doctor.runChecks': 'شغّل الفحوصات الآن',
-  'doctor.runQueued': 'تم الطلب. يشغّل المجمِّع كل الفحوصات عند اتصاله التالي؛ تظهر النتائج هنا خلال دقيقة تقريبًا.',
+  'doctor.runQueued': 'تم الطلب. يشغّل المستشعر كل الفحوصات عند اتصاله التالي؛ تظهر النتائج هنا خلال دقيقة تقريبًا.',
   'doctor.viewIncident': 'فتح الحادثة',
-  'doctor.collectorsOnline': 'مجمِّعات ترسل البيانات',
+  'doctor.collectorsOnline': 'مستشعرات ترسل البيانات',
   'doctor.noSites': 'لا توجد مواقع بعد.',
 };

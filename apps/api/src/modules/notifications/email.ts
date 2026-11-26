@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import nodemailer from 'nodemailer';
 import { isPublicAddress } from '../../common/net.ts';
+import type { NotificationAction } from '@nigafiy/shared-types/notification-actions';
 import { env } from '../../config/env.ts';
 
 export interface SmtpConfig {
@@ -22,7 +23,28 @@ export interface NotificationEvent {
   site_name?: string | null;
   device_id?: string | null;
   check_id?: string | null;
+  /** Buttons for this delivery, with single-use tokens (item 9); absent when the event has none. */
+  actions?: NotificationAction[];
 }
+
+const webBase = (base?: string): string => (base ?? (env.PUBLIC_URL || env.WEB_ORIGIN)).replace(/\/+$/, '');
+
+/** The web page a button's link opens: it says what the button does and asks before acting (a link preview never acts). */
+export function actionLandingUrl(token: string, base?: string): string {
+  return `${webBase(base)}/notification-action/${encodeURIComponent(token)}`;
+}
+
+/** The API address that performs a button directly (ntfy's http action), through the web app's /api proxy. */
+export function actionApiUrl(token: string, base?: string): string {
+  return `${webBase(base)}/api/v1/notification-actions/${encodeURIComponent(token)}`;
+}
+
+/** The buttons that act (allow / pause) and carry a token. */
+export const tokenActions = (event: Pick<NotificationEvent, 'actions'>): (NotificationAction & { token: string })[] =>
+  (event.actions ?? []).filter((a): a is NotificationAction & { token: string } => typeof a.token === 'string' && a.token.length > 0);
+
+/** The event details as shown in a message: `actions` (the buttons, kept in the event for the app) is not a detail. */
+export const shownDetails = (details: Record<string, unknown>): [string, unknown][] => Object.entries(details).filter(([k]) => k !== 'actions');
 
 /**
  * The page that shows an event (Milestone 4 URLs): the device card in Radar for a device event, the
@@ -65,8 +87,15 @@ export function renderEmail(event: NotificationEvent, organizationName: string):
     `Event:     ${event.type}`,
     '',
     'What was observed:',
-    ...Object.entries(event.details).map(([k, v]) => `  ${k.replaceAll('_', ' ')}: ${renderValue(v, '  ')}`),
+    ...shownDetails(event.details).map(([k, v]) => `  ${k.replaceAll('_', ' ')}: ${renderValue(v, '  ')}`),
     '',
+    ...(tokenActions(event).length
+      ? [
+          'Act on it (each link works once, for 24 hours, and asks before it changes anything):',
+          ...tokenActions(event).map((a) => `  ${a.label.en} / ${a.label.ar}: ${actionLandingUrl(a.token)}`),
+          '',
+        ]
+      : []),
     `Open in Nigafiy: ${eventPageUrl(event)}`,
     '',
     'Sent by Nigafiy. Open the event timeline for the full context.',

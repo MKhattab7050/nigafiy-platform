@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { Eye, LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 // The component file, not the feature index: the shell must not pull the guide's content into every page.
@@ -13,6 +13,8 @@ import { type Key, fill, useI18n } from '@/lib/i18n';
 import { programById } from '@/lib/programs';
 import { useProgramId } from '@/lib/programs-context';
 import { SIDEBAR_STORAGE_KEY } from '@/lib/theme-boot';
+import { useView } from '@/lib/view';
+import { sidebarSections } from '@/lib/view-mode';
 import { Select } from '../ui';
 import { LanguageButton } from './language-button';
 import { ProgramSwitcher } from './program-switcher';
@@ -83,17 +85,47 @@ function toggleRail() {
 }
 
 /**
+ * Simple view / full view (lib/view-mode.ts). A switch, so the label stays the same and the state is
+ * read out; in rail mode the label is the tooltip.
+ */
+function ViewSwitch() {
+  const { t } = useI18n();
+  const { view, setView } = useView();
+  const simple = view === 'home';
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={simple}
+      title={t('nav.view.hint')}
+      onClick={() => setView(simple ? 'full' : 'home')}
+      className="group relative mt-1 flex h-9 w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 text-[13px] text-muted hover:bg-raised hover:text-fg lg:rail:justify-center lg:rail:px-0"
+    >
+      <Eye className="size-4 shrink-0" aria-hidden />
+      <span className={clsx('min-w-0 flex-1 truncate text-start', RAIL_LABEL)}>{t('nav.view.simple')}</span>
+      <span aria-hidden className={clsx('relative h-4 w-7 shrink-0 rounded-full border transition-colors lg:rail:hidden', simple ? 'border-accent bg-accent' : 'border-line-strong bg-raised')}>
+        <span className={clsx('absolute top-[1px] size-3 rounded-full bg-white transition-[inset-inline-start] duration-[120ms]', simple ? 'start-[13px]' : 'start-[1px]')} />
+      </span>
+    </button>
+  );
+}
+
+/**
  * The one sidebar: fixed on desktop (collapsible to an icon rail), inside the drawer on small screens.
  * It shows only the current program's sections (spec §6.2), from the program registry, under the
  * program switcher. The account block and sign-out are the same in every program.
  */
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
-  const { t, locale } = useI18n();
+  const { t, tn, locale } = useI18n();
   const { me, can, signOut } = useSession();
   const program = programById(useProgramId());
-  const visible = program.sections.filter((f) => !f.minRole || can(f.minRole));
+  const { view, setView } = useView();
+  const allowed = program.sections.filter((f) => !f.minRole || can(f.minRole));
   const siblings = program.sections.map((f) => f.route);
+  // The simple view hides pages, it never removes them: the page being shown keeps its link.
+  const visible = sidebarSections(allowed, view, (route) => isActiveRoute(route, pathname, siblings));
+  const hiddenCount = allowed.length - visible.length;
   const main = visible.filter((f) => !f.pinBottom);
   const bottom = visible.filter((f) => f.pinBottom);
   const initials = me.user.display_name
@@ -121,6 +153,16 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </li>
           ))}
         </ul>
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setView('full')}
+            title={t('nav.view.full')}
+            className="flex w-full items-center rounded-[var(--radius-control)] px-2.5 py-1.5 text-start text-xs text-faint hover:bg-raised hover:text-fg lg:rail:hidden"
+          >
+            {fill(tn('nav.view.more', hiddenCount), { count: hiddenCount })}
+          </button>
+        )}
       </div>
       <div className="shrink-0 border-t border-line p-3 lg:rail:px-2.5">
         {bottom.length > 0 && (
@@ -175,6 +217,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             <LanguageButton />
           </div>
         )}
+        <ViewSwitch />
         <GuideNavLink labelClassName={RAIL_LABEL} />
         <button type="button" onClick={() => void signOut()} className="group relative mt-1 flex h-9 w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 text-[13px] text-muted hover:bg-raised hover:text-fg lg:rail:justify-center lg:rail:px-0">
           <LogOut className="size-4 shrink-0 rtl:-scale-x-100" aria-hidden />

@@ -12,6 +12,8 @@ import { absoluteTime, relativeTime } from '@/lib/format';
 import { type Key, useI18n } from '@/lib/i18n';
 import { RequestProgress } from '../components/request-progress';
 import { DeleteRouterModal, EditRouterModal, RouterWizardModal } from '../components/router-modals';
+import { DriverMaturityBadge, RouterAssistant } from '../components/router-assistant';
+import { driverMaturity } from '../assistant';
 import { DELIVERY_TONE, HEALTH_TONE, RouterErrorNote, deliveryText } from '../components/text';
 import type { QueuedRequest, SiteRouter } from '../types';
 
@@ -24,6 +26,7 @@ export function RoutersScreen() {
   const collectorsQuery = useQuery<{ items: Collector[] }>(activeSite ? '/collectors' : null, ['collectors']);
 
   const [adding, setAdding] = useState(false);
+  const [addPreset, setAddPreset] = useState<{ vendor: string | null; address: string | null }>({ vendor: null, address: null });
   const [editing, setEditing] = useState<SiteRouter | null>(null);
   const [deleting, setDeleting] = useState<SiteRouter | null>(null);
   const [activeRequests, setActiveRequests] = useState<Record<string, QueuedRequest>>({});
@@ -56,6 +59,19 @@ export function RoutersScreen() {
       />
 
       <RouterErrorNote error={actionError} />
+
+      {activeSite && (
+        <div className="mb-4">
+          <RouterAssistant
+            siteId={activeSite}
+            canAdd={can('admin')}
+            onAdd={(vendor, address) => {
+              setAddPreset({ vendor, address });
+              setAdding(true);
+            }}
+          />
+        </div>
+      )}
 
       <Card padded={false}>
         <Async query={routersQuery} skeleton={<div className="p-4"><SkeletonBlock lines={5} /></div>}>
@@ -106,6 +122,7 @@ export function RoutersScreen() {
                               <span>·</span>
                               <span>{r.identity?.model ?? t('routers.identityUnknown')}</span>
                               {r.identity?.firmware && <span className="mono text-faint">({r.identity.firmware})</span>}
+                              <DriverMaturityBadge maturity={driverMaturity(r.vendor, r.identity?.model)} />
                             </div>
                             {req && (
                               <div className="mt-2">
@@ -196,7 +213,12 @@ export function RoutersScreen() {
           siteId={activeSite}
           sites={!siteId && sites.length > 1 ? sites : undefined}
           collectors={collectorsQuery.data?.items ?? []}
-          onClose={() => setAdding(false)}
+          initialVendor={addPreset.vendor}
+          initialAddress={addPreset.address}
+          onClose={() => {
+            setAdding(false);
+            setAddPreset({ vendor: null, address: null });
+          }}
           onSaved={(newId) => {
             routersQuery.reload();
             routerNav.push(`/guard/routers/${newId}`);

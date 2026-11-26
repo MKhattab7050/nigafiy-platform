@@ -115,7 +115,17 @@ export interface Paginated<T> {
 export type MfaRequirement = 'off' | 'admins' | 'all';
 
 export interface Me {
-  user: { id: string; email: string; display_name: string; locale: 'en' | 'ar'; mfa_enabled: boolean };
+  user: {
+    id: string;
+    email: string;
+    display_name: string;
+    locale: 'en' | 'ar';
+    mfa_enabled: boolean;
+    /** The desktop's auto-created local account whose password nobody chose yet (offer "Set your own password"). */
+    needs_own_password?: boolean;
+    /** Unused password recovery codes (sign-in page, "Use a recovery code"). */
+    recovery_codes_left?: number;
+  };
   organization: { id: string; name: string; kind: string; mfa_required: MfaRequirement };
   role: Role;
   memberships: { organization_id: string; organization_name: string; role: Role }[];
@@ -280,7 +290,11 @@ export interface DeviceDetail extends Device {
   ip_history: { ip: string; first_seen_at: string; last_seen_at: string }[];
   /** Every address observed in the last 30 days, IPv4 and IPv6, current one first. */
   addresses: DeviceAddress[];
-  availability: { status: DeviceStatus; started_at: string; ended_at: string | null }[];
+  /**
+   * Recorded status intervals of the last 7 days. Parts that fall in a period when monitoring itself
+   * was off are `unknown` with `monitor_off: true`: the device was not observed, so it is neither up nor down.
+   */
+  availability: { status: DeviceStatus; started_at: string; ended_at: string | null; monitor_off?: boolean }[];
   recent_events: NetworkEvent[];
 }
 
@@ -363,9 +377,44 @@ export interface Overview {
   active_incidents: Incident[];
   recent_events: NetworkEvent[];
   problem_devices: { id: string; name: string; current_ip: string | null; status: DeviceStatus; offline_events_7d: number }[];
+  /**
+   * The latest period in the last 24 hours when monitoring itself was off (Nigafiy not running, or the
+   * Sensor silent), so the dashboard can say "Monitoring was off from X to Y". null when there was none.
+   */
+  monitoring_off?: { started_at: string; ended_at: string; kind: 'api' | 'collector' } | null;
 }
 
-export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy';
+/** Optional outside heartbeat: a push URL pinged about once a minute while monitoring runs. */
+export interface OutsideHeartbeat {
+  configured: boolean;
+  /** Host of the push URL; the full URL (it may hold a secret token) is never returned. */
+  url_host: string | null;
+  last_ping_at: string | null;
+  /** HTTP status of the last ping, or null when it failed before a response. */
+  last_status: number | null;
+  last_error: string | null;
+  interval_seconds: number;
+}
+
+export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy' | 'push';
+
+/** GET /notifications/push: the installation's VAPID public key and the browsers subscribed to the "Phones (push)" channel. */
+export interface PushSettings {
+  public_key: string;
+  channel: { id: string; enabled: boolean; min_severity: Severity } | null;
+  subscriptions: {
+    id: string;
+    endpoint_host: string;
+    /** SHA-256 (hex) of the endpoint URL: lets a browser recognise its own row. */
+    endpoint_hash: string;
+    language: 'en' | 'ar';
+    label: string | null;
+    user_email: string | null;
+    created_at: string;
+    last_success_at: string | null;
+    last_error: string | null;
+  }[];
+}
 
 export interface NotificationChannel {
   id: string;
@@ -382,6 +431,8 @@ export interface NotificationChannel {
     from?: string;
     chat_id?: string;
     message_thread_id?: number;
+    /** Telegram: the bot's @name, learned when a QR link is made (item 10). */
+    bot_username?: string;
     server_url?: string;
     topic?: string;
   };

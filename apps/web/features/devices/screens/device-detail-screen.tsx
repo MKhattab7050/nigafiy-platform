@@ -134,12 +134,12 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                       <DeviceEndpointCard device={d} />
                     </FeatureBoundary>
                   </div>
-                  <div id={DEVICE_SECTION.port} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                  <div id={DEVICE_SECTION.port} className="scroll-mt-20 rounded-[var(--radius-card)] empty:hidden">
                     <FeatureBoundary>
                       <DevicePortCard deviceId={d.id} />
                     </FeatureBoundary>
                   </div>
-                  <div id={DEVICE_SECTION.backup} className="scroll-mt-20 rounded-[var(--radius-card)]">
+                  <div id={DEVICE_SECTION.backup} className="scroll-mt-20 rounded-[var(--radius-card)] empty:hidden">
                     <FeatureBoundary>
                       <DeviceBackupCard deviceId={d.id} siteId={d.site_id} />
                     </FeatureBoundary>

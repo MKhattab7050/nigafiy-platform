@@ -1,0 +1,4 @@
+{
+  "manifest_url": "https://YOUR-DOWNLOAD-HOST/nigafiy/manifest.json",
+  "public_key": "BASE64-OF-32-BYTES-FROM-new-update-key.mjs"
+}

@@ -11,15 +11,21 @@ import { type Key, useI18n } from '@/lib/i18n';
 import { EmailChannelModal } from './email-channel-modal';
 import { Escalations } from './escalations';
 import { type InstantChannelKind, InstantChannelModal } from './instant-channel-modal';
+import { TelegramLinkModal } from './telegram-link';
+import { CalmAlertsCard } from './calm-alerts';
+import { OutsideHeartbeatCard } from './outside-heartbeat';
+import { PhonePushCard } from './phone-push';
 
 function channelDestination(c: NotificationChannel): string {
   if (c.kind === 'email') return c.url.replace(/^mailto:/, '').replaceAll(',', ', ');
   if (c.kind === 'telegram') {
-    const chat = c.config.chat_id ?? c.url.replace(/^telegram:\/\//, '');
+    if (!c.config.chat_id) return c.config.bot_username ? `@${c.config.bot_username}` : '';
+    const chat = c.config.chat_id;
     return c.config.message_thread_id ? `${chat} #${c.config.message_thread_id}` : chat;
   }
   if (c.kind === 'slack' || c.kind === 'discord') return c.config.host ?? c.url;
   if (c.kind === 'ntfy') return c.config.topic ? `${c.config.server_url ?? ''}/${c.config.topic}` : c.url;
+  if (c.kind === 'push') return '';
   return c.url;
 }
 
@@ -36,6 +42,7 @@ export function Notifications() {
   const [secret, setSecret] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
   const [instantKind, setInstantKind] = useState<InstantChannelKind | null>(null);
+  const [telegramLink, setTelegramLink] = useState<string | null>(null);
 
   const act = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -113,6 +120,11 @@ export function Notifications() {
                       </span>
                     )}
                     <span className="ms-auto flex items-center gap-1">
+                      {c.kind === 'telegram' && (
+                        <Button size="sm" variant="ghost" onClick={() => setTelegramLink(c.id)}>
+                          {t('tglink.linkButton')}
+                        </Button>
+                      )}
                       {c.kind === 'email' && (
                         <Button
                           size="sm"
@@ -232,6 +244,15 @@ export function Notifications() {
             }}
           />
         )}
+        {telegramLink && (
+          <TelegramLinkModal
+            channelId={telegramLink}
+            onClose={() => {
+              setTelegramLink(null);
+              query.reload();
+            }}
+          />
+        )}
         {instantKind && (
           <InstantChannelModal
             kind={instantKind}
@@ -251,7 +272,10 @@ export function Notifications() {
         )}
       </Card>
 
+      <PhonePushCard />
+      <CalmAlertsCard />
       <Escalations channels={query.data?.items ?? []} />
+      <OutsideHeartbeatCard />
     </div>
   );
 }

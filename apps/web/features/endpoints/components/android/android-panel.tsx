@@ -4,7 +4,7 @@ import { BellOff, BellRing, Camera, CameraOff, Check, Download, Eraser, Lock, Me
 import { useRef, useState } from 'react';
 import type { AndroidActionInput, AndroidActionRequest, AndroidActionResult, AndroidApk, AndroidPasswordComplexity, EndpointDetail } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Fact, Field, Input, Notice, Select } from '@/components/ui';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, localizedApiError } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
@@ -197,7 +197,7 @@ export function AndroidPanel({ ep, online, onReload }: { ep: EndpointDetail; onl
 
       <Card title={ax.actionsTitle}>
         <div className="space-y-4 text-sm">
-          {error && <ErrorNote error={new ApiError(error.status, error.code, errorText(ax, locale, error))} />}
+          {error && <ErrorNote error={localizedApiError(error, errorText(ax, locale, error))} />}
           {notice && <Notice>{notice}</Notice>}
           {!can('technician') ? (
             <p className="text-[13px] text-muted">{ax.readOnly}</p>
@@ -377,7 +377,7 @@ function ApkUpload({ ax, locale, onUploaded, onError }: { ax: AndroidText; local
       if (!res.ok || !json?.apk) {
         const e = json?.error ?? { code: 'upload_failed', message: `HTTP ${res.status}` };
         const err = new ApiError(res.status, e.code, e.message);
-        onError(new ApiError(res.status, e.code, errorText(ax, locale, err)));
+        onError(localizedApiError(err, errorText(ax, locale, err)));
         return;
       }
       setName('');
@@ -417,7 +417,7 @@ export function AndroidRequestsCard({ requests, onChanged, showPhone }: { reques
       onChanged();
     } catch (err) {
       const e = err as ApiError;
-      setError(new ApiError(e.status, e.code, errorText(ax, locale, e)));
+      setError(localizedApiError(e, errorText(ax, locale, e)));
     } finally {
       setBusy('');
     }

@@ -1,7 +1,7 @@
 'use client';
 
 import clsx from 'clsx';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, PowerOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { EndpointSummary, InsightsReport, Overview, Paginated } from '@nigafiy/shared-types';
@@ -9,7 +9,7 @@ import { ProportionBar, RingGauge } from '@/components/charts';
 import { ErrorNote, Skeleton, ToneIcon, type Tone } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { type Query, useApp, useQuery } from '@/lib/app';
-import { pct, relativeTime } from '@/lib/format';
+import { absoluteTime, duration, pct, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { localizeDeductionReason } from '@/lib/localize';
 
@@ -103,6 +103,23 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
   );
 }
 
+/**
+ * "Monitoring was off from X to Y": shown for 24 hours after Nigafiy (or the Sensor) was not running,
+ * e.g. the computer was off. Calm wording; device history labels that time "monitoring off".
+ */
+function MonitoringOffNote({ gap }: { gap: NonNullable<Overview['monitoring_off']> }) {
+  const { t, locale } = useI18n();
+  return (
+    <div role="status" className="flex items-start gap-2.5 border-b border-line bg-sunken/60 px-5 py-3 text-[13px] lg:col-span-2">
+      <PowerOff className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+      <div className="min-w-0">
+        <p className="text-fg">{fill(t('dash.monitoringOff'), { from: absoluteTime(gap.started_at, locale), to: absoluteTime(gap.ended_at, locale), duration: duration(gap.started_at, gap.ended_at) })}</p>
+        <p className="mt-0.5 text-xs text-muted">{t('dash.monitoringOffHint')}</p>
+      </div>
+    </div>
+  );
+}
+
 /** A key counter: big number, what it counts, and one small visual or fact under it. */
 export function StatTile({ label, value, sub, tone = 'idle', href, children }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: Tone; href?: string; children?: React.ReactNode }) {
   const color = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'crit' ? 'text-crit' : 'text-fg';
@@ -150,6 +167,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
 
   return (
     <section aria-label={t('overview.healthTitle')} className="grid overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-[minmax(17rem,22rem)_1fr]">
+      {o?.monitoring_off && <MonitoringOffNote gap={o.monitoring_off} />}
       <div className="border-b border-line lg:border-b-0 lg:border-e">
         <ScoreBlock insights={insights} />
       </div>

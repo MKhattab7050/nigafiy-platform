@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { CheckKind, CheckRole, Device, Paginated, SwitchSummary } from '@nigafiy/shared-types';
 import { Badge, Button, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
-import { ApiError, api, qs } from '@/lib/api';
+import { ApiError, api, markLocalized, qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
@@ -90,7 +90,7 @@ export function AddCheck({ onClose, onCreated }: { onClose: () => void; onCreate
     };
     if (kind === 'http' || kind === 'https') {
       if (!parsedUrl) {
-        setError(new ApiError(400, 'invalid_target', t('monitoring.urlInvalid')));
+        setError(markLocalized(new ApiError(400, 'invalid_target', t('monitoring.urlInvalid'))));
         return;
       }
       where = { kind: parsedUrl.kind, target: parsedUrl.host, port: parsedUrl.port, config: buildConfig(parsedUrl.kind, draft, parsedUrl.path) };

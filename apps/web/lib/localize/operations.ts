@@ -198,7 +198,7 @@ export function localizeIncidentTitle(title: string, locale: Locale): string {
   if (exact[title]) return exact[title]!;
 
   let m = title.match(/^Collector "(.+)" (?:lost contact|is offline|went offline)$/);
-  if (m) return `فقد المجمِّع «${m[1]}» الاتصال`;
+  if (m) return `فقد المستشعر «${m[1]}» الاتصال`;
 
   m = title.match(/^(.+) is offline$/);
   if (m) return `${m[1]} غير متصل`;
@@ -273,9 +273,9 @@ const AUDIT_LABELS_AR: Record<string, string> = {
   'scope.created': 'إضافة نطاق شبكة',
   'scope.updated': 'تحديث نطاق شبكة',
   'scope.deleted': 'حذف نطاق شبكة',
-  'collector.created': 'إنشاء مجمِّع',
-  'collector.enrolled': 'تسجيل مجمِّع',
-  'collector.revoked': 'إلغاء مجمِّع',
+  'collector.created': 'إنشاء مستشعر',
+  'collector.enrolled': 'تسجيل مستشعر',
+  'collector.revoked': 'إلغاء مستشعر',
   'device.updated': 'تحديث جهاز',
   'device.deleted': 'حذف جهاز',
   'device.trust': 'تعديل موثوقية جهاز',

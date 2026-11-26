@@ -56,18 +56,29 @@ export function Fact({ label, children, source }: { label: string; children: Rea
 export function Evidence({ details }: { details: Record<string, unknown> }) {
   const entries = Object.entries(details).filter(([, v]) => v !== null && v !== undefined && v !== '');
   if (!entries.length) return null;
-  const render = (value: unknown): React.ReactNode => {
+  // Nested values are shown as labelled rows (a few levels deep), never as raw JSON.
+  const render = (value: unknown, depth = 0): React.ReactNode => {
+    if (value === null || value === undefined || value === '') return '—';
     if (Array.isArray(value)) {
-      if (value.every((v) => typeof v !== 'object')) return value.join(', ');
-      return <pre className="mono overflow-x-auto whitespace-pre-wrap text-[11px] text-muted">{JSON.stringify(value, null, 2)}</pre>;
+      if (value.every((v) => v === null || typeof v !== 'object')) return value.map((v) => (v === null ? '—' : String(v))).join(', ');
+      return (
+        <ul className="space-y-1">
+          {value.map((v, i) => (
+            <li key={i} className="border-s border-line ps-2">
+              {render(v, depth + 1)}
+            </li>
+          ))}
+        </ul>
+      );
     }
-    if (typeof value === 'object' && value !== null) {
+    if (typeof value === 'object') {
+      if (depth > 3) return '…';
       return (
         <dl className="space-y-0.5">
-          {Object.entries(value).map(([k, v]) => (
+          {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
             <div key={k} className="flex gap-2">
-              <dt className="text-faint">{k.replaceAll('_', ' ')}</dt>
-              <dd className="mono min-w-0 break-words">{v === null ? '—' : typeof v === 'object' ? JSON.stringify(v) : String(v)}</dd>
+              <dt className="shrink-0 text-faint">{k.replaceAll('_', ' ')}</dt>
+              <dd className="mono min-w-0 break-words">{render(v, depth + 1)}</dd>
             </div>
           ))}
         </dl>

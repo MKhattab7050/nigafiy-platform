@@ -8,6 +8,8 @@ import { ProgramGlyph } from '@/features/platform';
 import { fill, useI18n } from '@/lib/i18n';
 import { PROGRAM_REGISTRY, installHref, programById } from '@/lib/programs';
 import { usePrograms, useProgramId } from '@/lib/programs-context';
+import { useView } from '@/lib/view';
+import { programHasPages } from '@/lib/view-mode';
 
 /**
  * Top of every program's sidebar: the current program's glyph and name, and a menu to move to any
@@ -18,6 +20,9 @@ export function ProgramSwitcher() {
   const { t, locale } = useI18n();
   const current = programById(useProgramId());
   const { installed } = usePrograms();
+  const { view } = useView();
+  // The simple view leaves out a program with no page of its own there (Fleet, Mind); the full view lists it again.
+  const listed = PROGRAM_REGISTRY.filter((p) => p.id === current.id || programHasPages(p.sections, view));
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
@@ -74,7 +79,7 @@ export function ProgramSwitcher() {
           className="absolute start-0 top-[calc(100%+6px)] z-50 w-72 max-w-[85vw] animate-enter rounded-[10px] border border-line-strong bg-raised p-1.5 shadow-[var(--shadow-overlay)]"
         >
           <ul className="space-y-0.5">
-            {PROGRAM_REGISTRY.map((p) => {
+            {listed.map((p) => {
               const here = p.id === current.id;
               const ok = installed(p.id);
               return (

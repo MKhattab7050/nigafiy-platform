@@ -61,7 +61,17 @@ export const PROGRAMS: readonly ProgramDefinition[] = [
     name: { en: 'Nigafiy Fleet', ar: 'Nigafiy Fleet' },
     job: { en: 'Manage and support company computers', ar: 'إدارة أجهزة الشركة ودعمها' },
     home: '/fleet/endpoints',
-    pages: ['/fleet/endpoints', '/fleet/sessions', '/fleet/policies', '/fleet/approvals'],
+    pages: [
+      '/fleet/endpoints',
+      '/fleet/sessions',
+      '/fleet/requests',
+      '/fleet/policies',
+      '/fleet/approvals',
+      '/fleet/scripts',
+      '/fleet/jobs',
+      '/fleet/patches',
+      '/fleet/monitoring',
+    ],
   },
   {
     id: 'mind',

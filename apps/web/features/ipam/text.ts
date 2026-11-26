@@ -25,7 +25,7 @@ const en = {
   hostRange: 'Host addresses',
   broadcast: 'Broadcast',
   gateway: 'Gateway',
-  gatewaySource: { documented: 'Documented by an administrator', observed: 'Observed: the default gateway used by the collector' },
+  gatewaySource: { documented: 'Documented by an administrator', observed: 'Observed: the default gateway used by the Sensor' },
   vlan: 'VLAN',
   dhcpPool: 'DHCP pool',
   dhcpNote: 'Entered by hand. Nigafiy does not read the DHCP server configuration.',
@@ -69,7 +69,7 @@ const en = {
   flag: {
     gateway: 'Gateway',
     gateway_observed: 'Gateway (observed)',
-    collector: 'Collector',
+    collector: 'Sensor',
     dhcp_pool: 'DHCP pool',
   } as Record<IpamFlag, string>,
   freeState: 'Free',
@@ -132,7 +132,7 @@ const en = {
 
   formVlan: 'VLAN ID',
   formGateway: 'Gateway',
-  formGatewayHint: 'Leave empty to show the gateway the collector observes.',
+  formGatewayHint: 'Leave empty to show the gateway the Sensor observes.',
   formDhcpStart: 'DHCP pool: first address',
   formDhcpEnd: 'DHCP pool: last address',
   formDns: 'DNS servers',
@@ -204,7 +204,7 @@ const ar: Dict = {
   hostRange: 'عناوين الأجهزة',
   broadcast: 'عنوان البث',
   gateway: 'البوابة',
-  gatewaySource: { documented: 'وثّقها مسؤول', observed: 'مرصودة: البوابة الافتراضية التي يستخدمها المجمِّع' },
+  gatewaySource: { documented: 'وثّقها مسؤول', observed: 'مرصودة: البوابة الافتراضية التي يستخدمها المستشعر' },
   vlan: 'VLAN',
   dhcpPool: 'نطاق DHCP',
   dhcpNote: 'يُدخَل يدويًا. Nigafiy لا يقرأ إعدادات خادم DHCP.',
@@ -248,7 +248,7 @@ const ar: Dict = {
   flag: {
     gateway: 'البوابة',
     gateway_observed: 'البوابة (مرصودة)',
-    collector: 'المجمِّع',
+    collector: 'المستشعر',
     dhcp_pool: 'نطاق DHCP',
   },
   freeState: 'متاح',
@@ -311,7 +311,7 @@ const ar: Dict = {
 
   formVlan: 'رقم VLAN',
   formGateway: 'البوابة',
-  formGatewayHint: 'اتركه فارغًا لعرض البوابة التي يرصدها المجمِّع.',
+  formGatewayHint: 'اتركه فارغًا لعرض البوابة التي يرصدها المستشعر.',
   formDhcpStart: 'نطاق DHCP: أول عنوان',
   formDhcpEnd: 'نطاق DHCP: آخر عنوان',
   formDns: 'خوادم DNS',

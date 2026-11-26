@@ -5,6 +5,7 @@ import type { NotificationChannel } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Modal, Select } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { type Key, useI18n } from '@/lib/i18n';
+import { TelegramLinkModal } from './telegram-link';
 
 export type InstantChannelKind = 'telegram' | 'slack' | 'discord' | 'ntfy';
 
@@ -26,6 +27,9 @@ export function InstantChannelModal({
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [threadId, setThreadId] = useState('');
+  // Item 10: the chat is linked by QR after saving; typing a chat ID stays possible for groups and channels.
+  const [typeChat, setTypeChat] = useState(false);
+  const [linkChannel, setLinkChannel] = useState<string | null>(null);
   // Slack / Discord
   const [webhookUrl, setWebhookUrl] = useState('');
   // ntfy
@@ -41,7 +45,7 @@ export function InstantChannelModal({
 
   const ready = (() => {
     if (!name.trim()) return false;
-    if (kind === 'telegram') return Boolean(botToken.trim() && chatId.trim());
+    if (kind === 'telegram') return Boolean(botToken.trim() && (!typeChat || chatId.trim()));
     if (kind === 'slack' || kind === 'discord') return Boolean(webhookUrl.trim());
     if (kind === 'ntfy') {
       if (!serverUrl.trim() || !topic.trim()) return false;
@@ -64,8 +68,8 @@ export function InstantChannelModal({
           name: name.trim(),
           min_severity: severity,
           bot_token: botToken.trim(),
-          chat_id: chatId.trim(),
-          ...(parsedThread ? { message_thread_id: parsedThread } : {}),
+          ...(typeChat && chatId.trim() ? { chat_id: chatId.trim() } : {}),
+          ...(typeChat && parsedThread ? { message_thread_id: parsedThread } : {}),
         };
       } else if (kind === 'slack' || kind === 'discord') {
         body = {
@@ -90,6 +94,11 @@ export function InstantChannelModal({
         method: 'POST',
         body,
       });
+      if (kind === 'telegram' && !(typeChat && chatId.trim())) {
+        // No chat yet: show the QR code; the test message goes out once a chat is linked.
+        setLinkChannel(res.channel.id);
+        return;
+      }
       await api(`/notification-channels/${res.channel.id}/test`, { method: 'POST' });
       onSaved();
     } catch (err) {
@@ -98,9 +107,11 @@ export function InstantChannelModal({
     }
   }
 
+  if (linkChannel) return <TelegramLinkModal channelId={linkChannel} onClose={onSaved} />;
+
   return (
     <Modal title={t(`settings.${kind}.title` as Key)} onClose={onClose} wide>
-      <p className="mb-3 text-[13px] text-muted">{t(`settings.${kind}.intro` as Key)}</p>
+      <p className="mb-3 text-[13px] text-muted">{kind === 'telegram' ? t('tglink.intro') : t(`settings.${kind}.intro` as Key)}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t('common.name')}>
           {(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />}
@@ -135,6 +146,12 @@ export function InstantChannelModal({
                 )}
               </Field>
             </div>
+            <label className="flex items-center gap-2 text-[13px] text-muted sm:col-span-2">
+              <input type="checkbox" checked={typeChat} onChange={(e) => setTypeChat(e.target.checked)} />
+              {t('tglink.typeChatId')}
+            </label>
+            {typeChat && (
+              <>
             <Field label={t('settings.telegram.chatId')} hint={t('settings.telegram.chatIdHint')}>
               {(id) => (
                 <Input
@@ -160,6 +177,8 @@ export function InstantChannelModal({
                 />
               )}
             </Field>
+              </>
+            )}
           </>
         )}
 

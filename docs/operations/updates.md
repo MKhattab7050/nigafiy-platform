@@ -128,6 +128,26 @@ manifest: phones get it through the fleet's APK upload (docs/features/android.md
 first). Upload the folder's files to `--base-url`, then the manifest to `NIGAFIY_UPDATE_MANIFEST_URL`
 last, so no install sees a manifest whose files are not there yet.
 
+### The update channel built into a release
+
+Every release says where its installs look for updates (UX review 2026-11-26, item 14). Before 1.0.5
+the variables above were never set on installed copies, so updates were silently off for everyone.
+
+- `--update-url https://…/manifest.json --update-public-key <base64>`, or the same two values in
+  `scripts/release/update-channel.json` (copy `update-channel.example.json`; nothing in it is secret).
+  The URL must be the **stable** address of the latest manifest (not the per-version `--base-url`).
+  With `--key`, the key's public half must equal `--update-public-key`, or the release stops.
+- No channel: the release stops. `--no-updates` builds one that never checks; the app says so.
+- No hosting address is built into the code: none has been decided yet.
+
+The release writes `update-channel.json` into the backend bundle (`scripts/update-channel.mjs`). On
+every start the launcher passes it to the API as `NIGAFIY_UPDATE_MANIFEST_URL` / `NIGAFIY_UPDATE_PUBLIC_KEY`,
+unless the data folder's `.env` has a line for either one: that line wins, and an empty
+`NIGAFIY_UPDATE_MANIFEST_URL=` turns checks off for good. The desktop app asks the API every 6 hours and
+shows the result in the tray (an update is a clickable line plus one Windows notice per version; off,
+managed by MSI/Store, or a failed check are said plainly, never "up to date"). Settings has an Updates
+card with the same line.
+
 ## Download and staging (API)
 
 `POST /platform/updates/download` (admin; audit `platform.update.download_started`, then

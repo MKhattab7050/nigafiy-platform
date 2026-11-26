@@ -49,6 +49,7 @@ async function seed(c: pg.Client, key: Buffer): Promise<void> {
 
     const ch = (await c.query<{ id: string }>(`INSERT INTO notification_channels (organization_id, kind, name, url, secret_encrypted) VALUES ($1, 'webhook', 'hook', 'https://hooks.example.test/x', 'placeholder') RETURNING id`, [org])).rows[0]!.id;
     await c.query(`UPDATE notification_channels SET secret_encrypted = $2 WHERE id = $1`, [ch, seal('notification_channels', 'secret_encrypted', [ch], `whsec-${label}`)]);
+    await c.query(`INSERT INTO monitor_heartbeat (organization_id, url_sealed, url_host) VALUES ($1, $2, 'hc-ping.example.test')`, [org, seal('monitor_heartbeat', 'url_sealed', [org], `https://hc-ping.example.test/ping-${label}`)]);
 
     const snmp = (await c.query<{ id: string }>(`INSERT INTO snmp_targets (organization_id, site_id, host, version, secret_enc) VALUES ($1, $2, '10.20.0.2', '2c', 'placeholder') RETURNING id`, [org, site])).rows[0]!.id;
     await c.query(`UPDATE snmp_targets SET secret_enc = $2, write_version = '2c', write_secret_enc = $3 WHERE id = $1`, [
@@ -145,7 +146,7 @@ describe('sealed column list', () => {
     for (const sc of SEALED_COLUMNS) {
       expect([...expected.keys()].some((k) => k.startsWith(`${sc.table}.${sc.column}|`)), `${sc.table}.${sc.column}`).toBe(true);
     }
-    expect(SEALED_COLUMNS).toHaveLength(14);
+    expect(SEALED_COLUMNS).toHaveLength(15);
   });
 });
 

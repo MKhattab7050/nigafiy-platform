@@ -34,8 +34,9 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // /api is proxied to the API service (JSON, its own headers); static assets need no policy.
-      source: '/((?!api|_next/static|_next/image|favicon.ico).*)',
+      // /api is proxied to the API service (JSON, its own headers); static assets, the push service worker
+      // (its own policy in next.config.ts), the web app manifest and its icons need no page policy.
+      source: '/((?!api|_next/static|_next/image|favicon.ico|sw\.js|manifest\.webmanifest|icons/).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

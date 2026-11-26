@@ -4,39 +4,39 @@ import { ltr } from './bidi';
 
 function localizeSource(source: string): string {
   const mCheck = source.match(/^(ICMP|TCP|DNS|HTTP|HTTPS|SNMP) check from the site collector$/i);
-  if (mCheck) return `فحص ${ltr(mCheck[1]!.toUpperCase())} من مجمِّع الموقع`;
-  if (source === 'TLS certificate check from the site collector') return 'فحص شهادة TLS من مجمِّع الموقع';
+  if (mCheck) return `فحص ${ltr(mCheck[1]!.toUpperCase())} من مستشعر الموقع`;
+  if (source === 'TLS certificate check from the site collector') return 'فحص شهادة TLS من مستشعر الموقع';
   const mWifi = source.match(/^Wi-Fi adapter of collector "(.+)"$/);
-  if (mWifi) return `محوّل Wi-Fi على المجمِّع «${mWifi[1]}»`;
+  if (mWifi) return `محوّل Wi-Fi على المستشعر «${mWifi[1]}»`;
   const exact: Record<string, string> = {
-    'Collector heartbeat': 'نبض اتصال المجمِّع',
+    'Collector heartbeat': 'نبض اتصال المستشعر',
     'Discovery sweeps': 'مسح اكتشاف الشبكة',
     'Discovery (ICMP + neighbour table)': 'الاكتشاف (ICMP + جدول الجيران)',
     'Discovery sweeps and path checks': 'مسح الاكتشاف وفحوصات المسار',
     'Event timeline (2 hours before now)': 'الخط الزمني للأحداث (آخر ساعتين)',
-    'Collector spool, uploaded after reconnect': 'ذاكرة المجمِّع المؤقتة (رُفعت بعد عودة الاتصال)',
+    'Collector spool, uploaded after reconnect': 'ذاكرة المستشعر المؤقتة (رُفعت بعد عودة الاتصال)',
     'Presence of buffered samples': 'وجود قياسات مخزّنة مؤقتًا',
     'Telemetry received after reconnect': 'بيانات القياس الواردة بعد عودة الاتصال',
-    'DHCPOFFER in reply to the collector’s DHCPDISCOVER probe': 'عرض DHCPOFFER ردًا على فحص DHCPDISCOVER من المجمِّع',
-    'Clients’ DHCPREQUEST overheard by the collector': 'طلبات DHCPREQUEST من الأجهزة رصدها المجمِّع',
-    'Collector DHCPDISCOVER probe (no lease is ever requested or accepted)': 'فحص DHCPDISCOVER من المجمِّع (بدون طلب أو حجز عنوان)',
-    'Collector DHCP probe': 'فحص DHCP من المجمِّع',
-    'Nearby networks in the collector’s Wi-Fi scan': 'الشبكات المجاورة في مسح Wi-Fi للمجمِّع',
-    'Collector Wi-Fi scan': 'مسح Wi-Fi من المجمِّع',
+    'DHCPOFFER in reply to the collector’s DHCPDISCOVER probe': 'عرض DHCPOFFER ردًا على فحص DHCPDISCOVER من المستشعر',
+    'Clients’ DHCPREQUEST overheard by the collector': 'طلبات DHCPREQUEST من الأجهزة رصدها المستشعر',
+    'Collector DHCPDISCOVER probe (no lease is ever requested or accepted)': 'فحص DHCPDISCOVER من المستشعر (بدون طلب أو حجز عنوان)',
+    'Collector DHCP probe': 'فحص DHCP من المستشعر',
+    'Nearby networks in the collector’s Wi-Fi scan': 'الشبكات المجاورة في مسح Wi-Fi للمستشعر',
+    'Collector Wi-Fi scan': 'مسح Wi-Fi من المستشعر',
   };
   return exact[source] ?? source;
 }
 
 function localizeLabel(label: string): string {
-  if (label === 'Collectors reporting') return 'المجمِّعات التي ترسل تقارير';
+  if (label === 'Collectors reporting') return 'المستشعرات التي ترسل تقارير';
   if (label === 'Recent change') return 'تغيير حديث';
   if (label === 'Devices that stopped responding in the last 30 min') return 'الأجهزة التي توقفت عن الاستجابة خلال آخر 30 دقيقة';
   if (label === 'Rest of the network') return 'باقي الشبكة';
   if (label === 'Buffered measurements from the gap') return 'القياسات المخزّنة خلال فترة الانقطاع';
-  if (label === 'Collector host') return 'جهاز المجمِّع';
+  if (label === 'Collector host') return 'جهاز المستشعر';
   if (label === 'Site internet') return 'إنترنت الموقع';
   if (label === 'DHCP probes') return 'فحوصات DHCP';
-  if (label === 'Collector listening') return 'استماع المجمِّع';
+  if (label === 'Collector listening') return 'استماع المستشعر';
   if (label === 'Link rate') return 'سرعة الربط اللاسلكي';
   if (label === 'Certificate') return 'الشهادة';
   if (label === 'HTTP response') return 'استجابة HTTP';
@@ -46,7 +46,7 @@ function localizeLabel(label: string): string {
   const mHost = label.match(/^Host (.+)$/);
   if (mHost) return `الجهاز ${ltr(mHost[1]!)}`;
   const mCol = label.match(/^Collector "(.+)"$/);
-  if (mCol) return `المجمِّع «${mCol[1]}»`;
+  if (mCol) return `المستشعر «${mCol[1]}»`;
   const mDhcp = label.match(/^DHCP server (.+)$/);
   if (mDhcp) return `خادم DHCP ${ltr(mDhcp[1]!)}`;
   const mSig = label.match(/^Signal from (.+) \(([^)]+)\)$/);
@@ -187,13 +187,13 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
     case 'no-observer':
       return {
         ...out,
-        title: 'لا يوجد مجمِّع يرسل تقارير من هذا الموقع',
-        summary: 'لا يمكن تشخيص الشبكة حاليًا لأنه لا يوجد مجمِّع في هذا الموقع على اتصال بالمنصة. حالات الفحوصات المعروضة هي آخر ما تم استلامه.',
+        title: 'لا يوجد مستشعر يرسل تقارير من هذا الموقع',
+        summary: 'لا يمكن تشخيص الشبكة حاليًا لأنه لا يوجد مستشعر في هذا الموقع على اتصال بالمنصة. حالات الفحوصات المعروضة هي آخر ما تم استلامه.',
         probable_cause: 'غير معروف — لا توجد قياسات حالية.',
-        confidence_reason: 'بدون مجمِّع نشط لا تتوفر قياسات حالية.',
-        alternatives: ['فقد الموقع اتصاله بالإنترنت', 'الجهاز الذي يشغّل المجمِّع مطفأ أو توقفت خدمة المجمِّع'],
-        investigation_steps: ['تأكد مما إذا كان الموقع متصلًا بالإنترنت', 'تأكد أن جهاز المجمِّع يعمل وأن خدمة المجمِّع قيد التشغيل'],
-        recommendations: ['عند عودة المجمِّع للاتصال سيرفع القياسات التي جمعها أثناء الانقطاع؛ أعد تشغيل التشخيص حينها.'],
+        confidence_reason: 'بدون مستشعر نشط لا تتوفر قياسات حالية.',
+        alternatives: ['فقد الموقع اتصاله بالإنترنت', 'الجهاز الذي يشغّل المستشعر مطفأ أو توقفت خدمة المستشعر'],
+        investigation_steps: ['تأكد مما إذا كان الموقع متصلًا بالإنترنت', 'تأكد أن جهاز المستشعر يعمل وأن خدمة المستشعر قيد التشغيل'],
+        recommendations: ['عند عودة المستشعر للاتصال سيرفع القياسات التي جمعها أثناء الانقطاع؛ أعد تشغيل التشخيص حينها.'],
       };
 
     case 'missing-path-checks': {
@@ -206,7 +206,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         confidence_reason: m
           ? `النتائج المتاحة: ${ltr(m[1]!)} فحص للبوابة، و${ltr(m[2]!)} فحص للإنترنت.`
           : d.confidence_reason,
-        investigation_steps: ['تأكد من تسجيل وتشغيل مجمِّع متصل في هذا الموقع', 'أبقِ فحوصات البوابة والإنترنت الافتراضية مفعّلة ضمن المراقبة المباشرة'],
+        investigation_steps: ['تأكد من تسجيل وتشغيل مستشعر متصل في هذا الموقع', 'أبقِ فحوصات البوابة والإنترنت الافتراضية مفعّلة ضمن المراقبة المباشرة'],
         recommendations: [],
       };
     }
@@ -217,8 +217,8 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: 'عطل في جزء من الشبكة المحلية',
-        summary: `لا يستطيع المجمِّع الوصول إلى البوابة الافتراضية، وتوقف ${ltr(lostN)} جهازًا عن الاستجابة في نفس الوقت تقريبًا. العطل داخل الشبكة المحلية وليس عند مزوّد الخدمة.`,
-        probable_cause: 'سويتش أو وصلة ربط (Uplink) أو الجزء من الشبكة المحلية المتصل به المجمِّع تعطّل أو انقطعت عنه الكهرباء.',
+        summary: `لا يستطيع المستشعر الوصول إلى البوابة الافتراضية، وتوقف ${ltr(lostN)} جهازًا عن الاستجابة في نفس الوقت تقريبًا. العطل داخل الشبكة المحلية وليس عند مزوّد الخدمة.`,
+        probable_cause: 'سويتش أو وصلة ربط (Uplink) أو الجزء من الشبكة المحلية المتصل به المستشعر تعطّل أو انقطعت عنه الكهرباء.',
         confidence_reason: d.confidence === 'high'
           ? 'فشلت البوابة وكل أهداف الإنترنت معًا، وهو ما ينتج عن عطل محلي.'
           : 'البوابة لا ترد لكن أهداف الإنترنت لا تزال ترد — ربما البوابة تمنع ICMP فقط.',
@@ -226,7 +226,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         investigation_steps: [
           'تأكد أن الراوتر/جدار الحماية يعمل وأن مؤشرات منافذ LAN مضاءة',
           'من جهاز آخر على نفس الشبكة جرّب ping لعنوان البوابة',
-          'تحقق من منفذ السويتش والكابل المتصل بجهاز المجمِّع',
+          'تحقق من منفذ السويتش والكابل المتصل بجهاز المستشعر',
           'تحقق من الكهرباء ووصلة الربط (Uplink) للسويتش الذي تتشارك فيه الأجهزة المتأثرة',
         ],
         recommendations: [
@@ -240,19 +240,19 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: 'البوابة الافتراضية لا تستجيب',
-        summary: 'لا يستطيع المجمِّع الوصول إلى البوابة الافتراضية. فشل الإنترنت وDNS نتيجة تبعية لذلك — العطل داخل الشبكة المحلية وليس عند مزوّد الخدمة.',
-        probable_cause: 'الراوتر أو جدار الحماية الذي يعمل كبوابة افتراضية متوقف أو يُعيد التشغيل أو لا يمكن الوصول إليه من المجمِّع.',
+        summary: 'لا يستطيع المستشعر الوصول إلى البوابة الافتراضية. فشل الإنترنت وDNS نتيجة تبعية لذلك — العطل داخل الشبكة المحلية وليس عند مزوّد الخدمة.',
+        probable_cause: 'الراوتر أو جدار الحماية الذي يعمل كبوابة افتراضية متوقف أو يُعيد التشغيل أو لا يمكن الوصول إليه من المستشعر.',
         confidence_reason: d.confidence === 'high'
           ? 'فشلت البوابة وكل أهداف الإنترنت معًا، وهو ما ينتج عن عطل محلي.'
           : 'البوابة لا ترد بينما أهداف الإنترنت لا تزال ترد — قد تكون البوابة تمنع رسائل ICMP فقط.',
         alternatives: [
-          'كابل المجمِّع أو منفذ السويتش أو اتصال Wi-Fi الخاص به فقط هو المنقطع',
+          'كابل المستشعر أو منفذ السويتش أو اتصال Wi-Fi الخاص به فقط هو المنقطع',
           ...(d.alternatives.length > 1 ? ['البوابة تتجاهل طلبات ICMP (في هذه الحالة يُفضَّل تحويل الفحص إلى TCP)'] : []),
         ],
         investigation_steps: [
           'تأكد أن الراوتر/جدار الحماية يعمل وأن مؤشرات منافذ LAN مضاءة',
           'من جهاز آخر على نفس الشبكة جرّب ping لعنوان البوابة',
-          'تحقق من منفذ السويتش والكابل المتصل بجهاز المجمِّع',
+          'تحقق من منفذ السويتش والكابل المتصل بجهاز المستشعر',
         ],
         recommendations: [
           'لا تتواصل مع مزوّد الخدمة بعد: العطل يقع قبل وصلة الإنترنت (WAN).',
@@ -324,7 +324,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
           : 'أهداف الإنترنت نفسها متراجعة، ما قد يسبب بطء DNS.',
         alternatives: ['تم حظر منفذ DNS الصادر (53) بسبب تغيير في جدار الحماية'],
         investigation_steps: [
-          'تحقق من خادم DNS الذي توزّعه الشبكة عبر DHCP — الفحص يستخدم خادم DNS المضبوط على جهاز المجمِّع',
+          'تحقق من خادم DNS الذي توزّعه الشبكة عبر DHCP — الفحص يستخدم خادم DNS المضبوط على جهاز المستشعر',
           'استعلم من هذا الخادم مباشرة وقارنه بخادم عام (مثل 1.1.1.1)',
           'تحقق من إعدادات التوجيه (Forwarder) في خادم DNS وتأكد أن الخدمة تعمل',
         ],
@@ -339,16 +339,16 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: 'تراجع جودة المسار في الشبكة المحلية',
-        summary: `تُظهر الحركة بين المجمِّع والبوابة الافتراضية ${metric}. هذه القفزة بالكامل داخل الشبكة المحلية، لذا فإن البطء الذي يراه المستخدمون يبدأ من هنا.`,
+        summary: `تُظهر الحركة بين المستشعر والبوابة الافتراضية ${metric}. هذه القفزة بالكامل داخل الشبكة المحلية، لذا فإن البطء الذي يراه المستخدمون يبدأ من هنا.`,
         probable_cause: 'مشكلة محلية: كابل أو منفذ سويتش تالف، تداخل Wi-Fi إن كان الاتصال لاسلكيًا، حلقة شبكية (Loop/Broadcast Storm)، أو حمل مرتفع على الراوتر.',
         confidence_reason: 'البوابة على بُعد قفزة محلية واحدة؛ الفقد أو التأخير هنا لا يمكن أن يكون من مزوّد الخدمة.',
         alternatives: ['البوابة تخفّض أولوية ICMP عند ارتفاع حمل المعالج (وقد تكون الحركة الفعلية أقل تأثرًا)'],
         investigation_steps: [
           'تحقق من استهلاك المعالج والحمل على الراوتر أو جدار الحماية',
-          'افحص كابل ومنفذ السويتش الخاص بجهاز المجمِّع وعدادات الأخطاء على المنفذ',
+          'افحص كابل ومنفذ السويتش الخاص بجهاز المستشعر وعدادات الأخطاء على المنفذ',
           'ابحث عن جهاز يولّد حركة شبكية كثيفة غير معتادة',
         ],
-        recommendations: ['إذا كان المجمِّع متصلًا عبر Wi-Fi، وصّله بكابل شبكة لقياس الشبكة السلكية بدقة.'],
+        recommendations: ['إذا كان المستشعر متصلًا عبر Wi-Fi، وصّله بكابل شبكة لقياس الشبكة السلكية بدقة.'],
       };
     }
 
@@ -438,7 +438,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: `${name}: تعذّر ترجمة اسم الهدف`,
-        summary: `لم يتمكن خادم DNS على جهاز المجمِّع من ترجمة الاسم ${ltr(mTarget?.[1] ?? '—')}، فلم تُجرَ أي محاولة اتصال بالخدمة.`,
+        summary: `لم يتمكن خادم DNS على جهاز المستشعر من ترجمة الاسم ${ltr(mTarget?.[1] ?? '—')}، فلم تُجرَ أي محاولة اتصال بالخدمة.`,
         probable_cause: 'سجل DNS مفقود أو خاطئ لهذا الاسم، أو مشكلة في خادم DNS الداخلي.',
         confidence_reason: 'حدث الفشل في مرحلة ترجمة الاسم قبل محاولة الاتصال.',
         investigation_steps: ['تحقق من سجل DNS لهذا الاسم على خادم DNS الداخلي'],
@@ -499,12 +499,12 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const m = d.summary.match(/internet checks failed (\d+) times(?: and gateway checks (\d+) times)?/);
       return {
         ...out,
-        title: gwLost ? 'فقد الموقع بوابته المحلية — فانقطع اتصال المجمِّع' : 'فقد الموقع اتصاله بالإنترنت — فانقطع اتصال المجمِّع',
+        title: gwLost ? 'فقد الموقع بوابته المحلية — فانقطع اتصال المستشعر' : 'فقد الموقع اتصاله بالإنترنت — فانقطع اتصال المستشعر',
         summary: m
-          ? `واصل المجمِّع القياس أثناء تعذّر وصوله للمنصة ثم رفع النتائج لاحقًا: فشلت فحوصات الإنترنت ${ltr(m[1]!)} مرة${m[2] ? ` وفحوصات البوابة ${ltr(m[2])} مرة` : ' بينما استمرت البوابة في الاستجابة'}.`
-          : 'واصل المجمِّع القياس أثناء انقطاع الاتصال ورفع النتائج بعد عودته.',
-        probable_cause: gwLost ? 'كانت البوابة المحلية متوقفة، ما قطع المجمِّع عن المنصة أيضًا.' : 'انقطاع في وصلة WAN أو لدى مزوّد الخدمة بالموقع.',
-        confidence_reason: 'استنادًا إلى القياسات المخزّنة محليًا في المجمِّع خلال فترة الانقطاع.',
+          ? `واصل المستشعر القياس أثناء تعذّر وصوله للمنصة ثم رفع النتائج لاحقًا: فشلت فحوصات الإنترنت ${ltr(m[1]!)} مرة${m[2] ? ` وفحوصات البوابة ${ltr(m[2])} مرة` : ' بينما استمرت البوابة في الاستجابة'}.`
+          : 'واصل المستشعر القياس أثناء انقطاع الاتصال ورفع النتائج بعد عودته.',
+        probable_cause: gwLost ? 'كانت البوابة المحلية متوقفة، ما قطع المستشعر عن المنصة أيضًا.' : 'انقطاع في وصلة WAN أو لدى مزوّد الخدمة بالموقع.',
+        confidence_reason: 'استنادًا إلى القياسات المخزّنة محليًا في المستشعر خلال فترة الانقطاع.',
         investigation_steps: ['راجع حادثة الشبكة في نفس الفترة للاطلاع على التشخيص التفصيلي للمسار'],
       };
     }
@@ -513,12 +513,12 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const m = d.summary.match(/\((\d+) samples\)/);
       return {
         ...out,
-        title: 'تعذّر وصول المجمِّع للمنصة رغم توفر الإنترنت بالموقع',
-        summary: `خلال فترة الانقطاع استمرت فحوصات الإنترنت من المجمِّع في النجاح (${ltr(m?.[1] ?? '—')} عينة)، لذا كان الموقع متصلًا بالإنترنت؛ وفشل الاتصال بمنصة Nigafiy فقط.`,
+        title: 'تعذّر وصول المستشعر للمنصة رغم توفر الإنترنت بالموقع',
+        summary: `خلال فترة الانقطاع استمرت فحوصات الإنترنت من المستشعر في النجاح (${ltr(m?.[1] ?? '—')} عينة)، لذا كان الموقع متصلًا بالإنترنت؛ وفشل الاتصال بمنصة Nigafiy فقط.`,
         probable_cause: 'تم حظر أو فشل اتصال HTTPS الصادر نحو الخادم (تغيير في جدار الحماية/البروكسي، فحص TLS، أو مشكلة DNS لاسم الخادم).',
         confidence_reason: 'القياسات المخزّنة تثبت عمل الإنترنت خلال فترة الانقطاع.',
         alternatives: ['عطل مؤقت في خادم المنصة'],
-        investigation_steps: ['تحقق من قواعد جدار الحماية أو البروكسي لاتصالات HTTPS الصادرة من جهاز المجمِّع'],
+        investigation_steps: ['تحقق من قواعد جدار الحماية أو البروكسي لاتصالات HTTPS الصادرة من جهاز المستشعر'],
       };
     }
 
@@ -526,13 +526,13 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const m = d.title.match(/^Collector "(.+)"/);
       return {
         ...out,
-        title: `المجمِّع «${m?.[1] ?? '—'}» لم يكن يعمل`,
-        summary: 'عاد المجمِّع للاتصال دون رفع أي قياسات من فترة الانقطاع. المجمِّع العامل يستمر في القياس وتخزين النتائج، لذا لم يكن قيد التشغيل خلال تلك الفترة.',
-        probable_cause: 'جهاز المجمِّع كان مطفأً أو يُعيد التشغيل، أو توقفت خدمة المجمِّع.',
+        title: `المستشعر «${m?.[1] ?? '—'}» لم يكن يعمل`,
+        summary: 'عاد المستشعر للاتصال دون رفع أي قياسات من فترة الانقطاع. المستشعر العامل يستمر في القياس وتخزين النتائج، لذا لم يكن قيد التشغيل خلال تلك الفترة.',
+        probable_cause: 'جهاز المستشعر كان مطفأً أو يُعيد التشغيل، أو توقفت خدمة المستشعر.',
         confidence_reason: 'عدم وجود قياسات مخزّنة لفترة الانقطاع (قد يظهر نفس الأمر إذا مُسح مجلد التخزين المؤقت).',
-        alternatives: ['تم حذف مجلد حالة المجمِّع (التخزين المؤقت)'],
-        investigation_steps: ['تحقق من مدة تشغيل جهاز المجمِّع وسجلات الخدمة وقت الانقطاع'],
-        recommendations: ['شغّل المجمِّع كخدمة نظام مع إعادة تشغيل تلقائية (systemd أو خدمة Windows أو سياسة إعادة تشغيل Docker).'],
+        alternatives: ['تم حذف مجلد حالة المستشعر (التخزين المؤقت)'],
+        investigation_steps: ['تحقق من مدة تشغيل جهاز المستشعر وسجلات الخدمة وقت الانقطاع'],
+        recommendations: ['شغّل المستشعر كخدمة نظام مع إعادة تشغيل تلقائية (systemd أو خدمة Windows أو سياسة إعادة تشغيل Docker).'],
       };
     }
 
@@ -540,13 +540,13 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const m = d.title.match(/^Collector "(.+)"/);
       return {
         ...out,
-        title: `فقد المجمِّع «${m?.[1] ?? '—'}» الاتصال`,
-        summary: 'توقفت المنصة عن استلام نبضات الاتصال من هذا المجمِّع. لا يمكن التمييز بين الأسباب المحتملة من خارج الموقع؛ وتظهر حالات الأجهزة كـ«غير معروف» بدلًا من «غير متصل».',
-        probable_cause: 'غير محدد حتى يعود المجمِّع للاتصال.',
+        title: `فقد المستشعر «${m?.[1] ?? '—'}» الاتصال`,
+        summary: 'توقفت المنصة عن استلام نبضات الاتصال من هذا المستشعر. لا يمكن التمييز بين الأسباب المحتملة من خارج الموقع؛ وتظهر حالات الأجهزة كـ«غير معروف» بدلًا من «غير متصل».',
+        probable_cause: 'غير محدد حتى يعود المستشعر للاتصال.',
         confidence_reason: 'لا توجد قياسات من داخل الموقع حاليًا.',
-        alternatives: ['فقد الموقع اتصاله بالإنترنت', 'جهاز المجمِّع مطفأ أو يُعيد التشغيل', 'توقفت خدمة المجمِّع', 'اتصال HTTPS الصادر من المجمِّع محجوب'],
-        investigation_steps: ['اسأل أحد الموجودين في الموقع إن كان الإنترنت يعمل', 'تأكد أن جهاز المجمِّع يعمل وأن الخدمة قيد التشغيل'],
-        recommendations: ['عند عودة المجمِّع سيرفع قياساته المخزّنة ويُحدَّث هذا التشخيص تلقائيًا.'],
+        alternatives: ['فقد الموقع اتصاله بالإنترنت', 'جهاز المستشعر مطفأ أو يُعيد التشغيل', 'توقفت خدمة المستشعر', 'اتصال HTTPS الصادر من المستشعر محجوب'],
+        investigation_steps: ['اسأل أحد الموجودين في الموقع إن كان الإنترنت يعمل', 'تأكد أن جهاز المستشعر يعمل وأن الخدمة قيد التشغيل'],
+        recommendations: ['عند عودة المستشعر سيرفع قياساته المخزّنة ويُحدَّث هذا التشخيص تلقائيًا.'],
       };
     }
 
@@ -558,7 +558,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: mOne ? `خادم DHCP غير متوقَّع ${ltr(mOne[1]!)}` : mMany ? `${ltr(mMany[1]!)} خوادم DHCP غير متوقَّعة` : 'خادم DHCP غير متوقَّع',
-        summary: `استجاب خادم DHCP غير متوقَّع لفحص المجمِّع${taking ? ' وتأخذ منه الأجهزة عناوين بالفعل' : ''}. الأجهزة التي تقبل عرضه تحصل على ${hijack ? 'بوابة أو خادم DNS مختلف — ما قد يقطع حركتها أو يعترضها' : 'عناوين قد تتعارض مع خادم DHCP الحقيقي'}.`,
+        summary: `استجاب خادم DHCP غير متوقَّع لفحص المستشعر${taking ? ' وتأخذ منه الأجهزة عناوين بالفعل' : ''}. الأجهزة التي تقبل عرضه تحصل على ${hijack ? 'بوابة أو خادم DNS مختلف — ما قد يقطع حركتها أو يعترضها' : 'عناوين قد تتعارض مع خادم DHCP الحقيقي'}.`,
         probable_cause: 'وجود خادم DHCP ثانٍ على الشبكة: راوتر منزلي أو نقطة وصول موصولة من منفذ LAN، نقطة اتصال هاتف، آلة افتراضية بوضع Bridge، خادم غير مضبوط — أو هجوم متعمد.',
         confidence_reason: d.confidence === 'high'
           ? 'استجاب الخادم لأكثر من فحص، أو رُصدت أجهزة تطلب منه عناوين.'
@@ -578,10 +578,10 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: 'لا يوجد خادم DHCP يستجيب',
-        summary: `لم تحصل آخر ${ltr(m?.[1] ?? '—')} فحوصات DHCP من المجمِّع على أي عرض. الأجهزة التي تنضم أو تجدد عنوانها الآن لن تحصل على IP.`,
+        summary: `لم تحصل آخر ${ltr(m?.[1] ?? '—')} فحوصات DHCP من المستشعر على أي عرض. الأجهزة التي تنضم أو تجدد عنوانها الآن لن تحصل على IP.`,
         probable_cause: 'خادم DHCP (غالبًا الراوتر) متوقف أو توقفت خدمته، أو نفد نطاق العناوين المتاحة، أو تعطل مرحّل DHCP بين الشبكات الافتراضية (VLANs).',
-        confidence_reason: `استطاع المجمِّع الاستماع للردود ولم يصل أي رد خلال ${ltr(m?.[1] ?? '—')} فحوصات متتالية.`,
-        alternatives: ['خادم DHCP يتجاهل الأجهزة التي رآها سابقًا (أمر نادر)', 'جدار الحماية على جهاز المجمِّع يُسقط ردود DHCP الواردة'],
+        confidence_reason: `استطاع المستشعر الاستماع للردود ولم يصل أي رد خلال ${ltr(m?.[1] ?? '—')} فحوصات متتالية.`,
+        alternatives: ['خادم DHCP يتجاهل الأجهزة التي رآها سابقًا (أمر نادر)', 'جدار الحماية على جهاز المستشعر يُسقط ردود DHCP الواردة'],
         investigation_steps: ['تحقق من خدمة DHCP على الراوتر أو الخادم', 'تحقق من نسبة امتلاء نطاق العناوين في IPAM', 'إن كانت الشبكة مقسمة إلى VLANs فتحقق من مرحّل DHCP (ip helper-address)'],
       };
     }
@@ -590,15 +590,15 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const listenErr = d.title.includes('could not listen');
       return {
         ...out,
-        title: listenErr ? 'تعذّر على المجمِّع الاستماع لردود DHCP' : 'لم يُفحص DHCP بعد',
+        title: listenErr ? 'تعذّر على المستشعر الاستماع لردود DHCP' : 'لم يُفحص DHCP بعد',
         summary: listenErr
-          ? `لم يتمكن المجمِّع من فتح منفذ عميل DHCP: ${ltr(d.summary.replace(/^The collector could not open the DHCP client port: /, '').replace(/\.$/, ''))}.`
-          : 'يفحص المجمِّع خدمة DHCP كل 15 دقيقة على الشبكات ضمن النطاقات المصرَّح بها.',
+          ? `لم يتمكن المستشعر من فتح منفذ عميل DHCP: ${ltr(d.summary.replace(/^The collector could not open the DHCP client port: /, '').replace(/\.$/, ''))}.`
+          : 'يفحص المستشعر خدمة DHCP كل 15 دقيقة على الشبكات ضمن النطاقات المصرَّح بها.',
         probable_cause: 'غير معروف.',
         confidence_reason: 'لم يُرصَد أي رد DHCP بعد.',
         investigation_steps: listenErr
-          ? ['على Linux امنح المجمِّع صلاحية CAP_NET_BIND_SERVICE (وCAP_NET_RAW للربط بواجهة محددة)', 'على Windows اسمح بمنفذ UDP 68 الوارد للمجمِّع في جدار الحماية']
-          : ['تأكد أن شبكة جهاز المجمِّع نفسها ضمن نطاق مصرَّح به'],
+          ? ['على Linux امنح المستشعر صلاحية CAP_NET_BIND_SERVICE (وCAP_NET_RAW للربط بواجهة محددة)', 'على Windows اسمح بمنفذ UDP 68 الوارد للمستشعر في جدار الحماية']
+          : ['تأكد أن شبكة جهاز المستشعر نفسها ضمن نطاق مصرَّح به'],
       };
     }
 
@@ -617,10 +617,10 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const mSum = d.summary.match(/receives "(.+)" at (-?\d+) dBm\. Below about (-?\d+) dBm/);
       return {
         ...out,
-        title: `إشارة Wi-Fi ضعيفة عند المجمِّع «${mCol?.[1] ?? '—'}»`,
+        title: `إشارة Wi-Fi ضعيفة عند المستشعر «${mCol?.[1] ?? '—'}»`,
         summary: mSum
-          ? `يستقبل المجمِّع شبكة «${mSum[1]}» بقوة ${ltr(`${mSum[2]} dBm`)}. تحت ${ltr(`${mSum[3]} dBm`)} تنخفض السرعة ويصبح الاتصال غير مستقر.`
-          : 'قوة إشارة Wi-Fi منخفضة عند موقع المجمِّع، ما يضعف السرعة والاستقرار.',
+          ? `يستقبل المستشعر شبكة «${mSum[1]}» بقوة ${ltr(`${mSum[2]} dBm`)}. تحت ${ltr(`${mSum[3]} dBm`)} تنخفض السرعة ويصبح الاتصال غير مستقر.`
+          : 'قوة إشارة Wi-Fi منخفضة عند موقع المستشعر، ما يضعف السرعة والاستقرار.',
         probable_cause: 'مسافة كبيرة أو جدران كثيرة بين هذا الموقع ونقطة الوصول، أو انخفاض قدرة البث.',
         confidence_reason: d.confidence === 'high' ? 'قوة الإشارة مقاسة مباشرة بوحدة dBm من محوّل الشبكة.' : 'مقدَّرة من نسبة جودة الإشارة في المحوّل وهي قيمة تقريبية.',
         alternatives: ['هوائي المحوّل ضعيف أو محجوب (مثل قطعة USB خلف الحاسوب)'],
@@ -637,9 +637,9 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         title: mTitle?.[2]
           ? `قناة Wi-Fi رقم ${ltr(mTitle[1]!)} مزدحمة — القناة ${ltr(mTitle[2])} أصفى`
           : `قناة Wi-Fi رقم ${ltr(mTitle?.[1] ?? '—')} مزدحمة`,
-        summary: `${ltr(mSum?.[1] ?? '—')} شبكة مجاورة تعمل على القناة ${ltr(mSum?.[2] ?? '—')} أو تتداخل معها عند موقع المجمِّع.${mRec ? ` درجة التداخل على القناة ${ltr(mRec[1]!)} هي ${ltr(mRec[2]!)} مقابل ${ltr(mRec[3]!)} حاليًا.` : ' لم يُعثَر على قناة قياسية أفضل بوضوح.'}`,
+        summary: `${ltr(mSum?.[1] ?? '—')} شبكة مجاورة تعمل على القناة ${ltr(mSum?.[2] ?? '—')} أو تتداخل معها عند موقع المستشعر.${mRec ? ` درجة التداخل على القناة ${ltr(mRec[1]!)} هي ${ltr(mRec[2]!)} مقابل ${ltr(mRec[3]!)} حاليًا.` : ' لم يُعثَر على قناة قياسية أفضل بوضوح.'}`,
         probable_cause: 'الشبكات المجاورة تتقاسم زمن البث على نفس القناة، فتنتظر كل الأجهزة وقتًا أطول للإرسال.',
-        confidence_reason: 'بناءً على الشبكات المسموعة عند موقع المجمِّع فقط؛ وقد تختلف الشبكات المجاورة في أماكن أخرى من الموقع.',
+        confidence_reason: 'بناءً على الشبكات المسموعة عند موقع المستشعر فقط؛ وقد تختلف الشبكات المجاورة في أماكن أخرى من الموقع.',
         alternatives: ['التداخل غير اللاسلكي (الميكروويف، البلوتوث، الهواتف اللاسلكية) على 2.4 GHz لا يظهر في مسح Wi-Fi'],
         investigation_steps: mTitle?.[2]
           ? [`اضبط نقطة الوصول على القناة ${ltr(mTitle[2])} في إعدادات Wi-Fi وقارن الأداء`]
@@ -652,7 +652,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const mTitle = d.title.match(/collector "(.+)" \((\d+) Mbps\)$/);
       return {
         ...out,
-        title: `سرعة ربط Wi-Fi منخفضة عند المجمِّع «${mTitle?.[1] ?? '—'}» (${ltr(`${mTitle?.[2] ?? '—'} Mbps`)})`,
+        title: `سرعة ربط Wi-Fi منخفضة عند المستشعر «${mTitle?.[1] ?? '—'}» (${ltr(`${mTitle?.[2] ?? '—'} Mbps`)})`,
         summary: `تفاوض المحوّل على سرعة ${ltr(`${mTitle?.[2] ?? '—'} Mbps`)} فقط رغم أن قوة الإشارة ${d.summary.includes('not reported') ? 'غير مُبلَّغ عنها' : 'كافية'}.`,
         probable_cause: d.probable_cause.includes('Channel congestion')
           ? 'ازدحام القناة يفرض سرعات ربط أقل.'
@@ -668,10 +668,10 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       const mNet = d.summary.match(/of "(.+)" are within/);
       return {
         ...out,
-        title: `اتصال Wi-Fi عند المجمِّع «${mCol?.[1] ?? '—'}» سليم`,
+        title: `اتصال Wi-Fi عند المستشعر «${mCol?.[1] ?? '—'}» سليم`,
         summary: `قوة الإشارة وازدحام القناة وسرعة الربط لشبكة «${mNet?.[1] ?? '—'}» ضمن الحدود الطبيعية.`,
         probable_cause: 'لا يوجد عطل.',
-        confidence_reason: 'مقاسة عند موقع المجمِّع فقط.',
+        confidence_reason: 'مقاسة عند موقع المستشعر فقط.',
       };
     }
 
@@ -681,11 +681,11 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       return {
         ...out,
         title: `${name}: الهدف غير مسموح به`,
-        summary: `رفض المجمِّع الاتصال${reason ? ` (${ltr(reason)})` : ''}. لم يُرسَل أي شيء إلى الهدف.`,
+        summary: `رفض المستشعر الاتصال${reason ? ` (${ltr(reason)})` : ''}. لم يُرسَل أي شيء إلى الهدف.`,
         probable_cause: 'الهدف، أو عنوان يُترجَم إليه اسمه، أو إعادة توجيه، يشير إلى خارج النطاقات المصرَّح بها للموقع، أو إلى مضيف عام بينما لا يسمح الفحص بالمضيفات العامة.',
-        confidence_reason: 'الرفض هو قاعدة الأمان الخاصة بالمجمِّع، ويُسجَّل قبل أي محاولة اتصال.',
+        confidence_reason: 'الرفض هو قاعدة الأمان الخاصة بالمستشعر، ويُسجَّل قبل أي محاولة اتصال.',
         investigation_steps: [
-          'تحقق من العنوان الذي يُترجَم إليه الاسم من جهاز المجمِّع',
+          'تحقق من العنوان الذي يُترجَم إليه الاسم من جهاز المستشعر',
           'أضف شبكة الهدف كنطاق مصرَّح به إذا كانت تتبع هذا الموقع',
           'لخدمة على الإنترنت، فعّل خيار «السماح بمضيف عام» لهذا الفحص',
         ],
@@ -717,7 +717,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         ...out,
         title: `${name}: شهادة غير متوقعة`,
         summary: 'قدّم الخادم شهادة مختلفة عن الشهادة المثبَّتة (Pin) لهذا الفحص.',
-        probable_cause: 'جُدِّدت الشهادة أو استُبدلت (حدّث البصمة المثبَّتة)، أو أن شيئًا بين المجمِّع والخادم يرد بشهادته الخاصة.',
+        probable_cause: 'جُدِّدت الشهادة أو استُبدلت (حدّث البصمة المثبَّتة)، أو أن شيئًا بين المستشعر والخادم يرد بشهادته الخاصة.',
         confidence_reason: 'تغيّر البصمة أمر مؤكد؛ أما كون التغيير مخططًا له فغير معروف.',
         alternatives: ['وسيط (Proxy) يعترض اتصالات TLS، أو خادم آخر يرد على هذا العنوان'],
         investigation_steps: ['قارن البصمة في الأدلة بالشهادة المثبَّتة على الخادم', 'حدّث البصمة المثبَّتة بعد التجديد المخطط له'],
@@ -815,7 +815,7 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
         ...out,
         title: `${name}: الجهاز لا يجيب على SNMP`,
         summary: `فشلت قراءة ${ltr(m?.[1] ?? '—')} عبر SNMP: ${ltr(m?.[2] ?? '—')}.`,
-        probable_cause: 'بيانات اعتماد SNMP خاطئة أو تغيّرت، أو SNMP معطَّل على الجهاز، أو قائمة وصول لا تتضمن المجمِّع، أو الجهاز متوقف.',
+        probable_cause: 'بيانات اعتماد SNMP خاطئة أو تغيّرت، أو SNMP معطَّل على الجهاز، أو قائمة وصول لا تتضمن المستشعر، أو الجهاز متوقف.',
         confidence_reason: 'لا يقدّم SNMP سببًا للصمت؛ وقد يكون الجهاز نفسه يعمل.',
         investigation_steps: ['تحقق من أن محقق المنافذ يستطيع قراءة الجهاز نفسه', 'تحقق من إعدادات SNMP وقائمة الوصول على الجهاز'],
       };

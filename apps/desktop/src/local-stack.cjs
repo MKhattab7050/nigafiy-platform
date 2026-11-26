@@ -147,15 +147,30 @@ function apiClient(apiUrl, webUrl) {
 /**
  * Signs in with the app's own local account, creating it on first use. The account exists only in
  * the local database; its password is random and kept (encrypted) by the desktop app.
+ *
+ * Once the owner chooses their own password ("Set your own password" in the web app), /auth/login
+ * takes only theirs; the API keeps this computer's stored password for /auth/login/desktop, so the
+ * app still signs in by itself. If neither works (two-factor sign-in is on, or the account no longer
+ * accepts this computer's password) the result is { api: null, needsSignIn: true } and the app shows
+ * the normal sign-in page instead of an error. A new account is created only when no account can be
+ * used and the server still allows the first sign-up (no stored account, or the database was reset).
  * @param {{ load: () => ({email: string, password: string} | null), save: (a: {email: string, password: string}) => void }} store
+ * @returns {Promise<{ api: ReturnType<typeof apiClient> | null, created: boolean, needsSignIn?: boolean }>}
  */
 async function signIn(apiUrl, webUrl, store) {
   const api = apiClient(apiUrl, webUrl);
   let account = store.load();
   if (account) {
-    const r = await api.call('POST', '/auth/login', account);
-    if (r.status === 200) return { api, created: false };
+    let r = await api.call('POST', '/auth/login', account);
+    if (r.status === 401) {
+      const viaDesktop = await api.call('POST', '/auth/login/desktop', account);
+      if (viaDesktop.status !== 404) r = viaDesktop; // 404: an API from before /auth/login/desktop
+    }
+    if (r.status === 200) return r.json?.ok === false ? { api: null, created: false, needsSignIn: true } : { api, created: false };
     if (r.status !== 401) throw new Error(`Could not sign in to the local account: ${r.json?.error?.message ?? r.status}`);
+    // Not accepted. Only an empty (reset) database may get a new account; otherwise the person signs in.
+    const options = await api.call('GET', '/auth/options');
+    if (options.status !== 200 || !options.json?.allow_registration) return { api: null, created: false, needsSignIn: true };
   }
   // First run (or the local database was reset): create the owner account for this computer.
   account = { email: `owner-${crypto.randomBytes(4).toString('hex')}@nigafiy.local`, password: crypto.randomBytes(24).toString('base64url') };

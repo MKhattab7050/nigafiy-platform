@@ -2,10 +2,10 @@
 export const en = {
   "topo.title": "Network Topology",
   "topo.intro":
-    "Built only from evidence: the collector’s routing and neighbour tables, authorized scopes and check results. Click any device or link to see why it is drawn.",
+    "Built only from evidence: the Sensor’s routing and neighbour tables, authorized scopes and check results. Click any device or link to see why it is drawn.",
   "topo.selectSite": "Choose a site in the top bar to see its topology.",
   "topo.empty":
-    "Nothing to draw yet. The map appears after a collector reports and completes a discovery sweep.",
+    "Nothing to draw yet. The map appears after a Sensor reports and completes a discovery sweep.",
   "topo.search": "Find device…",
   "topo.export": "Export JSON",
   "topo.limitations": "What this map cannot show",
@@ -18,9 +18,9 @@ export const en = {
   "topo.internet": "Internet",
   "topo.gateway": "Default gateway",
   "topo.segment": "Network segment",
-  "topo.runsCollector": "Runs the collector",
+  "topo.runsCollector": "Runs the Sensor",
   "topo.notInInventory":
-    "Known from the collector’s routing table only; it is outside every authorized scope, so it is not probed.",
+    "Known from the Sensor’s routing table only; it is outside every authorized scope, so it is not probed.",
   "topo.openDevice": "Open device",
   "topo.devices": "devices",
   "topo.legend.observed": "solid = observed",
@@ -42,17 +42,17 @@ export const en = {
   "topo.mndp.board": "Board",
   "topo.mndp.version": "Version",
   "topo.mndp.interface": "Announced from",
-  "topo.mndp.heardBy": "Heard by collector",
-  "topo.mndp.note": "Heard directly by the collector, so this device shares a layer-2 segment with it.",
+  "topo.mndp.heardBy": "Heard by Sensor",
+  "topo.mndp.note": "Heard directly by the Sensor, so this device shares a layer-2 segment with it.",
 } as const;
 
 export const ar: Record<keyof typeof en, string> = {
   "topo.title": "مخطط الشبكة",
   "topo.intro":
-    "مبني على الأدلة فقط: جدولا التوجيه والجوار لدى المجمِّع، النطاقات المصرَّح بها ونتائج الفحوصات. انقر أي جهاز أو رابط لمعرفة سبب رسمه.",
+    "مبني على الأدلة فقط: جدولا التوجيه والجوار لدى المستشعر، النطاقات المصرَّح بها ونتائج الفحوصات. انقر أي جهاز أو رابط لمعرفة سبب رسمه.",
   "topo.selectSite": "اختر موقعًا من الشريط العلوي لعرض مخططه.",
   "topo.empty":
-    "لا شيء لرسمه بعد. يظهر المخطط بعد أن يتصل مجمِّع ويُكمل مسح اكتشاف.",
+    "لا شيء لرسمه بعد. يظهر المخطط بعد أن يتصل مستشعر ويُكمل مسح اكتشاف.",
   "topo.search": "ابحث عن جهاز…",
   "topo.export": "تصدير JSON",
   "topo.limitations": "ما لا يستطيع هذا المخطط عرضه",
@@ -65,9 +65,9 @@ export const ar: Record<keyof typeof en, string> = {
   "topo.internet": "الإنترنت",
   "topo.gateway": "البوابة الافتراضية",
   "topo.segment": "مقطع الشبكة",
-  "topo.runsCollector": "يشغّل المجمِّع",
+  "topo.runsCollector": "يشغّل المستشعر",
   "topo.notInInventory":
-    "معروف من جدول توجيه المجمِّع فقط؛ يقع خارج كل النطاقات المصرَّح بها فلا يُفحص.",
+    "معروف من جدول توجيه المستشعر فقط؛ يقع خارج كل النطاقات المصرَّح بها فلا يُفحص.",
   "topo.openDevice": "فتح الجهاز",
   "topo.devices": "جهاز",
   "topo.legend.observed": "خط متصل = مرصود",
@@ -89,6 +89,6 @@ export const ar: Record<keyof typeof en, string> = {
   "topo.mndp.board": "اللوحة",
   "topo.mndp.version": "الإصدار",
   "topo.mndp.interface": "أُعلن من الواجهة",
-  "topo.mndp.heardBy": "سمعه المجمِّع",
-  "topo.mndp.note": "سمعه المجمِّع مباشرة، لذا يشترك هذا الجهاز معه في نفس الجزء من الشبكة (الطبقة الثانية).",
+  "topo.mndp.heardBy": "سمعه المستشعر",
+  "topo.mndp.note": "سمعه المستشعر مباشرة، لذا يشترك هذا الجهاز معه في نفس الجزء من الشبكة (الطبقة الثانية).",
 };

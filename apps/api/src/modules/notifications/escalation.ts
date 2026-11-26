@@ -84,8 +84,9 @@ export async function runEscalations(now = new Date()): Promise<number> {
           [row.organization_id, row.site_id, row.device_id, row.check_id, row.incident_severity, title, JSON.stringify(details), now],
         );
         await db.query(
-          `INSERT INTO notification_deliveries (organization_id, channel_id, event_id)
-           VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+          // An escalation the owner configured is sent as is: the calm-alert policy does not hold it.
+          `INSERT INTO notification_deliveries (organization_id, channel_id, event_id, policy_at)
+           VALUES ($1,$2,$3,now()) ON CONFLICT DO NOTHING`,
           [row.organization_id, row.channel_id, ev.rows[0]!.id],
         );
         await db.query(

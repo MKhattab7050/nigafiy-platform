@@ -290,6 +290,12 @@
     ${If} $R2 == '"$INSTDIR\'
       DeleteRegKey HKCU "Software\Classes\nigafiy"
     ${EndIf}
+    ; "Start with Windows" (the app writes it under its AppUserModelId), again only when it starts this installation.
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.nigafiy.hub"
+    StrCpy $R2 $R0 $R1
+    ${If} $R2 == '"$INSTDIR\'
+      DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.nigafiy.hub"
+    ${EndIf}
     ; electron-builder keeps a copy of the setup (about 160 MB) for electron-updater, which Nigafiy
     ; does not use (the engine downloads and checks updates itself, docs/operations/updates.md).
     !ifdef APP_INSTALLER_STORE_FILE

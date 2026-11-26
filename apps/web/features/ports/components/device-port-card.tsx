@@ -5,26 +5,32 @@ import Link from 'next/link';
 import { Card, Spinner } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
+import { useView } from '@/lib/view';
 import { DeviceQuarantine } from './device-quarantine';
 import { LocationView } from './location-view';
 import { portsText } from '../text';
 
-/** Device page card. */
+/**
+ * Device page card. The simple (Home) view leaves it out until the device is located on a switch,
+ * so a home never meets "Add a switch"; the full view always shows it.
+ */
 export function DevicePortCard({ deviceId }: { deviceId: string }) {
   const { locale } = useI18n();
+  const { view } = useView();
+  const q = useQuery<DevicePort>(`/devices/${deviceId}/port`, ['devices'], 60_000);
+  if (view === 'home' && !q.data?.location) return null;
   return (
     <Card title={portsText(locale).cardTitle}>
-      <DevicePortCardBody deviceId={deviceId} />
+      <DevicePortCardBody deviceId={deviceId} data={q.data} />
     </Card>
   );
 }
 
-function DevicePortCardBody({ deviceId }: { deviceId: string }) {
+function DevicePortCardBody({ deviceId, data }: { deviceId: string; data: DevicePort | undefined }) {
   const { locale } = useI18n();
   const tx = portsText(locale);
-  const q = useQuery<DevicePort>(`/devices/${deviceId}/port`, ['devices'], 60_000);
-  if (!q.data) return <Spinner />;
-  const d = q.data;
+  if (!data) return <Spinner />;
+  const d = data;
   if (d.location) {
     const others = d.seen_on.filter((s) => !(s.target_id === d.location!.target_id && s.port_name === d.location!.port_name));
     return (

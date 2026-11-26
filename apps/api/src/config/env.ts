@@ -1,5 +1,6 @@
 import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { networkInterfaces } from 'node:os';
 import { z } from 'zod';
 import { withNewNames } from './env-compat.ts';
 
@@ -96,7 +97,18 @@ const schema = z.object({
       .optional(),
   ),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 90).default(168),
-  ALLOW_REGISTRATION: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  /**
+   * Self-service sign-up. `true`: open; `false`: closed; `first`: open only until the first account
+   * exists (installed copies: the app creates its owner, then nobody on the Wi-Fi can sign up).
+   */
+  ALLOW_REGISTRATION: z.enum(['true', 'false', 'first']).default('true'),
+  /**
+   * Settings → Access from outside home (Tailscale / Cloudflare Tunnel): the owner adds the tunnel's
+   * address to the accepted web origins of the whole server. "auto" (default): offered while the
+   * server has a single organization (a home or office copy); "on": always (owners only); "off": never
+   * (a hosted server's operator sets WEB_EXTRA_ORIGINS instead).
+   */
+  OUTSIDE_ACCESS_SETUP: z.enum(['auto', 'on', 'off']).default('auto'),
   TRUST_PROXY: z.string().default('loopback'),
   /**
    * Optional shared store for rate-limit counters (redis:// or rediss://), so limits hold across API
@@ -171,10 +183,43 @@ function load(): Env {
 
 export const env: Env = load();
 
-/** True when `origin` is the web app's own origin (WEB_ORIGIN or one of WEB_EXTRA_ORIGINS). */
-export function isWebOrigin(origin: string | undefined, currentEnv: Env = env): boolean {
+let ownAddrCache: { at: number; addrs: Set<string> } | null = null;
+/** This machine's own non-loopback IPv4 addresses, re-read at most every 30 s (a DHCP lease can change them). */
+export function ownLanAddresses(now = Date.now()): Set<string> {
+  if (ownAddrCache && now - ownAddrCache.at < 30_000) return ownAddrCache.addrs;
+  const addrs = new Set<string>();
+  for (const list of Object.values(networkInterfaces())) {
+    for (const a of list ?? []) if (a.family === 'IPv4' && !a.internal) addrs.add(a.address);
+  }
+  ownAddrCache = { at: now, addrs };
+  return addrs;
+}
+
+let runtimeWebOrigins: ReadonlySet<string> = new Set();
+/** The outside-access origins (table web_origins), replaced as a whole by the outside-access module. */
+export function setRuntimeWebOrigins(origins: Iterable<string>): void {
+  runtimeWebOrigins = new Set(origins);
+}
+
+/**
+ * True when `origin` is the web app's own origin: WEB_ORIGIN, one of WEB_EXTRA_ORIGINS, or WEB_ORIGIN's
+ * scheme and port on one of this machine's own LAN addresses (the same web app, opened from a phone
+ * at http://<this PC's IP>:3100, with no setting to edit when the address changes). Another host, or
+ * another port on this host, is still refused. Also the origins the owner added in Settings → Access
+ * from outside home (Tailscale / Cloudflare Tunnel, table web_origins), kept here by setRuntimeWebOrigins.
+ */
+export function isWebOrigin(origin: string | undefined, currentEnv: Env = env, ownAddrs: () => Set<string> = ownLanAddresses): boolean {
   if (!origin) return false;
-  return origin === currentEnv.WEB_ORIGIN || currentEnv.WEB_EXTRA_ORIGINS.includes(origin);
+  if (origin === currentEnv.WEB_ORIGIN || currentEnv.WEB_EXTRA_ORIGINS.includes(origin) || runtimeWebOrigins.has(origin)) return true;
+  let o: URL;
+  let w: URL;
+  try {
+    o = new URL(origin);
+    w = new URL(currentEnv.WEB_ORIGIN);
+  } catch {
+    return false;
+  }
+  return o.origin === origin && o.protocol === w.protocol && o.port === w.port && ownAddrs().has(o.hostname);
 }
 
 let cachedCertFile: string | undefined;

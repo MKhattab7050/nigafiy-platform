@@ -6,6 +6,14 @@ export class ApiError extends Error {
   details?: { path: string; message: string }[];
   /** Structured details that are not a validation list (e.g. { reason, until } of a login pause, { note } of an unsupported capability). */
   info?: Record<string, unknown>;
+  /** The server's request id (quote it when reporting a problem); shown under "Details". */
+  requestId?: string;
+  /**
+   * True when `message` is already a sentence in the user's language (a screen translated it itself).
+   * Otherwise `message` is the API's technical English: ErrorNote shows the translation of `code`
+   * (lib/i18n/error-messages.ts) and keeps the message under "Details".
+   */
+  localized = false;
   constructor(status: number, code: string, message: string, details?: { path: string; message: string }[], info?: Record<string, unknown>) {
     super(message);
     this.status = status;
@@ -27,6 +35,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       cache: 'no-store',
     });
   } catch {
+    // Technical text only: the UI shows the translation of the code (lib/i18n/error-messages.ts).
     throw new ApiError(0, 'network_error', 'Cannot reach the Nigafiy server');
   }
   if (res.status === 204) return undefined as T;
@@ -38,17 +47,35 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     /* non-JSON error page from a proxy */
   }
   if (!res.ok) {
-    const err = (json as { error?: { code: string; message: string; details?: unknown } } | null)?.error;
+    const err = (json as { error?: { code: string; message: string; details?: unknown; request_id?: unknown } } | null)?.error;
     const details = err?.details;
-    throw new ApiError(
+    // The message stays technical (shown under "Details"); a non-JSON answer (a proxy's error page)
+    // gets `http_error`, which the UI words by HTTP status.
+    const error = new ApiError(
       res.status,
-      err?.code ?? 'http_error',
-      err?.message ?? `Request failed (${res.status})`,
+      typeof err?.code === 'string' && err.code ? err.code : 'http_error',
+      typeof err?.message === 'string' && err.message ? err.message : `Request failed (${res.status})`,
       Array.isArray(details) ? (details as ApiError['details']) : undefined,
       details && typeof details === 'object' && !Array.isArray(details) ? (details as Record<string, unknown>) : undefined,
     );
+    if (typeof err?.request_id === 'string') error.requestId = err.request_id;
+    throw error;
   }
   return json as T;
+}
+
+/** `err` with a message the screen already translated (keeps code, details and request id for "Details"). */
+export function localizedApiError(err: ApiError, message: string): ApiError {
+  const copy = new ApiError(err.status, err.code, message, err.details, err.info);
+  copy.requestId = err.requestId;
+  copy.localized = err.localized || message !== err.message;
+  return copy;
+}
+
+/** Marks an error whose message the screen wrote in the user's language. */
+export function markLocalized<E extends ApiError>(err: E): E {
+  err.localized = true;
+  return err;
 }
 
 export function qs(params: Record<string, string | number | boolean | null | undefined>): string {

@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { auth, idParams, parse, requireRole } from '../../common/http.ts';
 import { changeBlocks, setRateLimit, setSchedule } from './control.ts';
 import { deviceControls } from './controls.ts';
+import { routerAssistant } from './assistant.ts';
 import {
   certificateTrustSchema,
   deviceIdsSchema,
@@ -186,4 +188,12 @@ routersRouter.get('/devices/:id/controls', async (req, res) => {
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   res.json(await deviceControls(req, ctx.organizationId, id));
+});
+
+// Router connection assistant (UX review item 13): which router the site's gateway is, from what was observed.
+const assistantQuery = z.object({ site_id: z.uuid() });
+routersRouter.get('/router-assistant', async (req, res) => {
+  const ctx = auth(req);
+  const { site_id } = parse(assistantQuery, req.query);
+  res.json(await routerAssistant(ctx.organizationId, site_id));
 });

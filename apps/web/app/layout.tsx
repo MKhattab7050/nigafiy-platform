@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { ThemeProvider } from '@/lib/theme';
 import { THEME_BOOT_SCRIPT } from '@/lib/theme-boot';
 import { ConfirmProvider } from '@/components/ui/confirm';
+import { PwaRegister } from '@/components/pwa-register';
 import { I18nProvider } from '@/lib/i18n';
 import { getMessages } from '@/lib/i18n/server';
 import './globals.css';
@@ -17,6 +18,8 @@ const mono = IBM_Plex_Mono({ subsets: ['latin'], weight: ['400', '500'], variabl
 export const metadata: Metadata = {
   title: { default: 'Nigafiy', template: '%s · Nigafiy' },
   description: 'Know your network. Understand every incident.',
+  // Installable web app (app/manifest.ts); the iPhone home-screen icon is app/apple-icon.png.
+  appleWebApp: { capable: true, title: 'Nigafiy', statusBarStyle: 'black-translucent' },
 };
 export const viewport: Viewport = {
   themeColor: [
@@ -42,6 +45,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ThemeProvider>
           <I18nProvider locale={locale} messages={getMessages(locale)}>
             <ConfirmProvider>{children}</ConfirmProvider>
+            <PwaRegister />
           </I18nProvider>
         </ThemeProvider>
       </body>

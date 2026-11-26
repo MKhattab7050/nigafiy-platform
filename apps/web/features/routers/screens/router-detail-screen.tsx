@@ -16,6 +16,8 @@ import { RouterSettingsPanel } from '../components/router-settings-panel';
 import { ConnectionLabel, DELIVERY_TONE, Fingerprint, HEALTH_TONE, RouterErrorNote, deliveryText, leaseText } from '../components/text';
 import type { DeviceRef, QueuedRequest, RouterClient, RouterDetail } from '../types';
 import { DeviceLink } from '@/components/device-link';
+import { driverMaturity } from '../assistant';
+import { DriverMaturityBadge } from '../components/router-assistant';
 
 type DetailTab = 'clients' | 'settings' | 'blocks' | 'identity' | 'requests';
 
@@ -588,7 +590,12 @@ function RouterDetailBody({
               </Fact>
               <Fact label={t('routers.transport')}>{t(`routers.transport.${r.transport}` as Key)}</Fact>
               <Fact label={t('routers.vendor')}>{r.identity?.vendor ?? r.vendor}</Fact>
-              <Fact label={t('routers.model')}>{r.identity?.model ?? t('routers.identityUnknown')}</Fact>
+              <Fact label={t('routers.model')}>
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {r.identity?.model ?? t('routers.identityUnknown')}
+                  <DriverMaturityBadge maturity={driverMaturity(r.vendor, r.identity?.model)} />
+                </span>
+              </Fact>
               <Fact label={t('routers.firmware')}>
                 <span className="mono">{r.identity?.firmware ?? '—'}</span>
               </Fact>

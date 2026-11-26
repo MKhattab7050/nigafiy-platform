@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { AuthOptions, LoginResponse, SsoDiscoverResponse } from "@nigafiy/shared-types";
 import { type ApiError, api } from "@/lib/api";
-import { type Key, useI18n } from "@/lib/i18n";
+import { type Key, fill, useI18n } from "@/lib/i18n";
 import { ChevronDown, Gauge, KeyRound, Layers, ShieldCheck } from "lucide-react";
 import { browserTimeZone } from "@/lib/format";
 import { TopologyArt } from "@/components/illustrations";
@@ -30,6 +30,7 @@ const MORE_FIELDS = ["display_name", "organization_name", "site_name"];
 type Step =
   | { kind: "credentials" }
   | { kind: "forgot"; sent: boolean }
+  | { kind: "recover" }
   | { kind: "sso"; providers: SsoDiscoverResponse["providers"] | null }
   | MfaStep;
 
@@ -59,6 +60,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const fieldError = (path: string) =>
     error?.details?.find((d) => d.path === path)?.message;
   const [ssoError, setSsoError] = useState<string | null>(null);
+  const [recoverNote, setRecoverNote] = useState<string | null>(null);
 
   // Coming back from single sign-on: an error code in the query, or the local MFA step the
   // organization still requires in the fragment (never sent to a server). Both are removed from the
@@ -175,6 +177,39 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
     }
   }
 
+  /** "Use a recovery code": one saved code + a new password, then the normal sign-in (two-factor sign-in still applies). */
+  async function submitRecover(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
+    if (form.new_password !== form.repeat) {
+      setError({ status: 400, code: "validation_error", message: t("ownpw.mismatch"), details: [{ path: "repeat", message: t("ownpw.mismatch") }] } as ApiError);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const recovered = await api<{ ok: true; codes_left: number }>("/auth/recover", {
+        method: "POST",
+        body: { email: email.trim(), code: form.code, new_password: form.new_password },
+      });
+      setRecoverNote(fill(t("ownpw.recoverLeft"), { count: recovered.codes_left }));
+      const res = await api<LoginResponse>("/auth/login", {
+        method: "POST",
+        body: { email: email.trim(), password: form.new_password },
+      });
+      const nextMfa = await resolveMfaStep(res);
+      if (nextMfa) {
+        setStep(nextMfa);
+        setBusy(false);
+        return;
+      }
+      window.location.href = "/";
+    } catch (err) {
+      setError(err as ApiError);
+      setBusy(false);
+    }
+  }
+
   const allowRegistration = options?.allow_registration ?? true;
 
   return (
@@ -245,6 +280,45 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                       ))}
                     </div>
                   )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      setError(null);
+                      setStep({ kind: "credentials" });
+                    }}
+                  >
+                    {t("auth.backToSignIn")}
+                  </Button>
+                </form>
+              </>
+            ) : step.kind === "recover" ? (
+              <>
+                <h1 className="text-xl font-semibold tracking-[-0.01em]">{t("ownpw.recoverTitle")}</h1>
+                <p className="mt-1 text-[13px] text-muted">{t("ownpw.recoverDesc")}</p>
+                <form onSubmit={submitRecover} className="mt-5 space-y-4" noValidate>
+                  <Field label={t("auth.email")} error={fieldError("email")}>
+                    {(id) => (
+                      <Input id={id} name="email" type="email" autoComplete="email" required dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    )}
+                  </Field>
+                  <Field label={t("ownpw.recoverCode")} error={fieldError("code")}>
+                    {(id) => (
+                      <Input id={id} name="code" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} required dir="ltr" placeholder="XXXX-XXXX-XXXX-XXXX" className="mono" />
+                    )}
+                  </Field>
+                  <Field label={t("ownpw.password")} hint={t("ownpw.passwordHint")} error={fieldError("new_password")}>
+                    {(id) => <Input id={id} name="new_password" type="password" autoComplete="new-password" required minLength={10} dir="ltr" />}
+                  </Field>
+                  <Field label={t("ownpw.repeat")} error={fieldError("repeat")}>
+                    {(id) => <Input id={id} name="repeat" type="password" autoComplete="new-password" required dir="ltr" />}
+                  </Field>
+                  {recoverNote && <Notice>{recoverNote}</Notice>}
+                  {error && !error.details?.length && <ErrorNote error={error} />}
+                  <Button type="submit" variant="primary" busy={busy} disabled={!email.trim()} className="w-full">
+                    {t("ownpw.recoverSubmit")}
+                  </Button>
                   <Button
                     type="button"
                     variant="ghost"
@@ -383,7 +457,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
                       )}
                     </Field>
                     {!register && (
-                      <div className="mt-1.5 flex justify-end">
+                      <div className="mt-1.5 flex flex-wrap justify-end gap-x-4 gap-y-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setError(null);
+                            setRecoverNote(null);
+                            setStep({ kind: "recover" });
+                          }}
+                          className="text-xs font-medium text-accent-hover hover:underline"
+                        >
+                          {t("ownpw.recoverLink")}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {

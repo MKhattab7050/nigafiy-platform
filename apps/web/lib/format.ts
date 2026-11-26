@@ -84,10 +84,11 @@ export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   check_down: { en: 'Check down', ar: 'فحص متوقف' },
   check_degraded: { en: 'Check degraded', ar: 'فحص متراجع' },
   check_recovered: { en: 'Check recovered', ar: 'تعافي فحص' },
-  collector_enrolled: { en: 'Collector enrolled', ar: 'تسجيل مجمِّع' },
-  collector_offline: { en: 'Collector out of contact', ar: 'مجمِّع فقد الاتصال' },
-  collector_online: { en: 'Collector reconnected', ar: 'مجمِّع عاد للاتصال' },
+  collector_enrolled: { en: 'Collector enrolled', ar: 'تسجيل مستشعر' },
+  collector_offline: { en: 'Collector out of contact', ar: 'مستشعر فقد الاتصال' },
+  collector_online: { en: 'Collector reconnected', ar: 'مستشعر عاد للاتصال' },
   notification_test: { en: 'Test notification', ar: 'إشعار اختبار' },
+  notification_summary: { en: 'Notification summary', ar: 'ملخص الإشعارات' },
   unwanted_device_online: { en: 'Unwanted device online', ar: 'جهاز غير مرغوب متصل' },
   endpoint_enrolled: { en: 'Computer enrolled', ar: 'تسجيل حاسوب' },
   endpoint_command: { en: 'Computer command', ar: 'أمر على حاسوب' },
@@ -118,6 +119,7 @@ export const EVENT_TYPE_LABEL: Record<string, { en: string; ar: string }> = {
   playbook_notification: { en: 'Playbook notification', ar: 'إشعار من دليل تشغيل' },
   playbook_approval_requested: { en: 'Playbook approval requested', ar: 'طلب موافقة على دليل تشغيل' },
   incident_escalated: { en: 'Incident escalated', ar: 'تصعيد حادثة' },
+  monitoring_off: { en: 'Monitoring was off', ar: 'توقفت المراقبة' },
 };
 
 /** <input type="datetime-local"> value (local time, minute precision) ↔ ISO string. */

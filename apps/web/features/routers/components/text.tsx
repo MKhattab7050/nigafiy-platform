@@ -3,7 +3,7 @@
 import { Cable, HelpCircle, KeyRound, Wifi } from 'lucide-react';
 import Link from 'next/link';
 import { ErrorNote, type Tone } from '@/components/ui';
-import { ApiError } from '@/lib/api';
+import { ApiError, localizedApiError } from '@/lib/api';
 import { absoluteTime } from '@/lib/format';
 import { type Key, fill, useI18n } from '@/lib/i18n';
 import type { Delivery, DeviceResult, RouterHealth, SiteRouter } from '../types';
@@ -56,7 +56,7 @@ export function RouterErrorNote({ error, routerId, onRetry }: { error: unknown; 
   return (
     <div className="space-y-2">
       {/* A login pause is not fixed by trying again: it needs new credentials. */}
-      <ErrorNote error={new ApiError(error.status, error.code, message, error.details)} onRetry={paused ? undefined : onRetry} />
+      <ErrorNote error={localizedApiError(error, message)} onRetry={paused ? undefined : onRetry} />
       {paused && routerId && <UpdateCredentialsLink routerId={routerId} />}
     </div>
   );

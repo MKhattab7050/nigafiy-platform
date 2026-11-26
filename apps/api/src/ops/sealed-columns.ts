@@ -32,6 +32,9 @@ export const SEALED_COLUMNS: readonly SealedColumn[] = [
   { table: 'fleet_recordings', column: 'key_sealed', key: ['id'], organizationColumn: 'organization_id', holds: 'AES-256-GCM key of a remote support session recording (the file in the data folder)' },
   { table: 'fleet_shell_sessions', column: 'transcript_key_sealed', key: ['id'], organizationColumn: 'organization_id', holds: 'AES-256-GCM key of a remote shell transcript (the chunks in fleet_shell_transcript)' },
   { table: 'config_backup_raw', column: 'raw_enc', key: ['target_id', 'sha256'], organizationColumn: 'organization_id', holds: 'unsanitized device configuration kept only for administrator-confirmed restore' },
+  { table: 'monitor_heartbeat', column: 'url_sealed', key: ['organization_id'], organizationColumn: 'organization_id', holds: 'outside heartbeat push URL (often carries a secret token)' },
+  { table: 'webpush_vapid', column: 'private_key_sealed', key: ['id'], organizationColumn: null, holds: 'VAPID private key that signs Web Push requests (JWK)' },
+  { table: 'webpush_subscriptions', column: 'subscription_sealed', key: ['id'], organizationColumn: 'organization_id', holds: 'a browser push subscription: endpoint URL and its encryption keys' },
 ];
 
 /** Column names that look like sealed values. */

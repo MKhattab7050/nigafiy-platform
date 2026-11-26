@@ -10,26 +10,33 @@ import {
   CalendarClock,
   Clock,
   Cpu,
+  DatabaseBackup,
   FileBarChart2,
   FileCode2,
   Gauge,
   GitBranch,
+  Globe,
+  HeartPulse,
   Hash,
   History,
   LayoutGrid,
   LifeBuoy,
   Lightbulb,
+  ListChecks,
   LockKeyhole,
   type LucideIcon,
   MonitorSmartphone,
   Network,
+  PackageCheck,
   Radar,
   RadioTower,
   Router,
+  ScreenShare,
   Settings,
   ShieldCheck,
   Siren,
   Stethoscope,
+  Timer,
   ToggleRight,
   UserCheck,
   Workflow,
@@ -73,6 +80,8 @@ export interface DashboardWidget {
   minRole?: Role;
   /** The widget reports items to "Needs your attention" under the feature id; the panel waits for it. */
   attention?: boolean;
+  /** Also shown on the simple (Home) view's dashboard (lib/view-mode.ts). The full view shows every widget. */
+  home?: boolean;
 }
 
 export interface Feature {
@@ -90,11 +99,16 @@ export interface Feature {
   widget?: DashboardWidget;
   /** Listed under the Hub dashboard's quick actions. */
   quickAction?: boolean;
+  /**
+   * Also linked in the sidebar of the simple (Home) view (lib/view-mode.ts). Without it the page is
+   * hidden there, never removed: it opens by URL and shows in the full view.
+   */
+  home?: boolean;
 }
 
 export const FEATURES: Feature[] = [
   // ── Nigafiy Hub ──
-  { id: 'dashboard', program: 'hub', route: '/', label: 'nav.dashboard', icon: Gauge },
+  { id: 'dashboard', program: 'hub', route: '/', label: 'nav.dashboard', icon: Gauge, home: true },
   {
     id: 'portfolio',
     program: 'hub',
@@ -103,9 +117,9 @@ export const FEATURES: Feature[] = [
     icon: Building2,
     widget: { component: lazy(() => import('./portfolio/widget')), order: 15 },
   },
-  { id: 'sensors', program: 'hub', route: '/sensors', label: 'platform.nav.sensors', icon: RadioTower },
+  { id: 'sensors', program: 'hub', route: '/sensors', label: 'platform.nav.sensors', icon: RadioTower, home: true },
   { id: 'programs', program: 'hub', route: '/programs', label: 'platform.nav.programs', icon: LayoutGrid },
-  { id: 'settings', program: 'hub', route: '/settings', label: 'nav.settings', icon: Settings, pinBottom: true },
+  { id: 'settings', program: 'hub', route: '/settings', label: 'nav.settings', icon: Settings, pinBottom: true, home: true },
 
   // ── Nigafiy Radar ──
   {
@@ -114,7 +128,8 @@ export const FEATURES: Feature[] = [
     route: '/radar/devices',
     label: 'nav.devices',
     icon: MonitorSmartphone,
-    widget: { component: lazy(() => import('./devices/widget')), order: 30, attention: true },
+    home: true,
+    widget: { component: lazy(() => import('./devices/widget')), order: 30, attention: true, home: true },
   },
   {
     id: 'discovery',
@@ -122,9 +137,10 @@ export const FEATURES: Feature[] = [
     route: '/radar/discovery',
     label: 'nav.discovery',
     icon: Radar,
-    widget: { component: lazy(() => import('./discovery/widget')), order: 60, attention: true },
+    home: true,
+    widget: { component: lazy(() => import('./discovery/widget')), order: 60, attention: true, home: true },
   },
-  { id: 'topology', program: 'radar', route: '/radar/topology', label: 'nav.networkMap', icon: Network, quickAction: true },
+  { id: 'topology', program: 'radar', route: '/radar/topology', label: 'nav.networkMap', icon: Network, quickAction: true, home: true },
   {
     id: 'ipam',
     program: 'radar',
@@ -149,7 +165,8 @@ export const FEATURES: Feature[] = [
     route: '/watch/monitoring',
     label: 'nav.monitoring',
     icon: Activity,
-    widget: { component: lazy(() => import('./monitoring/widget')), order: 40, attention: true, span: 'wide' },
+    home: true,
+    widget: { component: lazy(() => import('./monitoring/widget')), order: 40, attention: true, span: 'wide', home: true },
   },
   {
     id: 'incidents',
@@ -157,13 +174,14 @@ export const FEATURES: Feature[] = [
     route: '/watch/incidents',
     label: 'nav.incidents',
     icon: Siren,
+    home: true,
     badge: {
       path: (siteId) => `/incidents${qs({ status: 'active', site_id: siteId, page_size: 1 })}`,
       topics: ['events', 'checks', 'collectors'],
       count: (data) => (data as Paginated<unknown>).total,
       label: 'nav.openIncidents',
     },
-    widget: { component: lazy(() => import('./incidents/widget')), order: 10, attention: true, span: 'wide' },
+    widget: { component: lazy(() => import('./incidents/widget')), order: 10, attention: true, span: 'wide', home: true },
   },
   {
     id: 'events',
@@ -171,6 +189,7 @@ export const FEATURES: Feature[] = [
     route: '/watch/events',
     label: 'nav.events',
     icon: History,
+    home: true,
     widget: { component: lazy(() => import('./events/widget')), order: 100, span: 'wide' },
   },
   {
@@ -179,8 +198,9 @@ export const FEATURES: Feature[] = [
     route: '/watch/doctor',
     label: 'nav.doctor',
     icon: Stethoscope,
+    home: true,
     quickAction: true,
-    widget: { component: lazy(() => import('./doctor/widget')), order: 20 },
+    widget: { component: lazy(() => import('./doctor/widget')), order: 20, home: true },
   },
   { id: 'insights', program: 'watch', route: '/watch/insights', label: 'platform.nav.insights', icon: Lightbulb },
   { id: 'time-machine', program: 'watch', route: '/watch/time-machine', label: 'nav.timeMachine', icon: Clock, quickAction: true },
@@ -200,6 +220,7 @@ export const FEATURES: Feature[] = [
     route: '/watch/notifications',
     label: 'settings.notifications',
     icon: Bell,
+    home: true,
     widget: { component: lazy(() => import('./settings/widget')), order: 120, attention: true, minRole: 'admin' },
   },
   { id: 'maintenance', program: 'watch', route: '/watch/maintenance', label: 'platform.nav.maintenance', icon: CalendarClock },
@@ -211,15 +232,17 @@ export const FEATURES: Feature[] = [
     route: '/guard/security',
     label: 'nav.security',
     icon: ShieldCheck,
-    widget: { component: lazy(() => import('./security/widget')), order: 66, attention: true },
+    home: true,
+    widget: { component: lazy(() => import('./security/widget')), order: 66, attention: true, home: true },
   },
   {
     id: 'access',
     program: 'guard',
     route: '/guard/access',
     label: 'nav.access',
-    icon: ShieldCheck,
-    widget: { component: lazy(() => import('./access/widget')), order: 90, attention: true },
+    icon: Globe,
+    home: true,
+    widget: { component: lazy(() => import('./access/widget')), order: 90, attention: true, home: true },
   },
   {
     id: 'routers',
@@ -227,6 +250,7 @@ export const FEATURES: Feature[] = [
     route: '/guard/routers',
     label: 'nav.routers',
     icon: Router,
+    home: true,
     widget: { component: lazy(() => import('./routers/widget')), order: 65, attention: true },
   },
   { id: 'port-control', program: 'guard', route: '/guard/port-control', label: 'platform.nav.portControl', icon: ToggleRight },
@@ -235,7 +259,7 @@ export const FEATURES: Feature[] = [
     program: 'guard',
     route: '/guard/config-backup',
     label: 'nav.configBackup',
-    icon: History,
+    icon: DatabaseBackup,
     widget: { component: lazy(() => import('./config-backup/widget')), order: 67, attention: true },
   },
 
@@ -248,7 +272,7 @@ export const FEATURES: Feature[] = [
     icon: Cpu,
     widget: { component: lazy(() => import('./endpoints/widget')), order: 50, attention: true },
   },
-  { id: 'fleet-sessions', program: 'fleet', route: '/fleet/sessions', label: 'endpoints.nav.sessions', icon: MonitorSmartphone, minRole: 'technician' },
+  { id: 'fleet-sessions', program: 'fleet', route: '/fleet/sessions', label: 'endpoints.nav.sessions', icon: ScreenShare, minRole: 'technician' },
   {
     id: 'fleet-requests',
     program: 'fleet',
@@ -266,9 +290,9 @@ export const FEATURES: Feature[] = [
   { id: 'fleet-policies', program: 'fleet', route: '/fleet/policies', label: 'endpoints.nav.policies', icon: LockKeyhole, minRole: 'technician' },
   { id: 'fleet-approvals', program: 'fleet', route: '/fleet/approvals', label: 'endpoints.nav.approvals', icon: UserCheck, minRole: 'admin' },
   { id: 'fleet-scripts', program: 'fleet', route: '/fleet/scripts', label: 'endpoints.nav.scripts', icon: FileCode2, minRole: 'technician' },
-  { id: 'fleet-jobs', program: 'fleet', route: '/fleet/jobs', label: 'endpoints.nav.jobs', icon: CalendarClock, minRole: 'technician' },
-  { id: 'fleet-patches', program: 'fleet', route: '/fleet/patches', label: 'endpoints.nav.patches', icon: ShieldCheck, minRole: 'viewer' },
-  { id: 'fleet-monitoring', program: 'fleet', route: '/fleet/monitoring', label: 'endpoints.nav.monitoring', icon: Activity, minRole: 'viewer' },
+  { id: 'fleet-jobs', program: 'fleet', route: '/fleet/jobs', label: 'endpoints.nav.jobs', icon: Timer, minRole: 'technician' },
+  { id: 'fleet-patches', program: 'fleet', route: '/fleet/patches', label: 'endpoints.nav.patches', icon: PackageCheck, minRole: 'viewer' },
+  { id: 'fleet-monitoring', program: 'fleet', route: '/fleet/monitoring', label: 'endpoints.nav.monitoring', icon: HeartPulse, minRole: 'viewer' },
 
   // ── Nigafiy Mind ──
   {
@@ -290,7 +314,7 @@ export const FEATURES: Feature[] = [
     program: 'mind',
     route: '/mind/playbooks',
     label: 'nav.playbooks',
-    icon: GitBranch,
+    icon: ListChecks,
     badge: {
       path: () => '/playbook-approvals?page_size=100',
       topics: ['events'],
@@ -308,6 +332,7 @@ export const FEATURES: Feature[] = [
     route: '/toolbox',
     label: 'nav.toolbox',
     icon: Wrench,
+    home: true,
     quickAction: true,
     widget: { component: lazy(() => import('./toolbox/widget')), order: 110 },
   },

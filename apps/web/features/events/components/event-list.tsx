@@ -8,6 +8,7 @@ import { Badge, Evidence, Tag, severityTone } from '@/components/ui';
 import { EVENT_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
 import { localizeEventTitle } from '@/lib/localize';
+import { MuteAction } from './mute-action';
 
 /** Timeline of events. Every row expands to the evidence that produced it. */
 export function EventList({ events, showSite = true, linkDevice = true }: { events: NetworkEvent[]; showSite?: boolean; linkDevice?: boolean }) {
@@ -65,6 +66,9 @@ export function EventList({ events, showSite = true, linkDevice = true }: { even
                       {t('nav.devices')} →
                     </DeviceLink>
                   )}
+                  <span className="ms-auto">
+                    <MuteAction event={e} />
+                  </span>
                 </div>
               </div>
             )}

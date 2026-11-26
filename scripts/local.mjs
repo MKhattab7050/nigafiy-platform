@@ -21,6 +21,7 @@ import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, re
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { CHANNEL_FILE, channelEnv, parseChannel } from './update-channel.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 // Environment variables after the rename (docs/architecture/naming.md): NIGAFIY_* wins, the legacy
@@ -175,6 +176,18 @@ if (bundleDir) {
     writeFileSync(envPath, `${cur.replace(/\s*$/, '\n')}\n# LAN HTTPS for phones and agents (built-in certificate). Empty HTTPS_PORT= turns it off.\nHTTPS_PORT=47143\nHTTPS_HOST=0.0.0.0\n`, { mode: 0o600 });
     ok('Turned on HTTPS for this network (port 47143)');
   }
+  // The installed copy listens on the network, so sign-up closes once the app has created its owner
+  // (anyone on the Wi-Fi could otherwise create an account). Older installs get it once too; an
+  // explicit ALLOW_REGISTRATION=true in the data folder's .env reopens it.
+  const now = readFileSync(envPath, 'utf8');
+  if (!/^# sign-up: first account only/m.test(now)) {
+    const note = "# sign-up: first account only (the app's owner). =true opens it to anyone on the network.";
+    const next = /^ALLOW_REGISTRATION=.*$/m.test(now)
+      ? now.replace(/^ALLOW_REGISTRATION=.*$/m, `${note}\nALLOW_REGISTRATION=first`)
+      : `${now.replace(/\s*$/, '\n')}\n${note}\nALLOW_REGISTRATION=first\n`;
+    writeFileSync(envPath, next, { mode: 0o600 });
+    ok('Closed sign-up to the network (owner account only)');
+  }
 }
 const env = Object.fromEntries(
   readFileSync(envPath, 'utf8')
@@ -182,6 +195,12 @@ const env = Object.fromEntries(
     .filter((l) => /^[A-Z_]+=/.test(l))
     .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]),
 );
+// The release's update channel (bundle only): given to the API unless the data folder's .env sets it.
+if (bundleDir) {
+  const channelPath = path.join(bundleDir, CHANNEL_FILE);
+  const channel = existsSync(channelPath) ? parseChannel(readFileSync(channelPath, 'utf8')) : null;
+  Object.assign(process.env, channelEnv(channel, env));
+}
 const apiPort = Number(env.PORT || 4100);
 const dbPort = Number(new URL(env.DATABASE_URL).port || 5432);
 const webUrl = env.WEB_ORIGIN || 'http://localhost:3100';

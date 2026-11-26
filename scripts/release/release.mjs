@@ -5,6 +5,13 @@
 //       [--android-cert-sha256 <hex>]
 //       [--key <manifest key .pem> --base-url https://downloads.example.com/1.2.3/ [--notes-url https://...]
 //        [--expect-public-key <base64>]]
+//       [--update-url https://…/manifest.json --update-public-key <base64> | --no-updates]
+//
+// Update channel (UX review item 14): every release says where its installs look for updates. It comes
+// from --update-url / --update-public-key, else scripts/release/update-channel.json (copy
+// update-channel.example.json; it holds nothing secret). No address is built in: without a channel the
+// release stops, unless --no-updates says this release never checks (the app then tells its users so).
+// The channel goes into the backend bundle as update-channel.json (scripts/update-channel.mjs).
 //
 // Signing is REQUIRED: this script sets NIGAFIY_REQUIRE_SIGNING=1 for itself and every build step, so
 // a missing certificate (NIGAFIY_SIGN_THUMBPRINT or NIGAFIY_SIGN_PFX) stops the release before
@@ -21,6 +28,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { checkReleaseApk, releaseApkName } from '../android/release-apk.mjs';
+import { CHANNEL_FILE, resolveReleaseChannel } from '../update-channel.mjs';
 import { buildPayload, insideRepo, publicKeyOfPem, sha256File, signPayload } from './manifest-lib.mjs';
 
 const require = createRequire(import.meta.url);
@@ -61,6 +69,26 @@ if (keyPath && !baseUrl) fail('--key needs --base-url (the https:// folder the f
 if (keyPath && insideRepo(keyPath)) fail(`the manifest key ${path.resolve(keyPath)} is inside the repository; keep it outside.`);
 if (baseUrl && !/^https:\/\//.test(baseUrl)) fail('--base-url must be https://');
 
+// The update channel, checked before anything is built.
+const channelConfigPath = path.join(import.meta.dirname, 'update-channel.json');
+let channelConfig = null;
+if (existsSync(channelConfigPath)) {
+  try {
+    channelConfig = JSON.parse(readFileSync(channelConfigPath, 'utf8'));
+  } catch (err) {
+    fail(`${channelConfigPath} is not valid JSON: ${err.message}`);
+  }
+}
+const channelResult = resolveReleaseChannel({
+  url: opt('--update-url'),
+  publicKey: opt('--update-public-key'),
+  config: channelConfig,
+  noUpdates: has('--no-updates'),
+  signingPublicKey: keyPath ? publicKeyOfPem(readFileSync(keyPath, 'utf8')) : undefined,
+});
+if (!channelResult.ok) fail(channelResult.error);
+const updateChannel = channelResult.channel;
+
 const run = (cmd, argv, cwd, extraEnv = {}) =>
   execFileSync(cmd, argv, { cwd, stdio: 'inherit', env: { ...process.env, ...extraEnv }, shell: cmd === 'pnpm' || cmd === 'npx' });
 const goEnv = { GOOS: 'windows', GOARCH: 'amd64', CGO_ENABLED: '0' };
@@ -84,6 +112,8 @@ try {
   // bundle-backend.mjs builds the engine too, so build and sign it here AFTER that script: otherwise its
   // unsigned build would replace the signed one inside the package.
   run('node', ['scripts/bundle-backend.mjs'], DESKTOP);
+  writeFileSync(path.join(DESKTOP, 'build', 'backend', CHANNEL_FILE), `${JSON.stringify(updateChannel, null, 2)}\n`);
+  console.log(updateChannel.off ? '[release] updates: OFF (--no-updates); installs will say they do not check for updates' : `[release] updates: ${updateChannel.manifest_url}`);
   const engineExe = path.join(ROOT, 'engine', 'bin', 'nigafiy-engine.exe');
   run('go', ['build', '-trimpath', '-ldflags', ldflags, '-o', engineExe, './cmd/nigafiy-engine'], path.join(ROOT, 'engine'), goEnv);
   if (!signFiles([engineExe])) fail('the engine executable was not signed');

@@ -82,6 +82,14 @@ overviewRouter.get('/overview', async (req, res) => {
       [site],
     );
 
+    // "Monitoring was off from X to Y": the latest gap that ended in the last 24 hours (collectors/monitor-gaps.ts).
+    const monitoringOff = await db.query<{ started_at: Date; ended_at: Date; kind: 'api' | 'collector' }>(
+      `SELECT started_at, ended_at, kind FROM monitoring_gaps
+        WHERE ended_at > now() - interval '24 hours' AND ($1::uuid IS NULL OR site_id IS NULL OR site_id = $1)
+        ORDER BY ended_at DESC, (kind = 'api') DESC LIMIT 1`,
+      [site],
+    );
+
     const byRole = (role: string) => {
       const window = lastHour.rows.find((r) => r.role === role);
       return {
@@ -108,6 +116,9 @@ overviewRouter.get('/overview', async (req, res) => {
       active_incidents: activeIncidents.rows,
       recent_events: events.rows,
       problem_devices: problemDevices.rows,
+      monitoring_off: monitoringOff.rows[0]
+        ? { started_at: monitoringOff.rows[0].started_at.toISOString(), ended_at: monitoringOff.rows[0].ended_at.toISOString(), kind: monitoringOff.rows[0].kind }
+        : null,
     };
   });
   res.json(overview);

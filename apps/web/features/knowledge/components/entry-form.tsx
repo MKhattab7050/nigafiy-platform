@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { KnowledgeDetail, KnowledgeEntry, KnowledgeKind } from '@nigafiy/shared-types';
 import { Button, ErrorNote, Field, Input, Segmented, Switch, Textarea } from '@/components/ui';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, markLocalized } from '@/lib/api';
 import { useApp } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { MarkdownView } from './markdown-view';
@@ -91,7 +91,7 @@ export function EntryForm({ entry, onSaved, onCancel }: { entry?: KnowledgeDetai
         void save();
       }}
     >
-      {error && (error.code === 'stale_revision' ? <ErrorNote error={new ApiError(409, error.code, t('kb.stale'))} /> : <ErrorNote error={error} />)}
+      {error && (error.code === 'stale_revision' ? <ErrorNote error={markLocalized(new ApiError(409, error.code, t('kb.stale')))} /> : <ErrorNote error={error} />)}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented
           label={t('kb.kind')}

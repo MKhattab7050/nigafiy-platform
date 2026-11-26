@@ -22,6 +22,13 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
     }
   }
   switch (ev.type) {
+    case 'notification_summary': {
+      // Calm alerts (policy.ts summaryTitle): held notifications sent together.
+      const held = typeof d.held === 'number' ? d.held : null;
+      if (held === null) return t;
+      return d.summary === 'weekly' ? `الملخص الأسبوعي: ${ltr(String(held))} إشعار` : `أثناء ساعات الهدوء: ${ltr(String(held))} إشعار`;
+    }
+
     case 'device_discovered': {
       const ip = str(d.ip);
       const name = str(d.hostname) ?? str(d.name);
@@ -90,21 +97,32 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
 
     case 'collector_enrolled': {
       const m = t.match(/^Collector "(.+)" enrolled$/i);
-      return m ? `تم تسجيل المجمِّع «${m[1]}»` : 'تم تسجيل مجمِّع جديد';
+      return m ? `تم تسجيل المستشعر «${m[1]}»` : 'تم تسجيل مستشعر جديد';
     }
 
     case 'collector_offline': {
       const m = t.match(/^Collector "(.+)" (?:went offline|lost contact|is offline)/i);
-      return m ? `فقد المجمِّع «${m[1]}» الاتصال` : 'فقد أحد المجمِّعات الاتصال';
+      return m ? `فقد المستشعر «${m[1]}» الاتصال` : 'فقد أحد المستشعرات الاتصال';
     }
 
     case 'collector_online': {
       const m = t.match(/^Collector "(.+)" (?:is back online|reconnected|came online)/i);
-      return m ? `عاد المجمِّع «${m[1]}» للاتصال` : 'عاد أحد المجمِّعات للاتصال';
+      return m ? `عاد المستشعر «${m[1]}» للاتصال` : 'عاد أحد المستشعرات للاتصال';
     }
 
     case 'notification_test':
       return 'إشعار اختبار من Nigafiy';
+
+    case 'monitoring_off': {
+      // collectors/monitor-gaps.ts: "Monitoring was off for 2 h 5 min".
+      const secs = typeof d.duration_seconds === 'number' ? d.duration_seconds : null;
+      if (secs === null) return 'توقفت المراقبة لفترة';
+      const min = Math.max(1, Math.round(secs / 60));
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      const span = min < 60 ? `${ltr(min)} دقيقة` : h < 48 ? (m ? `${ltr(h)} ساعة و${ltr(m)} دقيقة` : `${ltr(h)} ساعة`) : `${ltr(Math.round(h / 24))} يوم`;
+      return `توقفت المراقبة لمدة ${span}`;
+    }
 
     case 'incident_escalated': {
       const num = typeof d.incident_number === 'number' ? d.incident_number : null;

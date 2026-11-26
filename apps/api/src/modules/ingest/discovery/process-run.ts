@@ -3,6 +3,7 @@ import { cidrContains, isLocallyAdministeredMac, vendorForMac } from '../../../c
 import type { Db } from '../../../infrastructure/db.ts';
 import { type Fingerprint, applyIdentification } from '../../devices/index.ts';
 import { emitEvent } from '../../events/index.ts';
+import { newDeviceActions } from '../../notifications/index.ts';
 import { setAvailability } from './availability.ts';
 import { type DeviceRow, type Identity, deviceLabel, groupObservations } from './identities.ts';
 import { markMissingDevices } from './offline.ts';
@@ -149,8 +150,11 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
         historyDeviceIds.push(id);
         historyIps.push(ip);
       }
-      // The first sweep of a scope establishes the baseline: one summary event instead of hundreds.
+      // "New device joined" (UX review item 9), raised once per device: only here, where the device row
+      // is created. Baseline rule: the first applied sweep of a scope (network_scopes.last_run_finished_at
+      // still null) establishes what is already there, so it raises one summary event instead of one per device.
       if (!baseline) {
+        const randomized = identity.mac ? isLocallyAdministeredMac(identity.mac) : null;
         await emitEvent(db, c.organizationId, {
           siteId: c.siteId,
           deviceId: id,
@@ -158,17 +162,22 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
           type: 'device_discovered',
           // Something nobody has approved joined after the baseline: worth a look.
           severity: 'warning',
-          title: `Unknown device joined the network: ${deviceLabel({ hostname: identity.hostname, ip: chosenIp, mac: identity.mac })}`,
+          title: `New device joined: ${deviceLabel({ hostname: identity.hostname, ip: chosenIp, mac: identity.mac })}`,
           details: {
             trust: 'unreviewed',
-            next_step: 'Open the device and mark it Known if it belongs here, or Unwanted to be alerted whenever it returns.',
+            next_step: 'Allow it if it belongs here, or Pause its internet until you know whose it is.',
             ip: chosenIp,
             mac: identity.mac,
-            mac_randomized: identity.mac ? isLocallyAdministeredMac(identity.mac) : null,
+            mac_randomized: randomized,
+            ...(randomized
+              ? { mac_hint: 'This device uses a private (randomized) MAC address, as phones and laptops do by default. It is often a known phone that joined again with a new address; its maker cannot be read from the address.' }
+              : {}),
             vendor: identity.mac ? vendorForMac(identity.mac) : null,
             hostname: identity.hostname,
             observed_via: sources,
             scope: scope.cidr,
+            // Buttons: Allow / Pause / Open. Stored without tokens; each notification delivery gets its own.
+            actions: newDeviceActions(id),
           },
           source: 'collector',
           occurredAt: finishedAt,

@@ -89,6 +89,9 @@ rmSync(standalone, { recursive: true, force: true });
 
 // 4. Launcher and env template.
 cpSync(path.join(root, 'scripts', 'local.mjs'), path.join(out, 'local.mjs'));
+// The launcher's update-channel helper (scripts/release/release.mjs writes update-channel.json next to it;
+// a bundle without that file, e.g. a test build, does not check for updates and says so).
+cpSync(path.join(root, 'scripts', 'update-channel.mjs'), path.join(out, 'update-channel.mjs'));
 cpSync(path.join(root, '.env.example'), path.join(out, '.env.example'));
 writeFileSync(path.join(out, 'package.json'), JSON.stringify({ private: true, type: 'module' }, null, 2));
 
