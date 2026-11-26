@@ -5,7 +5,7 @@ import type { InvitationPreview, Me, MfaRequirement, Role } from '@nigafiy/share
 import { AppError, auth, parse } from '../../common/http.ts';
 import { timeZoneSchema } from '../../common/timezone.ts';
 import { DUMMY_PASSWORD_HASH, hashPassword, randomToken, sha256, verifyPassword } from '../../common/crypto.ts';
-import { env } from '../../config/env.ts';
+import { env, isWebOrigin } from '../../config/env.ts';
 import { systemPool, withSystem } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { createDefaultChecks } from '../monitoring/index.ts';
@@ -67,7 +67,7 @@ export const authRouter: Router = Router();
 function requireCsrfHeader(req: import('express').Request): void {
   if (req.headers['x-ld-csrf'] !== '1') throw new AppError(403, 'csrf_rejected', 'Missing CSRF header');
   const origin = req.headers.origin;
-  if (origin && origin !== env.WEB_ORIGIN) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
+  if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
 authRouter.get('/options', async (_req, res) => {

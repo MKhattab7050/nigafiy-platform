@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Role } from '@nigafiy/shared-types';
 import { AppError } from '../../common/http.ts';
 import { randomToken, sha256 } from '../../common/crypto.ts';
-import { env } from '../../config/env.ts';
+import { env, isWebOrigin } from '../../config/env.ts';
 import { systemPool } from '../../infrastructure/db.ts';
 
 export const SESSION_COOKIE = 'ld_session';
@@ -52,7 +52,7 @@ function assertNotCrossSite(req: Request): void {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
   if (req.headers[CSRF_HEADER] !== '1') throw new AppError(403, 'csrf_rejected', 'Missing CSRF header');
   const origin = req.headers.origin;
-  if (origin && origin !== env.WEB_ORIGIN) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
+  if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
 interface SessionRow {

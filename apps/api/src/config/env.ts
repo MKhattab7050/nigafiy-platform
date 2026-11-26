@@ -23,6 +23,15 @@ const schema = z.object({
   APP_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, 'must be 32 bytes, hex encoded'),
   WEB_ORIGIN: z.string().default('http://localhost:3100'),
   /**
+   * More browser origins the web app is opened from, comma separated exact origins (e.g.
+   * http://192.168.1.147:3100 to use it from a phone on the LAN). They pass the same CSRF Origin
+   * checks as WEB_ORIGIN; links in e-mails and SSO addresses still use WEB_ORIGIN.
+   */
+  WEB_EXTRA_ORIGINS: z.preprocess(
+    (v) => (typeof v === 'string' ? v.split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean) : []),
+    z.array(z.string().regex(/^https?:\/\/[^/\s]+$/, 'must be origins like http://192.168.1.10:3100')).max(20),
+  ),
+  /**
    * Fleet live sessions with several API instances: the address other instances use to reach THIS
    * instance for the remote-desktop frame relay (e.g. http://10.0.0.5:4100). Unset:
    * http://127.0.0.1:<PORT> (instances on one host). See docs/features/fleet-pro.md.
@@ -161,6 +170,12 @@ function load(): Env {
 }
 
 export const env: Env = load();
+
+/** True when `origin` is the web app's own origin (WEB_ORIGIN or one of WEB_EXTRA_ORIGINS). */
+export function isWebOrigin(origin: string | undefined, currentEnv: Env = env): boolean {
+  if (!origin) return false;
+  return origin === currentEnv.WEB_ORIGIN || currentEnv.WEB_EXTRA_ORIGINS.includes(origin);
+}
 
 let cachedCertFile: string | undefined;
 let cachedCertPin: string | null = null;

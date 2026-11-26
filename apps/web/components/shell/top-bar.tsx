@@ -13,6 +13,7 @@ import { HelpButton } from '@/features/guide/components/help-button';
 import { Logo } from '../logo';
 import { SummaryReportView } from '../summary-report';
 import { Badge, Button, ErrorNote, Input, Modal, Select, SkeletonBlock } from '../ui';
+import { LanguageButton } from './language-button';
 import { ThemeSwitch } from './theme-switch';
 
 const SEARCH_GROUPS: SearchHitKind[] = ['device', 'endpoint', 'incident', 'switch', 'subnet', 'scope', 'router'];
@@ -20,7 +21,7 @@ const SEARCH_GROUPS: SearchHitKind[] = ['device', 'endpoint', 'incident', 'switc
 /** Site selector, global search, executive summary report, live indicator, theme and language: identical on every page. */
 export function TopBar({ onMenu }: { onMenu: () => void }) {
   const router = useRouter();
-  const { t, locale, setLocale } = useI18n();
+  const { t, locale } = useI18n();
   const { sites, siteId, setSiteId } = useSites();
   const live = useLive();
 
@@ -93,7 +94,7 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
       <div className="hidden sm:block lg:hidden">
         <Logo compact />
       </div>
-      <div className="min-w-0 max-w-48 flex-1 sm:w-44 sm:flex-none">
+      <div className="min-w-0 flex-1 sm:w-44 sm:max-w-48 sm:flex-none">
         <Select aria-label={t('common.site')} value={siteId ?? ''} onChange={(e) => setSiteId(e.target.value || null)} className="h-8">
           <option value="">{t('top.allSites')}</option>
           {sites.map((s) => (
@@ -108,11 +109,11 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="flex h-8 min-w-0 max-w-64 flex-1 items-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-sunken px-2.5 text-xs text-muted transition-colors hover:border-faint/60 hover:text-fg"
+        className="flex h-8 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] border border-line-strong bg-sunken text-xs text-muted transition-colors hover:border-faint/60 hover:text-fg max-sm:w-8 sm:min-w-0 sm:max-w-64 sm:flex-1 sm:shrink sm:justify-start sm:px-2.5"
         aria-label={t('top.searchTitle')}
       >
         <Search className="size-3.5 shrink-0 text-faint" aria-hidden />
-        <span className="truncate">{t('top.searchPlaceholder')}</span>
+        <span className="truncate max-sm:sr-only">{t('top.searchPlaceholder')}</span>
       </button>
 
       <div className="ms-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
@@ -129,20 +130,11 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
           <span className="max-sm:sr-only">{live ? t('top.live') : t('top.reconnecting')}</span>
         </span>
         <HelpButton />
-        <ThemeSwitch />
-        <button
-          type="button"
-          onClick={() => {
-            const next = locale === 'en' ? 'ar' : 'en';
-            setLocale(next);
-            void api('/auth/me', { method: 'PATCH', body: { locale: next } }).catch(() => undefined);
-          }}
-          className="h-8 rounded-[var(--radius-control)] border border-line-strong px-2.5 text-xs font-medium text-muted transition-colors hover:bg-raised hover:text-fg"
-          aria-label={t('settings.language')}
-          lang={locale === 'en' ? 'ar' : 'en'}
-        >
-          {locale === 'en' ? 'العربية' : 'English'}
-        </button>
+        {/* Phones: theme and language live in the menu drawer (sidebar), so the site selector and search keep their room. */}
+        <span className="max-sm:hidden">
+          <ThemeSwitch />
+        </span>
+        <LanguageButton className="max-sm:hidden" />
       </div>
 
       {/* Global Search Modal */}

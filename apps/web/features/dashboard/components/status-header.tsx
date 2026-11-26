@@ -37,6 +37,28 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
       </div>
     );
   }
+  // Discovery not set up (rules.ts deduction "setup"): nothing has been measured, so a red score would
+  // alarm a brand-new account for no reason. Say what is missing and link to the fix instead.
+  if (r.score_breakdown.some((d) => d.code === 'setup')) {
+    return (
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center lg:flex-col lg:items-stretch xl:flex-row xl:items-center">
+        <RingGauge value={0} tone="idle" size={116} label={t('dash.state.setup')}>
+          <span className="text-[34px] font-semibold leading-none text-faint" aria-hidden>
+            –
+          </span>
+          <span className="mt-1 text-[11px] text-faint">{t('dash.scoreOutOf')}</span>
+        </RingGauge>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted">{t('ins.score')}</p>
+          <p className="mt-0.5 text-[17px] font-semibold leading-snug text-fg">{t('dash.state.setup')}</p>
+          <p className="mt-1 text-xs text-muted">{t('dash.setupHint')}</p>
+          <Link href="/radar/discovery" className="mt-3 inline-flex h-8 items-center rounded-[var(--radius-control)] bg-accent px-3 text-xs font-medium text-on-accent transition-colors hover:bg-accent-strong">
+            {t('dash.setupAction')}
+          </Link>
+        </div>
+      </div>
+    );
+  }
   const tone = VERDICT_TONE[r.verdict];
   const deductions = [...r.score_breakdown].sort((a, b) => b.points - a.points);
   return (

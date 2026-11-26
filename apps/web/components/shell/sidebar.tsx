@@ -14,7 +14,9 @@ import { programById } from '@/lib/programs';
 import { useProgramId } from '@/lib/programs-context';
 import { SIDEBAR_STORAGE_KEY } from '@/lib/theme-boot';
 import { Select } from '../ui';
+import { LanguageButton } from './language-button';
 import { ProgramSwitcher } from './program-switcher';
+import { ThemeSwitch } from './theme-switch';
 
 /** In rail mode a label becomes a hover / focus tooltip beside the icon. */
 const RAIL_LABEL =
@@ -167,6 +169,12 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             </p>
           </div>
         </div>
+        {onClose && (
+          <div className="flex items-center justify-between gap-2 px-1.5 py-1.5 sm:hidden">
+            <ThemeSwitch />
+            <LanguageButton />
+          </div>
+        )}
         <GuideNavLink labelClassName={RAIL_LABEL} />
         <button type="button" onClick={() => void signOut()} className="group relative mt-1 flex h-9 w-full items-center gap-3 rounded-[var(--radius-control)] px-2.5 text-[13px] text-muted hover:bg-raised hover:text-fg lg:rail:justify-center lg:rail:px-0">
           <LogOut className="size-4 shrink-0 rtl:-scale-x-100" aria-hidden />

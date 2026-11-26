@@ -1,9 +1,20 @@
+import os from 'node:os';
 import path from 'node:path';
 import type { NextConfig } from 'next';
 
 const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:4100';
 
+// `next dev` refuses its dev resources (HMR socket, dev chunks) to any origin but localhost, and the page then
+// never hydrates — a phone opening http://<this PC's LAN IP>:3100 sticks on the boot splash. Allow this machine's
+// own IPv4 addresses, plus any extra hosts in NIGAFIY_DEV_ORIGINS (comma-separated). Dev only; `next start` ignores it.
+const lanOrigins = Object.values(os.networkInterfaces())
+  .flat()
+  .filter((a): a is os.NetworkInterfaceInfo => !!a && a.family === 'IPv4' && !a.internal)
+  .map((a) => a.address);
+const extraOrigins = (process.env.NIGAFIY_DEV_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
 const config: NextConfig = {
+  allowedDevOrigins: [...lanOrigins, ...extraOrigins],
   // NEXT_OUTPUT=standalone: self-contained server for the desktop installer (apps/desktop/scripts/bundle-backend.mjs).
   ...(process.env.NEXT_OUTPUT === 'standalone' ? { output: 'standalone' as const, outputFileTracingRoot: path.resolve(import.meta.dirname, '../..') } : {}),
   // NEXT_DIST_DIR: a second dev server for the same checkout (e.g. against an isolated API) needs its own build folder.
