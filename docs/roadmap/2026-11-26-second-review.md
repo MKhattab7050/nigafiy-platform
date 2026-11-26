@@ -134,3 +134,12 @@ what is missing, commit on its own branch, not push or merge:
 | system-health-2 | `local_d30298d1-5640-43f0-a310-badfd036baee` | `claude/system-health-b8f152` |
 
 Their branches are new (`*-2`); the old `claude/*` branches stay as they were.
+
+### Session reports (2026-11-26, evening)
+
+| Branch | Last commit | State |
+| --- | --- | --- |
+| `claude/dashboard-guidance-2-ebc959` | eb82423 | ready to merge: typecheck, lint, guidance test, browser desktop + 390 px EN/AR |
+| `claude/navigation-palette-2-e3c5b9` | a308718 | ready to merge: typecheck, web unit 95/95, browser 1280/390 EN/AR; e2e smoke not run; Fleet filter row still overflows at 390 px (`Segmented`, left alone) |
+| `claude/device-states-2-90beda` | a82e907 | ready to merge: typecheck + related tests; no browser check (its base lacks the 3ebfd60 pool fix, so a fresh API hung) — check after merge |
+| `claude/system-health-2-7ee7ad` | d21ffac + uncommitted web pages | still running (API suite) |
