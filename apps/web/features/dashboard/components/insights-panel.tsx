@@ -18,14 +18,15 @@ import { DeviceLink } from '@/components/device-link';
 export const INITIAL = 4;
 
 /** With `onResult`, the API response goes to the caller (which shows the outcome) instead of `onDone` being called. */
-export function Action({ action, onDone, onResult }: { action: InsightAction; onDone: () => void; onResult?: (data: unknown) => void }) {
+/** `label` replaces the API's wording (the dashboard's "Next" block words each step its own way). `primary` styles a link as the main button. */
+export function Action({ action, onDone, onResult, label, primary = false }: { action: InsightAction; onDone: () => void; onResult?: (data: unknown) => void; label?: string; primary?: boolean }) {
   const confirm = useConfirm();
   const { locale } = useI18n();
   const { can } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
-  const text = actionText(action, locale);
-  const cls = clsx(BUTTON_BASE, BUTTON_SIZE.sm, BUTTON_VARIANT.secondary);
+  const text = { ...actionText(action, locale), ...(label ? { label } : {}) };
+  const cls = clsx(BUTTON_BASE, BUTTON_SIZE.sm, primary ? BUTTON_VARIANT.primary : BUTTON_VARIANT.secondary);
 
   if (action.kind === 'link')
     return (
