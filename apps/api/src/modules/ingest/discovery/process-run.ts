@@ -2,11 +2,13 @@ import { type CollectorContext, type DiscoveryRunItem, ItemRejected, MAX_FUTURE_
 import { cidrContains, isLocallyAdministeredMac, vendorForMac } from '../../../common/net.ts';
 import type { Db } from '../../../infrastructure/db.ts';
 import { type Fingerprint, applyIdentification } from '../../devices/index.ts';
+import { bestName } from '../../devices/classify.ts';
+import { inheritFromSameName } from '../../devices/same-device.ts';
 import { emitEvent } from '../../events/index.ts';
 import { newDeviceActions } from '../../notifications/index.ts';
 import { setAvailability } from './availability.ts';
 import { type DeviceRow, type Identity, deviceLabel, groupObservations } from './identities.ts';
-import { markMissingDevices } from './offline.ts';
+import { FLAP_OFFLINE_PERIODS_24H, markMissingDevices } from './offline.ts';
 
 /**
  * Apply one discovery sweep of one authorized scope.
@@ -49,7 +51,8 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
   const macs = [...identities.values()].flatMap((i) => (i.mac ? [i.mac] : []));
   const loaded = await db.query<DeviceRow>(
-    `SELECT id, primary_mac::text AS mac, host(current_ip) AS ip, status, hostname, display_name, is_critical, trust, alerts_muted, discovery_sources, last_seen_at
+    `SELECT id, primary_mac::text AS mac, host(current_ip) AS ip, status, hostname, display_name, is_critical, trust, alerts_muted, discovery_sources, last_seen_at,
+            device_type, mac_randomized
        FROM devices
       WHERE site_id = $1 AND (primary_mac = ANY($2::macaddr[]) OR current_ip <<= $3::cidr)
       ORDER BY last_seen_at DESC
@@ -63,6 +66,9 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
     if (d.ip) devicesByIp.set(d.ip, [...(devicesByIp.get(d.ip) ?? []), d]);
   }
 
+  // Known devices whose MAC answered in this sweep: a namesake that is here right now is another device.
+  const sweepMacs = new Set(macs);
+  const presentNow = new Set(loaded.rows.filter((d) => d.mac && sweepMacs.has(d.mac)).map((d) => d.id));
   const claimed = new Set<string>();
   const seenExisting: string[] = [];
   const historyDeviceIds: string[] = [];
@@ -123,9 +129,12 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
 
     if (!device) {
       const inserted = await db.query<{ id: string }>(
+        // Baseline (first applied sweep of this range): what is already there is the owner's, so it
+        // starts as known (trust_reason 'first_scan') instead of asking about every device (2026-11-26).
         `INSERT INTO devices (organization_id, site_id, identity_basis, primary_mac, mac_randomized, current_ip, hostname, vendor,
-                              status, discovery_sources, first_seen_at, last_seen_at, name_source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'online',$9,$10,$10, CASE WHEN $7::text IS NULL THEN NULL ELSE 'rdns' END) RETURNING id`,
+                              status, discovery_sources, first_seen_at, last_seen_at, name_source, trust, trust_reason, trust_changed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'online',$9,$10,$10, CASE WHEN $7::text IS NULL THEN NULL ELSE 'rdns' END,
+                 CASE WHEN $11 THEN 'known' ELSE 'unreviewed' END, CASE WHEN $11 THEN 'first_scan' END, CASE WHEN $11 THEN $10::timestamptz END) RETURNING id`,
         [
           c.organizationId,
           c.siteId,
@@ -137,6 +146,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
           identity.mac ? vendorForMac(identity.mac) : null,
           sources,
           finishedAt,
+          baseline,
         ],
       );
       const id = inserted.rows[0]!.id;
@@ -153,7 +163,39 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
       // "New device joined" (UX review item 9), raised once per device: only here, where the device row
       // is created. Baseline rule: the first applied sweep of a scope (network_scopes.last_run_finished_at
       // still null) establishes what is already there, so it raises one summary event instead of one per device.
-      if (!baseline) {
+      // A known device back under a new MAC (new private address, its other network card): it keeps
+      // what the owner set and says so, instead of a "new device" alarm (owner priority 2026-11-26).
+      const announcedName = identity.hostname ?? bestName(identity.fingerprint)?.name ?? null;
+      const sameAs = baseline ? null : await inheritFromSameName(db, c.siteId, id, announcedName, presentNow);
+      if (sameAs) {
+        const randomized = identity.mac ? isLocallyAdministeredMac(identity.mac) : null;
+        await emitEvent(db, c.organizationId, {
+          siteId: c.siteId,
+          deviceId: id,
+          collectorId: c.id,
+          type: 'device_discovered',
+          severity: 'info',
+          title: `${sameAs.label} came back with a new address`,
+          details: {
+            trust: 'known',
+            same_as_device_id: sameAs.id,
+            same_as: sameAs.label,
+            evidence: `Same name "${announcedName}" as a known device that was not on the network at this sweep`,
+            next_step: randomized
+              ? 'Phones and laptops use a new private (randomized) MAC address from time to time. If this is not that device, mark it as not reviewed or unwanted.'
+              : 'It is probably the same device on another network card (Wi-Fi and Ethernet). If not, mark it as not reviewed or unwanted.',
+            ip: chosenIp,
+            mac: identity.mac,
+            mac_randomized: randomized,
+            previous_mac: sameAs.mac,
+            hostname: identity.hostname,
+            observed_via: sources,
+            scope: scope.cidr,
+          },
+          source: 'collector',
+          occurredAt: finishedAt,
+        });
+      } else if (!baseline) {
         const randomized = identity.mac ? isLocallyAdministeredMac(identity.mac) : null;
         await emitEvent(db, c.organizationId, {
           siteId: c.siteId,
@@ -265,7 +307,7 @@ export async function processDiscoveryRun(db: Db, c: CollectorContext, item: Dis
           source: 'collector',
           occurredAt: finishedAt,
         });
-      } else if (device.status === 'offline' && !device.alerts_muted) {
+      } else if (device.status === 'offline' && !device.alerts_muted && !(await isFlapping(db, device, finishedAt))) {
         await emitEvent(db, c.organizationId, {
           siteId: c.siteId,
           deviceId: device.id,
@@ -348,4 +390,14 @@ async function recordAddresses(db: Db, c: CollectorContext, scopeId: string, row
     );
   }
   await db.query(`DELETE FROM device_addresses WHERE scope_id = $1 AND last_seen_at < $2::timestamptz - make_interval(days => $3)`, [scopeId, at, ADDRESS_RETENTION_DAYS]);
+}
+
+/** A non-critical device that dropped off FLAP_OFFLINE_PERIODS_24H times or more in 24 hours: its comings and goings are not alerted. */
+async function isFlapping(db: Db, device: DeviceRow, at: Date): Promise<boolean> {
+  if (device.is_critical) return false;
+  const r = await db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM availability_history WHERE device_id = $1 AND status = 'offline' AND started_at > $2::timestamptz - interval '24 hours'`,
+    [device.id, at],
+  );
+  return (r.rows[0]?.n ?? 0) >= FLAP_OFFLINE_PERIODS_24H;
 }

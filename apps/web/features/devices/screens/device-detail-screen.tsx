@@ -6,7 +6,7 @@ import type { DeviceDetail } from '@nigafiy/shared-types';
 import { Async, Badge, Card, EmptyState, Fact, PageHeader, StatusBadge, Tag, ConfidenceBadge } from '@/components/ui';
 import { useQuery } from '@/lib/app';
 import { DEVICE_TYPE_LABEL, absoluteTime, relativeTime } from '@/lib/format';
-import { type Key, useI18n } from '@/lib/i18n';
+import { type Key, fill, useI18n } from '@/lib/i18n';
 // Direct import, not the barrel: the barrel would pull the whole Fleet Pro UI onto every device page.
 import { DeviceEndpointCard } from '@/features/endpoints/components/device-endpoint-card';
 import { DevicePortCard } from '@/features/ports';
@@ -81,6 +81,25 @@ export function DeviceDetailScreen({ id }: { id: string }) {
                   <dd className="tnum mt-1 text-[14px] font-medium">{week === null ? '—' : `${week.toFixed(2)}%`}</dd>
                 </div>
               </dl>
+              {d.same_name_devices && d.same_name_devices.length > 0 && (
+                <div role="note" className="mb-5 rounded-[var(--radius-control)] border border-accent/30 bg-accent/[0.08] px-3 py-2 text-[13px] text-fg">
+                  <p>{fill(t('device.sameName.title'), { name: d.hostname ?? '' })}</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {d.same_name_devices.map((o) => (
+                      <li key={o.id}>
+                        <Link href={`/radar/devices/${o.id}`} className="font-medium text-accent hover:underline" dir="auto">
+                          {o.label}
+                        </Link>{' '}
+                        <span className="mono text-muted">{[o.ip, o.mac].filter(Boolean).join(' · ')}</span>{' '}
+                        <span className="text-muted">
+                          · {o.status === 'online' ? t('device.sameName.online') : fill(t('device.sameName.lastSeen'), { when: relativeTime(o.last_seen_at, locale) })}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-xs text-muted">{t(d.same_name_devices.some((o) => o.mac_randomized) || d.mac_randomized ? 'device.sameName.whyPrivate' : 'device.sameName.whyCard')}</p>
+                </div>
+              )}
               <DeviceActions device={d} />
               {d.status === 'unknown' && <p className="mb-4 rounded-[var(--radius-control)] border border-line-strong bg-raised px-3 py-2 text-[13px] text-muted">{t('device.statusUnknownHint')}</p>}
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">

@@ -39,6 +39,8 @@ async function setup(label: string, transport = 'https'): Promise<Setup> {
   const scopeId = await addScope(a, '192.168.50.0/24');
   const c = await newCollector(a);
   await heartbeat(c);
+  // An empty first sweep, so the devices below arrive as new (unreviewed) rather than first-scan known.
+  await telemetry(c, [sweep(scopeId, [], 1)]);
   const sw = await telemetry(c, [
     sweep(scopeId, [
       { ip: '192.168.50.1', mac: '00:11:22:33:44:01', hostname: 'gateway' },

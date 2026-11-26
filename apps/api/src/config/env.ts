@@ -219,8 +219,14 @@ export function isWebOrigin(origin: string | undefined, currentEnv: Env = env, o
   } catch {
     return false;
   }
-  return o.origin === origin && o.protocol === w.protocol && o.port === w.port && ownAddrs().has(o.hostname);
+  if (o.origin !== origin || o.protocol !== w.protocol || o.port !== w.port) return false;
+  // localhost, 127.0.0.1 and [::1] are all this machine: opening the app at one of them while
+  // WEB_ORIGIN names another used to refuse every sign-in with csrf_rejected.
+  if (LOOPBACK_HOSTS.has(w.hostname) && LOOPBACK_HOSTS.has(o.hostname)) return true;
+  return ownAddrs().has(o.hostname);
 }
+
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 let cachedCertFile: string | undefined;
 let cachedCertPin: string | null = null;

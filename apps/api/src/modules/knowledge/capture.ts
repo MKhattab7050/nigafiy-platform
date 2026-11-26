@@ -191,6 +191,13 @@ export async function captureCandidates(db: Db, organizationId: string): Promise
     if (!claimed.rowCount) continue;
     const facts = await completeFacts(db, organizationId, row);
     const c = buildCandidate(facts);
+    // The same problem again (same title and rules) while its suggestion still waits for review: one
+    // suggestion is enough. A repeat of a problem is not a new article to read (84 → 10 on a real network).
+    const waiting = await db.query(
+      `SELECT 1 FROM knowledge_entries WHERE organization_id = $1 AND status = 'candidate' AND title = $2 AND rule_ids = $3::text[] LIMIT 1`,
+      [organizationId, c.title, c.rule_ids],
+    );
+    if (waiting.rowCount) continue;
     const inserted = await db.query<{ id: string }>(
       `INSERT INTO knowledge_entries (organization_id, status, source, kind, title, symptoms, cause, cause_source, fix_steps, tags, rule_ids,
                                       incident_kinds, event_types, device_types, vendors, site_id, device_id, check_id, incident_id,

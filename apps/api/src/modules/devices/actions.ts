@@ -58,7 +58,7 @@ export async function setDeviceTrust(db: Db, organizationId: string, deviceId: s
   const row = (await db.query<{ trust: DeviceTrust }>(`SELECT trust FROM devices WHERE id = $1 FOR UPDATE`, [deviceId])).rows[0];
   if (!row) throw notFound('Device');
   if (row.trust === trust) return { previous: row.trust, changed: false };
-  await db.query(`UPDATE devices SET trust = $2, trust_changed_at = now() WHERE id = $1`, [deviceId, trust]);
+  await db.query(`UPDATE devices SET trust = $2, trust_reason = NULL, trust_changed_at = now() WHERE id = $1`, [deviceId, trust]);
   await notifyRealtime(db, organizationId, 'devices');
   return { previous: row.trust, changed: true };
 }

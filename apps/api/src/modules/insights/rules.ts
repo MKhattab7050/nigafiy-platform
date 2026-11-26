@@ -522,13 +522,25 @@ export function buildInsights(f: InsightFacts): InsightsReport {
 
   out.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]);
   const score = Math.max(0, 100 - deductions.reduce((s, d) => s + d.points, 0));
-  const verdict = score >= 90 ? 'healthy' : score >= 70 ? 'attention' : 'urgent';
+  const critical = out.filter((i) => i.severity === 'critical').length;
+  const verdict = verdictFor(score, critical);
   const online = f.devices.filter((d) => d.status === 'online').length;
   const summary =
     verdict === 'healthy'
       ? `Your network looks healthy: ${online} device(s) online and nothing needs you right now.`
       : verdict === 'attention'
         ? `A few things need your attention (${out.filter((i) => i.severity !== 'info').length}).`
-        : `Your network needs attention now: ${out.filter((i) => i.severity === 'critical').length} critical finding(s).`;
+        : `Your network needs attention now: ${critical} critical finding(s).`;
   return { generated_at: f.now.toISOString(), score, score_breakdown: deductions, verdict, summary, insights: out };
+}
+
+/**
+ * "Act now" only when a finding is critical (something is down, an unwanted device is online, a
+ * certificate is about to expire...). Housekeeping alone (devices not reviewed yet, rules that reach no
+ * device yet) lowers the score but never turns the verdict red: a red "act now" with nothing broken
+ * teaches people to ignore it.
+ */
+export function verdictFor(score: number, critical: number): InsightsReport['verdict'] {
+  if (critical > 0) return 'urgent';
+  return score >= 90 ? 'healthy' : 'attention';
 }

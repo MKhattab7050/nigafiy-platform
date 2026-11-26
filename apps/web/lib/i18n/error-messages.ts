@@ -77,7 +77,10 @@ export const ERROR_MESSAGES: Record<string, ErrorText> = {
   not_found: NOT_FOUND,
   conflict: ALREADY_EXISTS,
   rate_limited: TOO_MANY,
-  csrf_rejected: { en: 'This request was blocked for your safety. Reload the page and try again.', ar: 'حُظر هذا الطلب حفاظًا على أمانك. أعد تحميل الصفحة ثم حاول مرة أخرى.' },
+  csrf_rejected: {
+    en: 'This request was blocked for your safety because the page was opened from an address Nigafiy does not know. Open Nigafiy from the desktop app or its usual address, then try again.',
+    ar: 'حُظر هذا الطلب حفاظًا على أمانك لأن الصفحة فُتحت من عنوان لا يعرفه Nigafiy. افتح Nigafiy من تطبيق سطح المكتب أو من عنوانه المعتاد، ثم حاول مرة أخرى.',
+  },
 
   // ---- Sign-in, accounts, organization ----
   unauthenticated: SIGN_IN_AGAIN,

@@ -8,6 +8,7 @@ import type { AccessDevice, AccessPage } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Field, Select, Spinner, Textarea } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
+import { relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { PauseControl } from './pause-control';
 import { linesToList } from './rule-editors';
@@ -238,6 +239,9 @@ function PauseEnforcement({ d }: { d: AccessDevice }) {
   if (d.router_pause?.pending) return <p className="text-xs text-muted">{tx.enforcement.pauseRouterPending}</p>;
   if (d.router_pause?.error && !d.router_blocked) {
     return <p className="rounded-md border border-warn/40 bg-warn/10 px-2.5 py-1.5 text-xs text-fg">{fill(tx.enforcement.pauseRouterError, { error: d.router_pause.error })}</p>;
+  }
+  if (d.router_confirmed_at && d.router_blocked) {
+    return <p className="text-xs text-ok">{fill(tx.enforcement.pauseRouterConfirmed, { when: relativeTime(d.router_confirmed_at, locale) })}</p>;
   }
   if (d.enforcement_mode !== 'unprotected') return null;
   return (

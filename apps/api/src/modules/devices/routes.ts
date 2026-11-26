@@ -9,6 +9,7 @@ import { EVENT_SELECT } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { resetDeviceType } from './identify.ts';
 import { monitorDevice, monitorDevices } from './monitor.ts';
+import { devicesWithSameName } from './same-device.ts';
 
 export const devicesRouter: Router = Router();
 
@@ -17,7 +18,7 @@ const DEVICE_TYPES = ['windows_computer', 'linux_computer', 'server', 'router', 
 const DEVICE_SELECT = `
   SELECT d.id, d.site_id, s.name AS site_name, d.display_name, d.hostname, host(d.current_ip) AS current_ip,
          d.primary_mac::text AS primary_mac, d.mac_randomized, d.identity_basis, d.vendor, d.device_type, d.type_source,
-         d.type_evidence, d.type_confidence, d.name_source, d.fingerprint, d.status, d.is_critical, d.trust, d.trust_changed_at, d.alerts_muted,
+         d.type_evidence, d.type_confidence, d.name_source, d.fingerprint, d.status, d.is_critical, d.trust, d.trust_changed_at, d.trust_reason, d.alerts_muted,
          (SELECT c.id FROM monitoring_checks c WHERE c.device_id = d.id ORDER BY c.created_at LIMIT 1) AS monitor_check_id, d.owner, d.notes, d.discovery_sources, d.first_seen_at, d.last_seen_at,
          coalesce((SELECT array_agg(t.tag ORDER BY t.tag) FROM device_tags t WHERE t.device_id = d.id), '{}') AS tags,
          coalesce((SELECT array_agg(host(a.ip) ORDER BY a.address_scope = 'unique_local', a.ip) FROM device_addresses a
@@ -109,7 +110,10 @@ devicesRouter.get('/devices/:id', async (req, res) => {
     );
     const labelled = applyMonitorGaps(availability.rows, gaps.rows) as unknown as DeviceDetail['availability'];
     const events = await db.query<NetworkEvent>(`${EVENT_SELECT} WHERE e.device_id = $1 ORDER BY e.occurred_at DESC LIMIT 50`, [id]);
-    return { ...device, ip_history: ipHistory.rows, addresses: addresses.rows, availability: labelled, recent_events: events.rows } satisfies DeviceDetail;
+    const sameName = (await devicesWithSameName(db, device.site_id, device.hostname, [id])).map((s) => ({
+      id: s.id, label: s.label, ip: s.ip, mac: s.mac, mac_randomized: s.mac_randomized, status: s.status, last_seen_at: s.last_seen_at.toISOString(),
+    }));
+    return { ...device, ip_history: ipHistory.rows, addresses: addresses.rows, availability: labelled, recent_events: events.rows, same_name_devices: sameName } satisfies DeviceDetail;
   });
   res.json(detail);
 });
@@ -147,7 +151,7 @@ devicesRouter.patch('/devices/:id', requireRole('technician'), async (req, res) 
     if (body.alerts_muted !== undefined) set('alerts_muted', body.alerts_muted);
     if (body.trust !== undefined) {
       set('trust', body.trust);
-      sets.push('trust_changed_at = now()');
+      sets.push('trust_changed_at = now()', 'trust_reason = NULL');
     }
     if (body.device_type) {
       set('device_type', body.device_type);
@@ -192,9 +196,9 @@ devicesRouter.post('/devices/trust', requireRole('technician'), async (req, res)
   const body = parse(bulkTrustSchema, req.body);
   const updated = await withTenant(ctx.organizationId, async (db) => {
     const result = body.ids
-      ? await db.query(`UPDATE devices SET trust = $2, trust_changed_at = now() WHERE id = ANY($1) AND trust <> $2`, [body.ids, body.trust])
+      ? await db.query(`UPDATE devices SET trust = $2, trust_reason = NULL, trust_changed_at = now() WHERE id = ANY($1) AND trust <> $2`, [body.ids, body.trust])
       : await db.query(
-          `UPDATE devices SET trust = $1, trust_changed_at = now() WHERE trust = 'unreviewed' AND ($2::uuid IS NULL OR site_id = $2)`,
+          `UPDATE devices SET trust = $1, trust_reason = NULL, trust_changed_at = now() WHERE trust = 'unreviewed' AND ($2::uuid IS NULL OR site_id = $2)`,
           [body.trust, body.site_id ?? null],
         );
     await audit(db, req, 'device.trust_bulk', { type: 'device', id: null }, { trust: body.trust, count: result.rowCount, all_unreviewed: Boolean(body.all_unreviewed), site_id: body.site_id ?? null });

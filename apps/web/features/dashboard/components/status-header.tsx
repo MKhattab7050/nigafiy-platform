@@ -164,6 +164,8 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
   const eps = endpoints.data?.items.filter((e) => e.status !== 'revoked');
   const epsOnline = eps?.filter((e) => e.status === 'active' && e.connection_state === 'online').length;
   const epsOffline = eps?.filter((e) => e.status === 'active' && e.connection_state !== 'online').length;
+  // Computers waiting for enrollment are neither online nor offline: say so instead of "0 offline".
+  const epsPending = eps?.filter((e) => e.status !== 'active').length ?? 0;
 
   return (
     <section aria-label={t('overview.healthTitle')} className="grid overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-[minmax(17rem,22rem)_1fr]">
@@ -227,7 +229,13 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
               ]}
             />
           )}
-          {eps && eps.length > 0 && <span className="tnum mt-2 block text-[11.5px] text-muted">{`${epsOffline} ${t('status.offline')}`}</span>}
+          {eps && eps.length > 0 && (
+            <span className="tnum mt-2 block text-[11.5px] text-muted">
+              {[epsOffline ? `${epsOffline} ${t('status.offline')}` : null, epsPending ? fill(t('dash.tile.pendingEnroll'), { count: epsPending }) : null]
+                .filter(Boolean)
+                .join(' · ') || `0 ${t('status.offline')}`}
+            </span>
+          )}
         </StatTile>
       </div>
     </section>

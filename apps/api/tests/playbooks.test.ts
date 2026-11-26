@@ -16,6 +16,8 @@ async function withDevice(label: string) {
   const scopeId = await addScope(a, '192.168.60.0/24');
   const c = await newCollector(a);
   await heartbeat(c);
+  // An empty first sweep: devices already there on the first scan are marked known, and these tests need a new one.
+  await telemetry(c, [sweep(scopeId, [], 1)]);
   expect((await telemetry(c, [sweep(scopeId, [{ ip: '192.168.60.20', mac: 'aa:bb:cc:00:00:20', hostname: 'printer-1' }])])).status).toBe(200);
   const list = await a.agent.get('/api/v1/devices?page_size=50');
   const device = list.body.items.find((d: { current_ip: string }) => d.current_ip === '192.168.60.20');

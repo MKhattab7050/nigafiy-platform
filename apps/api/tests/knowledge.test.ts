@@ -191,6 +191,18 @@ describe('knowledge capture from incidents', () => {
   });
 });
 
+describe('knowledge suggestions stay few', () => {
+  it('captures one suggestion for a problem that keeps coming back while it waits for review', async () => {
+    const a = await newAccount('kb-dupes');
+    for (let i = 0; i < 3; i++) {
+      const id = await addIncident(a, { status: 'resolved', title: 'DNS slow' });
+      await a.agent.post(`/api/v1/incidents/${id}/comments`).set(CSRF).send({ body: `Switched the forwarder again (${i})` });
+    }
+    await capture(a);
+    expect((await a.agent.get('/api/v1/knowledge/counts')).body.candidate).toBe(1);
+  });
+});
+
 describe('knowledge reads never write', () => {
   it('GET list, counts, tags, suggest and detail leave the database unchanged; the capture job does the writing', async () => {
     const a = await newAccount('kb-readonly');

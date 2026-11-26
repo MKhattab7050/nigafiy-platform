@@ -72,6 +72,17 @@ export function getSiteAccess(organizationId: string, site_id: string) {
         [site_id],
       )
     ).rows;
+    // What the routers themselves listed as blocked at their last read: proof that a block took effect.
+    const confirmedRows = (
+      await db.query<{ mac: string; at: Date }>(
+        `SELECT lower(e->>'mac') AS mac, max(r.clients_refreshed_at) AS at
+           FROM site_routers r, jsonb_array_elements(coalesce(r.blocked_entries, '[]'::jsonb)) e
+          WHERE r.site_id = $1 AND r.clients_refreshed_at IS NOT NULL AND coalesce((e->>'partial')::boolean, false) = false
+          GROUP BY 1`,
+        [site_id],
+      )
+    ).rows;
+    const confirmedAt = new Map(confirmedRows.map((r) => [r.mac, r.at]));
     const blockedDeviceIds = new Set(routerBlockRows.map((r) => r.device_id).filter(Boolean));
     const blockedMacs = new Set(routerBlockRows.map((r) => r.mac));
     const scheduledDeviceIds = new Set(routerScheduleRows.map((r) => r.device_id).filter(Boolean));
@@ -210,6 +221,7 @@ export function getSiteAccess(organizationId: string, site_id: string) {
           router_blocked: routerBlocked,
           router_scheduled: routerScheduled,
           router_pause: pauseBlocks.get(d.id) ?? null,
+          router_confirmed_at: macLower ? (confirmedAt.get(macLower)?.toISOString() ?? null) : null,
           doh_bypass_24h: doh?.count ?? 0,
           doh_domains_24h: doh?.domains ?? [],
         };

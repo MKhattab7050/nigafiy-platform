@@ -212,6 +212,12 @@ export interface Device {
   /** Owner's approval: unreviewed (new), known (belongs here), unwanted (alert when it returns). */
   trust: DeviceTrust;
   trust_changed_at: string | null;
+  /**
+   * Why Nigafiy marked it known by itself: first_scan (on the network at the first scan), this_computer
+   * (runs the Sensor), gateway (the Sensor's default gateway), same_name (came back under a new MAC with a
+   * known device's name). Null when a person set the trust.
+   */
+  trust_reason?: 'first_scan' | 'this_computer' | 'gateway' | 'same_name' | null;
   /** No on/offline alerts for this device. */
   alerts_muted: boolean;
   /** Ping check created from this device (follows its IP), if any. */
@@ -296,6 +302,11 @@ export interface DeviceDetail extends Device {
    */
   availability: { status: DeviceStatus; started_at: string; ended_at: string | null; monitor_off?: boolean }[];
   recent_events: NetworkEvent[];
+  /**
+   * Other devices of the site announcing the same specific name: probably this device under another MAC
+   * (a new private address, its other network card). A suggestion with evidence, not a merge.
+   */
+  same_name_devices?: { id: string; label: string; ip: string | null; mac: string | null; mac_randomized: boolean; status: DeviceStatus; last_seen_at: string }[];
 }
 
 export interface NetworkEvent {
@@ -749,6 +760,8 @@ export interface AccessDevice {
   router_scheduled: boolean;
   /** The router block that enforces this device's pause: on its way (pending), or why it failed. Null when none is managed. */
   router_pause: { pending: boolean; error: string | null } | null;
+  /** When the router itself last listed this device as blocked (read back after a change): the block took effect. */
+  router_confirmed_at?: string | null;
   doh_bypass_24h: number;
   doh_domains_24h: string[];
 }

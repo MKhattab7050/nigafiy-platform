@@ -51,7 +51,9 @@ export function ControlsPanel({ device: d, onChanged }: { device: DeviceDetail; 
           options={DEVICE_TRUSTS.map((v) => ({ value: v, label: t(`trust.${v}`) }))}
           onChange={(trust) => tech && trust !== d.trust && run('trust', () => api(`/devices/${d.id}`, { method: 'PATCH', body: { trust } }))}
         />
-        <p className={`mt-1.5 text-xs ${d.trust === 'unwanted' ? 'text-crit' : 'text-faint'}`}>{t(`ctl.trustHint.${d.trust}`)}</p>
+        <p className={`mt-1.5 text-xs ${d.trust === 'unwanted' ? 'text-crit' : 'text-faint'}`}>
+          {d.trust === 'known' && d.trust_reason ? t(`ctl.trustReason.${d.trust_reason}`) : t(`ctl.trustHint.${d.trust}`)}
+        </p>
       </div>
 
       <label id={DEVICE_SECTION.mute} className="flex scroll-mt-20 cursor-pointer items-start gap-2.5 rounded-[var(--radius-control)]">

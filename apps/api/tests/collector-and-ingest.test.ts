@@ -7,6 +7,8 @@ import { closePools, systemPool } from '../src/infrastructure/db.ts';
 import { watchCollectors } from '../src/modules/collectors/index.ts';
 import { dispatchNotifications } from '../src/modules/notifications/index.ts';
 import { CSRF, type TestAccount, type TestCollector, addScope, app, heartbeat, newAccount, newCollector, sweep, telemetry } from './helpers.ts';
+import { identityName, shortVendor } from '../src/modules/devices/index.ts';
+import { MOBILE_OFFLINE_AFTER_MISSED_SWEEPS } from '../src/modules/ingest/discovery/offline.ts';
 
 afterAll(closePools);
 
@@ -128,6 +130,12 @@ describe('discovery ingestion and device identity', () => {
     expect(list[0]!.type_evidence).toContain('default gateway');
     expect(list[2]).toMatchObject({ mac_randomized: true, vendor: null });
     expect(list[3]).toMatchObject({ identity_basis: 'ip', primary_mac: null, device_type: 'unknown', type_source: 'none' });
+    // Everything present at the baseline is the owner's: known automatically, with the reason.
+    expect(list.map((d) => [d.trust, d.trust_reason])).toEqual(list.map(() => ['known', expect.any(String)]));
+    expect(list[0]).toMatchObject({ trust_reason: 'gateway' });
+    expect(list[1]).toMatchObject({ trust_reason: 'first_scan' });
+    // .20 is a laptop with a private MAC (a phone would get the longer mobile grace, tested below).
+    expect((await a.agent.patch(`/api/v1/devices/${list[2]!.id}`).set(CSRF).send({ device_type: 'windows_computer' })).status).toBe(200);
     expect(await events(a, 'device_discovered')).toHaveLength(0); // baseline → one summary event
     expect((await events(a, 'discovery_baseline'))[0]!.title).toContain('found 4 devices');
 
@@ -353,5 +361,77 @@ describe('notifications', () => {
     } finally {
       server.close();
     }
+  });
+});
+
+describe('working things out without asking', () => {
+  it('tells specific device names from generic ones and shortens maker names', () => {
+    expect(identityName('DESKTOP-U1QD285.home')).toBe('desktop-u1qd285');
+    expect(identityName('Galaxy-A35-5G')).toBe('galaxy-a35-5g');
+    for (const generic of ['android', 'iPhone', 'localhost', 'esp', '192-168-1-5', 'a1b2c3d4e5f6', null, '']) expect(identityName(generic)).toBeNull();
+    expect(shortVendor('Zyxel Communications Corporation')).toBe('Zyxel');
+    expect(shortVendor('VMware, Inc.')).toBe('VMware');
+    expect(shortVendor(null)).toBeNull();
+  });
+
+  it('a known phone back with a new private MAC keeps its name and trust, with no new-device alarm', async () => {
+    const a = await newAccount('rejoin');
+    const scopeId = await addScope(a, '192.168.5.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c, { gateway_ip: '192.168.5.1' });
+    const gw = { ip: '192.168.5.1', mac: '00:0c:29:55:00:01' };
+    await telemetry(c, [sweep(scopeId, [gw, { ip: '192.168.5.30', mac: 'da:11:22:33:44:30', hostname: 'Galaxy-A35-5G' }], 60)]);
+    const phone = (await devices(a)).find((d) => d.current_ip === '192.168.5.30')!;
+    expect(phone).toMatchObject({ trust: 'known', trust_reason: 'first_scan' });
+    await a.agent.patch(`/api/v1/devices/${phone.id}`).set(CSRF).send({ display_name: 'Sara phone' });
+
+    // Next day: the same phone with a new private address; the old address is not on the network.
+    await telemetry(c, [sweep(scopeId, [gw, { ip: '192.168.5.31', mac: 'da:99:88:77:66:31', hostname: 'Galaxy-A35-5G' }], 50)]);
+    const back = (await devices(a)).find((d) => d.current_ip === '192.168.5.31')!;
+    expect(back).toMatchObject({ trust: 'known', trust_reason: 'same_name', display_name: 'Sara phone' });
+    const discovered = await events(a, 'device_discovered');
+    expect(discovered.map((e) => [e.severity, e.details.same_as_device_id])).toEqual([['info', phone.id]]);
+    const detail = (await a.agent.get(`/api/v1/devices/${back.id}`)).body;
+    expect(detail.same_name_devices.map((d: { id: string }) => d.id)).toEqual([phone.id]);
+
+    // A second phone of the same model online at the same time is another device: asked about as usual.
+    await telemetry(c, [
+      sweep(scopeId, [gw, { ip: '192.168.5.31', mac: 'da:99:88:77:66:31', hostname: 'Galaxy-A35-5G' }, { ip: '192.168.5.32', mac: 'da:55:55:55:55:32', hostname: 'Galaxy-A35-5G' }], 40),
+    ]);
+    const second = (await devices(a)).find((d) => d.current_ip === '192.168.5.32')!;
+    expect(second.trust).toBe('unreviewed');
+    expect((await events(a, 'device_discovered')).filter((e) => e.severity === 'warning')).toHaveLength(1);
+  });
+
+  it('gives phones a longer grace before offline and stops alerting a device that keeps dropping off', async () => {
+    const a = await newAccount('grace');
+    const scopeId = await addScope(a, '192.168.6.0/24');
+    const c = await newCollector(a);
+    await heartbeat(c, { gateway_ip: '192.168.6.1' });
+    const gw = { ip: '192.168.6.1', mac: '00:0c:29:66:00:01' };
+    const phone = { ip: '192.168.6.20', mac: 'da:66:66:66:66:20', hostname: 'pixel-of-omar' };
+    const printer = { ip: '192.168.6.30', mac: '00:0c:29:66:00:30', hostname: 'printer-office' };
+    let t = 200;
+    await telemetry(c, [sweep(scopeId, [gw, phone, printer], t--)]);
+    const id = (await devices(a)).find((d) => d.current_ip === phone.ip)!.id;
+    // Two misses: the phone is still online (asleep), the printer is offline.
+    for (let i = 0; i < 2; i++) await telemetry(c, [sweep(scopeId, [gw], t--)]);
+    const list = await devices(a);
+    expect(list.find((d) => d.id === id)!.status).toBe('online');
+    expect(list.find((d) => d.current_ip === printer.ip)!.status).toBe('offline');
+    for (let i = 2; i < MOBILE_OFFLINE_AFTER_MISSED_SWEEPS; i++) await telemetry(c, [sweep(scopeId, [gw], t--)]);
+    expect((await devices(a)).find((d) => d.id === id)!.status).toBe('offline');
+
+    // The printer drops off again and again: the first two drops are alerted, later ones only recorded.
+    for (let round = 0; round < 3; round++) {
+      await telemetry(c, [sweep(scopeId, [gw, printer], t--)]);
+      await telemetry(c, [sweep(scopeId, [gw], t--)]);
+      await telemetry(c, [sweep(scopeId, [gw], t--)]);
+    }
+    const printerId = (await devices(a)).find((d) => d.current_ip === printer.ip)!.id;
+    const printerEvents = (await a.agent.get(`/api/v1/events?device_id=${printerId}&limit=50`)).body.items as Record<string, any>[];
+    expect(printerEvents.filter((e) => e.type === 'device_offline')).toHaveLength(2);
+    const history = (await a.agent.get(`/api/v1/devices/${printerId}`)).body.availability.filter((x: { status: string }) => x.status === 'offline');
+    expect(history.length).toBeGreaterThanOrEqual(4);
   });
 });

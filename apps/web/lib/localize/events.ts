@@ -31,6 +31,8 @@ export function localizeEventTitle(ev: Pick<NetworkEvent, 'type' | 'title' | 'de
 
     case 'device_discovered': {
       const ip = str(d.ip);
+      const sameAs = str(d.same_as);
+      if (sameAs) return `عاد ${sameAs} بعنوان جديد${ip ? ` (${ltr(ip)})` : ''}`;
       const name = str(d.hostname) ?? str(d.name);
       if (name && ip) return `تم اكتشاف جهاز جديد: ${name} (${ltr(ip)})`;
       if (ip) return `تم اكتشاف جهاز جديد على العنوان ${ltr(ip)}`;

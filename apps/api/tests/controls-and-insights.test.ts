@@ -19,6 +19,9 @@ async function home() {
   const scopeId = await addScope(a, '192.168.7.0/24');
   const c = await newCollector(a);
   await heartbeat(c, { gateway_ip: '192.168.7.1' });
+  // An empty first scan, so the hosts below join afterwards (devices present at the first scan are
+  // known automatically and would not need reviewing).
+  await telemetry(c, [sweep(scopeId, [], 31)]);
   await telemetry(c, [sweep(scopeId, HOSTS, 30)]);
   const list = await devices(a);
   const byIp = (ip: string) => list.find((d) => d.current_ip === ip)!;
@@ -27,12 +30,14 @@ async function home() {
 
 describe('device controls', () => {
   it('approves devices, alerts on unwanted ones, and mutes alerts', async () => {
-    const { a, c, scopeId, nas, tv } = await home();
+    const { a, c, scopeId, gw, nas, tv } = await home();
     expect(nas.trust).toBe('unreviewed');
-    expect((await devices(a, '&trust=unreviewed')).length).toBe(3);
+    // The gateway is known by itself (the Sensor routes through it), and says why.
+    expect(gw).toMatchObject({ trust: 'known', trust_reason: 'gateway' });
+    expect((await devices(a, '&trust=unreviewed')).length).toBe(2);
 
     // Mark everything I know, then flag the TV as unwanted.
-    expect((await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ all_unreviewed: true, trust: 'known' })).body).toEqual({ updated: 3 });
+    expect((await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ all_unreviewed: true, trust: 'known' })).body).toEqual({ updated: 2 });
     expect((await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ trust: 'known' })).status).toBe(400); // neither ids nor all
     const patched = await a.agent.patch(`/api/v1/devices/${tv.id}`).set(CSRF).send({ trust: 'unwanted' });
     expect(patched.status).toBe(200);
@@ -71,14 +76,13 @@ describe('device controls', () => {
     const col2 = await request(app)
       .post('/api/v1/collector/enroll')
       .send({ enrollment_token: col2Created.body.enrollment_token, hostname: 'h2', version: '0.1.0-test', os: 'linux', arch: 'amd64' });
-    await telemetry(
-      { id: col2.body.collector_id, credential: col2.body.credential, enrollmentToken: col2Created.body.enrollment_token },
-      [sweep(scope2.body.id, [{ ip: '192.168.8.10', mac: '00:0c:29:88:00:10', hostname: 'branch-nas' }], 1)],
-    );
+    const col2Ref = { id: col2.body.collector_id, credential: col2.body.credential, enrollmentToken: col2Created.body.enrollment_token };
+    await telemetry(col2Ref, [sweep(scope2.body.id, [], 2)]); // empty first scan: branch-nas joins later
+    await telemetry(col2Ref, [sweep(scope2.body.id, [{ ip: '192.168.8.10', mac: '00:0c:29:88:00:10', hostname: 'branch-nas' }], 1)]);
 
     const res = await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ all_unreviewed: true, trust: 'known', site_id: a.siteId });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ updated: 3 });
+    expect(res.body).toEqual({ updated: 2 });
     expect((await devices(a, `&site_id=${site2.body.id}&trust=unreviewed`)).length).toBe(1);
     const audit = (await a.agent.get('/api/v1/audit-logs')).body.items.find((e: any) => e.action === 'device.trust_bulk');
     expect(audit.metadata.site_id).toBe(a.siteId);
@@ -130,7 +134,7 @@ describe('insights', () => {
     let report = (await a.agent.get('/api/v1/insights')).body;
     expect(report.insights.map((i: any) => i.code)).toContain('unreviewed');
     const unreviewed = report.insights.find((i: any) => i.code === 'unreviewed');
-    expect(unreviewed.params.count).toBe(3);
+    expect(unreviewed.params.count).toBe(2);
     expect(unreviewed.actions.map((x: any) => x.code)).toEqual(['review', 'mark_all_known']);
 
     await a.agent.post('/api/v1/devices/trust').set(CSRF).send({ all_unreviewed: true, trust: 'known' });
@@ -185,5 +189,11 @@ describe('insights', () => {
     });
     expect(bad.verdict).toBe('urgent');
     expect(bad.insights.map((i) => i.code)).toEqual(['path_gateway_down', 'critical_offline', 'suggest_monitor']);
+
+    // Housekeeping alone (ten new devices not reviewed yet) lowers the score but is never "act now".
+    const fresh = Array.from({ length: 10 }, (_, i) => dev({ id: `n${i}`, label: `phone-${i}`, trust: 'unreviewed', first_seen_at: now }));
+    const busy = buildInsights({ ...facts, devices: fresh });
+    expect(busy.score).toBeLessThan(90);
+    expect(busy.verdict).toBe('attention');
   });
 });

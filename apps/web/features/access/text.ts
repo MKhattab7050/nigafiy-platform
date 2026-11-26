@@ -103,6 +103,7 @@ const en = {
     deviceRouterScheduled: 'Router schedule',
     deviceDohBadge: '{n} DoH bypass attempts (24 h)',
     pauseRouterPending: 'Blocking this device on the router…',
+    pauseRouterConfirmed: 'Confirmed: the router itself lists this device as blocked (checked {when}).',
     pauseRouterError: 'The router could not block this device: {error}. Nigafiy tries again every minute.',
     pauseNoEffect:
       'This pause has no effect yet: the device does not use the DNS filter, and no router that can block it is connected. Connect your router so a pause blocks the device on the router itself.',
@@ -225,6 +226,7 @@ const ar: Dict = {
     deviceRouterScheduled: 'جدول على الراوتر',
     deviceDohBadge: '{n} محاولة تخطّي DoH (24 س)',
     pauseRouterPending: 'جارٍ حظر الجهاز من الراوتر…',
+    pauseRouterConfirmed: 'تم التأكد: الراوتر نفسه يعرض هذا الجهاز كمحظور (فُحص {when}).',
     pauseRouterError: 'لم يتمكن الراوتر من حظر هذا الجهاز: {error}. يعيد Nigafiy المحاولة كل دقيقة.',
     pauseNoEffect:
       'هذا الإيقاف ليس له تأثير بعد: الجهاز لا يستخدم فلتر DNS، ولا يوجد راوتر متصل يمكنه حظره. اربط الراوتر ليقوم الإيقاف بحظر الجهاز من الراوتر نفسه.',

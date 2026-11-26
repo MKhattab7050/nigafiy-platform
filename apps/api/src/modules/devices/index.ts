@@ -8,7 +8,8 @@ import { devicesRouter } from './routes.ts';
 export const devicesModule = defineModule({ name: 'devices', api: devicesRouter });
 
 export type { Fingerprint } from './classify.ts';
-export { applyIdentification } from './identify.ts';
+export { applyIdentification, shortVendor } from './identify.ts';
+export { identityName } from './same-device.ts';
 export { type ControlTarget, alertsControl, monitoringControl, trustControl, wakeControl } from './controls.ts';
 export { type WakeQueued, queueWakeOnLan, setDeviceTrust } from './actions.ts';
 export { type DhcpOsResult, type OsFamily, classifyDhcp, osFamilyLabel } from './dhcp-fingerprint.ts';

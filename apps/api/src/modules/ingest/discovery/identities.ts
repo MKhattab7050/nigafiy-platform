@@ -16,6 +16,9 @@ export interface DeviceRow {
   alerts_muted: boolean;
   discovery_sources: string[];
   last_seen_at: Date;
+  /** Optional for older callers: used to give phones a longer grace before "offline". */
+  device_type?: string;
+  mac_randomized?: boolean;
 }
 
 /** One observed identity: a MAC address, or (when no MAC was observable) a single IP address. */
