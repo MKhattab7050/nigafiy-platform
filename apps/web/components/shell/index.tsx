@@ -8,6 +8,8 @@ import { useSession } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { useProgramId } from '@/lib/programs-context';
 import { useTheme } from '@/lib/theme';
+import { BottomNav } from './bottom-nav';
+import { CommandPalette } from './command-palette';
 import { ShellPartBoundary } from './part-boundary';
 import { Sidebar } from './sidebar';
 import { TopBar } from './top-bar';
@@ -22,6 +24,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const close = useCallback(() => setOpen(false), []);
   const drawer = useRef<HTMLDivElement>(null);
   const program = useProgramId();
+  const [search, setSearch] = useState(false);
+  const closeSearch = useCallback(() => setSearch(false), []);
 
   // The program's accent tokens (globals.css, html[data-program]) follow the URL. Set before paint so a
   // program never flashes in another program's colour; removed when the shell unmounts (sign-in pages).
@@ -37,6 +41,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => bindUser(me.user.id), [bindUser, me.user.id]);
   useEffect(() => setOpen(false), [pathname]);
+  // Ctrl+K / ⌘K opens the one search from anywhere (and closes it again). Keys a page already used
+  // (the remote-desktop viewer and the shell forward them to the computer) are left alone.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.shiftKey || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return;
+      e.preventDefault();
+      setOpen(false);
+      setSearch((v) => !v);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
   // Phone menu: focus moves in, Tab stays inside, Escape closes, focus returns to the menu button.
   useFocusTrap(drawer, open, close);
 
@@ -64,12 +80,26 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       )}
       <ShellPartBoundary part="topBar">
-        <TopBar onMenu={() => setOpen(true)} />
+        <TopBar onMenu={() => setOpen(true)} onSearch={() => setSearch(true)} />
       </ShellPartBoundary>
-      <main key={pathname} id="main" tabIndex={-1} className="outline-none mx-auto w-full min-w-0 max-w-[1480px] animate-enter px-4 py-6 lg:px-8 lg:py-7">
+      {/* Phones: room at the bottom for the bottom bar (its height plus the safe area). */}
+      <main
+        key={pathname}
+        id="main"
+        tabIndex={-1}
+        className="outline-none mx-auto w-full min-w-0 max-w-[1480px] animate-enter px-4 py-6 max-md:pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-7"
+      >
         <OwnPasswordBanner />
         {children}
       </main>
+      <ShellPartBoundary part="bottomNav">
+        <BottomNav onMore={() => setOpen(true)} moreOpen={open} />
+      </ShellPartBoundary>
+      {search && (
+        <ShellPartBoundary part="search">
+          <CommandPalette onClose={closeSearch} />
+        </ShellPartBoundary>
+      )}
     </div>
   );
 }

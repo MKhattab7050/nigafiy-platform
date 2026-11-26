@@ -24,14 +24,19 @@ import { ThemeSwitch } from './theme-switch';
 const RAIL_LABEL =
   'lg:rail:pointer-events-none lg:rail:absolute lg:rail:start-[calc(100%+12px)] lg:rail:z-50 lg:rail:w-max lg:rail:rounded-[6px] lg:rail:border lg:rail:border-line-strong lg:rail:bg-raised lg:rail:px-2 lg:rail:py-1 lg:rail:text-xs lg:rail:text-fg lg:rail:opacity-0 lg:rail:shadow-[var(--shadow-overlay)] lg:rail:transition-opacity lg:rail:group-hover:opacity-100 lg:rail:group-focus-visible:opacity-100';
 
-function BadgeCount({ badge }: { badge: NavBadge }) {
+export function BadgeCount({ badge, className }: { badge: NavBadge; className?: string }) {
   const { t } = useI18n();
   const { siteId } = useSites();
   const query = useQuery<unknown>(badge.path(siteId), badge.topics, 60_000);
   const count = query.data === undefined ? 0 : badge.count(query.data);
   if (!count) return null;
   return (
-    <span className="tnum ms-auto inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-crit px-1 text-[11px] font-semibold text-on-accent lg:rail:absolute lg:rail:-top-1 lg:rail:end-0.5 lg:rail:ms-0 lg:rail:h-4 lg:rail:min-w-4 lg:rail:text-[10px]">
+    <span
+      className={
+        className ??
+        'tnum ms-auto inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-crit px-1 text-[11px] font-semibold text-on-accent lg:rail:absolute lg:rail:-top-1 lg:rail:end-0.5 lg:rail:ms-0 lg:rail:h-4 lg:rail:min-w-4 lg:rail:text-[10px]'
+      }
+    >
       {count}
       <span className="sr-only"> {t(badge.label)}</span>
     </span>
