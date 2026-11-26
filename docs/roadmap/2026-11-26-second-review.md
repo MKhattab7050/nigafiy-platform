@@ -143,3 +143,22 @@ Their branches are new (`*-2`); the old `claude/*` branches stay as they were.
 | `claude/navigation-palette-2-e3c5b9` | a308718 | ready to merge: typecheck, web unit 95/95, browser 1280/390 EN/AR; e2e smoke not run; Fleet filter row still overflows at 390 px (`Segmented`, left alone) |
 | `claude/device-states-2-90beda` | a82e907 | ready to merge: typecheck + related tests; no browser check (its base lacks the 3ebfd60 pool fix, so a fresh API hung) — check after merge |
 | `claude/system-health-2-7ee7ad` | d21ffac + uncommitted web pages | still running (API suite) |
+
+### Merged (owner: "ادمج الفروع لما تخلص", 2026-11-26 ~21:00)
+
+All four `*-2` branches are merged into `phase-2-network-intelligence` (0d3680e dashboard, 021fae4
+navigation, 41c68af system-health, 65772a6 device-states). Conflicts in device-states:
+- `shell/top-bar.tsx`: kept navigation's version (the command palette replaced the old search
+  modal); device-states' shared state badge for device/computer hits moved into
+  `shell/command-palette.tsx`.
+- `dashboard/status-header.tsx`: device-states' `endpointState()` counts + dashboard-guidance's
+  "explain this number" basis.
+
+Checks after the merge: typecheck of every package clean, web unit 95/95, full API suite 585 passed / 10 skipped (81 files). Dev stack (5433/4100/3100) started on the merged code; browser check signed in to the
+SIMULATED demo org: dashboard (Next, score reasons, checklist), Ctrl+K palette with state badges,
+devices, Fleet, System Health, weekly report — 390 px with no sideways scroll, Arabic and English,
+bottom nav on phone, no console or API errors.
+
+Still open: e2e smoke not run; "Next" can show two near-duplicate monitoring steps
+(suggest_monitor + suggest_monitor_infrastructure); Fleet filter row scrolls sideways inside itself
+at 390 px; new release + installed-copy test (day 7); nothing pushed.
