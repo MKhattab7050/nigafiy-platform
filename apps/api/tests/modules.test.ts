@@ -29,6 +29,9 @@ describe('module registry', () => {
         ['outside-heartbeat', 60_000, 727182, 'notifications'],
         ['notification-dispatch', 5_000, 727102, 'notifications'],
         ['notification-escalation', 60_000, 727106, 'notifications'],
+        ['notification-calm-summaries', 60_000, 727196, 'notifications'],
+        ['telegram-updates', 4_000, 727197, 'notifications'],
+        ['scheduled-backups', 300_000, 727301, 'backups'],
         ['playbook-engine', 5_000, 727140, 'playbooks'],
         ['quarantine-auto-release', 60_000, 727161, 'ports'],
         ['retention', 3_600_000, 727103, 'system'],
@@ -93,6 +96,7 @@ describe('GET /api/v1/system/modules', () => {
       'knowledge-capture',
       'maintenance-watch',
       'monitor-alive',
+      'notification-calm-summaries',
       'notification-dispatch',
       'notification-escalation',
       'outside-heartbeat',
@@ -102,7 +106,9 @@ describe('GET /api/v1/system/modules', () => {
       'rollup',
       'router-pauses',
       'router-schedules',
+      'scheduled-backups',
       'sso-cleanup',
+      'telegram-updates',
     ]);
     for (const j of jobs) expect(j.state).toBe('not_scheduled'); // the test process does not run the scheduler
     for (const j of jobs as unknown as Array<{ overdue: boolean; overdue_at: string | null }>) {

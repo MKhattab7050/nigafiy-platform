@@ -183,10 +183,7 @@ async function applyRefresh(db: Db, c: CollectorContext, r: Target, item: Router
   };
   if (item.identity) set('identity', JSON.stringify(item.identity));
   if (item.capabilities) set('capabilities', JSON.stringify(item.capabilities));
-  if (item.blocked) {
-    set('blocked_entries', JSON.stringify(item.blocked));
-    set('blocked_refreshed_at', at);
-  }
+  if (item.blocked) set('blocked_entries', JSON.stringify(item.blocked));
   if (item.clients) set('clients_refreshed_at', at);
   sets.push(`device_id = coalesce(device_id, (SELECT d.id FROM devices d WHERE d.site_id = site_routers.site_id AND d.current_ip = site_routers.address ORDER BY d.last_seen_at DESC LIMIT 1))`);
   await db.query(`UPDATE site_routers SET ${sets.join(', ')} WHERE id = $1`, vals);

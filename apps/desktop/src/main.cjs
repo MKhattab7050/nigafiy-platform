@@ -441,6 +441,8 @@ function refreshTray() {
         ? { label: 'Stop collector', click: () => void collector.stop() }
         : { label: 'Start collector', enabled: state.enrolled && Boolean(state.settings.serverUrl), click: () => tryStart() },
       ...updateTrayItems(),
+      // Installed copy: opens Settings → Backups, where "Back up now" runs with the owner's sign-in.
+      ...(localMode ? [{ label: app.getLocale().toLowerCase().startsWith('ar') ? 'نسخ احتياطي الآن…' : 'Back up now…', click: () => openProgram(startProgram, '/settings#backups') }] : []),
       { type: 'separator' },
       ...(CAN_START_AT_LOGIN
         ? [{ label: 'Start with Windows', type: 'checkbox', checked: app.getLoginItemSettings(LOGIN_ITEM).openAtLogin, click: (item) => setStartAtLogin(item.checked) }]

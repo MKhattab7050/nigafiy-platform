@@ -45,7 +45,7 @@ const W = {
 /** A numbered circle that points at the place to press. */
 function Marker({ x, y, n }: { x: number; y: number; n: number }) {
   return (
-    <g aria-hidden="true">
+    <g>
       <circle cx={x} cy={y} r={13} fill="#ffb000" stroke="#1b1b1b" strokeWidth={2} />
       <text x={x} y={y + 5} textAnchor="middle" fontSize={15} fontWeight={700} fill="#1b1b1b" direction="ltr">
         {n}
@@ -119,7 +119,7 @@ export function SmartScreenFigure({ lang, file, label }: { lang: Lang; file: str
     <Frame label={label} viewBox="0 0 720 230">
       {panel(rtl ? 380 : 0, false)}
       {panel(rtl ? 0 : 380, true)}
-      <path d={rtl ? 'M372 115 L348 115 M356 107 L348 115 L356 123' : 'M348 115 L372 115 M364 107 L372 115 L364 123'} stroke="currentColor" strokeWidth={2.5} fill="none" aria-hidden="true" />
+      <path d={rtl ? 'M372 115 L348 115 M356 107 L348 115 L356 123' : 'M348 115 L372 115 M364 107 L372 115 L364 123'} stroke="currentColor" strokeWidth={2.5} fill="none" />
     </Frame>
   );
 }

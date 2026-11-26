@@ -6,7 +6,7 @@ import { type NotificationEvent, actionApiUrl, actionLandingUrl, eventPageUrl, s
  * fields so untrusted LAN names can never inject markup or break formatting.
  */
 
-export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy';
+export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy' | 'push';
 
 const SEVERITY_EMOJI: Record<string, string> = {
   critical: '🔴',

@@ -71,7 +71,7 @@ export default function NotificationActionPage() {
     body = <ErrorNote error={loadError ?? new Error(t('nact.expired'))} />;
   } else if (!info) {
     body = (
-      <div aria-label={t('nact.loading')}>
+      <div role="status" aria-label={t('nact.loading')}>
         <SkeletonBlock lines={3} />
       </div>
     );

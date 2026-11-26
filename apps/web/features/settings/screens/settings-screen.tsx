@@ -9,6 +9,7 @@ import { UpdatesCard } from '@/features/platform';
 import { type Key, useI18n } from '@/lib/i18n';
 import { AccountSecurity } from '../components/account-security';
 import { AuditLog } from '../components/audit-log';
+import { BackupsCard } from '../components/backups';
 import { MovedCard } from '../components/moved-card';
 import { OutsideAccessCard } from '../components/outside-access';
 import { SsoProviders } from '../components/sso-providers';
@@ -53,6 +54,11 @@ export function SettingsScreen() {
         <div id="updates" className="scroll-mt-20">
           <UpdatesCard />
         </div>
+        {can('owner') && (
+          <div id="backups" className="scroll-mt-20">
+            <BackupsCard />
+          </div>
+        )}
         <div id="tls" className="scroll-mt-20">
           <LanTlsCard />
         </div>

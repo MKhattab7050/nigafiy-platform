@@ -12,9 +12,18 @@ entry (`actor = 'system'`, `metadata.tool` names the tool, plus the operator's O
 
 All three read `DATABASE_URL` (owner connection) and `APP_DATABASE_URL` from the environment or the
 repository `.env`. For the installed desktop app the `.env` lives in the data folder
-(`%LOCALAPPDATA%\…\.env`, the folder `NIGAFIY_DATA_DIR` (legacy `LD_DATA_DIR`) points at): export its `DATABASE_URL`,
-`APP_DATABASE_URL` and `APP_ENCRYPTION_KEY` into the shell first, or run the tools from a checkout
-whose `.env` holds those values.
+`%APPDATA%\Nigafiy\data\.env` (the folder `NIGAFIY_DATA_DIR`, legacy `LD_DATA_DIR`, points at):
+export its `DATABASE_URL`, `APP_DATABASE_URL` and `APP_ENCRYPTION_KEY` into the shell first, or run
+the tools from a checkout whose `.env` holds those values.
+
+> **Installed copies: use Settings → Backups instead.** On an installed copy with one organization
+> the app itself has "Back up now", daily or weekly automatic backups to a folder you choose
+> (default `%APPDATA%\Nigafiy\data\backups`), and restore from a `.nigafiy-backup` file. It needs
+> no PostgreSQL client tools. With a backup passphrase set, every backup also carries the encryption
+> key, locked with that passphrase; without it, router, SMTP and other stored secrets in a backup
+> restored on another computer cannot be read and must be entered again. The tray menu's
+> "Back up now…" opens that card. The command-line tools below are for servers and for recovery
+> when the app does not start.
 
 > **Always stop the API first** (or the Nigafiy engine stack / desktop app). The tools refuse to run
 > while an API instance is connected, because a running API would keep writing with the old key or
