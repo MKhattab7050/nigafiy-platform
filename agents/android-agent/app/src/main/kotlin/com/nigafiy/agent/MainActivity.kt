@@ -59,7 +59,18 @@ class MainActivity : Activity() {
         }
         setContentView(scroll)
         fromLink(intent)
-        // Also resumes an enrollment that was waiting (as BootReceiver does after a reboot or update).
+        startAgent()
+    }
+
+    /**
+     * Opening the app runs Nigafiy again after "Stop everything", and resumes an enrollment that was
+     * waiting (as BootReceiver does after a reboot or update).
+     */
+    private fun startAgent() {
+        if (store.stopped) {
+            store.stopped = false
+            android.widget.Toast.makeText(this, R.string.stop_all_resumed, android.widget.Toast.LENGTH_SHORT).show()
+        }
         if (store.enrolled || store.pendingEnrollment != null) AgentService.start(this)
     }
 
@@ -68,7 +79,11 @@ class MainActivity : Activity() {
         fromLink(intent)
     }
 
-    override fun onResume() { super.onResume(); handler.post(refresh) }
+    override fun onResume() {
+        super.onResume()
+        if (store.stopped) startAgent()
+        handler.post(refresh)
+    }
     override fun onPause() { super.onPause(); handler.removeCallbacks(refresh) }
 
     private var prefill: Enrollment? = null
@@ -175,6 +190,25 @@ class MainActivity : Activity() {
         }
         ui.divider(ctl)
         ui.control(ctl, getString(R.string.control_ring_message), null, getString(R.string.chip_notification), getString(R.string.controls_ring_message))
+
+        // The person's own off switch. Not on a company phone (Device Owner): IT manages that one.
+        if (mode != Mode.DEVICE_OWNER) {
+            val stop = ui.card(root, getString(R.string.stop_all_title), getString(R.string.stop_all_hint))
+            ui.addButton(stop, getString(R.string.action_stop_all)) { confirmStopAll() }
+        }
+    }
+
+    private fun confirmStopAll() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.stop_all_confirm_title)
+            .setMessage(R.string.stop_all_confirm_text)
+            .setPositiveButton(R.string.action_stop_all) { _, _ ->
+                AgentService.stopEverything(this)
+                handler.removeCallbacks(refresh)
+                finishAndRemoveTask()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     // What was typed, kept across redraws (an error, a refused token, rotation) so nothing is lost.

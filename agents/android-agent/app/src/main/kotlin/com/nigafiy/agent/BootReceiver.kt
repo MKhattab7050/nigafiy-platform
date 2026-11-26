@@ -9,6 +9,8 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val store = Store(context)
+        // Stopped by the person: stays off until they open the app (not after a reboot or an update).
+        if (store.stopped) return
         if (store.enrolled || store.pendingEnrollment != null) AgentService.start(context)
     }
 }

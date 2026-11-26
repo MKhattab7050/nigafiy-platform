@@ -26,6 +26,14 @@ class Store(ctx: Context) {
     var lastError: String? get() = prefs.getString("last_error", null); set(v) = prefs.edit().putString("last_error", v).apply()
     var heartbeatSeconds: Int get() = prefs.getInt("heartbeat_s", 30); set(v) = prefs.edit().putInt("heartbeat_s", v.coerceIn(10, 600)).apply()
     /** What Nigafiy last required (none/low/medium/high), reported back to Fleet. */
+    /**
+     * The person pressed "Stop everything": nothing runs (no service, no boot or update restart, no
+     * gestures) until they open the app again. Written with commit() so it is on disk before the
+     * service is stopped.
+     */
+    var stopped: Boolean
+        get() = prefs.getBoolean("stopped", false)
+        set(v) { prefs.edit().putBoolean("stopped", v).commit() }
     var passwordComplexity: String? get() = prefs.getString("pw_complexity", null); set(v) = prefs.edit().putString("pw_complexity", v).apply()
 
     /** An enrollment waiting to run (from the QR provisioning extras or a link). */

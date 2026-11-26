@@ -133,6 +133,9 @@ object ScreenShare {
         stopAll(ctx, notifyFleet = true, ended = a)
     }
 
+    /** "Stop everything" on the phone: ends any screen view or control now and tells Fleet. */
+    fun stopEverything(ctx: Context) = stopAll(ctx, notifyFleet = true)
+
     @Synchronized
     private fun stopAll(ctx: Context, notifyFleet: Boolean, ended: ScreenSessionRequest? = active) {
         pending?.let { p -> answer(p.request.sessionId, Answer.UNAVAILABLE, "replaced by a newer request") }

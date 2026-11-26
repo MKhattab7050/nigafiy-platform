@@ -95,4 +95,10 @@
     <string name="chip_notification">إشعار</string>
     <string name="controls_restricted">إذا قال Android «App was denied access» أو كان المفتاح رمادياً: افتح معلومات التطبيق، واضغط ⋮ (أعلى اليمين) ← السماح بالإعدادات المقيّدة، وأكّد، ثم فعّل Nigafiy في إمكانية الوصول.</string>
     <string name="action_app_info">فتح معلومات التطبيق</string>
+    <string name="stop_all_title">إيقاف Nigafiy</string>
+    <string name="stop_all_hint">يوقف Nigafiy تمامًا على هذا الهاتف: لا اتصال ولا تقارير ولا عرض أو تحكم بالشاشة ولا إشعار. لا يعمل أي شيء، حتى بعد إعادة التشغيل، إلى أن تفتح هذا التطبيق مرة أخرى.</string>
+    <string name="action_stop_all">إيقاف كل شيء</string>
+    <string name="stop_all_confirm_title">إيقاف كل شيء؟</string>
+    <string name="stop_all_confirm_text">سيظهر هذا الهاتف في Nigafiy غير متصل إلى أن تفتح هذا التطبيق مرة أخرى. فتحه يعيد تشغيل كل شيء.</string>
+    <string name="stop_all_resumed">عاد Nigafiy للعمل.</string>
 </resources>

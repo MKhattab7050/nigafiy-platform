@@ -95,4 +95,10 @@
     <string name="chip_notification">Notification</string>
     <string name="controls_restricted">If Android says "App was denied access" or the switch is greyed out: open App info, tap ⋮ (top right) → Allow restricted settings, confirm, then turn Nigafiy on in Accessibility.</string>
     <string name="action_app_info">Open App info</string>
+    <string name="stop_all_title">Stop Nigafiy</string>
+    <string name="stop_all_hint">Turns Nigafiy off completely on this phone: no connection, no reports, no screen view or control, no notification. Nothing runs, not even after a restart, until you open this app again.</string>
+    <string name="action_stop_all">Stop everything</string>
+    <string name="stop_all_confirm_title">Stop everything?</string>
+    <string name="stop_all_confirm_text">Nigafiy shows this phone as offline until you open this app again. Opening it turns everything back on.</string>
+    <string name="stop_all_resumed">Nigafiy is running again.</string>
 </resources>

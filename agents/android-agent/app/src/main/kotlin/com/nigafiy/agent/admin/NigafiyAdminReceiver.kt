@@ -18,6 +18,7 @@ class NigafiyAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onEnabled(context: Context, intent: Intent) {
+        if (com.nigafiy.agent.Store(context).stopped) return
         AgentService.start(context)
     }
 }

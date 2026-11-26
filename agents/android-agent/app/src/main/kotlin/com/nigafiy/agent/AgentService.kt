@@ -58,6 +58,8 @@ class AgentService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Stopped by the person (also when Android restarts a sticky service): leave at once.
+        if (store.stopped) { stopService(); return START_NOT_STICKY }
         if (running.compareAndSet(false, true)) {
             pool.execute { loop() }
         }
@@ -104,6 +106,7 @@ class AgentService : Service() {
 
     private fun loop() {
         while (running.get()) {
+            if (store.stopped) { stopService(); return }
             if (!store.enrolled) {
                 // Not (or no longer) enrolled: enroll when an enrollment is waiting (QR provisioning
                 // extras, or a link opened), else stop. "Stop management" forgets the credential
@@ -253,6 +256,17 @@ class AgentService : Service() {
 
         fun start(ctx: Context) {
             ctx.startForegroundService(Intent(ctx, AgentService::class.java))
+        }
+
+        /**
+         * "Stop everything" from the app: no connection, reports, screen view, control or notification
+         * until the person opens the app again (MainActivity clears [Store.stopped]).
+         */
+        fun stopEverything(ctx: Context) {
+            Store(ctx).stopped = true
+            try { ScreenShare.stopEverything(ctx) } catch (_: Exception) { }
+            ctx.stopService(Intent(ctx, AgentService::class.java))
+            ctx.getSystemService(NotificationManager::class.java).cancelAll()
         }
     }
 }

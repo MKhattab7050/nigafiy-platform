@@ -56,7 +56,7 @@ class ControlService : AccessibilityService() {
     }
 
     /** Runs [plan]; true when Android completed the gesture. Called off the main thread. */
-    fun perform(plan: GesturePlan): Boolean = when (plan) {
+    fun perform(plan: GesturePlan): Boolean = if (Store(this).stopped) false else when (plan) {
         is GesturePlan.Global -> {
             val action = when (plan.action) {
                 "back" -> GLOBAL_ACTION_BACK
