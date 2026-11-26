@@ -76,3 +76,14 @@ Owner's decisions (memory: admin-phone-decisions):
 4. Fleet web UI: the choice when connecting, badge, menu (EN + AR).
 5. Phone app: Dashboard tab (WebView with the pin), alerts as notifications, Home alerts card.
 6. Release 1.0.6 (asked first), install, try it end to end on the A36.
+
+## Status (2026-11-27)
+
+Stages 1–5 are built and committed: 24f53c4 (server), acc2a3f (alerts), a1fa50f (Fleet UI), 9d75b1a (app).
+
+- API tests: `tests/fleet-android.test.ts` (admin phones), `tests/phone-dashboard.test.ts` and
+  `tests/phone-alerts.test.ts`. Web unit tests pass 95/95, and the Kotlin JVM tests 53/53.
+- Not tried yet on a real phone: the installed copy is 1.0.5 and has none of this.
+- Next: release 1.0.6 (needs the owner's OK), install it, make the A36 an admin phone in Fleet, then
+  check the Dashboard tab, remote control of the PC from the phone, and a real alert (unplug
+  something important).
