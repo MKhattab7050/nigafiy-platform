@@ -54,9 +54,10 @@ export async function applyIdentification(
     if (JSON.stringify(fingerprint) !== JSON.stringify(d.fingerprint ?? {})) set('fingerprint', JSON.stringify(fingerprint));
 
     let hostname = d.hostname;
-    // Reverse DNS stays authoritative when present; otherwise use the name the device announces.
+    // Reverse DNS stays authoritative when present, and so does the name the Nigafiy app on the device
+    // reports (agent-identity.ts); otherwise use the name the device announces.
     const announced = bestName(fingerprint);
-    if (announced && (!d.hostname || (d.name_source !== 'rdns' && d.hostname !== announced.name))) {
+    if (announced && (!d.hostname || (d.name_source !== 'rdns' && d.name_source !== 'agent' && d.hostname !== announced.name))) {
       hostname = announced.name;
       set('hostname', announced.name);
       set('name_source', announced.source);

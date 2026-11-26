@@ -214,6 +214,30 @@ describe('Android phones: enrollment, heartbeat and the endpoint view', () => {
     expect((await read()).apps_count).toBe(7);
   });
 
+  it("the network device takes the phone's own name, maker, type and owner, and never what a person set", async () => {
+    const a = await newAccount('android-identity');
+    const dev = await systemPool.query<{ id: string }>(
+      `INSERT INTO devices (organization_id, site_id, identity_basis, current_ip, hostname, name_source, mac_randomized, first_seen_at, last_seen_at)
+       VALUES ($1, $2, 'ip', '10.20.0.77', 'mhmd-s-A36', 'rdns', true, now(), now()) RETURNING id`,
+      [a.organizationId, a.siteId],
+    );
+    const deviceId = dev.rows[0]!.id;
+    const own = { ...identity("محمد's A36"), manufacturer: 'samsung', model: 'SM-A366B', primary_ip: '10.20.0.77' };
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'My phone', platform: 'android' });
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({ enrollment_token: created.body.enrollment_token, ...own, security: { checks: checks(), measured_at: now() } });
+    expect(enrolled.status, JSON.stringify(enrolled.body)).toBe(201);
+    const row = async () =>
+      (await systemPool.query(`SELECT hostname, name_source, vendor, device_type, type_source, type_confidence, type_evidence, owner, owner_source, display_name FROM devices WHERE id = $1`, [deviceId])).rows[0];
+    expect(await row()).toMatchObject({ hostname: "محمد's A36", name_source: 'agent', vendor: 'Samsung', device_type: 'mobile', type_source: 'inferred', type_confidence: 'high', owner: 'محمد', owner_source: 'name', display_name: null });
+    expect((await row()).type_evidence).toContain('Nigafiy app');
+
+    // A person's choices stay: their own name for it, an owner they cleared, a type they set.
+    await systemPool.query(`UPDATE devices SET display_name = 'Mom''s phone', owner = NULL, owner_source = 'manual', device_type = 'tablet', type_source = 'manual' WHERE id = $1`, [deviceId]);
+    const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${enrolled.body.credential}`).send({ ...heartbeatBody("محمد's A36", 'regular'), ...own });
+    expect(hb.status, JSON.stringify(hb.body)).toBe(200);
+    expect(await row()).toMatchObject({ display_name: "Mom's phone", owner: null, owner_source: 'manual', device_type: 'tablet', type_source: 'manual', hostname: "محمد's A36", vendor: 'Samsung' });
+  });
+
   it('a CPU monitoring rule on a phone is "not measured", never a breach of 0 %', () => {
     const m = measure({ kind: 'cpu', threshold: 90 } as Parameters<typeof measure>[0], { cpuPct: null, ramPct: 40, disks: null, monitor: undefined });
     expect(m.breach).toBeNull();

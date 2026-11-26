@@ -33,7 +33,10 @@ function cleanName(parts: string[]): string | null {
   return words.map((w) => (w === w.toUpperCase() ? w.charAt(0) + w.slice(1).toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
 }
 
-const POSSESSIVE = new RegExp(`^(.+?)['’]s[\\s_-]+${DEVICE_WORD}\\b`, 'iu'); // Sara's iPhone, Ian Moffat's MacBook Pro
+// Samsung's default name is "Galaxy A36", and people often keep just the model when they rename it:
+// "محمد's A36". Only after a possessive: a bare "M15" or "A12" is as often a printer or camera model.
+const GALAXY_SHORT = '(?:[asmfz]\\d{2}[a-z]?|note\\d{0,2}|fold\\d?|flip\\d?)';
+const POSSESSIVE = new RegExp(`^(.+?)['’]s[\\s_-]+(?:${DEVICE_WORD}|${GALAXY_SHORT})\\b`, 'iu'); // Sara's iPhone, Ian Moffat's MacBook Pro, محمد's A36
 const DASHED = new RegExp(`^([\\p{L}]+(?:-[\\p{L}]+)?)-${DEVICE_WORD}(?:-\\d+)?$`, 'iu'); // Saras-iPhone, Ahmed-PC, Ian-Moffats-iPhone
 const PREFIXED = new RegExp(`^${DEVICE_WORD}[\\s_-]+(?:de|di|da|von|van|du)[\\s_-]+([\\p{L}]+)$`, 'iu'); // iPhone-de-Marie
 

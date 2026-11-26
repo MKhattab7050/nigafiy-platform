@@ -393,6 +393,12 @@ describe('working things out without asking', () => {
       ['Living-Room-TV', null],
       ['printer-office', null],
       ['iPhone', null],
+      ["محمد's A36", 'محمد'],
+      ["Sara's S24 Ultra", 'Sara'],
+      ["Ali's Galaxy Z Fold6", 'Ali'],
+      ['HP-M15', null],
+      ['Canon-A12', null],
+      ['A36', null],
     ];
     for (const [name, owner] of cases) expect([name, ownerFromName(name)]).toEqual([name, owner]);
   });

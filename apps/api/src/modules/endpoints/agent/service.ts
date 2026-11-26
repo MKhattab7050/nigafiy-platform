@@ -3,6 +3,7 @@ import type { EndpointPlatform, EndpointSecurityPosture } from '@nigafiy/shared-
 import { randomToken, sha256 } from '../../../common/crypto.ts';
 import { normalizeMac } from '../../../common/net.ts';
 import { withSystem, withTenant } from '../../../infrastructure/db.ts';
+import { applyAgentIdentity } from '../../devices/agent-identity.ts';
 import { emitEvent } from '../../events/index.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { evaluateCompliance, inferPlatformFromOs } from '../capabilities.ts';
@@ -95,6 +96,8 @@ export async function enrollAgent(body: AgentEnroll): Promise<EnrolledAgent | nu
         row.device_id = linked;
       }
     }
+    // The network device takes the name, maker and type the agent reports about itself (agent-identity.ts).
+    if (row.device_id) await applyAgentIdentity(db, row.device_id, { hostname: body.hostname, manufacturer: body.manufacturer, platform });
 
     await emitEvent(db, row.organization_id, {
       siteId: row.site_id,
@@ -211,6 +214,8 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         compliance.reasons,
       ],
     );
+
+    if (deviceId) await applyAgentIdentity(db, deviceId, { hostname: body.hostname, manufacturer: body.manufacturer, platform });
 
     await db.query(
       `INSERT INTO endpoint_samples (endpoint_id, ts, organization_id, cpu_pct, ram_pct, ram_used_mb, disk_used_pct)
