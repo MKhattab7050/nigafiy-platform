@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { hmacSha256, safeEqual } from '../../../common/crypto.ts';
 import { CLOSE_POLICY, DEFAULT_WS_LIMITS, MessageRate, SocketCounter, heartbeat, type WsLimits } from '../../../common/ws-guard.ts';
 import { AppError } from '../../../common/http.ts';
-import { env, isWebOrigin } from '../../../config/env.ts';
+import { env, isOwnOrigin } from '../../../config/env.ts';
 import { type Db, systemPool, withTenant } from '../../../infrastructure/db.ts';
 import { logger } from '../../../infrastructure/logger.ts';
 import { onNotification } from '../../../infrastructure/pg-listen.ts';
@@ -790,7 +790,7 @@ export class StreamHub {
 
   private async acceptViewer(req: IncomingMessage, socket: Duplex, head: Buffer, url: URL, endpointId: string): Promise<void> {
     // A browser always sends Origin on a WebSocket; only our own web app may open this one.
-    if (!isWebOrigin(req.headers.origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin stream rejected');
+    if (!isOwnOrigin(req.headers.origin, req)) throw new AppError(403, 'csrf_rejected', 'Cross-origin stream rejected');
     const token = readCookie({ headers: req.headers } as never, SESSION_COOKIE);
     if (!token) throw new AppError(401, 'unauthenticated', 'Sign in required');
     const who = await resolveSessionToken(token);

@@ -657,6 +657,84 @@ describe('Android phone controls in regular app mode (screen, control, files, ri
   });
 });
 
+describe('Admin phones (migration 066)', () => {
+  async function adminPhone(a: TestAccount, role: 'user' | 'admin') {
+    const created = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Owner phone', platform: 'android', phone_role: role });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    expect(created.body.endpoint.phone_role).toBe(role);
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({ enrollment_token: created.body.enrollment_token, ...identity('Owner phone'), security: { checks: checks(), measured_at: now() } });
+    expect(enrolled.status).toBe(201);
+    return { epId: created.body.endpoint.id as string, cred: enrolled.body.credential as string };
+  }
+  const session = (cred: string) => request(app).post('/api/v1/agent/dashboard-session').set('Authorization', `Bearer ${cred}`).send({});
+  const asPhone = (cookie: string) => request(app).get('/api/v1/auth/me').set('Cookie', `ld_session=${cookie}`);
+
+  it('only a phone can be an admin phone, and only an admin can make one', async () => {
+    const a = await newAccount('adminphone-rules');
+    const pc = await a.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'PC', platform: 'windows', phone_role: 'admin' });
+    expect(pc.status).toBe(400);
+    const tech = await addMember(a, 'technician');
+    expect((await tech.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'P', platform: 'android', phone_role: 'admin' })).status).toBe(403);
+    const { epId } = await adminPhone(a, 'user');
+    expect((await tech.agent.post(`/api/v1/endpoints/${epId}/phone-role`).set(CSRF).send({ role: 'admin' })).status).toBe(403);
+  });
+
+  it('a regular phone gets no dashboard; the heartbeat tells each phone its role', async () => {
+    const a = await newAccount('adminphone-user');
+    const { cred } = await adminPhone(a, 'user');
+    expect((await session(cred)).status).toBe(403);
+    const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
+    expect(hb.body.phone_role).toBe('user');
+  });
+
+  it('an admin phone opens the dashboard as the admin who made it; revoking or demoting ends it at once', async () => {
+    const a = await newAccount('adminphone-admin');
+    const { epId, cred } = await adminPhone(a, 'admin');
+    const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
+    expect(hb.body.phone_role).toBe('admin');
+
+    const s1 = await session(cred);
+    expect(s1.status, JSON.stringify(s1.body)).toBe(200);
+    expect(s1.body.cookie).toBe('ld_session');
+    const me = await asPhone(s1.body.value);
+    expect(me.status).toBe(200);
+    expect(JSON.stringify(me.body)).toContain(a.email);
+    // Fleet works from the phone: the list of computers and phones.
+    expect((await request(app).get('/api/v1/endpoints').set('Cookie', `ld_session=${s1.body.value}`)).status).toBe(200);
+
+    // A new session replaces the old one.
+    const s2 = await session(cred);
+    expect((await asPhone(s1.body.value)).status).toBe(401);
+    expect((await asPhone(s2.body.value)).status).toBe(200);
+
+    // Made a regular phone: the session ends, no new one.
+    const demote = await a.agent.post(`/api/v1/endpoints/${epId}/phone-role`).set(CSRF).send({ role: 'user' });
+    expect(demote.status).toBe(200);
+    expect(demote.body.endpoint.phone_role).toBe('user');
+    expect((await asPhone(s2.body.value)).status).toBe(401);
+    expect((await session(cred)).status).toBe(403);
+    expect((await audits(a.organizationId, 'endpoint.phone_role_changed')).map((x) => x.metadata)).toEqual([{ from: 'admin', to: 'user' }]);
+
+    // Admin again, then revoked in Fleet: the session stops working without anything else.
+    expect((await a.agent.post(`/api/v1/endpoints/${epId}/phone-role`).set(CSRF).send({ role: 'admin' })).status).toBe(200);
+    const s3 = await session(cred);
+    expect((await asPhone(s3.body.value)).status).toBe(200);
+    expect((await a.agent.post(`/api/v1/endpoints/${epId}/revoke`).set(CSRF).send({})).status).toBe(200);
+    expect((await asPhone(s3.body.value)).status).toBe(401);
+  });
+
+  it('an admin phone has the rights of the admin who made it, and loses them with that person', async () => {
+    const a = await newAccount('adminphone-member');
+    const other = await addMember(a, 'admin');
+    const created = await other.agent.post('/api/v1/endpoints').set(CSRF).send({ site_id: a.siteId, name: 'Their phone', platform: 'android', phone_role: 'admin' });
+    const enrolled = await request(app).post('/api/v1/agent/enroll').send({ enrollment_token: created.body.enrollment_token, ...identity('Their phone'), security: { checks: checks(), measured_at: now() } });
+    const s = await session(enrolled.body.credential);
+    expect((await asPhone(s.body.value)).status).toBe(200);
+    await systemPool.query(`UPDATE memberships SET status = 'deactivated' WHERE organization_id = $1 AND user_id = (SELECT id FROM users WHERE lower(email) = $2)`, [a.organizationId, other.email]);
+    expect((await asPhone(s.body.value)).status).toBe(403);
+  });
+});
+
 describe('APKs pushed from Fleet', () => {
   it('upload (admin, APK only, no duplicates), install command with size and SHA-256, download only for that command', async () => {
     const a = await newAccount('android-apk');

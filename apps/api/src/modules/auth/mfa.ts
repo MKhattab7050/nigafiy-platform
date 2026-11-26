@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { Role } from '@nigafiy/shared-types';
 import { decryptSecret, encryptSecret, sha256, verifyPassword } from '../../common/crypto.ts';
 import { AppError, parse } from '../../common/http.ts';
-import { env, isWebOrigin } from '../../config/env.ts';
+import { env, isOwnOrigin } from '../../config/env.ts';
 import { systemPool, withSystem } from '../../infrastructure/db.ts';
 import { SESSION_COOKIE, createSession, readCookie, requireSession } from './session.ts';
 import { newTotpSecret, otpauthUri, verifyTotp } from './totp.ts';
@@ -27,7 +27,7 @@ const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function requireCsrfHeader(req: Request): void {
   if (req.headers['x-ld-csrf'] !== '1') throw new AppError(403, 'csrf_rejected', 'Missing CSRF header');
   const origin = req.headers.origin;
-  if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
+  if (origin && !isOwnOrigin(origin, req)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
 export function cleanRecoveryCode(code: string): string {

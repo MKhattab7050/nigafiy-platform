@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { auth, idParams, parse, requireRole } from '../../../common/http.ts';
-import { endpointCreateSchema } from '../schema.ts';
-import { createEndpoint, reissueEnrollmentToken, revokeEndpoint } from './service.ts';
+import { endpointCreateSchema, phoneRoleSchema } from '../schema.ts';
+import { createEndpoint, reissueEnrollmentToken, revokeEndpoint, setPhoneRole } from './service.ts';
 import { enrollmentSuggestion } from './suggest.ts';
 
 /** Enrollment lifecycle (admin): POST /endpoints, POST /endpoints/:id/enrollment-token, POST /endpoints/:id/revoke. */
@@ -27,6 +27,14 @@ enrollmentRouter.get('/devices/:id/enrollment-suggestion', requireRole('admin'),
   const ctx = auth(req);
   const { id } = parse(idParams, req.params);
   res.json(await enrollmentSuggestion(req, ctx, id));
+});
+
+/** Admin phone or regular user's phone (Android only; docs/roadmap/2026-11-26-admin-phones.md). */
+enrollmentRouter.post('/endpoints/:id/phone-role', requireRole('admin'), async (req, res) => {
+  const ctx = auth(req);
+  const { id } = parse(idParams, req.params);
+  const { role } = parse(phoneRoleSchema, req.body);
+  res.json({ endpoint: await setPhoneRole(req, ctx, id, role) });
 });
 
 enrollmentRouter.post('/endpoints/:id/revoke', requireRole('admin'), async (req, res) => {

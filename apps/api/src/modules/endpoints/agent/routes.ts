@@ -9,7 +9,7 @@ import { HEARTBEAT_INTERVAL_SECONDS } from '../repo.ts';
 import { agentCommandResultsSchema, agentEnrollSchema, agentHeartbeatSchema, agentInventorySchema } from '../schema.ts';
 import { requireEndpointAgent } from './auth.ts';
 import { parsePollWaitMs } from './wake.ts';
-import { enrollAgent, leaveFromDevice, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
+import { dashboardSessionForPhone, enrollAgent, leaveFromDevice, longPollCommands, recordCommandResults, recordHeartbeat, recordInventory } from './service.ts';
 import { limiterStore } from '../../../infrastructure/rate-limit.ts';
 import { agentHelpRequestSchema, quickRegisterSchema } from '../fleet-reach/schema.ts';
 import { createHelpRequest } from '../fleet-reach/help-requests.ts';
@@ -110,6 +110,13 @@ agentGatewayRouter.post('/recordings', requireEndpointAgent, async (req, res) =>
 });
 agentGatewayRouter.post('/recordings/link', requireEndpointAgent, async (req, res) => {
   res.json(await agentRecordingLink(req.endpoint!, parse(recordingLinkSchema, req.body)));
+});
+
+// An admin phone opens the dashboard in its app (docs/roadmap/2026-11-26-admin-phones.md).
+agentGatewayRouter.post('/dashboard-session', requireEndpointAgent, async (req, res) => {
+  const s = await dashboardSessionForPhone(req.endpoint!, String(req.headers['user-agent'] ?? '').slice(0, 120));
+  if (!s) throw new AppError(403, 'not_admin_phone', 'This phone is not an admin phone');
+  res.json(s);
 });
 
 // The person logged out in the app on the device: the credential stops working now.

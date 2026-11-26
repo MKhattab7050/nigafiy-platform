@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Role } from '@nigafiy/shared-types';
 import { AppError } from '../../common/http.ts';
 import { randomToken, sha256 } from '../../common/crypto.ts';
-import { env, isWebOrigin } from '../../config/env.ts';
+import { env, isOwnOrigin } from '../../config/env.ts';
 import { systemPool } from '../../infrastructure/db.ts';
 
 export const SESSION_COOKIE = 'ld_session';
@@ -52,7 +52,7 @@ function assertNotCrossSite(req: Request): void {
   if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
   if (req.headers[CSRF_HEADER] !== '1') throw new AppError(403, 'csrf_rejected', 'Missing CSRF header');
   const origin = req.headers.origin;
-  if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
+  if (origin && !isOwnOrigin(origin, req)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
 interface SessionRow {
@@ -64,6 +64,7 @@ interface SessionRow {
   status: 'active' | 'deactivated' | null;
   sso_provider_id: string | null;
   sso_valid: boolean;
+  phone_valid: boolean;
 }
 
 /** Resolves the session cookie to user + active organization + role (active membership re-checked on every request). */
@@ -83,7 +84,13 @@ export async function resolveSessionToken(token: string): Promise<NonNullable<Re
   const { rows } = await systemPool.query<SessionRow>(
     `SELECT s.id AS session_id, u.id AS user_id, u.email, s.active_organization_id AS organization_id, m.role, m.status,
             s.sso_provider_id,
-            (s.sso_provider_id IS NULL OR (ip.enabled AND ip.organization_id = s.active_organization_id)) AS sso_valid
+            (s.sso_provider_id IS NULL OR (ip.enabled AND ip.organization_id = s.active_organization_id)) AS sso_valid,
+            -- An admin phone's dashboard session lives only as long as the phone is an active admin
+            -- phone of this organization acting as this user (migration 066).
+            (s.endpoint_id IS NULL OR EXISTS (
+              SELECT 1 FROM endpoints e
+               WHERE e.id = s.endpoint_id AND e.status = 'active' AND e.phone_role = 'admin'
+                 AND e.phone_admin_user_id = s.user_id AND e.organization_id = s.active_organization_id)) AS phone_valid
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN memberships m ON m.user_id = s.user_id AND m.organization_id = s.active_organization_id
@@ -93,8 +100,9 @@ export async function resolveSessionToken(token: string): Promise<NonNullable<Re
   );
   const row = rows[0];
   if (!row) throw new AppError(401, 'unauthenticated', 'Session expired, sign in again');
-  if (!row.sso_valid) {
-    // Signed in through an identity provider that has since been disabled.
+  if (!row.sso_valid || !row.phone_valid) {
+    // Signed in through an identity provider that has since been disabled, or an admin phone that was
+    // revoked, made a regular phone again, or no longer acts as this user.
     await systemPool.query(`DELETE FROM sessions WHERE id = $1`, [row.session_id]);
     throw new AppError(401, 'unauthenticated', 'Session expired, sign in again');
   }

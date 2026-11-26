@@ -2,7 +2,9 @@ import { onHeartbeatRestarts } from '../fleet-reach/restarts.ts';
 import type { EndpointPlatform, EndpointSecurityPosture } from '@nigafiy/shared-types';
 import { randomToken, sha256 } from '../../../common/crypto.ts';
 import { normalizeMac } from '../../../common/net.ts';
+import { env } from '../../../config/env.ts';
 import { withSystem, withTenant } from '../../../infrastructure/db.ts';
+import { SESSION_COOKIE } from '../../auth/session.ts';
 import { applyAgentIdentity } from '../../devices/agent-identity.ts';
 import { emitEvent } from '../../events/index.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
@@ -298,7 +300,8 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     // agent restart would repeat it, and for "restart this computer" that is a reboot loop.
     // Undelivered results simply expire above.
     const commands = await deliverPendingCommands(db, ep.id, now);
-    const nigafiyId = (await db.query<{ nigafiy_id: string }>(`SELECT nigafiy_id FROM endpoints WHERE id = $1`, [ep.id])).rows[0]?.nigafiy_id ?? null;
+    const idRow = (await db.query<{ nigafiy_id: string; phone_role: string }>(`SELECT nigafiy_id, phone_role FROM endpoints WHERE id = $1`, [ep.id])).rows[0];
+    const nigafiyId = idRow?.nigafiy_id ?? null;
 
     if (ep.connectionState !== 'online' || cmdResults.length > 0) {
       await notifyRealtime(db, ep.organizationId, 'devices');
@@ -315,6 +318,8 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         monitor,
         tray,
         commands,
+        // Phones only: an admin phone shows the dashboard and the network's alerts (migration 066).
+        ...(platform === 'android' ? { phone_role: idRow?.phone_role ?? 'user' } : {}),
       },
     };
   });
@@ -399,6 +404,32 @@ export async function recordInventory(ep: EndpointContext, body: AgentInventory)
  * endpoint is revoked at once, like a confirmed "Stop management", so its credential stops working
  * and Fleet shows "Revoked" (not just "Offline"). Enrolling again needs a new token.
  */
+/**
+ * An admin phone's dashboard: a web session for the admin the phone acts as, tied to this endpoint
+ * (auth/session.ts ends it when the phone is revoked or made a regular phone). The app puts the value
+ * into its WebView's cookie store; it never shows it. One session per phone: a new one replaces the old.
+ * Null when this is not an admin phone.
+ */
+export async function dashboardSessionForPhone(ep: EndpointContext, userAgent: string): Promise<{ cookie: string; value: string; expires_at: string } | null> {
+  const row = await withTenant(ep.organizationId, async (db) =>
+    (await db.query<{ phone_admin_user_id: string | null; name: string }>(
+      `SELECT phone_admin_user_id, name FROM endpoints WHERE id = $1 AND status = 'active' AND platform = 'android' AND phone_role = 'admin'`,
+      [ep.id],
+    )).rows[0],
+  );
+  if (!row?.phone_admin_user_id) return null;
+  const token = randomToken(32);
+  const expires = new Date(Date.now() + env.SESSION_TTL_HOURS * 3600_000);
+  await withSystem(async (db) => {
+    await db.query(`DELETE FROM sessions WHERE endpoint_id = $1`, [ep.id]);
+    await db.query(
+      `INSERT INTO sessions (user_id, token_hash, active_organization_id, user_agent, expires_at, endpoint_id) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [row.phone_admin_user_id, sha256(token), ep.organizationId, `Nigafiy phone (${row.name}) ${userAgent}`.slice(0, 300), expires, ep.id],
+    );
+  });
+  return { cookie: SESSION_COOKIE, value: token, expires_at: expires.toISOString() };
+}
+
 export async function leaveFromDevice(ep: EndpointContext): Promise<boolean> {
   return withTenant(ep.organizationId, async (db) => {
     const r = await db.query(

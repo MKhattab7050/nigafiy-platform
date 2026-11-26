@@ -228,6 +228,19 @@ export function isWebOrigin(origin: string | undefined, currentEnv: Env = env, o
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/**
+ * isWebOrigin, or the address the request itself was made to on the HTTPS listener: the dashboard an
+ * admin phone opens at https://<this PC>:<HTTPS_PORT> (docs/roadmap/2026-11-26-admin-phones.md). A page
+ * can only send its own origin, so a cross-site page never matches; the CSRF header is still required.
+ */
+export function isOwnOrigin(origin: string | undefined, req: { headers: { host?: string }; socket: unknown }): boolean {
+  if (isWebOrigin(origin)) return true;
+  const host = req.headers.host;
+  if (!origin || !host || !(req.socket as { encrypted?: boolean }).encrypted) return false;
+  return origin === `https://${host}`;
+}
+
+
 let cachedCertFile: string | undefined;
 let cachedCertPin: string | null = null;
 

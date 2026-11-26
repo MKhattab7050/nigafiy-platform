@@ -1771,6 +1771,8 @@ export interface EndpointSummary {
   boot_state: FleetBootState;
   /** Android only (migration 045): what the Android agent reported; null for other platforms or before the first heartbeat. */
   android: EndpointAndroidState | null;
+  /** Android: 'admin' phones get the dashboard and the network's alerts (migration 066). */
+  phone_role: 'user' | 'admin';
   /** The signed-in operator marked this computer as a favourite. */
   favourite?: boolean;
   /** The signed-in operator's last session with this computer. */

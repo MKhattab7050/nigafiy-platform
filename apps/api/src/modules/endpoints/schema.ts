@@ -290,8 +290,13 @@ export const endpointCreateSchema = z
     name: z.string().trim().min(1).max(80),
     platform: platformEnum.default('windows'),
     device_id: z.uuid().nullable().optional(),
+    /** Android only: an admin phone gets the dashboard and the network's alerts (migration 066). */
+    phone_role: z.enum(['user', 'admin']).default('user'),
   })
-  .strict();
+  .strict()
+  .refine((b) => b.phone_role === 'user' || b.platform === 'android', { message: 'Only a phone can be an admin phone', path: ['phone_role'] });
+
+export const phoneRoleSchema = z.object({ role: z.enum(['user', 'admin']) }).strict();
 export type EndpointCreate = z.infer<typeof endpointCreateSchema>;
 
 export const seriesQuery = z.object({ range: z.enum(['15m', '1h', '24h', '7d', '30d']).default('1h') });

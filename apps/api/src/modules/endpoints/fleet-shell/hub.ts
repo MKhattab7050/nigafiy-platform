@@ -3,7 +3,7 @@ import type { Duplex } from 'node:stream';
 import type { Role } from '@nigafiy/shared-types';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { AppError } from '../../../common/http.ts';
-import { env, isWebOrigin } from '../../../config/env.ts';
+import { env, isOwnOrigin } from '../../../config/env.ts';
 import { systemPool, withTenant } from '../../../infrastructure/db.ts';
 import { logger } from '../../../infrastructure/logger.ts';
 import { onNotification } from '../../../infrastructure/pg-listen.ts';
@@ -378,7 +378,7 @@ export class ShellHub {
   // ── Operator ──
 
   private async acceptOperator(req: IncomingMessage, socket: Duplex, head: Buffer, url: URL, endpointId: string): Promise<void> {
-    if (!isWebOrigin(req.headers.origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin socket rejected');
+    if (!isOwnOrigin(req.headers.origin, req)) throw new AppError(403, 'csrf_rejected', 'Cross-origin socket rejected');
     const token = readCookie({ headers: req.headers } as never, SESSION_COOKIE);
     if (!token) throw new AppError(401, 'unauthenticated', 'Sign in required');
     const who = await resolveSessionToken(token);

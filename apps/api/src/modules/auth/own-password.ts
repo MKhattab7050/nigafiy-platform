@@ -2,7 +2,7 @@ import type { RequestHandler, Router } from 'express';
 import { z } from 'zod';
 import { hashPassword, sha256, verifyPassword } from '../../common/crypto.ts';
 import { AppError, auth, parse } from '../../common/http.ts';
-import { isWebOrigin } from '../../config/env.ts';
+import { isOwnOrigin } from '../../config/env.ts';
 import { type Db, systemPool, withSystem } from '../../infrastructure/db.ts';
 import { logger } from '../../infrastructure/logger.ts';
 import { cleanRecoveryCode, generateRecoveryCodes } from './mfa.ts';
@@ -61,7 +61,7 @@ async function issueRecoveryCodes(db: Db, userId: string): Promise<string[]> {
 function requireCsrfHeader(req: import('express').Request): void {
   if (req.headers['x-ld-csrf'] !== '1') throw new AppError(403, 'csrf_rejected', 'Missing CSRF header');
   const origin = req.headers.origin;
-  if (origin && !isWebOrigin(origin)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
+  if (origin && !isOwnOrigin(origin, req)) throw new AppError(403, 'csrf_rejected', 'Cross-origin request rejected');
 }
 
 const email = z.string().trim().toLowerCase().pipe(z.email().max(254));

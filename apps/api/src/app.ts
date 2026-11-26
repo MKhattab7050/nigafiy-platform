@@ -1,3 +1,4 @@
+import { phoneDashboardProxy } from './modules/auth/phone-dashboard.ts';
 import { randomUUID } from 'node:crypto';
 import express, { type Express, Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
@@ -49,6 +50,8 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
     });
     next();
   });
+  // Admin phones' dashboard pages, before helmet: the web app sends its own security headers.
+  app.use(phoneDashboardProxy());
   app.use(helmet());
 
   // Liveness: the process is up. Readiness: it can reach its database (with a free connection) and,
