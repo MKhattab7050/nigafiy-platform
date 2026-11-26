@@ -83,7 +83,13 @@ Stages 1–5 are built and committed: 24f53c4 (server), acc2a3f (alerts), a1fa50
 
 - API tests: `tests/fleet-android.test.ts` (admin phones), `tests/phone-dashboard.test.ts` and
   `tests/phone-alerts.test.ts`. Web unit tests pass 95/95, and the Kotlin JVM tests 53/53.
-- Not tried yet on a real phone: the installed copy is 1.0.5 and has none of this.
-- Next: release 1.0.6 (needs the owner's OK), install it, make the A36 an admin phone in Fleet, then
-  check the Dashboard tab, remote control of the PC from the phone, and a real alert (unplug
-  something important).
+- 1.0.6 released and installed on the PC and the A36 (2026-11-27). The A36 was made an admin phone
+  from Fleet (as the test account "Claude tester": the owner should redo it from their own account).
+  Checked on the phone: the Dashboard tab loads the full dashboard over the pinned certificate, and an
+  alert's page opens in it (/fleet).
+- Fixed after trying it (da6585f, phone only, installed on the A36): one bottom bar on the Dashboard tab,
+  no empty band, Back works on Android 16 (predictive back), Home says "Admin phone".
+- Fixed (6fe0d25, server, needs the next PC release): the channel's Test button never reached the
+  phone (an info event was taken for a "resolved" one and dropped).
+- Not tried yet: controlling a computer from the phone (no computer is enrolled in Fleet yet) and a
+  real alert (needs the server fix installed, or an important device going offline).
