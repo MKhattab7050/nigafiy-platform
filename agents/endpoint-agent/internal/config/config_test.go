@@ -72,3 +72,35 @@ func TestReadTokenFileTakesTheFirstLineTrimmedAndNeverEchoesIt(t *testing.T) {
 		t.Fatal("a folder was accepted")
 	}
 }
+
+func TestParseConnectCodeReadsTheDashboardLinkAlsoInsideACommand(t *testing.T) {
+	pin := strings.Repeat("ab", 32)
+	code := "nigafiy://enroll?server=https%3A%2F%2F192.168.1.10%3A47143%2F&token=lde_AbC-123_xyz&pin=" + pin
+	for _, in := range []string{code, "  " + code + "\r\n", `nigafiy-agent.exe install -connect "` + code + `"`} {
+		c, err := ParseConnectCode(in)
+		if err != nil {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if c.Server != "https://192.168.1.10:47143" || c.Token != "lde_AbC-123_xyz" || c.Pin != pin {
+			t.Fatalf("%q: got %+v", in, c)
+		}
+	}
+	c, err := ParseConnectCode("nigafiy://enroll?server=https%3A%2F%2Fh&token=t")
+	if err != nil || c.Pin != "" {
+		t.Fatalf("no pin: %+v %v", c, err)
+	}
+	var cfg Config
+	c.Apply(&cfg)
+	if cfg.ServerURL != "https://h" || cfg.EnrollmentToken != "t" {
+		t.Fatalf("apply: %+v", cfg)
+	}
+	for _, bad := range []string{"", "https://h", "nigafiy://enroll?token=secret", "nigafiy://enroll?server=https%3A%2F%2Fh", "nigafiy://enroll?server=https%3A%2F%2Fh&token=secret&pin=12"} {
+		_, err := ParseConnectCode(bad)
+		if err == nil {
+			t.Fatalf("%q accepted", bad)
+		}
+		if strings.Contains(err.Error(), "secret") {
+			t.Fatalf("error echoes the token: %v", err)
+		}
+	}
+}

@@ -15,6 +15,9 @@
 //	nigafiy-agent uninstall [-service-name N]
 //	nigafiy-agent run [flags]             what the service runs: the desktop work goes to a session helper
 //	nigafiy-agent session-helper          started by the service inside the signed-in user's session
+//	nigafiy-agent connect-code            (for the Windows installer) reads the connection code from
+//	                                      NIGAFIY_AGENT_CONNECT and prints its server, pin (- for none)
+//	                                      and token, one per line; exit 2 with the reason when it is not valid
 package main
 
 import (
@@ -51,6 +54,8 @@ func main() {
 			os.Exit(cmdRun(os.Args[2:]))
 		case "session-helper":
 			os.Exit(cmdSessionHelper())
+		case "connect-code":
+			os.Exit(cmdConnectCode(os.Stdout))
 		}
 	}
 	os.Exit(cmdForeground(os.Args[1:]))
@@ -62,12 +67,20 @@ func bindConfig(fs *flag.FlagSet, cfg *config.Config) func() error {
 	fs.StringVar(&cfg.ServerURL, "server", cfg.ServerURL, "Nigafiy server URL (or NIGAFIY_AGENT_SERVER_URL)")
 	fs.StringVar(&cfg.EnrollmentToken, "token", cfg.EnrollmentToken, "single-use enrollment token (or NIGAFIY_AGENT_ENROLLMENT_TOKEN); prefer -token-file")
 	tokenFile := fs.String("token-file", "", "read the single-use enrollment token from the first line of this file (the file's content is never logged)")
+	connect := fs.String("connect", config.Getenv("NIGAFIY_AGENT_CONNECT"), "the connection code from the dashboard, nigafiy://enroll?server=…&token=…&pin=… (or NIGAFIY_AGENT_CONNECT); sets -server, -token and -tls-pin in one go")
 	fs.StringVar(&cfg.StateDir, "state-dir", cfg.StateDir, "directory for endpoint credential state")
 	fs.StringVar(&cfg.CAFile, "ca-file", cfg.CAFile, "optional PEM CA bundle")
 	fs.StringVar(&cfg.TLSPinSHA256, "tls-pin", cfg.TLSPinSHA256, "optional SHA-256 pin of the server certificate or of its local CA (or NIGAFIY_AGENT_TLS_PIN_SHA256)")
 	fs.StringVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "log level: debug, info, warn, error")
 	fs.BoolVar(&cfg.AllowInsecureHTTP, "allow-insecure-http", cfg.AllowInsecureHTTP, "allow http:// server URL (local development only)")
 	return func() error {
+		if *connect != "" {
+			c, err := config.ParseConnectCode(*connect)
+			if err != nil {
+				return err
+			}
+			c.Apply(cfg)
+		}
 		if *tokenFile == "" {
 			return nil
 		}
@@ -393,5 +406,22 @@ func cmdSessionHelper() int {
 		fmt.Fprintln(os.Stderr, "session helper:", err)
 		return 1
 	}
+	return 0
+}
+
+// cmdConnectCode splits the connection code for the Windows installer's single paste field. The code
+// comes in the environment (never the command line, which other users can read); the output goes
+// back to the installer through a pipe.
+func cmdConnectCode(w io.Writer) int {
+	c, err := config.ParseConnectCode(config.Getenv("NIGAFIY_AGENT_CONNECT"))
+	if err != nil {
+		fmt.Fprintln(w, err)
+		return 2
+	}
+	pin := c.Pin
+	if pin == "" {
+		pin = "-"
+	}
+	fmt.Fprintf(w, "%s\n%s\n%s\n", c.Server, pin, c.Token)
 	return 0
 }

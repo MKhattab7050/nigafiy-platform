@@ -15,8 +15,12 @@
 ; installer adds nothing hidden.
 ;
 ; Silent (GPO startup script, Intune Win32 app, SCCM):
+;   Nigafiy-Endpoint-Agent-Setup.exe /S /CONNECT="nigafiy://enroll?server=...&token=...&pin=..."
 ;   Nigafiy-Endpoint-Agent-Setup.exe /S /SERVER=https://nigafiy.example.com [/TOKEN=lde_... | /TOKENFILE=C:\path\token.txt]
 ;       [/TLSPIN=sha256:AB:CD:...] [/CAFILE=C:\path\ca.pem] [/SERVICENAME=NigafiyEndpointAgent] [/LOGLEVEL=info] [/NOSTART]
+;   /CONNECT takes the connection code the dashboard shows (server, token and pin in one line; the
+;   same code goes in the "Connection code" box of the setup window); the bundled agent splits it
+;   (nigafiy-agent connect-code, the code passed in its environment).
 ;   Exit code 0 = installed; 1 = the agent's install step failed (see install.log); 2 = bad or missing parameters.
 ; Upgrade: run the newer installer with /S (no token needed: the agent upgrades its service in place,
 ; the stored credential is kept and the saved server, pin and service name are reused).
@@ -32,6 +36,11 @@ RequestExecutionLevel admin
 !include LogicLib.nsh
 !include FileFunc.nsh
 !include TextFunc.nsh
+!include WordFunc.nsh
+
+!ifndef EM_SETCUEBANNER
+  !define EM_SETCUEBANNER 0x1501
+!endif
 !include x64.nsh
 !include nsDialogs.nsh
 !include WinMessages.nsh
@@ -68,7 +77,11 @@ VIAddVersionKey "LegalCopyright" "Nigafiy"
   !define MUI_UNICON "${ICON}"
 !endif
 !define MUI_ABORTWARNING
+; The welcome and finish pages' side picture (brand navy, the agent icon; 164x314).
+!define MUI_WELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\wizard.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "${__FILEDIR__}\wizard.bmp"
 
+Var Connect
 Var Server
 Var Token
 Var TokenFile
@@ -80,6 +93,7 @@ Var NoStart
 Var Upgrade
 Var Purge
 
+Var ConnectField
 Var ServerField
 Var TokenField
 Var PinField
@@ -114,6 +128,8 @@ Function .onInit
   SetShellVarContext all
 
   ${GetParameters} $R9
+  !insertmacro GetOpt CONNECT
+  StrCpy $Connect $0
   !insertmacro GetOpt SERVER
   StrCpy $Server $0
   !insertmacro GetOpt TOKEN
@@ -134,6 +150,18 @@ Function .onInit
     StrCpy $NoStart ""
   ${Else}
     StrCpy $NoStart "1"
+  ${EndIf}
+
+  ; One connection code in place of /SERVER, /TOKEN and /TLSPIN.
+  ${If} $Connect != ""
+    Call DecodeConnect
+    ${If} $R0 != ""
+      IfSilent +2
+        MessageBox MB_ICONEXCLAMATION "$R0"
+      IfSilent 0 +3
+        SetErrorLevel 2
+        Quit
+    ${EndIf}
   ${EndIf}
 
   ; An earlier installation: reuse its settings (never a token: none is stored).
@@ -190,40 +218,115 @@ Function .onInit
   done:
 FunctionEnd
 
+; Splits $Connect (the dashboard's nigafiy://enroll?server=…&token=…&pin=… line) into $Server, $Pin
+; and $Token with the bundled agent; $R0 is "" on success, else the reason. The code goes to the agent
+; in its environment only, never on a command line.
+Function DecodeConnect
+  InitPluginsDir
+  File "/oname=$PLUGINSDIR\nigafiy-agent.exe" "${AGENT_EXE}"
+  System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_CONNECT", t "$Connect") i'
+  nsExec::ExecToStack '"$PLUGINSDIR\nigafiy-agent.exe" connect-code'
+  Pop $0
+  Pop $1
+  System::Call 'Kernel32::SetEnvironmentVariable(t "NIGAFIY_AGENT_CONNECT", i 0) i'
+  ${If} $0 != "0"
+    ${TrimNewLines} $1 $R0
+    StrCpy $R0 "The connection code could not be read: $R0$\r$\n$\r$\nCopy it again from the dashboard (Fleet > Add device)."
+    Return
+  ${EndIf}
+  ${WordFind} $1 "$\n" "+1" $Server
+  ${WordFind} $1 "$\n" "+2" $Pin
+  ${WordFind} $1 "$\n" "+3" $Token
+  ${TrimNewLines} $Server $Server
+  ${TrimNewLines} $Pin $Pin
+  ${TrimNewLines} $Token $Token
+  ${If} $Pin == "-"
+    StrCpy $Pin ""
+  ${EndIf}
+  StrCpy $TokenFile ""
+  StrCpy $R0 ""
+FunctionEnd
+
 Function EnrollPage
-  !insertmacro MUI_HEADER_TEXT "Connect to your Nigafiy server" "The agent reports this computer's inventory and health to your organization's server."
+  !insertmacro MUI_HEADER_TEXT "Connect to your Nigafiy server" "Paste the connection code from the dashboard, or enter the details yourself."
   nsDialogs::Create 1018
   Pop $0
-  ${NSD_CreateLabel} 0 0 100% 12u "Server address (https://):"
+
+  ; The one-line way: everything in a single code.
+  ${NSD_CreateLabel} 0 0 100% 10u "Connection code (Fleet > Add device in the dashboard):"
   Pop $0
-  ${NSD_CreateText} 0 13u 100% 12u "$Server"
+  ${NSD_CreateText} 0 11u 100% 13u "$Connect"
+  Pop $ConnectField
+  ${NSD_OnChange} $ConnectField ConnectChanged
+
+  ; The separate way.
+  ${NSD_CreateGroupBox} 0 30u 100% 76u "Or enter the details yourself"
+  Pop $0
+  ${NSD_CreateLabel} 8u 44u 27% 10u "Server address:"
+  Pop $0
+  ${NSD_CreateText} 30% 42u 67% 13u "$Server"
   Pop $ServerField
-  ${NSD_CreateLabel} 0 32u 100% 12u "One-time enrollment token (leave empty when upgrading an enrolled computer):"
+  SendMessage $ServerField ${EM_SETCUEBANNER} 0 "STR:https://"
+  ${NSD_CreateLabel} 8u 62u 27% 10u "Enrollment token:"
   Pop $0
-  ${NSD_CreatePassword} 0 45u 100% 12u "$Token"
+  ${NSD_CreatePassword} 30% 60u 67% 13u "$Token"
   Pop $TokenField
-  ${If} $TokenFile != ""
-    ; A /TOKENFILE given on the command line is used; the field stays empty.
-    EnableWindow $TokenField 0
-  ${EndIf}
-  ${NSD_CreateLabel} 0 64u 100% 12u "Server certificate pin, SHA-256 (optional; for the server's own local CA):"
+  ${NSD_CreateLabel} 8u 80u 27% 10u "Certificate pin:"
   Pop $0
-  ${NSD_CreateText} 0 77u 100% 12u "$Pin"
+  ${NSD_CreateText} 30% 78u 67% 13u "$Pin"
   Pop $PinField
-  ${NSD_CreateLabel} 0 98u 100% 36u "Remote support sessions ask the signed-in user for consent where your policy says so and always show a visible banner on this computer. The agent runs as the Windows service ${DEFAULT_SERVICE}."
+  SendMessage $PinField ${EM_SETCUEBANNER} 0 "STR:optional (SHA-256)"
+  ${NSD_CreateLabel} 30% 93u 67% 10u "Upgrading? Leave the token empty."
   Pop $0
+  SetCtlColors $0 808080 transparent
+
+  ${NSD_CreateLabel} 0 112u 100% 24u "Remote support asks the signed-in user for consent where your policy says so and always shows a banner on this computer. The agent runs as the Windows service ${DEFAULT_SERVICE}."
+  Pop $0
+  SetCtlColors $0 808080 transparent
+
+  Push $ConnectField
+  Call ConnectChanged
   nsDialogs::Show
 FunctionEnd
 
-Function EnrollPageLeave
-  ${NSD_GetText} $ServerField $Server
-  ${If} $TokenFile == ""
-    ${NSD_GetText} $TokenField $Token
+; A code in the top box replaces the separate fields: they are greyed out while it is there.
+Function ConnectChanged
+  Pop $0
+  ${NSD_GetText} $ConnectField $0
+  ${If} $0 == ""
+    EnableWindow $ServerField 1
+    EnableWindow $PinField 1
+    ${If} $TokenFile == ""
+      EnableWindow $TokenField 1
+    ${Else}
+      ; A /TOKENFILE given on the command line is used; the field stays empty.
+      EnableWindow $TokenField 0
+    ${EndIf}
+  ${Else}
+    EnableWindow $ServerField 0
+    EnableWindow $TokenField 0
+    EnableWindow $PinField 0
   ${EndIf}
-  ${NSD_GetText} $PinField $Pin
+FunctionEnd
+
+Function EnrollPageLeave
+  ${NSD_GetText} $ConnectField $Connect
+  ${If} $Connect != ""
+    Call DecodeConnect
+    ${If} $R0 != ""
+      MessageBox MB_ICONEXCLAMATION "$R0"
+      Abort
+    ${EndIf}
+  ${Else}
+    ${NSD_GetText} $ServerField $Server
+    ${If} $TokenFile == ""
+      ${NSD_GetText} $TokenField $Token
+    ${EndIf}
+    ${NSD_GetText} $PinField $Pin
+  ${EndIf}
   StrCpy $1 $Server 8
   ${If} $1 != "https://"
-    MessageBox MB_ICONEXCLAMATION "Enter the server address starting with https://"
+    MessageBox MB_ICONEXCLAMATION "Enter the server address starting with https:// (or paste the connection code)."
     Abort
   ${EndIf}
 FunctionEnd

@@ -163,6 +163,7 @@ Nigafiy-Endpoint-Agent-Setup-0.1.0.exe /S /SERVER=https://nigafiy.corp.example /
 | Option | Meaning |
 | --- | --- |
 | `/S` | Silent. |
+| `/CONNECT="nigafiy://enroll?..."` | The connection code Fleet shows after Add device: server, token and pin in one line (the same code goes in the setup window's "Connection code" box, or in `nigafiy-agent install -connect "..."`). Replaces `/SERVER`, `/TOKEN` and `/TLSPIN`. It carries the token, so the same caution as `/TOKEN` applies. |
 | `/SERVER=https://...` | Nigafiy server. Required on a first install (silent mode refuses anything but `https://`). |
 | `/TOKEN=...` | One-time enrollment token. Prefer `/TOKENFILE`: a token on a command line can be seen by other administrators' process tools while setup runs. |
 | `/TOKENFILE=<path>` | Reads the token from the first line of a file (a share readable only by Domain Computers, or the Intune package). |

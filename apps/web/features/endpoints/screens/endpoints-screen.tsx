@@ -12,6 +12,7 @@ import { FleetContent } from '../components/fleet-content';
 import { ConnectBox } from '../components/reach/connect-box';
 import { endpointsText } from '../text';
 import { AndroidEnrollment } from '../components/android/android-enroll';
+import { enrollLink } from '../components/android/enroll-codes';
 import { androidText } from '../components/android/android-text';
 
 export function EndpointsScreen() {
@@ -299,6 +300,9 @@ function InstallCommands({ issued }: { issued: EndpointCreated }) {
   const server = issued.server_url.replace(/\/+$/, '');
   const insecure = server.startsWith('http://');
   const flags = `-server ${server}${insecure ? ' -allow-insecure-http' : ''} -token ${issued.enrollment_token}`;
+  // One line with server, token and pin (the agent's -connect, the installer's "Connection code" box).
+  const code = enrollLink(server, issued.enrollment_token, issued.tls_pin_sha256);
+  const connect = `install -connect "${code}"${insecure ? ' -allow-insecure-http' : ''}`;
   let local = false;
   try {
     local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(new URL(server).hostname);
@@ -308,9 +312,11 @@ function InstallCommands({ issued }: { issued: EndpointCreated }) {
   return (
     <>
       {local && <CopyBlock label={tx.installLocal} multiline value={`pnpm build:agent && ./agents/endpoint-agent/bin/nigafiy-agent ${flags}`} />}
-      {issued.endpoint.platform === 'windows' && <CopyBlock label={tx.installWindows} multiline value={`nigafiy-agent.exe ${flags}`} />}
-      {issued.endpoint.platform === 'linux' && <CopyBlock label={tx.installLinux} multiline value={`sudo ./nigafiy-agent ${flags}`} />}
-      {issued.endpoint.platform === 'macos' && <CopyBlock label={tx.installMacos} multiline value={`sudo ./nigafiy-agent ${flags}`} />}
+      <CopyBlock label={tx.connectCode} multiline value={code} />
+      <p className="text-xs text-muted">{tx.connectCodeHint}</p>
+      {issued.endpoint.platform === 'windows' && <CopyBlock label={tx.installWindows} multiline value={`.\\nigafiy-agent.exe ${connect}`} />}
+      {issued.endpoint.platform === 'linux' && <CopyBlock label={tx.installLinux} multiline value={`sudo ./nigafiy-agent ${connect}`} />}
+      {issued.endpoint.platform === 'macos' && <CopyBlock label={tx.installMacos} multiline value={`sudo ./nigafiy-agent ${connect}`} />}
       {issued.server_url_source === 'request' && <p className="text-xs text-muted">{fill(t('endpoints.install.serverFromRequest'), { url: server })}</p>}
       {insecure && <p className="text-xs text-warn">{t('endpoints.install.insecure')}</p>}
     </>

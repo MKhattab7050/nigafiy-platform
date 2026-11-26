@@ -125,3 +125,51 @@ func ReadTokenFile(path string) (string, error) {
 	}
 	return token, nil
 }
+
+// Connect is what a connection code carries: everything an agent needs to enroll.
+type Connect struct {
+	Server string
+	Token  string
+	Pin    string // "" when the server needs no pin
+}
+
+// ParseConnectCode reads the one-line connection code the dashboard shows,
+// nigafiy://enroll?server=…&token=…&pin=… (the same link the Android agent takes, EnrollLink.kt).
+// It also finds the code inside a longer pasted line, such as a whole install command. The token
+// never appears in an error.
+func ParseConnectCode(s string) (Connect, error) {
+	s = strings.TrimSpace(strings.TrimPrefix(s, "\xef\xbb\xbf"))
+	if i := strings.Index(strings.ToLower(s), "nigafiy://"); i >= 0 {
+		s = s[i:]
+		if j := strings.IndexAny(s, " \t\r\n\"'"); j >= 0 {
+			s = s[:j]
+		}
+	}
+	u, err := url.Parse(s)
+	if err != nil || !strings.EqualFold(u.Scheme, "nigafiy") || !strings.EqualFold(u.Host, "enroll") {
+		return Connect{}, errors.New("not a Nigafiy connection code (it starts with nigafiy://enroll?)")
+	}
+	q := u.Query()
+	c := Connect{Server: strings.TrimRight(strings.TrimSpace(q.Get("server")), "/"), Token: strings.TrimSpace(q.Get("token")), Pin: strings.TrimSpace(q.Get("pin"))}
+	if c.Server == "" {
+		return Connect{}, errors.New("the connection code has no server address")
+	}
+	if c.Token == "" {
+		return Connect{}, errors.New("the connection code has no enrollment token")
+	}
+	if c.Pin != "" {
+		if _, err := ParsePin(c.Pin); err != nil {
+			return Connect{}, errors.New("the connection code's certificate pin is not a SHA-256 fingerprint")
+		}
+	}
+	return c, nil
+}
+
+// Apply puts the code's server, token and pin into the configuration.
+func (c Connect) Apply(cfg *Config) {
+	cfg.ServerURL = c.Server
+	cfg.EnrollmentToken = c.Token
+	if c.Pin != "" {
+		cfg.TLSPinSHA256 = c.Pin
+	}
+}
