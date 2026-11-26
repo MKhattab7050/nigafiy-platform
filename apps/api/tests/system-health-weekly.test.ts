@@ -59,6 +59,8 @@ describe('System Health: scheduler verdict', () => {
     expect(healthActions({ ...base, scheduler: schedulerSummary([job({}), oneFailure]) })).toEqual([]);
     const keepsFailing = job({ consecutive_failures: 3, last_error: { at: 'x', message: 'again' } });
     expect(healthActions({ ...base, scheduler: schedulerSummary([job({}), keepsFailing]) }).map((a) => a.code)).toEqual(['jobs_stuck']);
+    const noSensor = { ...base, scheduler: schedulerSummary([job({})]), monitoring: { active: false, sensors: [], last_gap: null } };
+    expect(healthActions(noSensor).map((a) => a.code)).toEqual(['no_sensor']);
   });
 });
 
@@ -67,16 +69,16 @@ describe('GET /api/v1/system/health', () => {
     expect((await request(app).get('/api/v1/system/health')).status).toBe(401);
   });
 
-  it('answers for any role: no Sensor yet, then monitoring active with the last gap', async () => {
+  it('answers for any role: Sensor not reporting yet, then monitoring active with the last gap', async () => {
     const a = await newAccount('syshealth');
+    const c = await newCollector(a); // created as owner; it has not reported yet
     await setRole(a.email, a.organizationId, 'viewer');
     let res = await a.agent.get('/api/v1/system/health');
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ api: { running: true }, database: { reachable: true }, monitoring: { active: false, sensors: [], last_gap: null } });
+    expect(res.body).toMatchObject({ api: { running: true }, database: { reachable: true }, monitoring: { active: false, sensors: [{ name: 'edge-1', state: 'never' }], last_gap: null } });
     expect(res.body.scheduler.state).toBe('not_running'); // the test process runs no scheduler
-    expect(res.body.actions.map((x: { code: string }) => x.code)).toEqual(['scheduler_stopped', 'no_sensor']);
+    expect(res.body.actions.map((x: { code: string }) => x.code)).toEqual(['scheduler_stopped', 'sensor_offline']);
 
-    const c = await newCollector(a);
     expect((await heartbeat(c)).status).toBe(200);
     const from = new Date(Date.now() - 2 * H);
     const to = new Date(from.getTime() + 7 * 60_000);
@@ -217,9 +219,9 @@ describe('weekly report job and endpoints', () => {
   it('sends nothing unless notify is on; then one event to the enabled channels', async () => {
     const a = await watchedAccount('weekly-notify');
     const ch = await a.agent
-      .post('/api/v1/notifications/channels')
+      .post('/api/v1/notification-channels')
       .set(CSRF)
-      .send({ name: 'hook', kind: 'webhook', config: { url: 'https://example.com/hook' }, min_severity: 'critical' });
+      .send({ name: 'hook', kind: 'webhook', url: 'https://example.test/hook', min_severity: 'critical' });
     expect(ch.status).toBe(201);
     expect((await a.agent.put('/api/v1/reports/weekly/settings').set(CSRF).send({ notify: true })).body).toEqual({ notify: true });
     expect((await a.agent.get('/api/v1/reports/weekly')).body).toMatchObject({ settings: { notify: true }, channels: 1 });

@@ -22,6 +22,8 @@ export const GUIDE_ROUTES: readonly GuideRoute[] = [
   { prefix: '/programs', section: 'programs', anchor: 'on-off' },
   { prefix: '/settings', section: 'getting-started', anchor: 'roles' },
   { prefix: '/system/modules', section: 'troubleshooting', anchor: 'background-jobs' },
+  { prefix: '/system/health', section: 'troubleshooting', anchor: 'background-jobs' },
+  { prefix: '/system/weekly', section: 'hub' },
   { prefix: '/guide', section: 'getting-started' },
   // Radar
   { prefix: '/radar', section: 'radar' },

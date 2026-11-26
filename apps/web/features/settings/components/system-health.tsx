@@ -79,7 +79,7 @@ export function SystemHealth() {
       description={t('settings.system.desc')}
       padded={false}
       action={
-        <Link href="/system/modules" className="inline-flex items-center gap-1 text-[13px] font-medium text-accent-hover hover:underline">
+        <Link href="/system/health" className="inline-flex items-center gap-1 text-[13px] font-medium text-accent-hover hover:underline">
           {t('settings.system.open')}
           <ArrowRight className="size-3.5 rtl:-scale-x-100" aria-hidden />
         </Link>
