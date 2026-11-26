@@ -564,19 +564,38 @@ async function quit() {
 // ── local mode ───────────────────────────────────────────────────────────────
 function splashUrl(message, error = false) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+  // An SVG arc with round caps, rotated on the compositor: a CSS border spinner looks jagged on
+  // Windows display scaling. The track circle is exactly under the arc so nothing wobbles.
   const spinner = error
     ? ''
-    : '<div class="spin"></div><style>.spin{width:28px;height:28px;margin:0 auto 16px;border:3px solid #22406e;border-top-color:#4f8cff;border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.spin{animation:none}}</style>';
+    : '<svg class="spin" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="20" fill="none" stroke="#1a2f52" stroke-width="4"/><circle cx="24" cy="24" r="20" fill="none" stroke="#4f8cff" stroke-width="4" stroke-linecap="round" stroke-dasharray="34 92"/></svg>'
+      + '<style>.spin{display:block;width:32px;height:32px;margin:0 auto 18px;transform-origin:50% 50%;will-change:transform;animation:s .9s linear infinite}@keyframes s{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}</style>';
   const html = `<!doctype html><meta charset="utf-8"><title>Nigafiy</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;background:#070d1a;color:#e6edf7;font:15px system-ui,'Segoe UI',sans-serif">
 <div style="text-align:center;max-width:520px;padding:24px">
 <div style="font-size:22px;font-weight:600;margin-bottom:16px">Nigafiy</div>${spinner}
-<div style="color:${error ? '#ff8a8a' : '#9fb0c8'};white-space:pre-line">${esc(message)}</div></div></body>`;
+<div id="msg" style="color:${error ? '#ff8a8a' : '#9fb0c8'};white-space:pre-line">${esc(message)}</div></div></body>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 function setSplash(message, error = false) {
   localError = error ? message : null;
-  if (dashboard && !localShown) void dashboard.webContents.loadURL(splashUrl(message, error));
+  if (!dashboard || localShown) return;
+  const wc = dashboard.webContents;
+  // A new status line on a splash that is already spinning only swaps the text: reloading the page
+  // would restart the spinner from the top and make it jump with every step.
+  const onSpinner = !error && !wc.isLoading() && wc.getURL().startsWith('data:text/html');
+  if (!onSpinner) {
+    void wc.loadURL(splashUrl(message, error));
+    return;
+  }
+  const js = `(() => { const m = document.getElementById('msg'); if (!m || !document.querySelector('.spin')) return false; m.textContent = ${JSON.stringify(String(message))}; return true; })()`;
+  wc.executeJavaScript(js)
+    .then((ok) => {
+      if (!ok && dashboard && !localShown) void wc.loadURL(splashUrl(message, error));
+    })
+    .catch(() => {
+      if (dashboard && !localShown) void wc.loadURL(splashUrl(message, error));
+    });
 }
 
 /** The local account's password is random and kept encrypted with the OS keychain (DPAPI on Windows). */
