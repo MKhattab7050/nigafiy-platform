@@ -3,7 +3,7 @@
 import { Gauge } from 'lucide-react';
 import clsx from 'clsx';
 import { Suspense } from 'react';
-import type { InsightsReport } from '@nigafiy/shared-types';
+import type { DashboardGuidance, InsightsReport } from '@nigafiy/shared-types';
 import { FeatureBoundary } from '@/components/error-boundary';
 import { PageHeader, SkeletonBlock } from '@/components/ui';
 import { EngineCard, ProgramsStrip } from '@/features/platform';
@@ -19,15 +19,20 @@ import { AttentionPanel } from '../components/attention-panel';
 import { ConnectNetworkCard, needsNetworkSetup } from '../components/connect-network-card';
 import { InsightsPanel } from '../components/insights-panel';
 import { NetworkPulse } from '../components/network-pulse';
+import { NextSteps } from '../components/next-steps';
+import { SetupChecklist, useChecklistVisible } from '../components/setup-checklist';
 import { QuickActions } from '../components/quick-actions';
 import { StatusHeader } from '../components/status-header';
 import { QuickNameCard } from '@/features/devices/components/quick-name-card';
+
+const SKIP_REVIEW: ReadonlySet<string> = new Set(['unreviewed']);
 
 const SPAN = { wide: 'md:col-span-2', full: 'md:col-span-2 xl:col-span-3' } as const;
 
 /**
  * The one dashboard, read top to bottom as a command centre:
- * status header (score + key counters) → network path, 24 h → programs + engine health (Hub) →
+ * status header (score + key counters) → "Next" (1–3 steps) and the getting-started checklist →
+ * network path, 24 h → programs + engine health (Hub) →
  * what needs attention + advice →
  * every feature's widget → quick actions.
  *
@@ -69,10 +74,21 @@ export function DashboardScreen() {
 /** The dashboard as it reads once a network is connected. */
 function ConnectedDashboard({ insights, widgets, simple }: { insights: Query<InsightsReport>; widgets: typeof FEATURES; simple: boolean }) {
   const { t } = useI18n();
+  const { siteId } = useApp();
+  const guidance = useQuery<DashboardGuidance>(`/dashboard/guidance${qs({ site_id: siteId })}`, ['events', 'devices', 'collectors'], 60_000);
+  // While the checklist asks to review devices, "Next" does not ask for it a second time.
+  const checklist = useChecklistVisible(guidance);
+  const reviewOpen = checklist && guidance.data?.steps.some((s) => s.key === 'reviewed' && !s.done);
   return (
     <>
       <FeatureBoundary>
-        <StatusHeader insights={insights} />
+        <StatusHeader insights={insights} guidance={guidance} />
+      </FeatureBoundary>
+      <FeatureBoundary>
+        <NextSteps insights={insights} skip={reviewOpen ? SKIP_REVIEW : undefined} />
+      </FeatureBoundary>
+      <FeatureBoundary>
+        <SetupChecklist guidance={guidance} />
       </FeatureBoundary>
       {/* Hidden when every device has a name (or the user may not rename). */}
       <FeatureBoundary>

@@ -6,8 +6,9 @@ import { Sparkline, UptimeLegend, UptimeStrip, toCells } from '@/components/char
 import { Skeleton, StateBadge, Tag } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
-import { ms, pct } from '@/lib/format';
-import { useI18n } from '@/lib/i18n';
+import { ms, pct, relativeTime } from '@/lib/format';
+import { fill, useI18n } from '@/lib/i18n';
+import { type Basis, Explain, every } from './explain';
 
 interface Series {
   from: string;
@@ -24,7 +25,7 @@ const ROLES: { role: Exclude<CheckRole, 'service'>; key: 'overview.gateway' | 'o
 
 /** 24 h of one check: availability heat row and latency trend (GET /checks/:id/series?range=24h). */
 function PathLane({ check, title, summary, showSite }: { check: MonitoringCheck; title: string; summary: Overview['gateway'] | Overview['dns'] | undefined; showSite: boolean }) {
-  const { t } = useI18n();
+  const { t, tn, locale } = useI18n();
   const series = useQuery<Series>(`/checks/${check.id}/series?range=24h`, ['checks'], 60_000);
   const s = series.data;
   const from = s ? new Date(s.from).getTime() : 0;
@@ -46,6 +47,15 @@ function PathLane({ check, title, summary, showSite }: { check: MonitoringCheck;
     for (let i = 0; i < CELLS; i++) if (n[i]) latency[i] = sum[i]! / n[i]!;
   }
   const loss = summary && 'avg_loss_pct' in summary ? summary.avg_loss_pct : undefined;
+  // With a last-hour summary the number is that hour's average; without one it is the latest reading.
+  const latencyBasis = (): Basis => ({
+    from: fill(t('dash.explain.latency.from'), { check: check.name, interval: every(check.interval_seconds) }),
+    window: summary
+      ? fill(tn('dash.explain.latency.window', summary.samples), { count: summary.samples })
+      : fill(t('dash.explain.latency.windowLast'), { at: relativeTime(check.last_result_at, locale) }),
+    counted: t('dash.explain.latency.counted'),
+    left: t('dash.explain.latency.left'),
+  });
   return (
     <div className="min-w-0 p-4 sm:p-5">
       <div className="flex flex-wrap items-center gap-2">
@@ -58,7 +68,11 @@ function PathLane({ check, title, summary, showSite }: { check: MonitoringCheck;
       <dl className="mt-3 flex gap-6">
         <div>
           <dt className="text-[11.5px] text-muted">{summary ? t('overview.latency') : t('monitoring.latency')}</dt>
-          <dd className="tnum mt-0.5 text-lg font-semibold leading-none">{ms(summary?.avg_latency_ms ?? check.last_latency_ms)}</dd>
+          <dd className="tnum mt-0.5 text-lg font-semibold leading-none">
+            <Explain title={t('dash.explain.latency.title')} basis={latencyBasis}>
+              {ms(summary?.avg_latency_ms ?? check.last_latency_ms)}
+            </Explain>
+          </dd>
         </div>
         {loss !== undefined && (
           <div>

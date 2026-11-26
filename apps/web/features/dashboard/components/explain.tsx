@@ -4,7 +4,11 @@ import clsx from 'clsx';
 import { Info } from 'lucide-react';
 import { useState } from 'react';
 import { Modal } from '@/components/ui';
+import { duration } from '@/lib/format';
 import { useI18n } from '@/lib/i18n';
+
+/** "5m", "1.0h": the short form the dashboard uses for a span of time (a check or scan interval). */
+export const every = (seconds: number) => duration(new Date(0).toISOString(), new Date(seconds * 1000).toISOString());
 
 /** What a number is based on, in four plain rows. */
 export interface Basis {

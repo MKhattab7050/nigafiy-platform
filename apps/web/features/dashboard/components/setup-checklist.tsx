@@ -89,7 +89,7 @@ function rowsFor(g: DashboardGuidance, t: (k: Key) => string, tn: (k: Key, n: nu
         return admin
           ? { step, title: 'dash.setup.alerts', note: t('dash.setup.alerts.todo'), href: '/watch/notifications', button: 'dash.setup.alerts.do' }
           : { step, title: 'dash.setup.alerts', note: t('dash.setup.alerts.todoViewer') };
-      case 'report':
+      default: // 'report', the last step
         return step.done
           ? { step, title: 'dash.setup.report', note: fill(t('dash.setup.report.done'), { at: when(step.at) }) }
           : { step, title: 'dash.setup.report', note: t(f.weekly_summary ? 'dash.setup.report.todo' : 'dash.setup.report.todoOff'), href: '/watch/reports', button: 'dash.setup.report.do' };

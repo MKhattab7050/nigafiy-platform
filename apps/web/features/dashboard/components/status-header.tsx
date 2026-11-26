@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import { ChevronDown, PowerOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { EndpointSummary, InsightsReport, Overview, Paginated } from '@nigafiy/shared-types';
+import type { DashboardGuidance, EndpointSummary, InsightsReport, Overview, Paginated } from '@nigafiy/shared-types';
 import { ProportionBar, RingGauge } from '@/components/charts';
 import { ErrorNote, Skeleton, ToneIcon, type Tone } from '@/components/ui';
 import { qs } from '@/lib/api';
@@ -12,13 +12,16 @@ import { type Query, useApp, useQuery } from '@/lib/app';
 import { absoluteTime, duration, pct, relativeTime } from '@/lib/format';
 import { fill, useI18n } from '@/lib/i18n';
 import { localizeDeductionReason } from '@/lib/localize';
+import { reasonText } from '../guidance-text';
+import { type Basis, Explain, every } from './explain';
 
 export const VERDICT_TONE: Record<InsightsReport['verdict'], Tone> = { healthy: 'ok', attention: 'warn', urgent: 'crit' };
 
 /** Score ring, verdict in words, and the deductions that produced the score (GET /insights). */
 function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
-  const { t, locale } = useI18n();
-  const [why, setWhy] = useState(false);
+  const { t, tn, locale } = useI18n();
+  // Open by default: the reasons are the most useful thing next to the number.
+  const [why, setWhy] = useState(true);
   const r = insights.data;
   if (!r) {
     return (
@@ -61,6 +64,33 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
   }
   const tone = VERDICT_TONE[r.verdict];
   const deductions = [...r.score_breakdown].sort((a, b) => b.points - a.points);
+  const sentence = (d: InsightsReport['score_breakdown'][number]) => {
+    const w = reasonText(d);
+    if (!w) return localizeDeductionReason(d, locale);
+    return fill(w.plural ? tn(w.key, Number(w.params.count ?? 1)) : t(w.key), w.params);
+  };
+  const scoreBasis = (): Basis => ({
+    from: t('dash.explain.score.from'),
+    window: fill(t('dash.explain.score.window'), { at: relativeTime(r.generated_at, locale) }),
+    counted: (
+      <>
+        {t('dash.explain.score.counted')}
+        {deductions.length === 0 ? (
+          <span className="mt-1 block text-muted">{t('dash.explain.score.none')}</span>
+        ) : (
+          <span className="tnum mt-2 block space-y-1">
+            {deductions.map((b) => (
+              <span key={b.code} className="flex items-baseline justify-between gap-3">
+                <span className="min-w-0 text-muted">{sentence(b)}</span>
+                <span className="shrink-0 font-medium text-crit">{fill(t('dash.why.points'), { points: b.points })}</span>
+              </span>
+            ))}
+          </span>
+        )}
+      </>
+    ),
+    left: t('dash.explain.score.left'),
+  });
   return (
     <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center lg:flex-col lg:items-stretch xl:flex-row xl:items-center">
       <RingGauge value={r.score} tone={tone} size={116} label={`${t('ins.score')}: ${r.score} / 100`}>
@@ -68,7 +98,10 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
         <span className="mt-1 text-[11px] text-faint">{t('dash.scoreOutOf')}</span>
       </RingGauge>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-muted">{t('ins.score')}</p>
+        <p className="flex items-center gap-1 text-xs text-muted">
+          {t('ins.score')}
+          <Explain title={t('dash.explain.score.title')} basis={scoreBasis} className="-my-1" />
+        </p>
         <p className={clsx('mt-0.5 flex items-center gap-1.5 text-[17px] font-semibold leading-snug', tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : 'text-crit')}>
           <ToneIcon tone={tone} className="size-[18px]" />
           {t(`dash.state.${r.verdict}`)}
@@ -83,13 +116,16 @@ function ScoreBlock({ insights }: { insights: Query<InsightsReport> }) {
               <ChevronDown className={clsx('size-3.5 transition-transform duration-150', why && 'rotate-180')} aria-hidden />
             </button>
             {why && (
-              <ul className="tnum mt-2 space-y-1 text-xs">
+              <ul className="tnum mt-2 space-y-1.5 text-xs">
                 {deductions.map((b) => (
                   <li key={b.code} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 text-muted" dir="auto">
-                      {localizeDeductionReason(b, locale)}
+                    <span className="min-w-0 leading-snug text-muted" dir="auto">
+                      {sentence(b)}
                     </span>
-                    <span className="shrink-0 font-medium text-crit">−{b.points}</span>
+                    <span className="shrink-0 font-medium text-crit">
+                      <span aria-hidden>{fill(t('dash.why.points'), { points: b.points })}</span>
+                      <span className="sr-only">{fill(t('dash.why.pointsSr'), { points: b.points })}</span>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -121,7 +157,7 @@ function MonitoringOffNote({ gap }: { gap: NonNullable<Overview['monitoring_off'
 }
 
 /** A key counter: big number, what it counts, and one small visual or fact under it. */
-export function StatTile({ label, value, sub, tone = 'idle', href, children }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: Tone; href?: string; children?: React.ReactNode }) {
+export function StatTile({ label, value, sub, tone = 'idle', href, explain, children }: { label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: Tone; href?: string; explain?: React.ReactNode; children?: React.ReactNode }) {
   const color = tone === 'ok' ? 'text-ok' : tone === 'warn' ? 'text-warn' : tone === 'crit' ? 'text-crit' : 'text-fg';
   const body = (
     <>
@@ -137,12 +173,21 @@ export function StatTile({ label, value, sub, tone = 'idle', href, children }: {
     </>
   );
   const cls = 'block min-w-0 p-4 sm:p-5';
-  return href ? (
-    <Link href={href} className={clsx(cls, 'transition-colors hover:bg-raised/60')}>
+  const tile = href ? (
+    <Link href={href} className={clsx(cls, 'h-full transition-colors hover:bg-raised/60')}>
       {body}
     </Link>
   ) : (
     <div className={cls}>{body}</div>
+  );
+  // The "how is this worked out" button sits beside the link, never inside it (no button in a link).
+  return explain ? (
+    <div className="relative min-w-0">
+      {tile}
+      <span className="absolute end-2 top-2 sm:end-3 sm:top-3">{explain}</span>
+    </div>
+  ) : (
+    tile
   );
 }
 
@@ -152,8 +197,8 @@ const loadingValue = <Skeleton className="inline-block h-7 w-12 align-middle" />
  * The top of the dashboard: overall state and the four counters an administrator checks first.
  * Every figure comes from an existing endpoint: /insights, /overview, /incidents, /endpoints.
  */
-export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) {
-  const { t } = useI18n();
+export function StatusHeader({ insights, guidance }: { insights: Query<InsightsReport>; guidance?: Query<DashboardGuidance> }) {
+  const { t, tn, locale } = useI18n();
   const { siteId } = useApp();
   const overview = useQuery<Overview>(`/overview${qs({ site_id: siteId })}`, ['events', 'devices', 'checks', 'collectors']);
   const incidents = useQuery<Paginated<unknown>>(`/incidents${qs({ status: 'active', site_id: siteId, page_size: 1 })}`, ['events', 'checks', 'collectors'], 60_000);
@@ -166,6 +211,20 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
   const epsOffline = eps?.filter((e) => e.status === 'active' && e.connection_state !== 'online').length;
   // Computers waiting for enrollment are neither online nor offline: say so instead of "0 offline".
   const epsPending = eps?.filter((e) => e.status !== 'active').length ?? 0;
+  const f = guidance?.data?.facts;
+  const devicesBasis = (): Basis => ({
+    from: f?.last_sweep_at
+      ? fill(t('dash.explain.devices.from'), { at: relativeTime(f.last_sweep_at, locale), interval: f.sweep_interval_seconds ? every(f.sweep_interval_seconds) : '—' })
+      : t('dash.explain.devices.fromNone'),
+    window: fill(tn('dash.explain.devices.window', f?.sweeps_24h ?? 0), { count: f?.sweeps_24h ?? 0 }),
+    counted: (
+      <>
+        {fill(t('dash.explain.devices.counted'), { total: o?.devices.total ?? f?.devices_total ?? 0 })}
+        {f && <span className="mt-1 block">{fill(t('dash.explain.devices.identify'), { untyped: f.devices_untyped, unreviewed: f.devices_unreviewed })}</span>}
+      </>
+    ),
+    left: t('dash.explain.devices.left'),
+  });
 
   return (
     <section aria-label={t('overview.healthTitle')} className="grid overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-[minmax(17rem,22rem)_1fr]">
@@ -180,6 +239,7 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
           sub={o ? fill(t('dash.tile.ofTotal'), { total: o.devices.total }) : undefined}
           tone={o && o.devices.offline > 0 ? 'warn' : 'idle'}
           href="/radar/devices?status=online"
+          explain={o && <Explain title={t('dash.explain.devices.title')} basis={devicesBasis} />}
         >
           {o && o.devices.total > 0 && (
             <ProportionBar
