@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { SearchHit, SearchResponse } from '@nigafiy/shared-types';
+import { type EndpointStatus, type SearchHit, type SearchResponse, endpointState } from '@nigafiy/shared-types';
 import { auth, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 
@@ -80,11 +80,12 @@ searchRouter.get('/search', async (req, res) => {
       hostname: string | null;
       primary_ip: string | null;
       os: string | null;
-      connection_state: string;
+      status: EndpointStatus;
+      connection_state: 'never' | 'online' | 'offline';
       nigafiy_id: string;
     }>(
       `SELECT e.id, e.site_id, s.name AS site_name, e.name, e.hostname,
-              host(e.primary_ip) AS primary_ip, e.os, e.connection_state, e.nigafiy_id
+              host(e.primary_ip) AS primary_ip, e.os, e.status, e.connection_state, e.nigafiy_id
          FROM endpoints e
          JOIN sites s ON s.organization_id = e.organization_id AND s.id = e.site_id
         WHERE ($1::uuid IS NULL OR e.site_id = $1)
@@ -222,7 +223,9 @@ searchRouter.get('/search', async (req, res) => {
           id: e.id,
           title: e.name,
           subtitle: [`ID ${e.nigafiy_id}`, e.hostname, e.primary_ip, e.os].filter(Boolean).join(' · ') || null,
-          status: e.connection_state,
+          // The shared endpoint state (online / offline / pending / revoked), not the bare connection:
+          // a revoked or not yet enrolled computer is not "offline".
+          status: endpointState(e),
           // Found by its Nigafiy ID: open the endpoint with the connect dialog ("connect by ID").
           href: e.nigafiy_id === nigafiyId ? `/fleet/endpoints/${e.id}?connect=1` : `/fleet/endpoints/${e.id}`,
           site_id: e.site_id,

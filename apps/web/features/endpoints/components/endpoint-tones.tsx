@@ -1,14 +1,8 @@
 'use client';
 
 import { Meter as KitMeter } from '@/components/charts';
-import type { EndpointComplianceStatus, EndpointSummary } from '@nigafiy/shared-types';
+import type { EndpointComplianceStatus } from '@nigafiy/shared-types';
 import type { Tone } from '@/components/ui';
-
-export function epTone(ep: EndpointSummary): Tone {
-  if (ep.status === 'revoked') return 'crit';
-  if (ep.status === 'pending') return 'warn';
-  return ep.connection_state === 'online' ? 'ok' : 'crit';
-}
 
 export function complianceTone(status: EndpointComplianceStatus): Tone {
   if (status === 'compliant') return 'ok';

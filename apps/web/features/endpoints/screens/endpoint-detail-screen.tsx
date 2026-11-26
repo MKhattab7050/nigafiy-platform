@@ -4,10 +4,10 @@ import { ArrowLeft, ExternalLink, RefreshCw, ShieldAlert, ShieldCheck } from 'lu
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
-import type { EndpointCommand, EndpointDetail, EndpointSeriesPoint } from '@nigafiy/shared-types';
+import { type EndpointCommand, type EndpointDetail, type EndpointSeriesPoint, endpointState } from '@nigafiy/shared-types';
 import clsx from 'clsx';
 import { PlatformIcon } from '@/components/device-icon';
-import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, Notice, PageHeader, SkeletonBlock, Tabs, type Tone, useConfirm } from '@/components/ui';
+import { Async, BUTTON_BASE, BUTTON_SIZE, BUTTON_VARIANT, Badge, Button, ErrorNote, Notice, PageHeader, SkeletonBlock, StatusBadge, Tabs, useConfirm } from '@/components/ui';
 import { type ApiError, api } from '@/lib/api';
 import { useApp, useQuery } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
@@ -98,9 +98,6 @@ export function EndpointDetailScreen({ id }: { id: string }) {
       <Async query={query} skeleton={<SkeletonBlock chart lines={5} />}>
         {(ep) => {
           const online = ep.status === 'active' && ep.connection_state === 'online';
-          const statusLabel =
-            ep.status === 'revoked' ? tx.revoked : ep.status === 'pending' ? tx.pending : online ? tx.online : tx.offline;
-          const tone: Tone = ep.status === 'revoked' ? 'crit' : ep.status === 'pending' ? 'warn' : online ? 'ok' : 'crit';
 
           const capEnabled = (key: string) => ep.capabilities?.find((c) => c.key === key)?.enabled ?? false;
           // Android phones: no hardware/licence report, no OS update scan, no shell (agents/android-agent).
@@ -143,7 +140,7 @@ export function EndpointDetailScreen({ id }: { id: string }) {
                 description={`${ep.site_name} · ${tx.platforms[ep.platform] ?? ep.platform}${ep.hostname ? ` · ${ep.hostname}` : ''}${ep.nigafiy_id ? ` · ${rx.nigafiyId} ${rx.idValue(ep.nigafiy_id)}` : ''}`}
                 actions={
                   <>
-                    <Badge tone={tone}>{statusLabel}</Badge>
+                    <StatusBadge status={endpointState(ep)} />
                     <Badge
                       tone={
                         ep.compliance_status === 'compliant'

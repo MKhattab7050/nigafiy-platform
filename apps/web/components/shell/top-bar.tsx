@@ -12,7 +12,7 @@ import { type Key, useI18n } from '@/lib/i18n';
 import { HelpButton } from '@/features/guide/components/help-button';
 import { Logo } from '../logo';
 import { SummaryReportView } from '../summary-report';
-import { Badge, Button, ErrorNote, Input, Modal, Select, SkeletonBlock } from '../ui';
+import { Badge, Button, type ConnState, ErrorNote, Input, Modal, Select, SkeletonBlock, StatusBadge } from '../ui';
 import { LanguageButton } from './language-button';
 import { ThemeSwitch } from './theme-switch';
 
@@ -189,7 +189,10 @@ export function TopBar({ onMenu }: { onMenu: () => void }) {
                                     {hit.site_name}
                                   </Badge>
                                 )}
-                                {hit.status && (
+                                {hit.status && (hit.kind === 'device' || hit.kind === 'endpoint') ? (
+                                  // Devices and computers: the shared state badge (same word, tone and tooltip as their pages).
+                                  <StatusBadge status={hit.status as ConnState} />
+                                ) : hit.status && (
                                   <Badge
                                     tone={
                                       hit.status === 'online' || hit.status === 'ok' || hit.status === 'enabled'

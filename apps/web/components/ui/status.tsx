@@ -2,9 +2,9 @@
 
 import clsx from 'clsx';
 import { AlertOctagon, AlertTriangle, CheckCircle2, CircleDashed, Info } from 'lucide-react';
-import type { CheckState, Confidence, DeviceStatus } from '@nigafiy/shared-types';
+import type { CheckState, Confidence } from '@nigafiy/shared-types';
 import { type Key, useI18n } from '@/lib/i18n';
-import { TONE, type Tone, stateTone, statusTone } from './tones';
+import { type ConnState, TONE, type Tone, stateTone, statusTone } from './tones';
 
 export function Dot({ tone, className }: { tone: Tone; className?: string }) {
   return <span aria-hidden className={clsx('inline-block size-2 shrink-0 rounded-full', TONE[tone].dot, className)} />;
@@ -19,9 +19,9 @@ export function ToneIcon({ tone, className }: { tone: Tone; className?: string }
 }
 
 /** State is always conveyed by text as well as colour. */
-export function Badge({ tone, children, dot = true }: { tone: Tone; children: React.ReactNode; dot?: boolean }) {
+export function Badge({ tone, children, dot = true, title }: { tone: Tone; children: React.ReactNode; dot?: boolean; title?: string }) {
   return (
-    <span className={clsx('inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-[5px] border px-1.5 text-[11.5px] font-medium leading-none', TONE[tone].soft)}>
+    <span title={title} className={clsx('inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-[5px] border px-1.5 text-[11.5px] font-medium leading-none', TONE[tone].soft)}>
       {dot && <Dot tone={tone} className="size-1.5" />}
       {children}
     </span>
@@ -33,9 +33,20 @@ export function Tag({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex h-5 items-center rounded-[4px] border border-line bg-raised px-1.5 text-[11px] leading-none text-muted">{children}</span>;
 }
 
-export function StatusBadge({ status }: { status: DeviceStatus }) {
+/** The label of a device or endpoint state (shared mapping: status.* in core-strings). */
+export function useStatusLabel(): (s: ConnState) => string {
   const { t } = useI18n();
-  return <Badge tone={statusTone(status)}>{t(`status.${status}` as Key)}</Badge>;
+  return (s) => t(`status.${s}` as Key);
+}
+
+/** A device or endpoint state: same word, tone and explanation (tooltip) on every screen. */
+export function StatusBadge({ status }: { status: ConnState }) {
+  const { t } = useI18n();
+  return (
+    <Badge tone={statusTone(status)} title={t(`status.hint.${status}` as Key)}>
+      {t(`status.${status}` as Key)}
+    </Badge>
+  );
 }
 
 export function StateBadge({ state }: { state: CheckState | null }) {

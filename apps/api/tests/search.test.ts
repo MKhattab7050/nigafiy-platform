@@ -68,6 +68,21 @@ describe('global search', () => {
     expect((await search('core_sw')).some((h) => h.kind === 'switch')).toBe(false);
   });
 
+  it('endpoint hits carry the shared state: revoked and pending are not reported as offline', async () => {
+    const { a } = await seed();
+    const add = (name: string, status: string, conn: string) =>
+      systemPool.query(`INSERT INTO endpoints (organization_id, site_id, name, status, connection_state) VALUES ($1,$2,$3,$4,$5)`, [a.organizationId, a.siteId, name, status, conn]);
+    await add('state-pc-on', 'active', 'online');
+    await add('state-pc-off', 'active', 'offline');
+    await add('state-pc-new', 'pending', 'never');
+    await add('state-pc-first', 'active', 'never');
+    await add('state-pc-gone', 'revoked', 'offline');
+    const res = await a.agent.get('/api/v1/search').query({ q: 'state-pc' });
+    expect(res.status).toBe(200);
+    const byName = Object.fromEntries((res.body.items as (Hit & { status: string })[]).filter((h) => h.kind === 'endpoint').map((h) => [h.title, h.status]));
+    expect(byName).toEqual({ 'state-pc-on': 'online', 'state-pc-off': 'offline', 'state-pc-new': 'pending', 'state-pc-first': 'pending', 'state-pc-gone': 'revoked' });
+  });
+
   it('never returns another organization’s rows', async () => {
     await seed();
     const other = await newAccount('search-other');

@@ -4,9 +4,9 @@ import clsx from 'clsx';
 import { ChevronDown, PowerOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
-import type { EndpointSummary, InsightsReport, Overview, Paginated } from '@nigafiy/shared-types';
+import { type EndpointSummary, type InsightsReport, type Overview, type Paginated, endpointState } from '@nigafiy/shared-types';
 import { ProportionBar, RingGauge } from '@/components/charts';
-import { ErrorNote, Skeleton, ToneIcon, type Tone } from '@/components/ui';
+import { ErrorNote, Skeleton, ToneIcon, type Tone, statusColor } from '@/components/ui';
 import { qs } from '@/lib/api';
 import { type Query, useApp, useQuery } from '@/lib/app';
 import { absoluteTime, duration, pct, relativeTime } from '@/lib/format';
@@ -162,10 +162,10 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
   const o = overview.data;
   const failing = o ? o.checks.down + o.checks.degraded : null;
   const eps = endpoints.data?.items.filter((e) => e.status !== 'revoked');
-  const epsOnline = eps?.filter((e) => e.status === 'active' && e.connection_state === 'online').length;
-  const epsOffline = eps?.filter((e) => e.status === 'active' && e.connection_state !== 'online').length;
-  // Computers waiting for enrollment are neither online nor offline: say so instead of "0 offline".
-  const epsPending = eps?.filter((e) => e.status !== 'active').length ?? 0;
+  // One state per computer (shared mapping): pending (enrollment or first check-in not done) is never counted as offline.
+  const epsOnline = eps?.filter((e) => endpointState(e) === 'online').length;
+  const epsOffline = eps?.filter((e) => endpointState(e) === 'offline').length ?? 0;
+  const epsPending = eps?.filter((e) => endpointState(e) === 'pending').length ?? 0;
 
   return (
     <section aria-label={t('overview.healthTitle')} className="grid overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)] lg:grid-cols-[minmax(17rem,22rem)_1fr]">
@@ -187,9 +187,9 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
               legend={false}
               height={6}
               slices={[
-                { key: 'online', label: t('status.online'), value: o.devices.online, color: 'var(--color-ok)' },
-                { key: 'offline', label: t('status.offline'), value: o.devices.offline, color: 'var(--color-crit)' },
-                { key: 'unknown', label: t('status.unknown'), value: o.devices.unknown, color: 'var(--color-idle)' },
+                { key: 'online', label: t('status.online'), value: o.devices.online, color: statusColor('online') },
+                { key: 'offline', label: t('status.offline'), value: o.devices.offline, color: statusColor('offline') },
+                { key: 'unknown', label: t('status.unknown'), value: o.devices.unknown, color: statusColor('unknown') },
               ]}
             />
           )}
@@ -224,14 +224,15 @@ export function StatusHeader({ insights }: { insights: Query<InsightsReport> }) 
               legend={false}
               height={6}
               slices={[
-                { key: 'online', label: t('status.online'), value: epsOnline ?? 0, color: 'var(--color-ok)' },
-                { key: 'offline', label: t('status.offline'), value: epsOffline ?? 0, color: 'var(--color-idle)' },
+                { key: 'online', label: t('status.online'), value: epsOnline ?? 0, color: statusColor('online') },
+                { key: 'offline', label: t('status.offline'), value: epsOffline, color: statusColor('offline') },
+                { key: 'pending', label: t('status.pending'), value: epsPending, color: statusColor('pending') },
               ]}
             />
           )}
           {eps && eps.length > 0 && (
             <span className="tnum mt-2 block text-[11.5px] text-muted">
-              {[epsOffline ? `${epsOffline} ${t('status.offline')}` : null, epsPending ? fill(t('dash.tile.pendingEnroll'), { count: epsPending }) : null]
+              {[epsOffline ? `${epsOffline} ${t('status.offline')}` : null, epsPending ? `${epsPending} ${t('status.pending')}` : null]
                 .filter(Boolean)
                 .join(' · ') || `0 ${t('status.offline')}`}
             </span>
