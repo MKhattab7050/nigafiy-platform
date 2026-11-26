@@ -276,6 +276,8 @@ class MainActivity : Activity() {
         val phone = ui.card(root, getString(R.string.enrolled_title))
         val mode = Facts(this, store).mode()
         ui.fact(phone, getString(R.string.label_server), store.server ?: "", ltr = true)
+        // Away from home through Tailscale (ServerAddresses): say which address answers now.
+        if (store.awayFromHome) ui.fact(phone, getString(R.string.label_server_away), store.currentServer ?: "", ltr = true)
         ui.fact(phone, getString(R.string.label_mode), getString(when { store.isAdminPhone -> R.string.status_mode_admin; mode == Mode.DEVICE_OWNER -> R.string.status_mode_owner; else -> R.string.status_mode_regular }))
         ui.fact(phone, getString(R.string.label_last), lastValue)
         store.lastError?.let { ui.note(phone, getString(R.string.status_error, it)) }
@@ -353,7 +355,7 @@ class MainActivity : Activity() {
      * logs out, and says that Nigafiy keeps listing it until it is removed there.
      */
     private fun logOut() {
-        val server = store.server ?: return
+        val server = store.currentServer ?: return
         val pin = store.pin
         val cred = store.credential
         Thread {

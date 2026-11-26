@@ -85,6 +85,7 @@
     <string name="header_connected">متصل · محمي</string>
     <string name="header_not_enrolled">لم يُسجَّل بعد</string>
     <string name="label_server">الخادم</string>
+    <string name="label_server_away">خارج المنزل (Tailscale)</string>
     <string name="label_mode">الوضع</string>
     <string name="label_last">آخر اتصال</string>
     <string name="label_endpoint">معرّف الجهاز</string>

@@ -15,6 +15,8 @@ import { StreamHub } from '../src/modules/endpoints/remote-desktop/stream-hub.ts
 import { runApkFileSweep } from '../src/modules/endpoints/fleet-android/apks.ts';
 import { measure } from '../src/modules/endpoints/fleet-monitoring/evaluate.ts';
 import { CSRF, app, newAccount, type TestAccount } from './helpers.ts';
+import { setCliRunner } from '../src/modules/outside-access/detect.ts';
+import { phoneServerAddresses, resetPhoneAddressCache } from '../src/modules/outside-access/phone-addresses.ts';
 
 // Android phones as Fleet endpoints (migration 045, docs/features/android.md). The agent side is
 // driven with the exact bodies agents/android-agent core/Protocol.kt builds; no phone is involved.
@@ -685,6 +687,30 @@ describe('Admin phones (migration 066)', () => {
     expect((await session(cred)).status).toBe(403);
     const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
     expect(hb.body.phone_role).toBe('user');
+    expect(Array.isArray(hb.body.server_addresses)).toBe(true);
+  });
+
+  it('the heartbeat gives a phone the Tailscale address of this PC for use away from home', async () => {
+    const a = await newAccount('phone-tailscale');
+    const { cred } = await adminPhone(a, 'user');
+    const savedPort = env.HTTPS_PORT;
+    (env as { HTTPS_PORT?: number }).HTTPS_PORT = 47143;
+    setCliRunner(async (file, args) => {
+      if (args[0] === 'version') return { code: 0, stdout: '1.76.1', stderr: '' };
+      if (args[0] === 'status') return { code: 0, stdout: JSON.stringify({ BackendState: 'Running', Self: { DNSName: 'pc.tail1.ts.net.', TailscaleIPs: ['100.101.102.103'] } }), stderr: '' };
+      return { code: 0, stdout: '{}', stderr: '' };
+    });
+    try {
+      resetPhoneAddressCache();
+      await phoneServerAddresses({ wait: true });
+      const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
+      expect(hb.status).toBe(200);
+      expect(hb.body.server_addresses).toEqual(['https://100.101.102.103:47143']);
+    } finally {
+      setCliRunner(null);
+      resetPhoneAddressCache();
+      (env as { HTTPS_PORT?: number }).HTTPS_PORT = savedPort;
+    }
   });
 
   it('an admin phone opens the dashboard as the admin who made it; revoking or demoting ends it at once', async () => {

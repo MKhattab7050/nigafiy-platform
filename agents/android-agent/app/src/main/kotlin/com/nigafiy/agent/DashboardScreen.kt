@@ -44,6 +44,8 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     private var web: WebView? = null
     private var leafSha256: String? = null
     private var sessionAt = 0L
+    /** The address the session was made at: the home one, or the Tailscale one away from home. */
+    private var sessionServer: String? = null
     private var loading = false
     private var pendingPath: String? = null
     private var fullView: View? = null
@@ -56,9 +58,10 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
 
     /** Shows the dashboard, at [path] when given (an alert's page). */
     fun open(path: String? = null) {
-        val server = store.server ?: return
+        val server = store.currentServer ?: return
         val w = web
-        val fresh = System.currentTimeMillis() - sessionAt < SESSION_REUSE_MS
+        // Away from home the phone talks to another address of the same server: a new session there.
+        val fresh = System.currentTimeMillis() - sessionAt < SESSION_REUSE_MS && sessionServer == server
         if (w != null && fresh) {
             if (path != null) w.loadUrl(server + path)
             return
@@ -80,7 +83,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
         // is opened once it is ready.
         if (path != null) pendingPath = path
         if (loading) return
-        val server = store.server ?: return
+        val server = store.currentServer ?: return
         loading = true
         say(act.getString(R.string.dashboard_loading))
         val pin = store.pin
@@ -101,6 +104,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
                 if (value == null) { say(error ?: act.getString(R.string.dashboard_error, "")); return@runOnUiThread }
                 leafSha256 = leaf
                 sessionAt = System.currentTimeMillis()
+                sessionServer = server
                 val cm = CookieManager.getInstance()
                 cm.setAcceptCookie(true)
                 cm.setCookie(server, "ld_session=$value; Path=/; Secure; HttpOnly; SameSite=Lax")
@@ -228,7 +232,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     }
 
     private fun sameServer(u: Uri): Boolean {
-        val s = Uri.parse(store.server ?: return false)
+        val s = Uri.parse(sessionServer ?: store.currentServer ?: return false)
         return u.scheme == s.scheme && u.host == s.host && u.port == s.port
     }
 

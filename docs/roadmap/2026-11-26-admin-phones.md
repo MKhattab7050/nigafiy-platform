@@ -34,6 +34,11 @@ Owner's decisions (memory: admin-phone-decisions):
   uses, built-in LAN TLS) also serves the dashboard pages, proxied to the local web server, **only to
   a request that carries a valid admin-phone session**. Everyone else gets 404 there, as today.
 - Away from home the dashboard works through the owner's existing outside access (Tailscale).
+  Done 2026-11-27 for every phone, not only admin phones: the heartbeat answer lists this PC's
+  Tailscale address on the HTTPS listener (`server_addresses`, outside-access/phone-addresses.ts);
+  the phone keeps it and switches to it when the home address does not answer, and back home every
+  5 minutes (core ServerAddresses.kt). Needs Tailscale signed in on the PC and on the phone. The pin
+  is unchanged, so another address cannot point the phone at a different server.
 - `POST /api/v1/agent/dashboard-session` (agent credential): for an admin phone, creates a normal web
   session for `phone_admin_user_id`, tied to the endpoint (`sessions.endpoint_id`). It returns the
   cookie value, which the app puts into the WebView's cookie store; it is never shown.

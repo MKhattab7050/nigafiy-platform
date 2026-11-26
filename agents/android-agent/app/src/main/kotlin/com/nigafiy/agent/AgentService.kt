@@ -20,6 +20,7 @@ import com.nigafiy.agent.core.GatewayError
 import com.nigafiy.agent.core.Mode
 import com.nigafiy.agent.core.Protocol
 import com.nigafiy.agent.core.SeenCommands
+import com.nigafiy.agent.core.ServerAddresses
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -41,6 +42,8 @@ class AgentService : Service() {
     private lateinit var seen: SeenCommands
     @Volatile private var lastAppsAt = 0L
     @Volatile private var forceApps = false
+    /** When the home address was last tried while the phone used another one (ServerAddresses). */
+    @Volatile private var lastHomeTry = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -51,7 +54,7 @@ class AgentService : Service() {
         executor = Executor(this, store, facts)
         seen = SeenCommands(store.seenCommands)
         ScreenShare.endReporter = { id -> pool.execute { try { gateway()?.endSession(id) } catch (e: Exception) { store.lastError = e.message } } }
-        ScreenShare.streamStarter = { req -> store.server?.let { srv -> LiveStream.start(srv, store.pin, { store.credential }, req) } }
+        ScreenShare.streamStarter = { req -> store.currentServer?.let { srv -> LiveStream.start(srv, store.pin, { store.credential }, req) } }
         channel(this)
         showManagementNotification()
         startInForeground(getString(R.string.notif_enrolling, store.server ?: store.pendingEnrollment?.server ?: "…"))
@@ -98,7 +101,7 @@ class AgentService : Service() {
     private fun show(text: String) = getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
 
     private fun gateway(): Gateway? {
-        val server = store.server ?: return null
+        val server = store.currentServer ?: return null
         return Gateway(server, store.pin, store.credential)
     }
 
@@ -129,6 +132,8 @@ class AgentService : Service() {
             val g = Gateway(p.server, p.pin)
             val (id, cred) = g.enroll(Protocol.enrollBody(p.token, facts.device(withApps = false), facts.security()))
             store.server = p.server
+            store.activeServer = null
+            store.otherServers = emptyList()
             store.pin = p.pin
             store.endpointId = id
             store.credential = cred
@@ -173,21 +178,34 @@ class AgentService : Service() {
     }
 
     private fun heartbeat() {
-        val g = gateway() ?: return
+        val home = store.server ?: return
         val now = System.currentTimeMillis()
         // Installed apps every 6 hours (and after a refresh or an install): they rarely change.
         val withApps = forceApps || now - lastAppsAt > TimeUnit.HOURS.toMillis(6)
         val results = generateSequence { unsent.poll() }.toList()
         try {
             val body = Protocol.heartbeatBody(facts.device(withApps), facts.security(), results)
-            val r = try {
-                g.heartbeat(body)
-            } catch (e: GatewayError) {
-                // A Nigafiy server older than this app refuses fields it does not know (400): report
-                // again without the phone-control facts rather than going silent (first A36 run of 1.0.2).
-                if (e.status != 400) throw e
-                g.heartbeat(Protocol.withoutPhoneControls(body))
+            // Away from home (owner 2026-11-27): the address in use first, then home, then the server's
+            // other addresses (its Tailscale address); every few minutes home is tried first again.
+            val active = store.currentServer ?: home
+            val homeAgain = active != home && now - lastHomeTry > ServerAddresses.HOME_RETRY_MS
+            if (homeAgain) lastHomeTry = now
+            val order = ((if (homeAgain) listOf(home) else emptyList()) + ServerAddresses.order(home, store.otherServers, active)).distinct()
+            val (addr, r) = ServerAddresses.firstAnswering(order) { a ->
+                val quick = a != active || (homeAgain && a == home)
+                val ga = Gateway(a, store.pin, store.credential, if (quick) ServerAddresses.QUICK_CONNECT_MS else 15_000)
+                try {
+                    ga.heartbeat(body)
+                } catch (e: GatewayError) {
+                    // A Nigafiy server older than this app refuses fields it does not know (400): report
+                    // again without the phone-control facts rather than going silent (first A36 run of 1.0.2).
+                    if (e.status != 400) throw e
+                    ga.heartbeat(Protocol.withoutPhoneControls(body))
+                }
             }
+            if (addr != active) store.activeServer = if (addr == home) null else addr
+            ServerAddresses.parse(r["server_addresses"])?.let { store.otherServers = it }
+            val g = Gateway(addr, store.pin, store.credential)
             if (withApps) { lastAppsAt = now; forceApps = false }
             (r["heartbeat_interval_seconds"] as? Long)?.let { store.heartbeatSeconds = it.toInt() }
             store.lastContact = now
@@ -196,17 +214,17 @@ class AgentService : Service() {
             (r["phone_role"] as? String)?.takeIf { it == "admin" || it == "user" }?.let { store.phoneRole = it }
             Alerts.show(this, store, Alerts.parse(r["alerts"]))
             val mode = facts.mode()
-            show(getString(if (mode == Mode.DEVICE_OWNER) R.string.notif_owner else R.string.notif_regular, store.server))
+            show(getString(if (mode == Mode.DEVICE_OWNER) R.string.notif_owner else R.string.notif_regular, store.currentServer))
             @Suppress("UNCHECKED_CAST")
             handle(Protocol.parseCommands(com.nigafiy.agent.core.Json.write(mapOf("commands" to (r["commands"] ?: emptyList<Any>())))), g)
         } catch (e: GatewayError) {
             unsent.addAll(results)
             store.lastError = e.message
-            if (e.status == 401) { show(getString(R.string.notif_offline, store.server, e.message)); return }
+            if (e.status == 401) { show(getString(R.string.notif_offline, store.currentServer, e.message)); return }
         } catch (e: Exception) {
             unsent.addAll(results)
             store.lastError = e.message
-            show(getString(R.string.notif_offline, store.server, e.message ?: e.javaClass.simpleName))
+            show(getString(R.string.notif_offline, store.currentServer, e.message ?: e.javaClass.simpleName))
         }
     }
 

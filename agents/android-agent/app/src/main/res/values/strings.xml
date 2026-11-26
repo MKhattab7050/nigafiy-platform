@@ -85,6 +85,7 @@
     <string name="header_connected">Connected · protected</string>
     <string name="header_not_enrolled">Not enrolled yet</string>
     <string name="label_server">Server</string>
+    <string name="label_server_away">Away from home (Tailscale)</string>
     <string name="label_mode">Mode</string>
     <string name="label_last">Last contact</string>
     <string name="label_endpoint">Endpoint ID</string>

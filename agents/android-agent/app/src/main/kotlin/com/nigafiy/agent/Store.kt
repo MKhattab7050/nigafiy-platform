@@ -19,7 +19,17 @@ import javax.crypto.spec.GCMParameterSpec
 class Store(ctx: Context) {
     private val prefs: SharedPreferences = ctx.getSharedPreferences("nigafiy", Context.MODE_PRIVATE)
 
+    /** The home address the phone connected at (from the QR code or link). */
     var server: String? get() = prefs.getString("server", null); set(v) = prefs.edit().putString("server", v).apply()
+    /** Other addresses of the same server (its Tailscale address), from the heartbeat: ServerAddresses. */
+    var otherServers: List<String>
+        get() = com.nigafiy.agent.core.ServerAddresses.decode(prefs.getString("other_servers", null))
+        set(v) = prefs.edit().putString("other_servers", com.nigafiy.agent.core.ServerAddresses.encode(v)).apply()
+    /** The address that answered last (home or another); null = home. */
+    var activeServer: String? get() = prefs.getString("active_server", null); set(v) = prefs.edit().putString("active_server", v).apply()
+    /** Where to talk to the server now: the address that answered last, else home. */
+    val currentServer: String? get() = server?.let { home -> activeServer?.takeIf { it == home || it in otherServers } ?: home }
+    val awayFromHome: Boolean get() = server != null && currentServer != server
     var pin: String? get() = prefs.getString("pin", null); set(v) = prefs.edit().putString("pin", v).apply()
     var endpointId: String? get() = prefs.getString("endpoint_id", null); set(v) = prefs.edit().putString("endpoint_id", v).apply()
     var lastContact: Long get() = prefs.getLong("last_contact", 0); set(v) = prefs.edit().putLong("last_contact", v).apply()

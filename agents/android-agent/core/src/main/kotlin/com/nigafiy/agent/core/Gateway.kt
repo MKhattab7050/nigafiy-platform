@@ -15,7 +15,13 @@ class GatewayError(val status: Int, val code: String?, message: String) : IOExce
  * JVM tests. With a pin the connection trusts only the pinned chain (and, like the Windows agent,
  * the pin replaces the host name check); without one the system trust store decides.
  */
-class Gateway(val server: String, private val pin: String?, private var credential: String? = null) {
+class Gateway(
+    val server: String,
+    private val pin: String?,
+    private var credential: String? = null,
+    /** Shorter when trying an address that may not answer (ServerAddresses.QUICK_CONNECT_MS). */
+    private val connectTimeoutMs: Int = 15_000,
+) {
     init {
         Enrollment.normaliseServer(server) // refuses http:// to anything but loopback
     }
@@ -36,7 +42,7 @@ class Gateway(val server: String, private val pin: String?, private var credenti
             c.sslSocketFactory = Pin.socketFactory(pin)
             if (pin != null) c.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
         }
-        c.connectTimeout = 15_000
+        c.connectTimeout = connectTimeoutMs
         c.readTimeout = readTimeoutMs
         c.instanceFollowRedirects = false
         c.setRequestProperty("User-Agent", "nigafiy-android-agent/${Version.NAME}")

@@ -18,6 +18,7 @@ import { evaluateMonitoring, monitorSpec } from '../fleet-monitoring/evaluate.ts
 import { onHeartbeatPatches } from '../fleet-patches/service.ts';
 import { trayFlags } from '../fleet-user/recordings.ts';
 import { auditEndpointEvent } from '../remote-desktop/sessions.ts';
+import { phoneServerAddresses } from '../../outside-access/phone-addresses.ts';
 
 // The agent side of the endpoints module: enrollment, heartbeat, command delivery and results,
 // inventory. Called only by the agent gateway router (credential-authenticated).
@@ -321,6 +322,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         commands,
         // Phones only: an admin phone shows the dashboard and the network's alerts (migration 066).
         ...(platform === 'android' ? { phone_role: idRow?.phone_role ?? 'user' } : {}),
+        // Phones only: where else this server answers (this PC's Tailscale address), tried by the
+        // phone when the home address does not answer (outside-access/phone-addresses.ts).
+        ...(platform === 'android' ? { server_addresses: await phoneServerAddresses() } : {}),
         ...(idRow?.phone_role === 'admin' ? { alerts: await takePhoneAlerts(ep.id) } : {}),
       },
     };
