@@ -101,17 +101,42 @@ instances relaying through pg_notify.
   countdown, then accepted, declined, no answer or unavailable. This replaces the old
   `consent_unavailable` refusal. **The earlier version of this document listed the consent policy as
   built. It was not: `prompt` sessions were refused.**
-- **Banner (configurable per group — 2026-11-26).** The session banner is set by the group's
-  `banner_mode`:
+- **Banner (configurable per group, built 2026-11-26, migrations 051 and 052).** The session banner
+  is set by the group's `banner_mode`. **Silent by default** (owner decision 2026-11-26, "everything
+  silent"): a new group is `unattended` with `banner_mode: off` unless the admin picks otherwise,
+  existing unattended groups were switched to `off` (052), and a computer in no group that is
+  unattended gets `off` too (`prompt` computers keep the full banner). Remote shells follow the same
+  setting: with `off` the shell is not named on the banner (`shell_open.banner_mode`); its transcript
+  and audit are kept.
   - `shown` (default): an always-on-top banner with the operator's name, the reason and an End session
     button. Ending from the banner closes the session (`POST /api/v1/agent/rd-session/end`), audited as
     ended by the endpoint user.
-  - `minimized`: a small, unobtrusive indicator (tray/status only), no large bar.
+  - `minimized`: a small box in the bottom-right corner of the screen (Windows; Linux and macOS show
+    the same short text in their dialog): who is connected, view only or not, the recording mark,
+    and End session / Ctrl+Alt+Shift+E. Open remote shells still get their full lines. The person
+    still gets the "session started" notice.
   - `off`: **no on-screen banner** — the operator connects, views and controls without the signed-in user
     being interrupted, matching how an internal IT tool (SCCM-style) works on company machines. Allowed
     **only** on a managed endpoint whose group is `unattended`; refused for `attended`, for Quick Support
     and for help-request sessions (those stay `shown`). The one-time consent is the enrollment / company
-    monitoring policy, not a per-session prompt.
+    monitoring policy, not a per-session prompt. With `off` the server also skips the "session
+    started" and "session ended" notices. The person can still end the session from the Nigafiy tray
+    menu, and Fleet ends it as always (`rd_session_close`). With no banner there is no on-screen
+    recording mark either: a recorded session still shows in the session history and the audit log.
+  - Where it is enforced: the API refuses `minimized`/`off` unless the group is `unattended`
+    (`422 banner_mode_needs_unattended`, also a database check), and changing such a group to
+    `attended` needs `banner_mode: shown` in the same change. Each session takes a snapshot
+    (`fleet_sessions.banner_mode`), forced to `shown` for attended, refuse-window, help-request, Quick
+    Support and phone sessions; the connect dialog and the session view say which mode applies, and
+    the policy trail carries a `banner` line. The agent applies the same rule again
+    (`rdstream.OpenRequest.Banner`): consent or a refuse window in the payload always draws the full
+    banner, and an unknown value is treated as `shown`. An older agent ignores the field and shows
+    the full banner.
+  - Tests: `apps/api/tests/fleet-banner-mode.test.ts` (refusal matrix, payload, notices, audit,
+    forced cases) and `agents/endpoint-agent/internal/rdstream/banner_mode_test.go` (off draws
+    nothing and still closes from Fleet, minimized draws the corner box, consent/refuse window
+    override). **Not yet seen on a real screen**: the corner box was built for Windows but only the
+    text and the decision are tested; check it on the installed agent.
   - **The server-side audit log is written in every mode**, including `off` (operator, reason, start/end,
     permissions used, files moved). `banner_mode` is recorded on the session and in `fleet.session_banner`.
     The point of `off` is "the user is not interrupted each time," not hiding the fact of management — the

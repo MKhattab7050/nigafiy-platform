@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { EndpointAndroidState, EndpointPlatform, FleetPolicyTrailItem, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@nigafiy/shared-types';
+import type { EndpointAndroidState, EndpointPlatform, FleetBannerMode, FleetPolicyTrailItem, FleetSession, FleetSessionStatus, RemoteDesktopFrame, RemoteDesktopSession } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { randomToken } from '../../../common/crypto.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
@@ -166,6 +166,18 @@ export async function startSession(
 
     const attended = decision.attended;
     const consentMode = attended ? 'prompt' : 'unattended';
+    // The session banner (migration 051): a group of company-managed computers may minimize or hide
+    // it, but only for unattended sessions without a refuse window. Attended, refuse-window,
+    // help-request, Quick Support and phone sessions always get the full banner, whatever the group
+    // says (the person was asked: they see who is there). The audit log is written in every mode.
+    const bannerMode: FleetBannerMode = attended || decision.refuseWindowS > 0 || opts.forceAttended || opts.quickSupportId || ep.platform === 'android' ? 'shown' : eff.policy.banner_mode;
+    if (bannerMode !== 'shown') {
+      decision.trail.push({
+        check: 'banner',
+        result: 'info',
+        detail: bannerMode === 'off' ? 'no on-screen banner (company-managed computer, unattended group)' : 'minimized banner in the corner of the screen',
+      });
+    }
     const state: NonNullable<RemoteDesktopSession['state']> = decision.approvalNeeded ? 'waiting_approval' : attended || decision.refuseWindowS > 0 ? 'waiting_consent' : 'active';
     const publicId = randomToken(12);
     const reason = body.reason;
@@ -174,9 +186,9 @@ export async function startSession(
         `INSERT INTO fleet_sessions (organization_id, endpoint_id, public_id, operator_user_id, operator_email, reason, state, consent_mode,
                                      consent_result, display_index, quality, scale, fleet_group_id, group_name, profile_id, profile_name,
                                      permissions, consent_timeout_s, refuse_window_s, policy_trail, mfa_verified, request_ip,
-                                     approval_state, approval_expires_at)
+                                     approval_state, approval_expires_at, banner_mode)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::inet,$23::text,
-                 CASE WHEN $23::text = 'pending' THEN now() + make_interval(mins => $24::int) END)
+                 CASE WHEN $23::text = 'pending' THEN now() + make_interval(mins => $24::int) END, $25)
          RETURNING id, approval_expires_at`,
         [
           ctx.organizationId,
@@ -203,6 +215,7 @@ export async function startSession(
           requestIp,
           decision.approvalNeeded ? 'pending' : 'not_required',
           eff.policy.approval_ttl_minutes,
+          bannerMode,
         ],
       )
     ).rows[0]!;
@@ -242,6 +255,7 @@ export async function startSession(
       group_name: eff.group?.name ?? null,
       user_session: body.user_session ?? null,
       quick_support: Boolean(opts.quickSupportId),
+      banner_mode: bannerMode,
     };
     await db.query(`UPDATE endpoints SET rd_session = $2::jsonb WHERE id = $1`, [id, JSON.stringify({ ...session, operator_user_id: ctx.userId })]);
     // A new session never shows a frame of an earlier one.
@@ -258,6 +272,7 @@ export async function startSession(
       permissions: decision.permissions,
       clamped: decision.clamped,
       trail: decision.trail,
+      banner_mode: bannerMode,
       recording: recordingId ? { recording_id: recordingId, mode: rule.mode, retention_days: rule.retentionDays } : null,
       wake_request_id: body.wake_request_id ?? null,
       user_session: body.user_session ?? null,
@@ -343,8 +358,11 @@ export async function openOnAgent(
   const { session, endpoint: ep } = o;
   const attended = session.consent_mode === 'prompt';
   const perms = sessionPermissions(session);
-  if (!attended && o.refuseWindowS === 0 && o.operator.userId) {
-    // Never silent: the person at the endpoint is told who is viewing before the first frame is taken.
+  const bannerMode: FleetBannerMode = attended ? 'shown' : (session.banner_mode ?? 'shown');
+  if (!attended && o.refuseWindowS === 0 && o.operator.userId && bannerMode !== 'off') {
+    // The person at the endpoint is told who is viewing before the first frame is taken. A group of
+    // company-managed computers with the banner off (fleet_groups.banner_mode) skips this notice:
+    // the operator works without interrupting the signed-in user; the session is still audited.
     await queueUserNotice(
       db,
       o.orgId,
@@ -369,13 +387,16 @@ export async function openOnAgent(
         consent_timeout_s: attended ? o.consentTimeoutS : CONSENT_TIMEOUT_SECONDS,
         // Unattended: the user may refuse within this many seconds (0 = no dialog).
         refuse_window_s: o.refuseWindowS,
-        // The agent enforces these too and shows them on the banner; nothing here can hide the banner.
+        // The agent enforces these too and lists them on the banner.
         control: perms.control,
         permissions: perms,
         profile: session.profile_name ?? null,
         // Everyone in the session and the recording mark: both on the banner, always.
         operators: session.operators ?? [o.operator.email],
         recording: Boolean(session.recording_id),
+        // shown: the full banner; minimized: a small corner indicator; off: no banner (unattended
+        // sessions on company-managed computers only; an agent that does not know it shows it).
+        banner_mode: bannerMode,
         stream: true,
         // A phone (agents/android-agent 1.0.3+) opens the live stream only when the hub checks its
         // taps against what it reports (stream-hub.ts); an older server keeps it on the HTTP path.
@@ -407,6 +428,7 @@ export async function openOnAgent(
     operator: o.operator.email,
     consent_mode: session.consent_mode,
     refuse_window_s: o.refuseWindowS,
+    banner_mode: bannerMode,
     reason: session.reason,
     permissions: perms,
   });
@@ -438,12 +460,16 @@ export async function openOnAgent(
 export async function stopSession(req: Request, ctx: AuthContext, id: string): Promise<void> {
   await withTenant(ctx.organizationId, async (db) => {
     const ep = (
-      await db.query<{ id: string; active: boolean; state: string | null }>(`SELECT id, rd_session IS NOT NULL AS active, rd_session->>'state' AS state FROM endpoints WHERE id = $1`, [id])
+      await db.query<{ id: string; active: boolean; state: string | null; banner_mode: string | null }>(
+        `SELECT id, rd_session IS NOT NULL AS active, rd_session->>'state' AS state, rd_session->>'banner_mode' AS banner_mode FROM endpoints WHERE id = $1`,
+        [id],
+      )
     ).rows[0];
     if (!ep) throw notFound('Endpoint');
     const ended = await endOpenSession(db, ctx.organizationId, id, 'operator', { userId: ctx.userId, email: ctx.userEmail });
     // A request still waiting for approval never reached the computer: nothing to tell its user.
-    if (ep.active && ep.state !== 'waiting_approval') {
+    // A session with the banner off ends as quietly as it ran (company-managed computer; audited below).
+    if (ep.active && ep.state !== 'waiting_approval' && ep.banner_mode !== 'off') {
       await queueUserNotice(db, ctx.organizationId, id, ctx.userId, ctx.userEmail, 'Remote support session ended', `${ctx.userEmail} is no longer viewing this screen.`);
     }
     await audit(db, req, 'endpoint.remote_desktop_stopped', { type: 'endpoint', id }, { operator: ctx.userEmail });

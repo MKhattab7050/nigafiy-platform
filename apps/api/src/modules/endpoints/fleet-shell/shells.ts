@@ -172,7 +172,18 @@ export async function openShell(req: Request, ctx: AuthContext, endpointId: stri
         [
           ctx.organizationId,
           endpointId,
-          JSON.stringify({ shell_id: publicId, operator: ctx.userEmail, reason: body.reason, cols: body.cols, rows: body.rows, idle_timeout_s: idleS, max_transcript_bytes: MAX_TRANSCRIPT_BYTES }),
+          JSON.stringify({
+            shell_id: publicId,
+            operator: ctx.userEmail,
+            reason: body.reason,
+            cols: body.cols,
+            rows: body.rows,
+            idle_timeout_s: idleS,
+            max_transcript_bytes: MAX_TRANSCRIPT_BYTES,
+            // The group's banner (migration 051/052): an unattended group with the banner off opens
+            // the shell without a banner line; the transcript and the audit log are kept as always.
+            banner_mode: eff.policy.access_mode === 'unattended' ? eff.policy.banner_mode : 'shown',
+          }),
           ctx.userId,
           ctx.userEmail,
         ],
@@ -184,6 +195,7 @@ export async function openShell(req: Request, ctx: AuthContext, endpointId: stri
       reason: body.reason,
       profile: requested.name,
       group: eff.group!.name,
+      banner_mode: eff.policy.access_mode === 'unattended' ? eff.policy.banner_mode : 'shown',
       mfa_verified: decision.mfaVerified,
       trail,
       transcript: transcriptLink(endpointId, id),

@@ -241,6 +241,7 @@ type spec struct {
 	style   uintptr
 	w, h    int
 	top     bool // top-centre (banner) instead of screen centre
+	corner  bool // bottom-right, above the taskbar (minimized banner)
 	// rect places the window exactly (x, y, w, h on the virtual screen): privacy screen, overlay.
 	rect *[4]int
 	// custom creates the children instead of the text + buttons layout.
@@ -271,6 +272,9 @@ func runWindow(s spec, w *window, ready func(hwnd uintptr), failed func(error)) 
 	x, y := (sw-s.w)/2, (sh-s.h)/2
 	if s.top {
 		y = 12
+	}
+	if s.corner {
+		x, y = sw-s.w-16, sh-s.h-64
 	}
 	if s.rect != nil {
 		x, y, s.w, s.h = s.rect[0], s.rect[1], s.rect[2], s.rect[3]
@@ -454,7 +458,13 @@ func (u *winUI) ShowBanner(info BannerInfo, onEnd func()) error {
 	w.onClose = func() bool { return false } // Alt+F4 does not hide it; End session ends the session
 	text := BannerText(info)
 	h := max(150, 100+17*(strings.Count(text, "\n")+1))
-	s := spec{title: info.Title(), text: text, exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: 660, h: h, top: true,
+	w0, top, corner := 660, true, false
+	if info.Compact() {
+		// Minimized (company-managed computer): a small box in the corner, still with End session.
+		w0, top, corner = 400, false, true
+		h = max(140, 90+17*(strings.Count(text, "\n")+1))
+	}
+	s := spec{title: info.Title(), text: text, exStyle: wsExTopmost | wsExToolWindow, style: wsPopup | wsCaption | wsVisible, w: w0, h: h, top: top, corner: corner,
 		buttons: []struct {
 			id    int
 			label string

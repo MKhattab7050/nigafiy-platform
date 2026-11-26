@@ -12,7 +12,7 @@ export const RD_STREAM_CHANNEL = 'ld_rd_stream';
 export const CONSENT_TIMEOUT_SECONDS = 60;
 
 export const FLEET_SESSION_COLUMNS = `id, endpoint_id, public_id, operator_email, reason, state, consent_mode, consent_result, consent_error,
-  consent_decided_at, banner_state, banner_error, transport, stream_connected_at, rtc_encoder, rtc_started_at, rtc_fallback_reason, desktop_mode, display_index, quality, scale,
+  consent_decided_at, banner_state, banner_mode, banner_error, transport, stream_connected_at, rtc_encoder, rtc_started_at, rtc_fallback_reason, desktop_mode, display_index, quality, scale,
   frames_relayed::float8 AS frames_relayed, bytes_relayed::float8 AS bytes_relayed, clipboard_to_remote, clipboard_from_remote,
   started_at, accepted_at, ended_at, end_reason, ended_by_email, source, fleet_group_id, group_name, profile_id, profile_name, permissions,
   consent_timeout_s, refuse_window_s, policy_trail, mfa_verified, request_ip, approval_state, approval_expires_at, approver_email,
@@ -151,7 +151,8 @@ export async function applySessionOpenResult(
   if (!publicId) return;
   const fs = await fleetSessionByPublicId(db, endpointId, publicId);
   if (!fs || fs.state === 'ended') return;
-  const banner = !ok ? 'not_supported' : data?.banner === 'shown' ? 'shown' : data?.banner === 'unavailable' ? 'unavailable' : 'pending';
+  const banner =
+    !ok ? 'not_supported' : data?.banner === 'shown' || data?.banner === 'minimized' || data?.banner === 'off' || data?.banner === 'unavailable' ? data.banner : 'pending';
   await db.query(`UPDATE fleet_sessions SET banner_state = $2, banner_error = $3, desktop_mode = coalesce($4, desktop_mode) WHERE id = $1`, [
     fs.id,
     banner,

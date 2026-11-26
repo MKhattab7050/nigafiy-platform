@@ -65,7 +65,8 @@ pnpm test:web                        # browser walk, EN + AR, when you touched p
 
 Report the numbers (files, passed, skipped) in the pull request. Expected skips: pg_dump/pg_restore
 tests without the PostgreSQL client tools, the real-Redis test without Redis, the real-agent tests
-until `pnpm build:agent` has run.
+unless `pnpm build:agent` has run and `NIGAFIY_UI_TEST=1` is set (they show real banners and
+messages on this desktop).
 
 ## Test databases and ports
 

@@ -568,3 +568,29 @@ func TestBannerFailureRefusesTheShell(t *testing.T) {
 		t.Fatalf("%d shells still open", r.m.Count())
 	}
 }
+
+// An unattended group with the banner off (company-managed computer): the shell opens with no
+// banner line, still relays, and the server still ends it.
+func TestSilentShellDrawsNoBannerAndStillCloses(t *testing.T) {
+	conns, frames := make(chan *srv, 1), make(chan frame, 64)
+	ts := server(t, conns, frames)
+	defer ts.Close()
+	r := newRig(t, ts, conns, frames)
+
+	res, err := r.m.Open(context.Background(), OpenRequest{ShellID: shellID, Operator: "admin@corp.example", Reason: "Patch check", Cols: 80, Rows: 24, IdleTimeoutS: 60, BannerMode: "off"})
+	if err != nil || res.Banner != "off" {
+		t.Fatalf("%+v, %v", res, err)
+	}
+	<-conns
+	_ = nextFrame(t, frames, wsclient.OpText) // hello
+	if info, _ := r.ui.banner(); info != nil {
+		t.Fatalf("banner drawn for a silent shell: %+v", info)
+	}
+	if len(r.m.Lines()) != 0 {
+		t.Fatalf("silent shell listed on the banner: %+v", r.m.Lines())
+	}
+	if !r.m.Close(shellID, "operator") {
+		t.Fatal("the server could not close a silent shell")
+	}
+	waitFor(t, "the shell to close", func() bool { return r.m.Count() == 0 })
+}

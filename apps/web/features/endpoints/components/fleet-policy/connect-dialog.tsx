@@ -117,6 +117,7 @@ export function ConnectDialog({
                   ))}
                 </ul>
                 <p className="text-muted">{p.policy.access_mode === 'attended' ? tx.modeAttended(p.policy.consent_timeout_s) : tx.modeUnattended(p.policy.refuse_window_s)}</p>
+                {p.policy.access_mode === 'unattended' && <p className="text-muted">{tx.connectBanner[p.policy.banner_mode ?? 'shown']}</p>}
                 {p.approval_needed && <p className="mt-1 text-warn">{tx.needsApproval(p.policy.approval_ttl_minutes)}</p>}
               </div>
 

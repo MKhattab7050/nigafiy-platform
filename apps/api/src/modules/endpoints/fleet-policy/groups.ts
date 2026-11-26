@@ -12,7 +12,7 @@ import type { GroupCreate, GroupPatch } from './schema.ts';
 
 const GROUP_COLUMNS = `g.id, g.name, g.description, g.color, g.access_mode, g.consent_timeout_s, g.refuse_window_s, g.allowed_hours,
   g.allowed_roles, g.default_profile_id, g.max_profile_id, g.mfa_required, g.approval_required, g.approval_ttl_minutes,
-  g.ip_allowlist::text[] AS ip_allowlist, g.recording_mode, g.recording_retention_days, g.user_may_view_recordings, g.shell_enabled, g.shell_idle_timeout_minutes, g.created_by_email, g.created_at, g.updated_at,
+  g.ip_allowlist::text[] AS ip_allowlist, g.recording_mode, g.recording_retention_days, g.user_may_view_recordings, g.shell_enabled, g.shell_idle_timeout_minutes, g.banner_mode, g.created_by_email, g.created_at, g.updated_at,
   (SELECT count(*)::int FROM endpoints e WHERE e.organization_id = g.organization_id AND e.fleet_group_id = g.id) AS endpoint_count`;
 
 export async function groupById(db: Db, id: string): Promise<FleetGroup | null> {
@@ -58,11 +58,29 @@ function policySnapshot(g: Omit<FleetGroup, 'id' | 'endpoint_count' | 'created_b
     user_may_view_recordings: g.user_may_view_recordings,
     shell_enabled: g.shell_enabled,
     shell_idle_timeout_minutes: g.shell_idle_timeout_minutes,
+    banner_mode: g.banner_mode,
   };
 }
 
-export async function createGroup(req: Request, ctx: AuthContext, body: GroupCreate): Promise<FleetGroup> {
+/**
+ * A minimized or hidden banner is for company-owned, enrolled computers that IT reaches without
+ * asking (unattended). An attended group always shows the full banner.
+ */
+function checkBannerMode(g: { access_mode: FleetGroup['access_mode']; banner_mode: FleetGroup['banner_mode'] }): void {
+  if (g.banner_mode !== 'shown' && g.access_mode !== 'unattended') {
+    throw new AppError(
+      422,
+      'banner_mode_needs_unattended',
+      'A minimized or hidden session banner is only for unattended groups of company-managed computers. Set the access mode to unattended first, or keep the banner shown.',
+    );
+  }
+}
+
+export async function createGroup(req: Request, ctx: AuthContext, input: GroupCreate): Promise<FleetGroup> {
+  // No banner_mode given: off for an unattended group (silent by default), shown for an attended one.
+  const body = { ...input, banner_mode: input.banner_mode ?? (input.access_mode === 'unattended' ? 'off' : 'shown') } as const;
   return withTenant(ctx.organizationId, async (db) => {
+    checkBannerMode(body);
     await ensureBuiltinProfiles(db, ctx.organizationId);
     const defaultId = body.default_profile_id ?? (await builtinProfile(db, 'support')).id;
     const maxId = body.max_profile_id ?? (await builtinProfile(db, 'full_admin')).id;
@@ -74,8 +92,8 @@ export async function createGroup(req: Request, ctx: AuthContext, body: GroupCre
           `INSERT INTO fleet_groups (organization_id, name, description, color, access_mode, consent_timeout_s, refuse_window_s, allowed_hours,
                                      allowed_roles, default_profile_id, max_profile_id, mfa_required, approval_required, approval_ttl_minutes,
                                      ip_allowlist, created_by_email, recording_mode, recording_retention_days, user_may_view_recordings,
-                                     shell_enabled, shell_idle_timeout_minutes)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::cidr[],$16,$17,$18,$19,$20,$21) RETURNING id`,
+                                     shell_enabled, shell_idle_timeout_minutes, banner_mode)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::cidr[],$16,$17,$18,$19,$20,$21,$22) RETURNING id`,
           [
             ctx.organizationId,
             body.name,
@@ -98,6 +116,7 @@ export async function createGroup(req: Request, ctx: AuthContext, body: GroupCre
             body.user_may_view_recordings,
             body.shell_enabled,
             body.shell_idle_timeout_minutes,
+            body.banner_mode,
           ],
         )
       ).rows[0]!.id;
@@ -116,13 +135,14 @@ export async function updateGroup(req: Request, ctx: AuthContext, id: string, bo
     const cur = await groupById(db, id);
     if (!cur) throw notFound('Group');
     const next = { ...cur, ...body };
+    checkBannerMode(next);
     await checkProfiles(db, next.default_profile_id, next.max_profile_id);
     try {
       await db.query(
         `UPDATE fleet_groups SET name = $2, description = $3, color = $4, access_mode = $5, consent_timeout_s = $6, refuse_window_s = $7,
                 allowed_hours = $8, allowed_roles = $9, default_profile_id = $10, max_profile_id = $11, mfa_required = $12,
                 approval_required = $13, approval_ttl_minutes = $14, ip_allowlist = $15::cidr[], recording_mode = $16,
-                recording_retention_days = $17, user_may_view_recordings = $18, shell_enabled = $19, shell_idle_timeout_minutes = $20, updated_at = now()
+                recording_retention_days = $17, user_may_view_recordings = $18, shell_enabled = $19, shell_idle_timeout_minutes = $20, banner_mode = $21, updated_at = now()
           WHERE id = $1`,
         [
           id,
@@ -145,6 +165,7 @@ export async function updateGroup(req: Request, ctx: AuthContext, id: string, bo
           next.user_may_view_recordings,
           next.shell_enabled,
           next.shell_idle_timeout_minutes,
+          next.banner_mode,
         ],
       );
     } catch (err) {

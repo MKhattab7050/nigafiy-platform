@@ -1284,6 +1284,8 @@ export interface RemoteDesktopSession {
   user_session?: string | null;
   /** Quick Support session (nigafiy-support.exe): attended only, at most Support. */
   quick_support?: boolean;
+  /** The session banner this session uses on the computer (the group's, or shown when forced). */
+  banner_mode?: FleetBannerMode;
   /** Restart and reconnect in progress for this session. */
   restart_id?: string | null;
 }
@@ -1360,7 +1362,17 @@ export interface FleetAccessPolicy {
   approval_required: boolean;
   approval_ttl_minutes: number;
   ip_allowlist: string[];
+  /**
+   * The session banner on the computer (migration 051): shown (full banner, default), minimized
+   * (a small corner indicator) or off (no on-screen banner). minimized and off need an unattended
+   * group; attended, help-request and Quick Support sessions always show the full banner. The
+   * audit log is written in every mode.
+   */
+  banner_mode: FleetBannerMode;
 }
+
+/** What the person at a managed computer sees during a session (migration 051). */
+export type FleetBannerMode = 'shown' | 'minimized' | 'off';
 
 /** Session recording rules of a fleet group (migration 036). */
 export type FleetRecordingMode = 'off' | 'optional' | 'required';
@@ -1425,7 +1437,9 @@ export interface FleetSession {
   consent_result: FleetConsentResult;
   consent_error: string | null;
   consent_decided_at: string | null;
-  banner_state: 'pending' | 'shown' | 'unavailable' | 'not_supported';
+  /** minimized / off: the group's banner_mode on a company-managed computer (migration 051). */
+  banner_state: 'pending' | 'shown' | 'minimized' | 'off' | 'unavailable' | 'not_supported';
+  banner_mode: FleetBannerMode;
   banner_error: string | null;
   /** How the picture travelled: HTTP frames, the WebSocket + JPEG stream, or WebRTC video (migration 044). */
   transport: 'http' | 'ws' | 'webrtc';

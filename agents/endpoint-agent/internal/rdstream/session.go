@@ -1,6 +1,7 @@
 // Package rdstream runs the agent side of a live remote support session: it asks the person at the
 // screen for consent when the policy requires it, shows the session banner for the whole session
-// (always; no setting turns it off), and streams the screen over a WebSocket to the API, which
+// (minimized or off only for an unattended session on a company-managed computer whose fleet
+// group says so), and streams the screen over a WebSocket to the API, which
 // relays it to the operator's browser. Frames never touch a disk or a database; input, clipboard
 // and quality settings come back on the same socket.
 //
@@ -55,6 +56,31 @@ type OpenRequest struct {
 	// UserSession: the Windows session the helper attaches to (a session id, or "winlogon" for the
 	// sign-in screen). Empty: the console's session. Needs the LocalSystem service.
 	UserSession string `json:"user_session,omitempty"`
+	// BannerMode: the fleet group's banner_mode (migration 051) for an unattended session on a
+	// company-managed computer: "minimized" (a small corner box) or "off" (no banner). Empty or
+	// anything else: the full banner. A session that asks for consent always gets the full banner.
+	BannerMode string `json:"banner_mode,omitempty"`
+}
+
+// Banner modes (OpenRequest.BannerMode).
+const (
+	BannerShown     = "shown"
+	BannerMinimized = "minimized"
+	BannerOff       = "off"
+)
+
+// Banner is the banner this agent draws for the request: the full one unless an unattended
+// session asks for minimized or off (an attended session, one with a refuse window included,
+// always shows it: the person was asked, they see who is there).
+func (r OpenRequest) Banner() string {
+	if r.ConsentRequired || r.RefuseWindowSeconds > 0 {
+		return BannerShown
+	}
+	switch r.BannerMode {
+	case BannerMinimized, BannerOff:
+		return r.BannerMode
+	}
+	return BannerShown
 }
 
 // SessionTargeter is a Desktop that can move its session helper to another Windows session or to
@@ -237,16 +263,21 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) OpenResult {
 		}
 	}
 
-	l := &live{m: m, req: req, perms: perms, done: make(chan struct{})}
+	l := &live{m: m, req: req, perms: perms, banner: req.Banner(), done: make(chan struct{})}
 	l.tools.operators = userui.BannerInfo{Operators: req.Operators}.Normalize().Operators
 	l.tools.recording = req.Recording
-	// The banner shows for every session, whatever the profile allows (nothing can turn it off).
-	if err := d.ShowBanner(l.bannerInfo(), func() { m.endedByUser(req.SessionID) }); err != nil {
+	// The banner shows for every session, whatever the profile allows, except an unattended session
+	// on a company-managed computer whose group turned it off (OpenRequest.Banner). Then nothing is
+	// drawn; the session still ends from Fleet (rd_session_close) or from the tray, and the server
+	// audits it as always.
+	if l.banner == BannerOff {
+		res.Banner = BannerOff
+	} else if err := d.ShowBanner(l.bannerInfo(), func() { m.endedByUser(req.SessionID) }); err != nil {
 		res.Banner = "unavailable"
 		res.BannerError = err.Error()
 		m.cfg.Log.Warn("session banner could not be shown", "session", req.SessionID, "error", err.Error())
 	} else {
-		res.Banner = "shown"
+		res.Banner = l.banner
 	}
 	m.mu.Lock()
 	m.active = l
@@ -347,6 +378,8 @@ type live struct {
 	m      *Manager
 	req    OpenRequest
 	perms  userui.Permissions
+	// banner: what this session draws (OpenRequest.Banner): shown, minimized or off.
+	banner string
 	cancel context.CancelFunc
 	done   chan struct{}
 	tools  toolState

@@ -109,6 +109,8 @@ const policyFields = {
   // Remote shell (migration 042): off unless an admin turns it on.
   shell_enabled: z.boolean(),
   shell_idle_timeout_minutes: z.number().int().min(1).max(240),
+  // Session banner (migration 051): minimized / off only with access_mode = unattended (groups.ts).
+  banner_mode: z.enum(['shown', 'minimized', 'off']),
 };
 
 const groupName = z.string().trim().min(1).max(80);
@@ -122,7 +124,9 @@ export const groupCreateSchema = z
     name: groupName,
     description: description.optional().default(null),
     color: color.optional().default(null),
-    access_mode: policyFields.access_mode.default('attended'),
+    // Silent by default (migration 052): unattended with the banner off; an attended group gets the
+    // full banner (groups.ts resolves a missing banner_mode).
+    access_mode: policyFields.access_mode.default('unattended'),
     consent_timeout_s: policyFields.consent_timeout_s.default(60),
     refuse_window_s: policyFields.refuse_window_s.default(0),
     allowed_hours: policyFields.allowed_hours.default([]),
@@ -139,6 +143,7 @@ export const groupCreateSchema = z
     user_may_view_recordings: policyFields.user_may_view_recordings.default(false),
     shell_enabled: policyFields.shell_enabled.default(false),
     shell_idle_timeout_minutes: policyFields.shell_idle_timeout_minutes.default(15),
+    banner_mode: policyFields.banner_mode.optional(),
   })
   .strict();
 export type GroupCreate = z.infer<typeof groupCreateSchema>;

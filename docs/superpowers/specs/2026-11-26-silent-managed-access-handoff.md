@@ -31,19 +31,29 @@ audit log stays on in every mode** (it is for the organization, not an interrupt
 
 ## Implementation steps (when continuing)
 
+**Owner, later on 2026-11-26: "everything silent"** — silent became the default (migration 052:
+new groups unattended + off, existing unattended groups off, no-group unattended computers off,
+remote shells follow the group). Attended groups, help requests, Quick Support and phones still show
+the full banner.
+
+**Progress 2026-11-26:** the computer part (`banner_mode`) is built and tested (migration 051; see
+fleet-pro.md "Consent and the session banner" for what was decided while building it: a refuse window
+also forces the full banner, and `off` skips the start/end notices). Not yet seen on a real screen.
+The phone part is not started: it needs a Device Owner phone to verify the MediaProjection path.
+
 Computers (`banner_mode`):
-- [ ] Migration: add `fleet_groups.banner_mode text` (check in `shown|minimized|off`, default `shown`).
-- [ ] API validation: refuse `banner_mode = off` unless `access_mode = unattended`; always force `shown`
+- [x] Migration: add `fleet_groups.banner_mode text` (check in `shown|minimized|off`, default `shown`).
+- [x] API validation: refuse `banner_mode = off` unless `access_mode = unattended`; always force `shown`
       for Quick Support and help-request sessions regardless of group.
-- [ ] Session start: snapshot `banner_mode` onto `fleet_sessions`; send it to the agent in the
+- [x] Session start: snapshot `banner_mode` onto `fleet_sessions`; send it to the agent in the
       `rd_session_open` payload.
-- [ ] Agent (`agents/endpoint-agent`): the session helper honours `banner_mode` — draw the full bar for
+- [x] Agent (`agents/endpoint-agent`): the session helper honours `banner_mode` — draw the full bar for
       `shown`, a tray/status indicator for `minimized`, nothing for `off`. Keep the End-session path alive
       internally so Fleet can still end it.
-- [ ] Audit: record `banner_mode` on `fleet.session_opened` / `fleet.session_banner`.
-- [ ] UI: group editor control for `banner_mode`, disabled unless the group is unattended, with a one-line
+- [x] Audit: record `banner_mode` on `fleet.session_opened` / `fleet.session_banner`.
+- [x] UI: group editor control for `banner_mode`, disabled unless the group is unattended, with a one-line
       note on what `off` means and that it is for company-owned managed machines.
-- [ ] Tests: API refusal matrix (off+attended refused, off+unattended ok, Quick Support forced shown),
+- [x] Tests: API refusal matrix (off+attended refused, off+unattended ok, Quick Support forced shown),
       and an agent test that `off` draws no bar but the session still ends from Fleet.
 
 Phones (managed/unattended):

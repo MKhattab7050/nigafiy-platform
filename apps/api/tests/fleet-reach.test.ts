@@ -131,7 +131,7 @@ describe('fleet: reaching computers', () => {
     expect((await audits(a.organizationId, 'fleet.tags_changed')).length).toBe(2);
   });
 
-  it('unattended access through the 035 policy: no dialog, a notice first, then live; attended waits for Accept', async () => {
+  it('unattended access through the 035 policy: no dialog and silent by default (no notice), then live; attended waits for Accept', async () => {
     const a = await newAccount('reach-unattended');
     const { epId, cred } = await onlineEndpoint(a, 'SRV-01');
     const g = await a.agent.post('/api/v1/fleet/groups').set(CSRF).send({ name: 'Servers', access_mode: 'unattended' });
@@ -139,12 +139,13 @@ describe('fleet: reaching computers', () => {
     const s = await start(a, epId);
     expect(s.body.session).toMatchObject({ state: 'active', consent_mode: 'unattended' });
     const cmds = await pollFor(cred);
-    expect(cmds.map((c) => c.kind).slice(0, 2)).toEqual(['notify_user', 'rd_session_open']);
-    expect(cmds.find((c) => c.kind === 'rd_session_open')!.payload).toMatchObject({ consent_required: false, refuse_window_s: 0 });
+    // Silent by default (migration 052): a new unattended group has the banner off, no notice.
+    expect(cmds.map((c) => c.kind).slice(0, 2)).toEqual(['rd_session_open', 'rd_capture']);
+    expect(cmds.find((c) => c.kind === 'rd_session_open')!.payload).toMatchObject({ consent_required: false, refuse_window_s: 0, banner_mode: 'off' });
     const st = await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`);
     expect(st.body.fleet_session).toMatchObject({ state: 'active', consent_result: 'not_required', group_name: 'Servers' });
 
-    await a.agent.patch(`/api/v1/fleet/groups/${g.body.group.id}`).set(CSRF).send({ access_mode: 'attended' });
+    await a.agent.patch(`/api/v1/fleet/groups/${g.body.group.id}`).set(CSRF).send({ access_mode: 'attended', banner_mode: 'shown' });
     const att = await start(a, epId);
     expect(att.body.session).toMatchObject({ state: 'waiting_consent', consent_mode: 'prompt' });
   });

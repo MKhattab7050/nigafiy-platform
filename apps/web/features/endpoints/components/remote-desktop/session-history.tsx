@@ -16,7 +16,7 @@ import { toolsText } from './tools-text';
 
 const CONSENT_TONE: Record<string, Tone> = { accepted: 'ok', not_required: 'idle', pending: 'warn', denied: 'crit', timeout: 'warn', unavailable: 'crit', not_refused: 'ok' };
 const APPROVAL_TONE: Record<string, Tone> = { approved: 'ok', pending: 'warn', denied: 'crit', expired: 'warn' };
-const BANNER_TONE: Record<string, Tone> = { shown: 'ok', pending: 'idle', unavailable: 'crit', not_supported: 'warn' };
+const BANNER_TONE: Record<string, Tone> = { shown: 'ok', minimized: 'ok', off: 'info', pending: 'idle', unavailable: 'crit', not_supported: 'warn' };
 
 /** Remote support session history (fleet_sessions): one endpoint, or the whole organization. */
 export function SessionHistory({ endpointId, limit = 25 }: { endpointId?: string; limit?: number }) {

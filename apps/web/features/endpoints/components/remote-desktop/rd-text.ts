@@ -19,6 +19,10 @@ const en = {
   phonePolicy: 'A phone always asks the person first: nothing is shown or controlled until they accept on the phone.',
   promptPolicy: 'This computer’s policy asks the user for consent first: nothing is shown or controlled until they accept.',
   unattendedPolicy: 'Unattended policy: the session starts at once; the user is notified and sees the banner.',
+  transparencyMinimized:
+    'Company-managed computer: the person sees a small box in the corner with your name and can end the session at any time. Every session, input and clipboard transfer is in the audit log.',
+  transparencyOff:
+    'Company-managed computer with the banner off: the session runs without interrupting the person (no banner, no start message). It can still be ended from the Nigafiy tray menu, and every session, input and clipboard transfer is in the audit log.',
   waitingTitle: (name: string) => `Waiting for the person at ${name} to accept`,
   waitingBody: (s: number) => `A dialog with your name and reason is on their screen. Without an answer it is declined in ${ltr(s)} s.`,
   readyTitle: 'Remote Desktop ready',
@@ -88,6 +92,8 @@ const en = {
     unavailable: 'The banner could not be shown',
     not_supported: 'This agent version shows no banner (start notice only)',
     pending: 'Banner: waiting for the agent',
+    minimized: 'Minimized banner shown on the endpoint',
+    off: 'Banner off (group policy)',
   },
   permissionDenied: (what: string) => `macOS has not granted “${what}” to the agent.`,
   permissionNames: { screen_recording: 'Screen Recording', accessibility: 'Accessibility' } as Record<string, string>,
@@ -130,7 +136,7 @@ const en = {
     end: 'Ended',
   },
   consentResult: { pending: 'Pending', not_required: 'Not required', accepted: 'Accepted', denied: 'Declined', timeout: 'No answer', unavailable: 'Could not ask', not_refused: 'Not refused' } as Record<string, string>,
-  bannerShort: { pending: 'Pending', shown: 'Shown', unavailable: 'Failed', not_supported: 'Not supported' } as Record<string, string>,
+  bannerShort: { pending: 'Pending', shown: 'Shown', minimized: 'Minimized', off: 'Off (policy)', unavailable: 'Failed', not_supported: 'Not supported' } as Record<string, string>,
   transport: { ws: 'Live stream', http: 'HTTP', webrtc: 'WebRTC video' } as Record<string, string>,
   endShort: {
     operator: 'Operator',
@@ -168,6 +174,10 @@ const ar: Text = {
   phonePolicy: 'الهاتف يسأل صاحبه أولًا دائمًا: لا يُعرض شيء ولا يُتحكَّم بشيء قبل أن يوافق على الهاتف.',
   promptPolicy: 'سياسة هذا الحاسوب تطلب موافقة المستخدم أولًا: لا يُعرض شيء ولا يُتحكَّم بشيء قبل أن يوافق.',
   unattendedPolicy: 'سياسة دون حضور: تبدأ الجلسة فورًا، ويُبلَّغ المستخدم ويظهر له الشريط.',
+  transparencyMinimized:
+    'حاسوب مُدار من الشركة: يرى المستخدم مربعاً صغيراً في الزاوية باسمك ويمكنه إنهاء الجلسة في أي وقت. كل جلسة وكل إدخال ونقل للحافظة مسجّل في سجل التدقيق.',
+  transparencyOff:
+    'حاسوب مُدار من الشركة والشريط مُطفأ: تعمل الجلسة دون مقاطعة المستخدم (بلا شريط وبلا رسالة بدء). يمكن إنهاؤها من قائمة Nigafiy في شريط المهام، وكل جلسة وكل إدخال ونقل للحافظة مسجّل في سجل التدقيق.',
   waitingTitle: (name: string) => `بانتظار موافقة الشخص أمام ${name}`,
   waitingBody: (s: number) => `على شاشته نافذة باسمك والسبب. إن لم يُجب تُرفض الجلسة خلال ${ltr(s)} ثانية.`,
   readyTitle: 'سطح المكتب البعيد جاهز',
@@ -237,6 +247,8 @@ const ar: Text = {
     unavailable: 'تعذّر عرض الشريط',
     not_supported: 'إصدار الوكيل هذا لا يعرض الشريط (إشعار البدء فقط)',
     pending: 'الشريط: بانتظار الوكيل',
+    minimized: 'الشريط المصغّر ظاهر على الجهاز',
+    off: 'الشريط مُطفأ (سياسة المجموعة)',
   },
   permissionDenied: (what: string) => `لم يمنح macOS الوكيلَ صلاحية «${what}».`,
   permissionNames: { screen_recording: 'تسجيل الشاشة', accessibility: 'تسهيلات الاستخدام' },
@@ -279,7 +291,7 @@ const ar: Text = {
     end: 'الانتهاء',
   },
   consentResult: { pending: 'معلّقة', not_required: 'غير مطلوبة', accepted: 'مقبولة', denied: 'مرفوضة', timeout: 'بلا رد', unavailable: 'تعذّر الطلب', not_refused: 'لم تُرفض' },
-  bannerShort: { pending: 'معلّق', shown: 'ظاهر', unavailable: 'فشل', not_supported: 'غير مدعوم' },
+  bannerShort: { pending: 'معلّق', shown: 'ظاهر', minimized: 'مصغّر', off: 'مُطفأ (سياسة)', unavailable: 'فشل', not_supported: 'غير مدعوم' },
   transport: { ws: 'بث مباشر', http: 'HTTP', webrtc: 'فيديو WebRTC' },
   endShort: {
     operator: 'المشغّل',

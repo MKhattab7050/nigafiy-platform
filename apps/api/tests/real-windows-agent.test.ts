@@ -12,9 +12,12 @@ const binPath = path.resolve(
   '../../../agents/endpoint-agent/bin',
   process.platform === 'win32' ? 'nigafiy-agent.exe' : 'nigafiy-agent',
 );
+// These start the compiled agent on this desktop: it shows real banners and "session started"
+// messages (msg *) to the person using the computer. Opt in, as the Go UI tests do.
+const realAgentTests = process.env.NIGAFIY_UI_TEST === '1';
 
 // Needs an interactive Windows desktop and a binary built from the current source (`pnpm build:agent`).
-describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go Nigafiy Agent binary on Windows (end-to-end, run `pnpm build:agent` first)', () => {
+describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || !realAgentTests)('real Go Nigafiy Agent binary on Windows (end-to-end, run `pnpm build:agent` first)', () => {
   it(
     'spawns the compiled nigafiy-agent binary, enrolls, collects real host telemetry/inventory, and executes live File Manager, Remote Desktop, and Diagnostic commands',
     async () => {

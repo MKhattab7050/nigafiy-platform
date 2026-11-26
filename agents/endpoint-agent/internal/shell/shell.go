@@ -53,7 +53,13 @@ type OpenRequest struct {
 	Rows               int    `json:"rows"`
 	IdleTimeoutS       int    `json:"idle_timeout_s"`
 	MaxTranscriptBytes int64  `json:"max_transcript_bytes"`
+	// BannerMode "off": the group (unattended, company-managed computer) turned the banner off, so
+	// this shell gets no banner line. Anything else: the banner names it, as before.
+	BannerMode string `json:"banner_mode,omitempty"`
 }
+
+// Silent: the shell is not named on the banner (BannerMode "off").
+func (r OpenRequest) Silent() bool { return r.BannerMode == "off" }
 
 // OpenResult is the shell_open command's result data.
 type OpenResult struct {
@@ -203,7 +209,10 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (OpenResult, error)
 	// ever joined (fail closed). Only a computer with no desktop at all (Banner nil: a headless
 	// server, nobody to show it to) opens with "unavailable", which the operator sees.
 	res := OpenResult{Shell: term.Name(), PTY: term.Kind(), Banner: "shown"}
-	if err := m.showBanner(); err != nil {
+	if req.Silent() {
+		// Banner off for this group: nothing is drawn; the server keeps the transcript and the audit.
+		res.Banner = "off"
+	} else if err := m.showBanner(); err != nil {
 		if m.cfg.Banner != nil {
 			m.cfg.Log.Warn("shell refused: the banner could not be shown", "shell", req.ShellID, "error", err.Error())
 			s.finish("open_failed", nil, false)
@@ -280,6 +289,9 @@ func (m *Manager) Lines() []userui.ShellLine {
 	var out []userui.ShellLine
 	for _, id := range m.order {
 		s := m.shells[id]
+		if s.req.Silent() {
+			continue
+		}
 		out = append(out, userui.ShellLine{Operator: s.req.Operator, Reason: s.req.Reason})
 	}
 	return out

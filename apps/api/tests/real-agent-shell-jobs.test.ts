@@ -14,12 +14,15 @@ import { StreamHub } from '../src/modules/endpoints/remote-desktop/stream-hub.ts
 import { CSRF, app, newAccount } from './helpers.ts';
 
 const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', process.platform === 'win32' ? 'nigafiy-agent.exe' : 'nigafiy-agent');
+// These start the compiled agent on this desktop: it shows real banners and "session started"
+// messages (msg *) to the person using the computer. Opt in, as the Go UI tests do.
+const realAgentTests = process.env.NIGAFIY_UI_TEST === '1';
 
 // The compiled Go agent on this Windows desktop, end to end: a remote shell (real Windows
 // PowerShell in a real pseudo console, the real banner for a few seconds, the real WebSocket hub,
 // the sealed transcript), then a script job whose hostile parameter value comes back as data.
 // Nothing here touches the network: the API listens on 127.0.0.1 and the script only echoes.
-describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go agent: remote shell and script job (run `pnpm build:agent` first)', () => {
+describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || !realAgentTests)('real Go agent: remote shell and script job (run `pnpm build:agent` first)', () => {
   it('opens PowerShell over ConPTY, relays a command and its exit, then runs a job with a hostile parameter', async () => {
     await endpointsModule.lifecycle.start();
     const srv = http.createServer(app);

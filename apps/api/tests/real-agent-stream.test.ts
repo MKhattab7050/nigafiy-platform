@@ -14,6 +14,9 @@ import { StreamHub, frameMeta } from '../src/modules/endpoints/remote-desktop/st
 import { CSRF, app, newAccount } from './helpers.ts';
 
 const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', process.platform === 'win32' ? 'nigafiy-agent.exe' : 'nigafiy-agent');
+// These start the compiled agent on this desktop: it shows real banners and "session started"
+// messages (msg *) to the person using the computer. Opt in, as the Go UI tests do.
+const realAgentTests = process.env.NIGAFIY_UI_TEST === '1';
 
 // The compiled Go agent on this Windows desktop, live stream end to end: real screen capture,
 // real tile encoding, the real session banner (it appears top-centre for a few seconds), the real
@@ -23,7 +26,7 @@ const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agen
 // Twice: the agent in the foreground (desktop work in its own process), and `nigafiy-agent run`
 // (the service's mode: every capture, the banner and the stream's frames go through a real session
 // helper process, `nigafiy-agent session-helper`, over its stdin/stdout pipes).
-describe.skipIf(process.platform !== 'win32' || !existsSync(binPath))('real Go agent: live stream over WebSocket (run `pnpm build:agent` first)', () => {
+describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || !realAgentTests)('real Go agent: live stream over WebSocket (run `pnpm build:agent` first)', () => {
   it.each([
     { mode: 'foreground', args: [] as string[], desktopMode: 'local' },
     { mode: 'run (session helper)', args: ['run'], desktopMode: 'session_helper' },

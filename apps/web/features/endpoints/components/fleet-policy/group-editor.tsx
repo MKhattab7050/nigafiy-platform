@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import type { FleetAccessPolicy, FleetGroup, FleetHoursWindow, FleetOperatorRole, FleetPermissionProfile, FleetRecordingMode } from '@nigafiy/shared-types';
+import type { FleetAccessPolicy, FleetBannerMode, FleetGroup, FleetHoursWindow, FleetOperatorRole, FleetPermissionProfile, FleetRecordingMode } from '@nigafiy/shared-types';
 import { Button, Field, Input, Modal, Segmented, SectionLabel, Select, Switch, Textarea } from '@/components/ui';
 import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -36,7 +36,8 @@ export function GroupEditor({
   const [description, setDescription] = useState(group?.description ?? '');
   const [color, setColor] = useState(group?.color ?? '#6B3FC7');
   const [policy, setPolicy] = useState<FleetAccessPolicy>(() => ({
-    access_mode: group?.access_mode ?? 'attended',
+    // New groups are silent by default (migration 052): unattended, banner off.
+    access_mode: group?.access_mode ?? 'unattended',
     consent_timeout_s: group?.consent_timeout_s ?? 60,
     refuse_window_s: group?.refuse_window_s ?? 0,
     allowed_hours: group?.allowed_hours ?? [],
@@ -47,6 +48,7 @@ export function GroupEditor({
     approval_required: group?.approval_required ?? false,
     approval_ttl_minutes: group?.approval_ttl_minutes ?? 15,
     ip_allowlist: group?.ip_allowlist ?? [],
+    banner_mode: group?.banner_mode ?? 'off',
   }));
   const tt = toolsText(locale).groupRecording;
   const [recMode, setRecMode] = useState<FleetRecordingMode>(group?.recording_mode ?? 'optional');
@@ -120,7 +122,7 @@ export function GroupEditor({
               { value: 'attended', label: tx.attended },
               { value: 'unattended', label: tx.unattended },
             ]}
-            onChange={(v) => set('access_mode', v)}
+            onChange={(v) => setPolicy((p) => ({ ...p, access_mode: v, banner_mode: v === 'attended' ? 'shown' : p.access_mode === 'attended' ? 'off' : p.banner_mode }))}
           />
           <p className="mt-2 text-xs text-muted">{policy.access_mode === 'attended' ? tx.attendedHint(policy.consent_timeout_s) : tx.unattendedHint(policy.refuse_window_s)}</p>
           <div className="mt-2 max-w-60">
@@ -147,6 +149,26 @@ export function GroupEditor({
               </Field>
             )}
           </div>
+        </section>
+
+        {/* The session banner (migration 051): minimized or off only for unattended groups. */}
+        <section>
+          <SectionLabel>{tx.banner}</SectionLabel>
+          {policy.access_mode === 'unattended' ? (
+            <>
+              <Segmented<FleetBannerMode>
+                label={tx.banner}
+                value={policy.banner_mode}
+                options={(['shown', 'minimized', 'off'] as const).map((m) => ({ value: m, label: tx.bannerModes[m] }))}
+                onChange={(v) => set('banner_mode', v)}
+              />
+              <p className={clsx('mt-2 text-xs', policy.banner_mode === 'off' ? 'text-warn' : 'text-muted')}>{tx.bannerHints[policy.banner_mode]}</p>
+              {policy.banner_mode !== 'shown' && policy.refuse_window_s > 0 && <p className="mt-1 text-xs text-warn">{tx.bannerRefuseNote}</p>}
+              <p className="mt-1 text-xs text-muted">{tx.bannerAlwaysNote}</p>
+            </>
+          ) : (
+            <p className="text-xs text-muted">{tx.bannerAttendedOnly}</p>
+          )}
         </section>
 
         <section className="space-y-3">

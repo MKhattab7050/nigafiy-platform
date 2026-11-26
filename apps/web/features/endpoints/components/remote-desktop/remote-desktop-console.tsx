@@ -73,7 +73,11 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
           <span className="flex items-start gap-1.5 text-muted">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             <span>
-              {tx.transparency} {ep.platform === 'android' ? tx.phonePolicy : policyPrompt ? tx.promptPolicy : tx.unattendedPolicy}
+              {rd.session?.banner_mode === 'off'
+                ? tx.transparencyOff
+                : rd.session?.banner_mode === 'minimized'
+                  ? tx.transparencyMinimized
+                  : `${tx.transparency} ${ep.platform === 'android' ? tx.phonePolicy : policyPrompt ? tx.promptPolicy : tx.unattendedPolicy}`}
             </span>
           </span>
         </div>
@@ -85,7 +89,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
                 {rd.rtc.active ? tx.rtc.active : rd.rtc.mode === 'starting' ? tx.rtc.starting : tx.rtc.compat}
               </Badge>
             )}
-            {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' ? 'ok' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
+            {fs && fs.banner_state !== 'pending' && <Badge tone={fs.banner_state === 'shown' || fs.banner_state === 'minimized' ? 'ok' : fs.banner_state === 'off' ? 'info' : 'warn'}>{tx.banner[fs.banner_state]}</Badge>}
             {rd.hello?.desktop?.mode && <Badge tone="info">{tx.desktopMode[rd.hello.desktop.mode] ?? rd.hello.desktop.mode}</Badge>}
             {rd.session.user_session && <Badge tone="info">{rd.session.user_session === 'winlogon' ? rx.userSessionWinlogon : `${rx.userSession} ${ltr(rd.session.user_session)}`}</Badge>}
             {rd.session.quick_support && <Badge tone="warn">{rx.qsPanel}</Badge>}

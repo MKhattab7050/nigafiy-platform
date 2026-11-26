@@ -201,10 +201,11 @@ describe('fleet sessions: consent, banner and history', () => {
     const start = await a.agent.post(`/api/v1/endpoints/${epId}/remote-desktop/start`).set(CSRF).send({ reason: 'Fleet test session' });
     expect(start.body.session.state).toBe('active');
     const cmds = await pollFor(cred);
-    // Told first (notice), then the banner/stream command, then the first HTTP frame.
-    expect(cmds.map((c) => c.kind)).toEqual(['notify_user', 'rd_session_open', 'rd_capture']);
-    expect(cmds[1]!.payload.consent_required).toBe(false);
-    await answer(cred, cmds[1]!.id, true, { consent: 'not_required', banner: 'shown', stream: 'connecting' });
+    // A computer in no group is silent by default (migration 052): no notice, the open command
+    // with banner_mode off, then the first HTTP frame. (An agent may still report a banner.)
+    expect(cmds.map((c) => c.kind)).toEqual(['rd_session_open', 'rd_capture']);
+    expect(cmds[0]!.payload).toMatchObject({ consent_required: false, banner_mode: 'off' });
+    await answer(cred, cmds[0]!.id, true, { consent: 'not_required', banner: 'shown', stream: 'connecting' });
     const st = await a.agent.get(`/api/v1/endpoints/${epId}/remote-desktop/session`);
     expect(st.body.fleet_session).toMatchObject({ consent_result: 'not_required', banner_state: 'shown' });
 

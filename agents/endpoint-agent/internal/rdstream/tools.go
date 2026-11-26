@@ -53,11 +53,16 @@ func (l *live) bannerInfo() userui.BannerInfo {
 		SessionID: l.req.SessionID, Operator: l.req.Operator, Reason: l.req.Reason, Control: l.req.Control,
 		Permissions: &perms, Profile: l.req.Profile, Operators: append([]string(nil), l.tools.operators...),
 		Recording: l.tools.recording, PrivacyScreen: l.tools.privacy, InputBlocked: l.tools.blocked,
+		Minimized: l.banner == BannerMinimized,
 	}
 }
 
 // refreshBanner shows the banner again with what is on now (the old one is replaced).
 func (l *live) refreshBanner() {
+	if l.banner == BannerOff {
+		// The group turned the banner off for this company-managed computer: nothing to redraw.
+		return
+	}
 	d := l.m.cfg.Desktop
 	sess := l.req.SessionID
 	if err := d.ShowBanner(l.bannerInfo(), func() { l.m.endedByUser(sess) }); err != nil {

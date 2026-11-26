@@ -103,6 +103,10 @@ type BannerInfo struct {
 	Shells []ShellLine `json:"shells,omitempty"`
 	// ShellOnly: no remote desktop session is open, the banner is there for the shells alone.
 	ShellOnly bool `json:"shell_only,omitempty"`
+	// Minimized: the group's banner_mode is "minimized" (company-managed computer, unattended):
+	// a small box in the corner names who is connected, with End session. Open shells still get
+	// their full lines.
+	Minimized bool `json:"minimized,omitempty"`
 }
 
 // ShellLine is one open remote shell on the banner.
@@ -289,7 +293,35 @@ func BannerText(i BannerInfo) string {
 	if i.ShellOnly {
 		return shellText(i)
 	}
+	if i.Compact() {
+		return minimizedText(i)
+	}
 	return sessionText(i) + shellText(i)
+}
+
+// Compact: the banner is drawn as the small corner box (minimized, no open shells).
+func (i BannerInfo) Compact() bool { return i.Minimized && !i.ShellOnly && len(i.Shells) == 0 }
+
+// minimizedText is the corner box: who is connected, the recording mark and how to end it.
+func minimizedText(i BannerInfo) string {
+	ops := i.Operators
+	if len(ops) == 0 {
+		ops = []string{i.Operator}
+	}
+	var b strings.Builder
+	view, viewAr := "", ""
+	if !i.Control {
+		view, viewAr = " (view only)", " (مشاهدة فقط)"
+	}
+	fmt.Fprintf(&b, "IT support connected: %s%s.", strings.Join(ops, ", "), view)
+	fmt.Fprintf(&b, "\nدعم تقنية المعلومات متصل: %s%s.", strings.Join(ops, "، "), viewAr)
+	if i.Recording {
+		b.WriteString("\n" + RecordingMark)
+	}
+	if i.EndHotkey {
+		b.WriteString("\n" + EndHotkeyText + " ends the session. / " + EndHotkeyText + " ينهي الجلسة.")
+	}
+	return b.String()
 }
 
 // ShellText is the banner's line for one open remote shell (English, then Arabic).

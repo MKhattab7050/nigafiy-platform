@@ -100,6 +100,7 @@ describe('fleet access policy: pure evaluation', () => {
     approval_required: false,
     approval_ttl_minutes: 15,
     ip_allowlist: [],
+    banner_mode: 'shown',
   };
   const input = { policy: base, timezone: 'UTC', role: 'technician' as const, requestIp: '10.1.2.3', now: new Date(), operatorHasMfa: true, stepUp: 'absent' as const, requested: full, max: full };
 
@@ -345,7 +346,7 @@ describe('fleet permission profiles, groups and access policy (API)', () => {
     expect(open2.payload).toMatchObject({ control: false, permissions: { control: false } });
     const row = (await a.agent.get(`/api/v1/fleet/sessions?endpoint_id=${epId}&limit=1`)).body.sessions[0];
     expect(row).toMatchObject({ profile_name: 'Full admin', group_name: expect.stringMatching(/^G-/), permissions: { control: false }, reason: 'Ticket 77: printer' });
-    expect(row.policy_trail.map((t: { check: string }) => t.check)).toEqual(['role', 'ip', 'hours', 'mfa', 'profile', 'mode']);
+    expect(row.policy_trail.map((t: { check: string }) => t.check)).toEqual(['role', 'ip', 'hours', 'mfa', 'profile', 'mode', 'banner']);
     expect(row.request_ip).toMatch(/127\.0\.0\.1|::1/);
     const requested = await audits(a.organizationId, 'fleet.session_requested');
     expect(requested.at(-1)?.metadata).toMatchObject({ profile: 'Full admin', clamped: expect.arrayContaining(['control', 'shell']), policy_source: 'group' });

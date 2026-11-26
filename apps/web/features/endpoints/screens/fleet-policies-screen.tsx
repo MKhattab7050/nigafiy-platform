@@ -92,6 +92,7 @@ export function FleetPoliciesScreen() {
                         <Badge tone={g.access_mode === 'attended' ? 'ok' : 'info'}>{g.access_mode === 'attended' ? tx.attended : tx.unattended}</Badge>
                         {g.mfa_required && <Badge tone="info">MFA</Badge>}
                         {g.approval_required && g.access_mode === 'unattended' && <Badge tone="warn">{tx.approvals}</Badge>}
+                        {g.banner_mode !== 'shown' && <Badge tone={g.banner_mode === 'off' ? 'warn' : 'info'}>{`${tx.banner}: ${tx.bannerModes[g.banner_mode]}`}</Badge>}
                         <Tag>{`${tx.defaultProfile}: ${nameOf(g.default_profile_id)}`}</Tag>
                         <Tag>{`${tx.maxProfile}: ${nameOf(g.max_profile_id)}`}</Tag>
                         <Tag>{`${tx.hours}: ${g.allowed_hours.length ? g.allowed_hours.map((w) => `${w.days.map((d) => tx.days[d]).join(' ')} ${ltr(`${w.start}–${w.end}`)}`).join(' · ') : tx.hoursAny}`}</Tag>

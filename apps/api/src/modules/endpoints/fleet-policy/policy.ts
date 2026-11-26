@@ -61,7 +61,7 @@ export interface EffectivePolicy {
 
 const GROUP_POLICY_COLUMNS = `g.id, g.name, g.access_mode, g.consent_timeout_s, g.refuse_window_s, g.allowed_hours, g.allowed_roles,
   g.default_profile_id, g.max_profile_id, g.mfa_required, g.approval_required, g.approval_ttl_minutes,
-  g.ip_allowlist::text[] AS ip_allowlist`;
+  g.ip_allowlist::text[] AS ip_allowlist, g.banner_mode`;
 
 /** The policy for one endpoint (null when the endpoint does not exist in this organization). */
 export async function effectivePolicy(db: Db, orgId: string, endpointId: string): Promise<EffectivePolicy | null> {
@@ -96,6 +96,7 @@ export async function effectivePolicy(db: Db, orgId: string, endpointId: string)
         approval_required: row.approval_required!,
         approval_ttl_minutes: row.approval_ttl_minutes!,
         ip_allowlist: row.ip_allowlist!,
+        banner_mode: row.banner_mode!,
       },
     };
   }
@@ -117,6 +118,9 @@ export async function effectivePolicy(db: Db, orgId: string, endpointId: string)
       approval_required: false,
       approval_ttl_minutes: 15,
       ip_allowlist: [],
+      // Silent by default (owner decision 2026-11-26, migration 052): an unattended computer in no
+      // group gets no banner and no start/end notice; one set to ask the user shows the full banner.
+      banner_mode: row.endpoint_policy?.remote_desktop_consent === 'prompt' ? 'shown' : 'off',
     },
   };
 }
