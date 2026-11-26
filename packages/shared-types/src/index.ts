@@ -374,6 +374,34 @@ export interface CheckSeriesPoint {
   value_max?: number | null;
 }
 
+/** One step of the getting-started checklist, worked out from stored state (GET /dashboard/guidance). */
+export interface GuidanceStep {
+  key: 'installed' | 'scanned' | 'reviewed' | 'alerts' | 'report';
+  done: boolean;
+  /** When the step became true, where the data says so. */
+  at: string | null;
+}
+
+/** Getting-started progress plus the facts the dashboard's "how is this worked out" panels quote. */
+export interface DashboardGuidance {
+  generated_at: string;
+  steps: GuidanceStep[];
+  /** Every step is done: the checklist hides itself. */
+  complete: boolean;
+  facts: {
+    devices_total: number;
+    devices_unreviewed: number;
+    /** Devices whose type is still a guess (no type, or low confidence). */
+    devices_untyped: number;
+    last_sweep_at: string | null;
+    sweeps_24h: number;
+    /** Seconds between discovery sweeps (the shortest of the sites in view). */
+    sweep_interval_seconds: number | null;
+    alert_channels: number;
+    weekly_summary: boolean;
+  };
+}
+
 export interface Overview {
   generated_at: string;
   devices: { total: number; online: number; offline: number; unknown: number; new_24h: number };

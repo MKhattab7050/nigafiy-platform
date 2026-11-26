@@ -5,12 +5,14 @@ import { auth, parse } from '../../common/http.ts';
 import { withTenant } from '../../infrastructure/db.ts';
 import { EVENT_SELECT } from '../events/index.ts';
 import { INCIDENT_SELECT } from '../incidents/index.ts';
+import { guidanceRouter } from './guidance.ts';
 import { reportsRouter } from './reports.ts';
 import { searchRouter } from './search.ts';
 
 export const overviewRouter: Router = Router();
 overviewRouter.use(searchRouter);
 overviewRouter.use(reportsRouter);
+overviewRouter.use(guidanceRouter);
 
 const WORST: CheckState[] = ['down', 'degraded', 'ok', 'unknown'];
 const worstState = (states: CheckState[]): CheckState | null => WORST.find((s) => states.includes(s)) ?? null;
