@@ -162,3 +162,32 @@ bottom nav on phone, no console or API errors.
 Still open: e2e smoke not run; "Next" can show two near-duplicate monitoring steps
 (suggest_monitor + suggest_monitor_infrastructure); Fleet filter row scrolls sideways inside itself
 at 390 px; new release + installed-copy test (day 7); nothing pushed.
+
+### Owner decisions (2026-11-26, late)
+
+- Pushed: 8cfedd3 is on origin (the "nothing pushed" lines above are out of date).
+- Updates: stay off for now; decide hosting when the app is handed to other people.
+- New phones with a private (random) MAC: a quiet entry in the daily summary, no sound or push;
+  it becomes a warning only if the phone stays a long time or does something unusual.
+- Router, NAS and cameras: marked important automatically when the type is known with high
+  confidence, with the reason shown ("because it is the router"); if the user removes it, it is
+  never set again.
+- Release 1.0.5 was being built by the owner at the time (version bump uncommitted in 16 files) —
+  do not touch it.
+- Still to build: the two items above, merge the duplicate monitoring steps in "Next", the Fleet
+  filter row at 390 px, the "beta" label on untested router drivers, e2e smoke.
+
+### Release 1.0.5 and installed-copy test (day 7), 2026-11-26 ~21:50
+
+- 92c6ba0 bumps every version to 1.0.5 (Android versionCode 6). Built with
+  `release.mjs --version 1.0.5 --no-updates` (no update address chosen yet — UX item 14 still open).
+  `D:\nigafiy-releases\1.0.5`: exe/msi/agent Authenticode Valid, APK signed with the release key
+  (f2a2d1aa…), SHA256SUMS match, README rewritten for 1.0.5 (EN + AR).
+- Installed over 1.0.4 per-machine (`/allusers /S`, owner approved UAC). Data kept.
+- Installed copy: server ready 31 s after launch; `/readyz` polled every 10 s for 4 min — always
+  ready, scheduler ok, 0 queued, 0 overdue, 2–100 ms (1.0.4's hang is gone). Sign-in (tester
+  account), "My home" dashboard (score 90, Next box, checklist, Pending counted apart), devices
+  with real names from the sensor, System Health ("Version 1.0.5, working normally", heartbeat
+  card, weekly report link), incidents, Ctrl+K (A36 as device + managed phone), phone view 390 px
+  with the bottom bar — all fine.
+- Not done: new APK not installed on the A36; e2e smoke; duplicate monitoring steps in Next.
