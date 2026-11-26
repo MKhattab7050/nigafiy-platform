@@ -437,7 +437,7 @@ export interface OutsideHeartbeat {
   interval_seconds: number;
 }
 
-export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy' | 'push';
+export type NotificationChannelKind = 'webhook' | 'email' | 'telegram' | 'slack' | 'discord' | 'ntfy' | 'push' | 'phone';
 
 /** GET /notifications/push: the installation's VAPID public key and the browsers subscribed to the "Phones (push)" channel. */
 export interface PushSettings {

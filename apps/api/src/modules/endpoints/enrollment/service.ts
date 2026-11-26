@@ -3,6 +3,7 @@ import type { EndpointCreated, EndpointSummary } from '@nigafiy/shared-types';
 import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound, publicServerUrl } from '../../../common/http.ts';
 import { withSystem, withTenant } from '../../../infrastructure/db.ts';
+import { ensurePhoneChannel } from '../../notifications/phone.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { ENDPOINT_SUMMARY_SELECT, newEnrollmentToken } from '../repo.ts';
 import type { EndpointCreate } from '../schema.ts';
@@ -38,6 +39,7 @@ export async function createEndpoint(req: Request, ctx: AuthContext, body: Endpo
       ],
     );
     const id = inserted.rows[0]!.id;
+    if (body.phone_role === 'admin') await withSystem((sys) => ensurePhoneChannel(sys, ctx.organizationId));
     await audit(db, req, 'endpoint.created', { type: 'endpoint', id }, {
       name: body.name,
       platform: body.platform,
@@ -77,6 +79,7 @@ export async function setPhoneRole(req: Request, ctx: AuthContext, id: string, r
     await db.query(`UPDATE endpoints SET phone_role = $2, phone_admin_user_id = $3 WHERE id = $1`, [id, role, role === 'admin' ? ctx.userId : null]);
     // Sessions are not a tenant table: the restricted role cannot touch them.
     if (role === 'user') await withSystem((sys) => sys.query(`DELETE FROM sessions WHERE endpoint_id = $1`, [id]));
+    else await withSystem((sys) => ensurePhoneChannel(sys, ctx.organizationId));
     if (cur.phone_role !== role) await audit(db, req, 'endpoint.phone_role_changed', { type: 'endpoint', id }, { from: cur.phone_role, to: role });
     await notifyRealtime(db, ctx.organizationId, 'devices');
     return (await db.query<EndpointSummary>(`${ENDPOINT_SUMMARY_SELECT} WHERE e.id = $1`, [id])).rows[0]!;

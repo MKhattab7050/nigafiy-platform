@@ -25,7 +25,7 @@ function channelDestination(c: NotificationChannel): string {
   }
   if (c.kind === 'slack' || c.kind === 'discord') return c.config.host ?? c.url;
   if (c.kind === 'ntfy') return c.config.topic ? `${c.config.server_url ?? ''}/${c.config.topic}` : c.url;
-  if (c.kind === 'push') return '';
+  if (c.kind === 'push' || c.kind === 'phone') return '';
   return c.url;
 }
 

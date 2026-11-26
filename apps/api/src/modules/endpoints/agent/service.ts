@@ -7,6 +7,7 @@ import { withSystem, withTenant } from '../../../infrastructure/db.ts';
 import { SESSION_COOKIE } from '../../auth/session.ts';
 import { applyAgentIdentity } from '../../devices/agent-identity.ts';
 import { emitEvent } from '../../events/index.ts';
+import { takePhoneAlerts } from '../../notifications/phone.ts';
 import { notifyRealtime } from '../../realtime/index.ts';
 import { evaluateCompliance, inferPlatformFromOs } from '../capabilities.ts';
 import { HEARTBEAT_INTERVAL_SECONDS, applyCommandResults, deliverPendingCommands, signalCommandDone, resolveDeviceLink } from '../repo.ts';
@@ -320,6 +321,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         commands,
         // Phones only: an admin phone shows the dashboard and the network's alerts (migration 066).
         ...(platform === 'android' ? { phone_role: idRow?.phone_role ?? 'user' } : {}),
+        ...(idRow?.phone_role === 'admin' ? { alerts: await takePhoneAlerts(ep.id) } : {}),
       },
     };
   });

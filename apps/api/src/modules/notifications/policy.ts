@@ -1,3 +1,4 @@
+import { RESOLVED_TYPES } from './phone.ts';
 import type { NotificationAction } from '@nigafiy/shared-types/notification-actions';
 import { logger } from '../../infrastructure/logger.ts';
 import { type Db, withSystem } from '../../infrastructure/db.ts';
@@ -113,6 +114,7 @@ interface PendingRow {
   type: string;
   severity: string;
   device_id: string | null;
+  channel_kind: string | null;
   actions: NotificationAction[] | null;
   settings: CalmSettings | null;
   site_tz: string | null;
@@ -141,6 +143,7 @@ export async function applyDeliveryPolicy(now = new Date()): Promise<{ passed: n
       await db.query<PendingRow>(
         `SELECT d.id, d.organization_id, d.channel_id, d.event_id, d.created_at,
                 e.type, e.severity, e.device_id,
+                (SELECT c.kind FROM notification_channels c WHERE c.id = d.channel_id) AS channel_kind,
                 coalesce(d.actions, e.details -> 'actions') AS actions,
                 ${SETTINGS_JSON} AS settings,
                 ${FIRST_SITE_TZ('d.organization_id')} AS site_tz
@@ -178,7 +181,10 @@ export async function applyDeliveryPolicy(now = new Date()): Promise<{ passed: n
           )
         ).rowCount;
       }
-      const decision = decide(r, settings, { muted, quiet: settings ? quietActive(settings, now, tz) : false, recentDuplicate });
+      // On the admin phones, "resolved" is the other half of a problem they were shown: it follows the
+      // warning rules (quiet hours still apply), never the weekly summary meant for everyday info.
+      const asDecided = r.channel_kind === 'phone' && r.severity === 'info' && RESOLVED_TYPES.includes(r.type) ? { severity: 'warning' } : r;
+      const decision = decide(asDecided, settings, { muted, quiet: settings ? quietActive(settings, now, tz) : false, recentDuplicate });
       if (decision.send) {
         await db.query(`UPDATE notification_deliveries SET policy_at = $2 WHERE id = $1`, [r.id, now]);
         passed++;

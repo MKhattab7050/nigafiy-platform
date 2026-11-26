@@ -1,6 +1,7 @@
 /** Strings for phone notifications (Web Push) and "Install on your phone" (UX review item 11). Merged by lib/i18n/messages-*.ts. */
 export const en = {
   'settings.kind.push': 'Phone push',
+  'settings.kind.phone': 'Admin phones (Nigafiy app)',
   'push.title': 'Phone notifications',
   'push.intro': 'Get alerts on this phone or computer even when Nigafiy is closed, with Allow and Pause buttons for new devices. No account or extra app is needed.',
   'push.thisDevice': 'This device',
@@ -32,6 +33,7 @@ export const en = {
 
 export const ar: Record<keyof typeof en, string> = {
   'settings.kind.push': 'إشعارات الهاتف',
+  'settings.kind.phone': 'هواتف المسؤولين (تطبيق Nigafiy)',
   'push.title': 'إشعارات الهاتف',
   'push.intro': 'استلم التنبيهات على هذا الهاتف أو الكمبيوتر حتى وNigafiy مغلق، مع زرّي السماح والإيقاف المؤقت للأجهزة الجديدة. لا حاجة لحساب أو تطبيق إضافي.',
   'push.thisDevice': 'هذا الجهاز',

@@ -1,3 +1,4 @@
+import { deliverToPhones } from './phone.ts';
 import type { LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
 import http from 'node:http';
@@ -173,6 +174,9 @@ export async function dispatchNotifications(): Promise<void> {
           }
           const status = await post(`${base}/${encodeURIComponent(topic)}`, msg.body, headers);
           if (status < 200 || status >= 300) error = `ntfy responded with HTTP ${status}`;
+        } else if (d.kind === 'phone') {
+          // Admin phones collect their alerts with the heartbeat (phone.ts).
+          error = await deliverToPhones(d.organization_id, ev, d.organization_name);
         } else if (d.kind === 'push') {
           // Web Push to every phone / browser on this channel (item 11, webpush.ts).
           error = await deliverPush(d.id, ev, d.organization_name);
