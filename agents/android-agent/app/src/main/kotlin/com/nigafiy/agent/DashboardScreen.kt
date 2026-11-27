@@ -22,6 +22,7 @@ import android.webkit.WebChromeClient
 import android.widget.Toast
 import java.io.File
 import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -51,6 +52,16 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     private var fullView: View? = null
     private var fullDone: WebChromeClient.CustomViewCallback? = null
     private var filePick: ValueCallback<Array<Uri>>? = null
+    /** After a move to another address of the server: forget the old address's pages once the new one loads. */
+    private var clearHistoryNext = false
+    /** When the dashboard last moved; a new address that does not answer yet is tried again after FOLLOW_RETRY_MS. */
+    private var followAt = 0L
+    private val watch = object : Runnable {
+        override fun run() {
+            followServer()
+            view.postDelayed(this, WATCH_MS)
+        }
+    }
 
     init {
         view.addView(status, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
@@ -66,6 +77,33 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
             if (path != null) w.loadUrl(server + path)
             return
         }
+        startSession(path)
+    }
+
+    /**
+     * The phone left home (or came back) while the dashboard was open: the agent now talks to another
+     * address of the same server, and the open page still points at the old one, which no longer
+     * answers (first away-from-home run on the A36, 2026-11-27). Make a session at the new address
+     * and reopen the same page there.
+     */
+    private fun followServer() {
+        val w = web ?: return
+        val old = sessionServer ?: return
+        if (loading || !view.isShown) return
+        val now = store.currentServer ?: return
+        if (now == old) return
+        val t = System.currentTimeMillis()
+        if (t - followAt < FOLLOW_RETRY_MS) return
+        followAt = t
+        val o = Uri.parse(old)
+        val path = w.url?.let { Uri.parse(it) }
+            ?.takeIf { it.scheme == o.scheme && it.host == o.host && it.port == o.port }
+            ?.let { (it.encodedPath ?: "/") + (it.encodedQuery?.let { q -> "?$q" } ?: "") }
+            ?: "/"
+        if (fullView != null) { fullDone?.onCustomViewHidden(); hideFull() }
+        w.stopLoading()
+        sessionAt = 0
+        clearHistoryNext = true
         startSession(path)
     }
 
@@ -216,7 +254,15 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                if (sameServer(Uri.parse(url))) view.evaluateJavascript(SAVE_BLOBS, null)
+                if (!sameServer(Uri.parse(url))) return
+                view.evaluateJavascript(SAVE_BLOBS, null)
+                // Back must not walk into the old address's pages, which do not answer any more.
+                if (clearHistoryNext) { clearHistoryNext = false; view.clearHistory() }
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                // A page of the old address failed: move now rather than at the next check.
+                if (request.isForMainFrame) followServer()
             }
 
             @SuppressLint("WebViewClientOnReceivedSslError")
@@ -229,6 +275,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
             }
         }
         this@DashboardScreen.view.addView(this, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        this@DashboardScreen.view.postDelayed(watch, WATCH_MS)
     }
 
     private fun sameServer(u: Uri): Boolean {
@@ -269,5 +316,9 @@ var c=HTMLAnchorElement.prototype.click;HTMLAnchorElement.prototype.click=functi
 
         // A dashboard session lasts the server's session lifetime; ask again after a few hours anyway.
         const val SESSION_REUSE_MS = 4 * 3600_000L
+
+        /** How often an open dashboard checks whether the agent moved to another server address. */
+        const val WATCH_MS = 5_000L
+        const val FOLLOW_RETRY_MS = 30_000L
     }
 }
