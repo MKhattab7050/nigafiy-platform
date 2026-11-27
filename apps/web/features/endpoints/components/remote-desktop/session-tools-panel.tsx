@@ -1,6 +1,6 @@
 'use client';
 
-import { canvasPictureBox } from './picture-rect';
+import { mediaPictureBox } from './picture-rect';
 import clsx from 'clsx';
 import {
   AppWindow,
@@ -188,7 +188,8 @@ export function AnnotationLayer({ rd, t }: { rd: Rd; t: Tools }) {
 
   // Unit coordinates on the picture (null outside it), and pixel coordinates on this layer.
   const at = (e: React.PointerEvent): { u: [number, number]; p: [number, number] } | null => {
-    const c = rd.canvasRef.current ? canvasPictureBox(rd.canvasRef.current) : null;
+    const media = rd.rtc.active && rd.videoRef.current ? rd.videoRef.current : rd.canvasRef.current;
+    const c = media ? mediaPictureBox(media) : null;
     const b = box.current?.getBoundingClientRect();
     if (!c || !b || c.width === 0) return null;
     const x = (e.clientX - c.left) / c.width;

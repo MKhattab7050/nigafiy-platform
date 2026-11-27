@@ -3048,7 +3048,8 @@ export interface EndpointAndroidState {
   reported_at?: string;
 }
 
-export type AndroidPhoneFeature = 'screen' | 'control' | 'files' | 'ring' | 'message';
+/** live_touch (agent 1.0.8+): a drag shows on the phone while the operator moves (mouse_down / mouse_move / mouse_up). */
+export type AndroidPhoneFeature = 'screen' | 'control' | 'files' | 'ring' | 'message' | 'live_touch';
 
 export type AndroidCommandKind =
   | 'android_lock'

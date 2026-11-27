@@ -98,6 +98,68 @@ type VideoGrabber struct {
 	software bool
 	nv12     []byte
 	fellBack string
+
+	// Prefetch: grab the next screen while this one is scaled and encoded (see EnablePrefetch).
+	prefetch bool
+	pmu      sync.Mutex
+	next     chan shot
+}
+
+// shot is one screen capture.
+type shot struct {
+	img      *image.RGBA
+	displays []DisplayInfo
+	idx      int
+	err      error
+	display  int
+	at       time.Time
+	ms       int64
+}
+
+// prefetchMaxAge: an older prefetched screen (the stream paused, nobody watching) is thrown away
+// and the screen read again, so a viewer never sees an old picture.
+const prefetchMaxAge = 120 * time.Millisecond
+
+// EnablePrefetch makes each grab start reading the next screen right away, in the background.
+// Reading the screen (GDI) takes about as long as scaling and encoding it, so doing both at once
+// about doubles the pictures a second without making any picture older (owner, 2026-11-27:
+// "from the computer to the phone is slow"). Only for the real screen: a test's synthetic one
+// expects each grab to read it when called.
+func (g *VideoGrabber) EnablePrefetch() { g.prefetch = true }
+
+func (g *VideoGrabber) readScreen(display int) shot {
+	start := time.Now()
+	img, displays, idx, _, err := g.source(display)
+	return shot{img: img, displays: displays, idx: idx, err: err, display: display, at: start, ms: time.Since(start).Milliseconds()}
+}
+
+// take returns the screen for this grab: the prefetched one when it is fresh and for this display,
+// otherwise a new read; with prefetch on it starts reading the next one before returning.
+func (g *VideoGrabber) take(display int) shot {
+	if !g.prefetch {
+		return g.readScreen(display)
+	}
+	g.pmu.Lock()
+	ch := g.next
+	g.next = nil
+	g.pmu.Unlock()
+	var s shot
+	ok := false
+	if ch != nil {
+		s = <-ch
+		ok = s.err == nil && s.display == display && time.Since(s.at) < prefetchMaxAge
+	}
+	if !ok {
+		s = g.readScreen(display)
+	}
+	if s.err == nil {
+		next := make(chan shot, 1)
+		g.pmu.Lock()
+		g.next = next
+		g.pmu.Unlock()
+		go func() { next <- g.readScreen(display) }()
+	}
+	return s
 }
 
 // NewVideoGrabber: src nil = this screen, open nil = the platform's encoder.
@@ -129,12 +191,11 @@ func VideoSize(sw, sh int, scale float64, maxEdge int) (int, int) {
 // Grab captures and encodes one picture; nil when the screen is unchanged (and was sent less than
 // VideoIdleInterval ago).
 func (g *VideoGrabber) Grab(req VideoRequest) (*VideoFrame, error) {
-	start := time.Now()
-	img, displays, idx, _, err := g.source(req.Display)
-	if err != nil {
-		return nil, err
+	s := g.take(req.Display)
+	if s.err != nil {
+		return nil, s.err
 	}
-	capMs := time.Since(start).Milliseconds()
+	img, displays, idx, capMs := s.img, s.displays, s.idx, s.ms
 	if req.Cursor && idx >= 0 && idx < len(displays) {
 		drawCursor(img, displays[idx])
 	}
@@ -216,6 +277,9 @@ func (g *VideoGrabber) reopen(cfg videoenc.Config) error {
 
 // Close releases the encoder.
 func (g *VideoGrabber) Close() {
+	g.pmu.Lock()
+	g.next = nil // a read in flight finishes into its own buffered channel and is dropped
+	g.pmu.Unlock()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.enc != nil {

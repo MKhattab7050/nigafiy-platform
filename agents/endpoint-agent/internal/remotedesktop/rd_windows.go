@@ -12,6 +12,8 @@ import (
 	"time"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/nigafiy/agent/internal/par"
 )
 
 var (
@@ -179,6 +181,9 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 	if disp.Width <= 0 || disp.Height <= 0 {
 		return nil, "", errors.New("invalid display dimensions")
 	}
+	if img, ok := captureDXGI(disp); ok {
+		return img, "native_dxgi", nil
+	}
 	// Failures are reported, never papered over with a made-up picture. The usual cause is an
 	// agent running as a service in session 0, which has no interactive desktop to read.
 	hdcScreen, _, _ := procGetDC.Call(0)
@@ -240,14 +245,16 @@ func captureDisplayRGBA(disp DisplayInfo) (*image.RGBA, string, error) {
 	}
 
 	// Convert BGRA to RGBA in-place.
-	pix := img.Pix
-	for i := 0; i < len(pix); i += 4 {
-		b := pix[i]
-		r := pix[i+2]
-		pix[i] = r
-		pix[i+2] = b
-		pix[i+3] = 255
-	}
+	pix, stride := img.Pix, img.Stride
+	par.Rows(disp.Height, func(lo, hi int) {
+		for i := lo * stride; i < hi*stride; i += 4 {
+			b := pix[i]
+			r := pix[i+2]
+			pix[i] = r
+			pix[i+2] = b
+			pix[i+3] = 255
+		}
+	})
 	return img, "native_gdi", nil
 }
 

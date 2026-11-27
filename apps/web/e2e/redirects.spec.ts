@@ -61,7 +61,7 @@ for (const locale of ['en', 'ar'] as const) {
     countApi(page);
     await paceApi();
     await page.goto('/register');
-    await page.getByLabel('Work email').fill(`redirects-${locale}-${Date.now()}@example.test`);
+    await page.getByLabel('Email', { exact: true }).fill(`redirects-${locale}-${Date.now()}@example.test`);
     await page.getByLabel('Password').fill(`e2e-${crypto.randomUUID()}`);
     await page.getByRole('button', { name: 'Create account' }).click();
     await expect(page).not.toHaveURL(/\/register/);

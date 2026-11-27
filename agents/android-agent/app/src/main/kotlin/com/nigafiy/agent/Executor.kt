@@ -119,6 +119,7 @@ class Executor(private val ctx: Context, private val store: Store, private val f
             is InputEvent.LongPress -> "long press"
             is InputEvent.Swipe -> "swipe"
             is InputEvent.Nav -> e.action
+            is InputEvent.Touch -> "touch"
             is InputEvent.Unsupported -> e.kind
         }
         return if (ok) Result(CommandOutcome(cmd.id, true, output = "Input '$what' delivered"))

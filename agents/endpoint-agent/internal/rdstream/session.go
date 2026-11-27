@@ -140,7 +140,7 @@ type Config struct {
 	OnEndSession func()
 	// DisableWebRTC: the hello says WebRTC is not available (the JPEG stream only).
 	DisableWebRTC bool
-	// VideoFPS caps the WebRTC video frame rate (default 30).
+	// VideoFPS caps the WebRTC video frame rate (default DefaultVideoFPS).
 	VideoFPS int
 	// RTCSettings adjusts pion's setting engine (tests: loopback candidates).
 	RTCSettings func(*webrtc.SettingEngine)

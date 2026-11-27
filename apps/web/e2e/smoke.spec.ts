@@ -148,7 +148,7 @@ async function setTheme(page: Page, theme: Look['theme']) {
 async function register(page: Page, prefix: string) {
   await paceApi();
   await page.goto('/register');
-  await page.getByLabel('Work email').fill(`${prefix}-${Date.now()}@example.test`);
+  await page.getByLabel('Email', { exact: true }).fill(`${prefix}-${Date.now()}@example.test`);
   await page.getByLabel('Password').fill(`e2e-${crypto.randomUUID()}`);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).not.toHaveURL(/\/register/);
@@ -165,7 +165,7 @@ test('sign up, walk every screen in English and Arabic, sign out and back in', a
   await test.step('register', async () => {
     await paceApi();
     await page.goto('/register');
-    await page.getByLabel('Work email').fill(email);
+    await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Create account' }).click();
     await expect(page).not.toHaveURL(/\/register/);
@@ -194,7 +194,7 @@ test('sign up, walk every screen in English and Arabic, sign out and back in', a
     await paceApi();
     await page.goto('/radar/devices');
     await expect(page).toHaveURL(/\/login/);
-    await page.getByLabel('Work email').fill(email);
+    await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).not.toHaveURL(/\/login/);

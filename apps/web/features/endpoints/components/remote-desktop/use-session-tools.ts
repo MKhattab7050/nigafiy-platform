@@ -240,11 +240,13 @@ export function useSessionTools(rd: Rd, epId: string, meId: string | null) {
       w.document.body.replaceChildren(c);
       const draw = () => {
         if (w.closed) return;
-        const src = rd.canvasRef.current;
-        if (src && src.width > 0) {
-          // The all-displays picture is the virtual screen scaled into the canvas.
-          const fx = src.width / all.width;
-          const fy = src.height / all.height;
+        const src = rd.rtc.active && rd.videoRef.current ? rd.videoRef.current : rd.canvasRef.current;
+        const srcW = src ? ('videoWidth' in src ? src.videoWidth : src.width) : 0;
+        const srcH = src ? ('videoHeight' in src ? src.videoHeight : src.height) : 0;
+        if (src && srcW > 0 && srcH > 0) {
+          // The all-displays picture is the virtual screen scaled into the canvas/video.
+          const fx = srcW / all.width;
+          const fy = srcH / all.height;
           const sx = (d.x - minX) * fx;
           const sy = (d.y - minY) * fy;
           const sw = d.width * fx;

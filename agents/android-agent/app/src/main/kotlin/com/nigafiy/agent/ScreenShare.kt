@@ -36,6 +36,16 @@ object ScreenShare {
          * false), so a still screen costs no encoding and no bytes.
          */
         fun grab(quality: Int, scale: Double, full: Boolean): Grabbed?
+        /**
+         * Hardware H.264 of the screen at most [maxSide] pixels on its long side (VideoEncoder.kt);
+         * frames go to [onFrame] as the screen changes. Null when this phone has no usable encoder
+         * (the stream keeps JPEG). While it runs, [grab] and [frame] are not used.
+         */
+        fun startVideo(maxSide: Int, bitrate: Int, onFrame: (data: ByteArray, key: Boolean, ptsUs: Long) -> Unit): VideoEncoder?
+        /** Back to pictures for [grab] / [frame]. */
+        fun stopVideo()
+        /** The running video no longer matches the screen (the phone was turned). */
+        fun videoStale(): Boolean
     }
 
     class Grabbed(val jpeg: ByteArray, val width: Int, val height: Int, val sourceWidth: Int, val sourceHeight: Int, val captureMs: Long, val encodeMs: Long)

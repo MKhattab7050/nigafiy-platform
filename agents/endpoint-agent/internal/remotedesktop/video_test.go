@@ -5,6 +5,7 @@ import (
 	"image"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -191,5 +192,44 @@ func TestVideoGrabRealScreen(t *testing.T) {
 		got.Header.Encoder, got.Header.SW, got.Header.SH, got.Header.W, got.Header.H, got.Header.CapMs, got.Header.EncMs, len(got.Data()), videoenc.NALTypes(got.Data()))
 	if !videoenc.IsKey(got.Data()) {
 		t.Fatalf("first encoded picture is not a key frame: %v", videoenc.NALTypes(got.Data()))
+	}
+}
+
+// With prefetch the next screen is read during the grab, so reads overlap the encoding; a
+// prefetched screen that waited too long (the stream paused) is read again, never shown old.
+func TestVideoGrabberPrefetch(t *testing.T) {
+	var reads atomic.Int32
+	var shade atomic.Int32
+	src := func(int) (*image.RGBA, []DisplayInfo, int, string, error) {
+		reads.Add(1)
+		img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+		for i := range img.Pix {
+			img.Pix[i] = uint8(shade.Load())
+		}
+		return img, []DisplayInfo{{Index: 0, Width: 64, Height: 64, Primary: true}}, 0, "test", nil
+	}
+	o := &opened{}
+	g := NewVideoGrabber(src, o.opener(false))
+	g.EnablePrefetch()
+	defer g.Close()
+	if f, err := g.Grab(VideoRequest{FPS: 30}); err != nil || f == nil {
+		t.Fatalf("first grab %+v %v", f, err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for reads.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if reads.Load() != 2 {
+		t.Fatalf("the next screen was not read ahead: %d reads", reads.Load())
+	}
+	// The read-ahead screen is old: this grab reads again and sees the new picture.
+	shade.Store(200)
+	time.Sleep(prefetchMaxAge + 30*time.Millisecond)
+	f, err := g.Grab(VideoRequest{FPS: 30})
+	if err != nil || f == nil {
+		t.Fatalf("a changed screen after a pause was not encoded: %+v %v", f, err)
+	}
+	if n := reads.Load(); n < 3 {
+		t.Fatalf("an old read-ahead screen was used: %d reads", n)
 	}
 }

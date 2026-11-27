@@ -23,3 +23,14 @@ export function pictureBox(element: Box, pictureWidth: number, pictureHeight: nu
 export function canvasPictureBox(canvas: HTMLCanvasElement): Box {
   return pictureBox(canvas.getBoundingClientRect(), canvas.width, canvas.height);
 }
+
+/** Natural pixel dimensions of a remote screen element (canvas or direct WebRTC video). */
+export function mediaPictureSize(el: HTMLCanvasElement | HTMLVideoElement): { width: number; height: number } {
+  return 'videoWidth' in el ? { width: el.videoWidth, height: el.videoHeight } : { width: el.width, height: el.height };
+}
+
+/** The picture's box on screen for either a canvas (JPEG / WS H.264) or a WebRTC video element. */
+export function mediaPictureBox(el: HTMLCanvasElement | HTMLVideoElement): Box {
+  const { width, height } = mediaPictureSize(el);
+  return pictureBox(el.getBoundingClientRect(), width, height);
+}

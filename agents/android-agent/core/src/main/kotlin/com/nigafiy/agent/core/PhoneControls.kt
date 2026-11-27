@@ -18,6 +18,8 @@ object PhoneFeatures {
     const val FILES = "files"
     const val RING = "ring"
     const val MESSAGE = "message"
+    /** A drag follows the operator's pointer live (mouse_down / mouse_move / mouse_up), 1.0.8+. */
+    const val LIVE_TOUCH = "live_touch"
 
     /** What this build of the agent implements (reported in each heartbeat; the API shows only these). */
     fun supported(sdkInt: Int): List<String> = buildList {
@@ -27,6 +29,7 @@ object PhoneFeatures {
         if (sdkInt >= 30) add(FILES)
         add(RING)
         add(MESSAGE)
+        add(LIVE_TOUCH)
     }
 }
 
@@ -71,6 +74,9 @@ sealed class InputEvent {
     data class LongPress(val x: Double, val y: Double) : InputEvent()
     data class Swipe(val x: Double, val y: Double, val x2: Double, val y2: Double, val durationMs: Int) : InputEvent()
     data class Nav(val action: String) : InputEvent()
+    /** A finger held down and moved live (the live stream only): down, moves, up. */
+    data class Touch(val phase: Phase, val x: Double, val y: Double) : InputEvent()
+    enum class Phase { DOWN, MOVE, UP }
     /** Keyboard, text, wheel, moves: a phone has no such input here (never typed into apps). */
     data class Unsupported(val kind: String) : InputEvent()
 
@@ -97,6 +103,9 @@ sealed class InputEvent {
                 require(a in NAV) { "unknown navigation action '$a'" }
                 Nav(a)
             }
+            "mouse_down" -> Touch(Phase.DOWN, coord(p, "x"), coord(p, "y"))
+            "mouse_move" -> Touch(Phase.MOVE, coord(p, "x"), coord(p, "y"))
+            "mouse_up" -> Touch(Phase.UP, coord(p, "x"), coord(p, "y"))
             else -> Unsupported(kind.take(40))
         }
     }
@@ -118,7 +127,7 @@ object Gestures {
     const val MIN_MS = 50
     const val MAX_MS = 3000
 
-    private fun px(v: Double, size: Int): Float = (v * (size - 1)).coerceIn(0.0, (size - 1).toDouble()).toFloat()
+    fun px(v: Double, size: Int): Float = (v * (size - 1)).coerceIn(0.0, (size - 1).toDouble()).toFloat()
 
     /** Maps a normalized event onto a [width]×[height] screen. */
     fun plan(ev: InputEvent, width: Int, height: Int): GesturePlan {
@@ -137,6 +146,7 @@ object Gestures {
             }
             is InputEvent.Swipe -> GesturePlan.Strokes(listOf(Stroke(px(ev.x, width), px(ev.y, height), px(ev.x2, width), px(ev.y2, height), 0, ev.durationMs.toLong())))
             is InputEvent.Nav -> GesturePlan.Global(ev.action)
+            is InputEvent.Touch -> throw IllegalArgumentException("a live touch needs the live stream")
             is InputEvent.Unsupported -> throw IllegalArgumentException("'${ev.kind}' is not available on an Android phone (tap, long press, swipe, Back, Home and Recent apps only)")
         }
     }

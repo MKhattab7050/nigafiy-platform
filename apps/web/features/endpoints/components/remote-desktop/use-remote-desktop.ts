@@ -4,8 +4,9 @@ import { ApiError, api } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import type { ConnectChoice } from '../fleet-policy/connect-dialog';
 import { policyText } from '../fleet-policy/policy-text';
-import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, parsePacket, streamUrl } from './rd-stream';
-import { canvasPictureBox } from './picture-rect';
+import { H264Player, h264Supported } from './h264-player';
+import { type StreamHello, type StreamStats, drawFrame, drawJpegBase64, packetHeader, parsePacket, streamUrl } from './rd-stream';
+import { mediaPictureBox } from './picture-rect';
 import { pointerThrottle } from './pointer-throttle';
 import { useWebRtcVideo } from './use-webrtc-video';
 
@@ -70,6 +71,14 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
   const [iceServers, setIceServers] = useState<string[]>([]);
   const [recording, setRecording] = useState(false);
   const rtcActiveRef = useRef(false);
+  // A phone's hardware video (h264-player.ts): asked for when this browser decodes it.
+  const [h264Ok, setH264Ok] = useState(false);
+  const [videoBroken, setVideoBroken] = useState(false);
+  const playerRef = useRef<H264Player | null>(null);
+  const fullAskedAt = useRef(0);
+  useEffect(() => {
+    void h264Supported().then(setH264Ok);
+  }, []);
 
   const [textToType, setTextToType] = useState('');
   const [clipOut, setClipOut] = useState('');
@@ -80,6 +89,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   /** The in-session tools (use-session-tools.ts) listen to every text message and to audio packets. */
   const toolListeners = useRef(new Set<(m: Record<string, unknown> | ArrayBuffer) => void>());
@@ -183,6 +193,27 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
         }
         // While the picture plays over WebRTC the canvas belongs to the video.
         if (rtcActiveRef.current) return;
+        const head = packetHeader(ev.data as ArrayBuffer);
+        if (head?.header.fmt === 'h264') {
+          const h = head.header;
+          if (h.displays?.length) setDisplays(h.displays);
+          playerRef.current ??= new H264Player(
+            () => canvasRef.current,
+            (seq) => {
+              setHasPicture(true);
+              sendWs({ t: 'ack', seq });
+            },
+            () => {
+              playerRef.current = null;
+              setVideoBroken(true);
+            },
+          );
+          if (!playerRef.current.push(h.seq, h.full, new Uint8Array(ev.data as ArrayBuffer, head.offset)) && Date.now() - fullAskedAt.current > 1_000) {
+            fullAskedAt.current = Date.now();
+            sendWs({ t: 'full' });
+          }
+          return;
+        }
         const parsed = parsePacket(ev.data as ArrayBuffer);
         if (!parsed) return;
         const { header, tiles } = parsed;
@@ -267,15 +298,18 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
       clearTimeout(retry);
       ws.close(1000);
       if (wsRef.current === ws) wsRef.current = null;
+      playerRef.current?.close();
+      playerRef.current = null;
     };
   }, [ep.id, sessionId, online, wsAttempt, sendWs, loadStatus, onReload, locale]);
 
   // Quality / scale / display choices go to the agent over the socket (again when the path changes).
   // biome-ignore lint/correctness/useExhaustiveDependencies: path is the trigger (a new socket needs the settings).
+  const wantVideo = h264Ok && !videoBroken && !recording && hello?.video?.includes('h264') === true;
   useEffect(() => {
     if (!live) return;
-    sendWs({ t: 'settings', display: displayIndex, quality, scale, adaptive });
-  }, [live, displayIndex, quality, scale, adaptive, sendWs, path]);
+    sendWs({ t: 'settings', display: displayIndex, quality, scale, adaptive, ...(wantVideo ? { codecs: ['h264'] } : {}) });
+  }, [live, displayIndex, quality, scale, adaptive, sendWs, path, wantVideo]);
 
   const wsLive = path === 'direct' || path === 'relay';
 
@@ -287,7 +321,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     iceServers,
     sendWs,
     listeners: toolListeners,
-    canvasRef,
+    videoRef,
     onPicture: onRtcPicture,
   });
   rtcActiveRef.current = rtc.active;
@@ -356,6 +390,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     setHello(null);
     setRtcAllowed(false);
     setRecording(false);
+    setVideoBroken(false);
     setClipIn(null);
     setClipNote(null);
     const c = canvasRef.current;
@@ -424,22 +459,42 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
 
   // ── A phone (agents/android-agent): taps, long presses, swipes and Back / Home / Recents ──
   const isPhone = ep.platform === 'android';
-  const phoneDown = useRef<{ x: number; y: number; at: number } | null>(null);
+  const phoneDown = useRef<{ x: number; y: number; at: number; live: boolean } | null>(null);
+  // Apps 1.0.8+: a drag is sent while it happens (the finger moves on the phone with the pointer).
+  const liveTouch = ep.android?.features?.includes('live_touch') === true;
   function phoneNav(action: 'back' | 'home' | 'recents') {
     void sendInput({ kind: 'nav', nav: action });
   }
+  type ScreenEl = HTMLCanvasElement | HTMLVideoElement;
   const phoneHandlers = {
-    onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onMouseDown: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || e.button !== 0) return;
       const p = pointer(e);
-      if (p) phoneDown.current = { x: p.x, y: p.y, at: Date.now() };
+      if (p) phoneDown.current = { x: p.x, y: p.y, at: Date.now(), live: false };
     },
-    onMouseUp: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onMouseMove: (e: React.MouseEvent<ScreenEl>) => {
+      const start = phoneDown.current;
+      if (!start || !mayControl || !liveTouch || !wsLive) return;
+      const p = pointer(e);
+      if (!p) return;
+      if (!start.live) {
+        if (Math.hypot(p.x - start.x, p.y - start.y) <= 0.01) return;
+        start.live = true;
+        void sendInput({ kind: 'mouse_down', x: start.x, y: start.y });
+      }
+      moveThrottle.current.push({ x: p.x, y: p.y });
+    },
+    onMouseUp: (e: React.MouseEvent<ScreenEl>) => {
       const start = phoneDown.current;
       phoneDown.current = null;
       if (!mayControl || !start || e.button !== 0) return;
       const p = pointer(e);
       if (!p) return;
+      if (start.live) {
+        moveThrottle.current.cancel();
+        void sendInput({ kind: 'mouse_up', x: p.x, y: p.y });
+        return;
+      }
       const held = Date.now() - start.at;
       const moved = Math.hypot(p.x - start.x, p.y - start.y);
       if (moved > 0.02) {
@@ -450,14 +505,21 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
         void sendInput({ kind: 'mouse_click', x: p.x, y: p.y });
       }
     },
-    onMouseLeave: () => {
+    onMouseLeave: (e: React.MouseEvent<ScreenEl>) => {
+      const start = phoneDown.current;
       phoneDown.current = null;
+      // The finger never stays down on the phone after the pointer left the picture.
+      if (start?.live) {
+        moveThrottle.current.cancel();
+        const p = pointer(e);
+        void sendInput({ kind: 'mouse_up', x: p?.x ?? start.x, y: p?.y ?? start.y });
+      }
     },
-    onContextMenu: (e: React.MouseEvent<HTMLCanvasElement>) => e.preventDefault(),
+    onContextMenu: (e: React.MouseEvent<ScreenEl>) => e.preventDefault(),
   };
 
-  function pointer(e: React.MouseEvent<HTMLCanvasElement> | React.WheelEvent<HTMLCanvasElement>) {
-    const rect = canvasPictureBox(e.currentTarget);
+  function pointer(e: React.MouseEvent<ScreenEl> | React.WheelEvent<ScreenEl>) {
+    const rect = mediaPictureBox(e.currentTarget);
     if (rect.width <= 0 || rect.height <= 0) return null;
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
@@ -465,42 +527,42 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     return { x: Math.round(x * 10000) / 10000, y: Math.round(y * 10000) / 10000, button };
   }
 
-  /** Canvas mouse handlers: the live stream carries moves, presses and the wheel; HTTP carries clicks. */
+  /** Screen mouse handlers: the live stream carries moves, presses and the wheel; HTTP carries clicks. */
   const canvasHandlers = {
-    onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onMouseMove: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || !wsLive) return;
       const p = pointer(e);
       // At most one move per 50 ms, and the resting position is always sent (pointer-throttle.ts).
       if (p) moveThrottle.current.push({ x: p.x, y: p.y });
     },
-    onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onMouseDown: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || !wsLive) return;
       viewportRef.current?.focus();
       const p = pointer(e);
       if (p) void sendInput({ kind: 'mouse_down', ...p });
     },
-    onMouseUp: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onMouseUp: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || !wsLive) return;
       const p = pointer(e);
       if (p) void sendInput({ kind: 'mouse_up', ...p });
     },
-    onClick: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onClick: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || wsLive) return;
       const p = pointer(e);
       if (p) void sendInput({ kind: 'mouse_click', ...p });
     },
-    onDoubleClick: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onDoubleClick: (e: React.MouseEvent<ScreenEl>) => {
       if (!mayControl || wsLive) return;
       const p = pointer(e);
       if (p) void sendInput({ kind: 'mouse_click', ...p, double: true });
     },
-    onContextMenu: (e: React.MouseEvent<HTMLCanvasElement>) => {
+    onContextMenu: (e: React.MouseEvent<ScreenEl>) => {
       e.preventDefault();
       if (!mayControl || wsLive) return;
       const p = pointer(e);
       if (p) void sendInput({ kind: 'mouse_click', ...p, button: 'right' });
     },
-    onWheel: (e: React.WheelEvent<HTMLCanvasElement>) => {
+    onWheel: (e: React.WheelEvent<ScreenEl>) => {
       if (!mayControl || !wsLive) return;
       const p = pointer(e);
       const lines = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * 800 : e.deltaY;
@@ -602,6 +664,7 @@ export function useRemoteDesktop({ ep, online, canControl, viewOnly = false, onR
     error,
     viewportRef,
     canvasRef,
+    videoRef,
     canvasHandlers,
     onViewportKey,
     onViewportKeyUp,

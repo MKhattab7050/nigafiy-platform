@@ -1,6 +1,9 @@
+import type { AndroidPhoneFeature } from '@nigafiy/shared-types';
 import { z } from 'zod';
 import { isIPv4 } from '../../common/net.ts';
 import { agentMonitorSchema } from './fleet-monitoring/schema.ts';
+
+const ANDROID_FEATURES: readonly string[] = ['screen', 'control', 'files', 'ring', 'message', 'live_touch'] satisfies AndroidPhoneFeature[];
 
 // Endpoint agent protocol schema (Windows, Linux, macOS) — strict validation on every field.
 
@@ -68,7 +71,7 @@ export const androidStateSchema = z
     features: z
       .array(z.string().max(20))
       .max(20)
-      .transform((a) => a.filter((f): f is 'screen' | 'control' | 'files' | 'ring' | 'message' => ['screen', 'control', 'files', 'ring', 'message'].includes(f)))
+      .transform((a) => a.filter((f): f is AndroidPhoneFeature => ANDROID_FEATURES.includes(f)))
       .optional(),
     all_files_access: z.boolean().optional(),
     accessibility_enabled: z.boolean().optional(),

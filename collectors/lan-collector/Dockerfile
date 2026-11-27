@@ -19,7 +19,7 @@ COPY engine/go.mod engine/go.sum engine/
 RUN cd engine && go mod download
 COPY collectors/lan-collector collectors/lan-collector
 COPY engine engine
-ARG VERSION=1.0.7
+ARG VERSION=1.0.8
 RUN cd engine && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o /out/nigafiy-engine ./cmd/nigafiy-engine
 

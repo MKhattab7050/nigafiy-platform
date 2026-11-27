@@ -334,7 +334,7 @@ nothing reads messages or window text, and nothing logs keystrokes.
 | Control | On the phone | In Fleet | Rules |
 | --- | --- | --- | --- |
 | Screen view | A high-priority notification "IT asks to see your screen" → a screen with who, why and what they will see → Android's own MediaProjection dialog → foreground service of type `mediaProjection` with a Stop button; Android shows its cast icon | Remote desktop tab (shown only when the phone reports `screen`). In **regular app mode** sessions are always attended (`consent_mode = prompt`) because Android forces its own dialog — the group's unattended policy does not apply here. A managed / Device Owner phone follows the group policy and may be unattended (§2, "Access model for phones") | Frames only after the person accepted (`consent_pending` before). Refusing, ignoring or closing Android's dialog ends the session. Stop on the phone ends it in Fleet (`/agent/rd-session/end`) |
-| Remote control | Settings → Accessibility → Nigafiy (the person's own switch). A bar "Nigafiy: … is controlling this phone" stays on top while control is possible | Click = tap, hold = long press, drag = swipe, buttons Back / Home / Recent apps | Only inside an accepted session whose profile allows control. The service has no event types and `canRetrieveWindowContent=false`. Keys, text, wheel and mouse moves are refused for phones (`unsupported_by_platform`) |
+| Remote control | Settings → Accessibility → Nigafiy (the person's own switch). A bar "Nigafiy: … is controlling this phone" stays on top while control is possible | Click = tap, hold = long press, drag = swipe, buttons Back / Home / Recent apps | Only inside an accepted session whose profile allows control. The service has no event types and `canRetrieveWindowContent=false`. Keys, text and the wheel are refused for phones (`unsupported_by_platform`); pointer down / move / up only for apps with `live_touch` (1.0.8) |
 | File manager | Settings → All files access → Nigafiy (the person's switch, from the app's button) | Files tab (shown when the phone reports `files` and the access is granted) | Shared storage only (`SharedStorage.kt` confines paths); the usual file-manager roles: upload and delete are admin only, delete needs confirmation |
 | Ring | Alarm sound at full alarm volume (the person's volume is put back), notification with Stop | Android panel → Phone controls → Ring / Stop ringing | technician and above, 5–120 s, audited (`endpoint.android_ring`) |
 | Message | High-priority notification, plain text (title ≤ 120, text ≤ 600) | Android panel → Phone controls → Send message (`notify_user`) | technician and above, audited |
@@ -373,3 +373,29 @@ the phone stays on the HTTP path there). Over it:
 Code: `core/.../WsClient.kt` (a small RFC 6455 client, same TLS pin as the gateway), `app/.../LiveStream.kt`,
 `ScreenCaptureService.grab`. Tests: `WsClientTest` (6), `PhoneControlsTest`, and
 `fleet-android.test.ts` "live stream".
+
+### Hardware video and a live finger (app 1.0.8)
+
+The owner found the phone slow to watch from a computer (2026-11-27): every picture was a whole JPEG made in
+software. From 1.0.8:
+
+- **H.264.** The hello says `video: ["h264"]`. A browser that decodes H.264 with WebCodecs (and a session
+  that is not recorded: the recording player shows JPEG only, so the hub drops the request then) sends
+  `settings.codecs: ["h264"]`. The VirtualDisplay then draws straight into the phone's hardware encoder
+  (`VideoEncoder.kt`, MediaCodec, no B-frames, real-time priority) at full size up to 1920 on the long side
+  (multiples of 16; `VideoPlan` in core: 75 % below 1.8 Mbit/s, 50 % below 0.9 Mbit/s or when the console
+  chose 50 %; the console's 75 % default is for JPEG and does not shrink video). Frames use the same packet (`fmt: "h264"`, one tile, `full` = key frame); key frames carry
+  SPS/PPS, so the hub's "skip to the next full frame" for a slow viewer works unchanged, and `full` asks the
+  encoder for a key frame. A still screen repeats its picture every 400 ms. The bitrate follows the quality
+  (q45 ≈ 3.2, q68 ≈ 5.7, q85 ≈ 7.6 Mbit/s) and drops by a fifth while acks take over 450 ms. The browser plays it with
+  `h264-player.ts`. A phone without an encoder, a browser without WebCodecs, or a decoder error: JPEG as before.
+- **Live finger.** Phones that report the feature `live_touch` take `mouse_down` / `mouse_move` / `mouse_up`
+  on the live stream (`ANDROID_LIVE_TOUCH_KINDS` in `guards.ts`). The accessibility service continues one stroke
+  per move (`StrokeDescription.continueStroke`), so a list scrolls while the operator drags instead of
+  replaying the swipe after they let go. Taps and long presses are unchanged; older apps keep the one-shot swipe.
+
+Controlling a computer from a phone (the other direction) is in `touch-gestures.ts` / `touch-control.tsx`:
+tap = click, slide = drag, hold or two-finger tap = right click, two fingers = scroll, pinch = zoom here, a
+touchpad mode, the phone's keyboard and a bar of keys a phone keyboard lacks (Ctrl, Alt, Win, Esc, arrows,
+F-keys, Ctrl+Alt+Del). The hub no longer waits for each input's audit row before the next message (rows are
+still written, in order), and scrolling writes one audit row every 3 s.

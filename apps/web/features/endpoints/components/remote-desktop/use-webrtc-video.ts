@@ -53,7 +53,8 @@ interface Options {
   iceServers: string[];
   sendWs: (m: Record<string, unknown>) => boolean;
   listeners: MutableRefObject<Set<(m: Record<string, unknown> | ArrayBuffer) => void>>;
-  canvasRef: MutableRefObject<HTMLCanvasElement | null>;
+  /** Direct DOM video element (hardware zero-copy playback, no off-screen canvas copy). */
+  videoRef: MutableRefObject<HTMLVideoElement | null>;
   onPicture: () => void;
 }
 
@@ -71,7 +72,7 @@ function failCode(code: unknown): RtcFallbackReason {
   return 'agent_failed';
 }
 
-export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listeners, canvasRef, onPicture }: Options) {
+export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listeners, videoRef, onPicture }: Options) {
   /** The operator's choice: WebRTC when possible, or compatibility (JPEG) only. */
   const [preferred, setPreferred] = useState(true);
   const [mode, setMode] = useState<RtcMode>('off');
@@ -83,7 +84,6 @@ export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listener
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const modeRef = useRef<RtcMode>('off');
   const encoderRef = useRef<string | null>(null);
   const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
@@ -116,12 +116,12 @@ export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listener
     }
     const v = videoRef.current;
     if (v) {
+      v.onloadeddata = null;
+      v.onplaying = null;
       v.srcObject = null;
-      v.remove();
     }
-    videoRef.current = null;
     setStats(null);
-  }, [clearTimers]);
+  }, [clearTimers, videoRef]);
 
   /** Back to JPEG for this socket; `tell` sends the reason to the API (audited). */
   const fallBack = useCallback(
@@ -236,38 +236,24 @@ export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listener
     };
     pc.ontrack = (e) => {
       if (pcRef.current !== pc) return;
-      // An off-screen video element decodes; each decoded frame is drawn on the console's canvas.
-      const v = document.createElement('video');
-      v.muted = true;
-      v.playsInline = true;
-      v.autoplay = true;
-      v.style.cssText = 'position:fixed;left:-10000px;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
-      v.setAttribute('aria-hidden', 'true');
-      document.body.appendChild(v);
-      v.srcObject = e.streams[0] ?? new MediaStream([e.track]);
-      videoRef.current = v;
-      const draw = () => {
-        if (videoRef.current !== v) return;
-        const c = canvasRef.current;
-        if (c && v.videoWidth > 0) {
-          if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
-            c.width = v.videoWidth;
-            c.height = v.videoHeight;
-          }
-          c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height);
-          if (modeRef.current === 'starting') {
-            clearTimers();
-            setModeBoth('active');
-            onPictureRef.current();
-            // The first frame is decoded: the API stops counting this viewer for JPEG (audited).
-            sendWs({ t: 'rtc_active', ...(encoderRef.current ? { encoder: encoderRef.current.slice(0, 160) } : {}) });
-          }
+      // Render directly into the visible DOM <video> element: zero per-frame canvas copy and no
+      // mobile Chromium off-screen video throttling inside Android WebView.
+      const v = videoRef.current;
+      if (!v) return;
+      const activate = () => {
+        if (pcRef.current !== pc || v.videoWidth <= 0) return;
+        if (modeRef.current === 'starting') {
+          clearTimers();
+          setModeBoth('active');
+          onPictureRef.current();
+          // The first frame is decoded: the API stops counting this viewer for JPEG (audited).
+          sendWs({ t: 'rtc_active', ...(encoderRef.current ? { encoder: encoderRef.current.slice(0, 160) } : {}) });
         }
-        if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(draw);
-        else requestAnimationFrame(draw);
       };
-      if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(draw);
-      else requestAnimationFrame(draw);
+      v.onloadeddata = activate;
+      v.onplaying = activate;
+      v.srcObject = e.streams[0] ?? new MediaStream([e.track]);
+      if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(activate);
       void v.play().catch(() => undefined);
     };
     (async () => {
@@ -292,7 +278,7 @@ export function useWebRtcVideo({ wsLive, available, iceServers, sendWs, listener
         setModeBoth('off');
       }
     };
-  }, [wsLive, available, preferred, attempt, iceKey, sendWs, teardown, fallBack, setModeBoth, canvasRef, clearTimers]);
+  }, [wsLive, available, preferred, attempt, iceKey, sendWs, teardown, fallBack, setModeBoth, videoRef, clearTimers]);
 
   // Measured in this browser: frames per second and bits per second received, every second.
   useEffect(() => {

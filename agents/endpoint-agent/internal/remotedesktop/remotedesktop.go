@@ -14,6 +14,8 @@ import (
 	"math"
 	"sync"
 	"time"
+
+	"github.com/nigafiy/agent/internal/par"
 )
 
 type DisplayInfo struct {
@@ -48,7 +50,7 @@ type Frame struct {
 	Scale        float64       `json:"scale"`
 	CaptureMs    int64         `json:"capture_ms"`
 	ByteLength   int           `json:"byte_length"`
-	CaptureMode  string        `json:"capture_mode"` // native | native_gdi
+	CaptureMode  string        `json:"capture_mode"` // native | native_gdi | native_dxgi
 	// Unchanged: the screen is pixel-for-pixel what the previous frame showed (same display, size
 	// and quality), so no image is sent and the viewer keeps showing the previous one.
 	Unchanged  bool   `json:"unchanged,omitempty"`
@@ -242,42 +244,63 @@ func resizeArea(src *image.RGBA, dstW, dstH int) *image.RGBA {
 	yw := areaWeights(srcH, dstH)
 
 	// Horizontal pass: srcH rows of dstW pixels, 3 channels, each scaled by 65536 (< 2^24).
-	tmp := make([]uint32, dstW*srcH*3)
-	for y := 0; y < srcH; y++ {
-		row := src.Pix[y*src.Stride:]
-		out := tmp[y*dstW*3:]
-		for x, spans := range xw {
-			var r, g, b uint32
-			for _, sp := range spans {
-				i := sp.index * 4
-				r += uint32(row[i]) * sp.weight
-				g += uint32(row[i+1]) * sp.weight
-				b += uint32(row[i+2]) * sp.weight
+	tmp := resizeTmp.get(dstW * srcH * 3)
+	defer resizeTmp.put(tmp)
+	par.Rows(srcH, func(lo, hi int) {
+		for y := lo; y < hi; y++ {
+			row := src.Pix[y*src.Stride:]
+			out := tmp[y*dstW*3:]
+			for x, spans := range xw {
+				var r, g, b uint32
+				for _, sp := range spans {
+					i := sp.index * 4
+					r += uint32(row[i]) * sp.weight
+					g += uint32(row[i+1]) * sp.weight
+					b += uint32(row[i+2]) * sp.weight
+				}
+				out[x*3], out[x*3+1], out[x*3+2] = r, g, b
 			}
-			out[x*3], out[x*3+1], out[x*3+2] = r, g, b
 		}
-	}
+	})
 	// Vertical pass: sums of value (< 2^24) × weight (≤ 2^16), scaled by 2^32 in total.
 	const half = 1 << 31
-	for y, spans := range yw {
-		drow := dst.Pix[y*dst.Stride:]
-		for x := 0; x < dstW; x++ {
-			var r, g, b uint64
-			for _, sp := range spans {
-				i := (sp.index*dstW + x) * 3
-				r += uint64(tmp[i]) * uint64(sp.weight)
-				g += uint64(tmp[i+1]) * uint64(sp.weight)
-				b += uint64(tmp[i+2]) * uint64(sp.weight)
+	par.Rows(dstH, func(lo, hi int) {
+		for y := lo; y < hi; y++ {
+			spans := yw[y]
+			drow := dst.Pix[y*dst.Stride:]
+			for x := 0; x < dstW; x++ {
+				var r, g, b uint64
+				for _, sp := range spans {
+					i := (sp.index*dstW + x) * 3
+					r += uint64(tmp[i]) * uint64(sp.weight)
+					g += uint64(tmp[i+1]) * uint64(sp.weight)
+					b += uint64(tmp[i+2]) * uint64(sp.weight)
+				}
+				di := x * 4
+				drow[di] = uint8(min((r+half)>>32, 255))
+				drow[di+1] = uint8(min((g+half)>>32, 255))
+				drow[di+2] = uint8(min((b+half)>>32, 255))
+				drow[di+3] = 255
 			}
-			di := x * 4
-			drow[di] = uint8(min((r+half)>>32, 255))
-			drow[di+1] = uint8(min((g+half)>>32, 255))
-			drow[di+2] = uint8(min((b+half)>>32, 255))
-			drow[di+3] = 255
 		}
-	}
+	})
 	return dst
 }
+
+// resizeTmp keeps the horizontal pass's buffer (about 18 MB for 1080p) between pictures, so a
+// stream of 30 a second does not hand the garbage collector half a gigabyte a second.
+var resizeTmp tmpPool
+
+type tmpPool struct{ p sync.Pool }
+
+func (t *tmpPool) get(n int) []uint32 {
+	if b, ok := t.p.Get().(*[]uint32); ok && cap(*b) >= n {
+		return (*b)[:n]
+	}
+	return make([]uint32, n)
+}
+
+func (t *tmpPool) put(b []uint32) { t.p.Put(&b) }
 
 // errNoDesktop: there is no interactive desktop this process can read (for example a Windows
 // service in session 0, or no display server on Linux).

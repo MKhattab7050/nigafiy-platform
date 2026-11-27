@@ -1,7 +1,7 @@
 // Where the remote picture sits inside a full-screen canvas. Run with `pnpm --filter @nigafiy/web test:unit`.
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pictureBox } from './picture-rect.ts';
+import { mediaPictureSize, pictureBox } from './picture-rect.ts';
 
 describe('pictureBox', () => {
   it('is the element itself when the element has the picture shape', () => {
@@ -19,5 +19,10 @@ describe('pictureBox', () => {
 
   it('is the element when the picture size is not known yet', () => {
     assert.deepEqual(pictureBox({ left: 1, top: 2, width: 3, height: 4 }, 0, 0), { left: 1, top: 2, width: 3, height: 4 });
+  });
+
+  it('reads natural dimensions from both video and canvas elements', () => {
+    assert.deepEqual(mediaPictureSize({ videoWidth: 1920, videoHeight: 1080 } as HTMLVideoElement), { width: 1920, height: 1080 });
+    assert.deepEqual(mediaPictureSize({ width: 1280, height: 720 } as HTMLCanvasElement), { width: 1280, height: 720 });
   });
 });

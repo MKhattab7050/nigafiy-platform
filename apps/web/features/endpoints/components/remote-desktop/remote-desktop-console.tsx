@@ -11,8 +11,10 @@ import { PermissionChips } from '../fleet-policy/permission-chips';
 import { policyText } from '../fleet-policy/policy-text';
 import { reachText } from '../reach/reach-text';
 import { RestartPanel } from '../reach/restart-panel';
+import { mediaPictureSize } from './picture-rect';
 import { bytes, rdText } from './rd-text';
 import { SessionHistory } from './session-history';
+import { TouchBar, useTouchControl } from './touch-control';
 import { AnnotationLayer, ChatCard, OperatorsCard, SessionToolbar, TransferCard, WakeCard } from './session-tools-panel';
 import { type RdPath, type RemoteDesktopConsoleProps, useRemoteDesktop } from './use-remote-desktop';
 import { useSessionTools } from './use-session-tools';
@@ -24,6 +26,9 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
   const rd = useRemoteDesktop(props);
   const { me } = useApp();
   const tools = useSessionTools(rd, ep.id, me.user.id);
+  const tc = useTouchControl(rd);
+  const fullscreen = useFullscreen(rd.viewportRef);
+  const touchBar = tc.touch && rd.live && rd.hasPicture && !rd.isPhone && canControl && !viewOnly && rd.allows('control');
   const [wakeOpen, setWakeOpen] = useState(false);
   const tx = rdText(rd.locale);
   const px = policyText(rd.locale);
@@ -172,7 +177,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
             <Button size="sm" disabled={!online || !rd.live} onClick={rd.requestFull} title={tx.snapshot} aria-label={tx.snapshot}>
               <RefreshCw className="size-3.5" aria-hidden />
             </Button>
-            <Button size="sm" onClick={() => void enterFullscreen(rd.viewportRef.current)} title={tx.fullscreen} aria-label={tx.fullscreen}>
+            <Button size="sm" onClick={() => void enterFullscreen(rd.viewportRef.current, rd.rtc.active ? rd.videoRef.current : rd.canvasRef.current)} title={tx.fullscreen} aria-label={tx.fullscreen}>
               <Maximize2 className="size-3.5" aria-hidden />
             </Button>
             {!rd.session ? (
@@ -203,7 +208,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               </div>
             </div>
           )}
-          {!rd.isPhone && canControl && !viewOnly && rd.live && rd.allows('control') && (
+          {!rd.isPhone && !tc.touch && canControl && !viewOnly && rd.live && rd.allows('control') && (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-bg/60 p-2">
               <form
                 onSubmit={(e) => {
@@ -255,10 +260,39 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               className={clsx(
                 'max-h-[72vh] max-w-full select-none object-contain',
                 // Full screen: the picture fills the screen (picture-rect.ts maps taps through the bars).
-                '[:fullscreen_&]:size-full [:fullscreen_&]:max-h-none', !rd.hasPicture && 'hidden', rd.mayControl && 'cursor-crosshair')}
+                '[:fullscreen_&]:size-full [:fullscreen_&]:max-h-none',
+                (!rd.hasPicture || rd.rtc.active) && 'hidden',
+                rd.mayControl && 'cursor-crosshair',
+              )}
               aria-label={tx.title}
-              {...(rd.isPhone ? rd.phoneHandlers : rd.canvasHandlers)}
+              {...(rd.isPhone ? rd.phoneHandlers : { ...rd.canvasHandlers, ...tc.canvasProps })}
             />
+            <video
+              ref={rd.videoRef}
+              muted
+              playsInline
+              autoPlay
+              className={clsx(
+                'max-h-[72vh] max-w-full select-none object-contain',
+                '[:fullscreen_&]:size-full [:fullscreen_&]:max-h-none',
+                rd.rtc.active
+                  ? rd.mayControl && 'cursor-crosshair'
+                  : rd.rtc.mode === 'starting'
+                    ? 'pointer-events-none absolute inset-0 size-full opacity-0'
+                    : 'hidden',
+              )}
+              aria-label={tx.title}
+              {...(rd.rtc.active ? (rd.isPhone ? rd.phoneHandlers : { ...rd.canvasHandlers, ...tc.canvasProps }) : {})}
+            />
+            {touchBar && (
+              <TouchBar
+                tc={tc}
+                locale={rd.locale}
+                onSas={tools.has('sas') && rd.wsLive ? tools.sendSas : undefined}
+                fullscreen={fullscreen}
+                onFullscreen={() => void (fullscreen ? document.exitFullscreen() : enterFullscreen(rd.viewportRef.current, rd.rtc.active ? rd.videoRef.current : rd.canvasRef.current))}
+              />
+            )}
             {rd.live && rd.hasPicture && canControl && <AnnotationLayer rd={rd} t={tools} />}
             {!rd.hasPicture && (
               <div className="flex flex-col items-center gap-3 p-8 text-center text-white/70">
@@ -296,6 +330,7 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               {rd.stats && rd.wsLive && !rd.rtc.active && (
                 <>
                   <span>{tx.stats(rd.stats.fps, rd.stats.kbps, rd.stats.rtt_ms, rd.stats.quality, rd.stats.scale)}</span>
+                  {rd.stats.encoder === 'h264' && <span dir="ltr">H.264</span>}
                   {rd.stats.width > 0 && <span>{ltr(`${rd.stats.width}×${rd.stats.height}`)}</span>}
                   <span>{tx.changed(rd.stats.changed_pct)}</span>
                   <span>{tx.viewers(rd.stats.viewers)}</span>
@@ -379,9 +414,26 @@ function fsRefuse(fs: { consent_mode: string; refuse_window_s: number } | null):
 }
 
 /** Fullscreen, and Keyboard Lock where the browser has it, so Alt+Tab, Win and Esc reach the remote computer. */
-async function enterFullscreen(el: HTMLElement | null) {
+async function enterFullscreen(el: HTMLElement | null, media?: HTMLCanvasElement | HTMLVideoElement | null) {
   if (!el?.requestFullscreen) return;
   await el.requestFullscreen();
   const kb = (navigator as Navigator & { keyboard?: { lock?: (codes?: string[]) => Promise<void> } }).keyboard;
   await kb?.lock?.().catch(() => undefined);
+  // A phone held upright shows a wide computer screen tiny: turn to landscape where the browser allows.
+  const size = media ? mediaPictureSize(media) : null;
+  if (size && size.width > size.height && window.matchMedia('(pointer: coarse)').matches) {
+    const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+    await o.lock?.('landscape').catch(() => undefined);
+  }
+}
+
+/** Whether the remote screen element is in full screen. */
+function useFullscreen(ref: React.RefObject<HTMLElement | null>): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const f = () => setOn(document.fullscreenElement !== null && document.fullscreenElement === ref.current);
+    document.addEventListener('fullscreenchange', f);
+    return () => document.removeEventListener('fullscreenchange', f);
+  }, [ref]);
+  return on;
 }

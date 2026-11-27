@@ -47,6 +47,9 @@ export interface StreamStats {
   viewers: number;
   width: number;
   height: number;
+  /** A phone: 'h264' (hardware video) or 'jpeg', and the video's current bitrate. */
+  encoder?: string;
+  bitrate_kbps?: number;
 }
 
 export interface StreamHello {
@@ -57,6 +60,22 @@ export interface StreamHello {
   control?: boolean;
   /** WebRTC video (H.264 from Media Foundation on Windows); `reason` when not available. */
   webrtc?: { supported: boolean; encoder?: string; reason?: string };
+  /** Video the agent can send on this stream when the viewer asks (a phone: ['h264']). */
+  video?: string[];
+}
+
+/** The header of a packet and where its payload starts (video frames are not split into tiles). */
+export function packetHeader(buf: ArrayBuffer): { header: StreamFrameHeader; offset: number } | null {
+  const v = new DataView(buf);
+  if (buf.byteLength < 6 || v.getUint8(0) !== 0x4e || v.getUint8(1) !== 1) return null;
+  const n = v.getUint32(2);
+  if (n === 0 || 6 + n > buf.byteLength) return null;
+  try {
+    const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 6, n))) as StreamFrameHeader;
+    return header.t === 'frame' ? { header, offset: 6 + n } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Splits a packet; null when it is not one (wrong magic, lengths that do not add up). */

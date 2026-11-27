@@ -4,6 +4,7 @@ import com.nigafiy.agent.core.Gestures
 import com.nigafiy.agent.core.InputEvent
 import com.nigafiy.agent.core.Json
 import com.nigafiy.agent.core.ScreenSessionRequest
+import com.nigafiy.agent.core.VideoPlan
 import com.nigafiy.agent.core.WsClient
 import com.nigafiy.agent.core.WsClosed
 import com.nigafiy.agent.core.WsHandshakeError
@@ -44,32 +45,45 @@ class LiveStream private constructor(
     private var sentBytes = 0L
     private var statsAt = 0L
     private var last: ScreenShare.Grabbed? = null
+    /** The viewer decodes H.264 (settings.codecs): hardware video instead of a JPEG per picture. */
+    private var wantVideo = false
+    private var bitrate = 0
+    // Started and stopped by the serve loop; read by the ack reader (bitrate) and the stats.
+    @Volatile private var video: VideoEncoder? = null
+    private var videoSide = 0
+    private var videoFailed = false
+    private var droppingVideo = false
+    private var lastDropBackoffAt = 0L
 
     private fun run() {
-        var failures = 0
-        while (running.get()) {
-            val c = try {
-                val token = credential() ?: return
-                WsClient.connect(WsClient.streamUrl(server, session.sessionId), pin, mapOf("Authorization" to "Bearer $token", "User-Agent" to "nigafiy-android-agent"))
-            } catch (e: WsHandshakeError) {
-                // 401/404/409/410: no live stream for this session here; the HTTP path stays.
-                if (e.status in setOf(401, 403, 404, 409, 410)) return
-                null
-            } catch (e: Exception) {
-                null
+        try {
+            var failures = 0
+            while (running.get()) {
+                val c = try {
+                    val token = credential() ?: return
+                    WsClient.connect(WsClient.streamUrl(server, session.sessionId), pin, mapOf("Authorization" to "Bearer $token", "User-Agent" to "nigafiy-android-agent"))
+                } catch (e: WsHandshakeError) {
+                    // 401/404/409/410: no live stream for this session here; the HTTP path stays.
+                    if (e.status in setOf(401, 403, 404, 409, 410)) return
+                    null
+                } catch (e: Exception) {
+                    null
+                }
+                if (c == null) {
+                    failures++
+                    pause(minOf(10_000L, 1000L shl minOf(failures - 1, 4)))
+                    continue
+                }
+                failures = 0
+                ws = c
+                val over = serve(c)
+                ws = null
+                c.close()
+                if (over) return
+                pause(1_000)
             }
-            if (c == null) {
-                failures++
-                pause(minOf(10_000L, 1000L shl minOf(failures - 1, 4)))
-                continue
-            }
-            failures = 0
-            ws = c
-            val over = serve(c)
-            ws = null
-            c.close()
-            if (over) return
-            pause(1_000)
+        } finally {
+            inputs.shutdownNow()
         }
     }
 
@@ -83,6 +97,8 @@ class LiveStream private constructor(
             "displays" to listOf(display(size)),
             "desktop" to mapOf("mode" to "android", "backend" to "mediaprojection", "input_supported" to (session.control && ControlService.instance != null)),
             "encoder" to "jpeg",
+            // This phone can send hardware H.264 when the viewer asks for it (settings.codecs).
+            "video" to listOf("h264"),
             "webp" to false,
             "control" to session.control,
             "max_fps" to MAX_FPS,
@@ -114,8 +130,15 @@ class LiveStream private constructor(
                     inflight.entries.removeIf { (_, at) -> if (now - at > ACK_TIMEOUT_MS) { needFull = true; true } else false }
                     val f = needFull
                     needFull = false
-                    Snapshot(viewers, f, quality, scale, inflight.size >= INFLIGHT)
+                    Snapshot(viewers, f, quality, scale, inflight.size >= VideoPlan.inflightWindow(rttMs, false))
                 }
+                if (v > 0 && synchronized(lock) { wantVideo } && !videoFailed) {
+                    serveVideo(c, full, s)
+                    stats(c)
+                    waitFor(250)
+                    continue
+                }
+                if (video != null) stopVideo()
                 if (v == 0 || blocked) {
                     if (full) synchronized(lock) { needFull = true }
                     waitFor(250)
@@ -161,10 +184,96 @@ class LiveStream private constructor(
             }
         } catch (_: Exception) {
         }
+        stopVideo()
         c.close()
         reader.join(2_000)
         return over.get()
     }
+
+    /** Keeps the hardware video running at the chosen size; a key frame when a viewer needs one. */
+    private fun serveVideo(c: WsClient, full: Boolean, scale: Double) {
+        val cap = ScreenShare.capturer ?: return
+        val (sw, sh) = cap.screenSize()
+        val side = VideoPlan.side(maxOf(sw, sh), scale, synchronized(lock) { bitrate })
+        val enc = video
+        if (enc == null || !enc.alive || side != videoSide || cap.videoStale()) {
+            if (enc != null) stopVideo()
+            val target = synchronized(lock) { if (bitrate == 0) bitrate = VideoPlan.initialBitrate(quality); bitrate }
+            val (ew, eh) = VideoEncoder.sizeFor(sw, sh, side)
+            // The first frames (the first key frame among them) come before startVideo returns.
+            val started = cap.startVideo(side, target) { data, key, _ -> sendVideoFrame(c, data, key, ew, eh) }
+            if (started == null) {
+                // No usable encoder on this phone: JPEG pictures, as before.
+                videoFailed = true
+                c.sendText(Json.write(mapOf("t" to "video", "codec" to null, "reason" to "no hardware H.264 encoder")))
+                synchronized(lock) { needFull = true }
+                return
+            }
+            video = started
+            videoSide = side
+            c.sendText(Json.write(mapOf("t" to "video", "codec" to "h264", "w" to started.width, "h" to started.height)))
+            return
+        }
+        if (full) enc.keyFrame()
+    }
+
+    private fun sendVideoFrame(c: WsClient, data: ByteArray, key: Boolean, w: Int, h: Int) {
+        val (sw, sh) = ScreenShare.capturer?.screenSize() ?: return
+        val now = System.currentTimeMillis()
+        var requestKey = false
+        var lowerBitrate: Int? = null
+        val n = synchronized(lock) {
+            inflight.entries.removeIf { (_, at) -> now - at > ACK_TIMEOUT_MS }
+            val limit = VideoPlan.inflightWindow(rttMs, true)
+            if (inflight.size >= limit && (!key || inflight.size >= limit + 4)) {
+                droppingVideo = true
+                if (adaptive && now - lastDropBackoffAt >= 1_000L) {
+                    lastDropBackoffAt = now
+                    val next = ((bitrate * 3) / 4).coerceAtLeast(MIN_BITRATE)
+                    if (next != bitrate) {
+                        bitrate = next
+                        lowerBitrate = next
+                    }
+                }
+                -1L
+            } else if (droppingVideo && !key) {
+                // Skip delta frames after a drop until a fresh key frame catches the viewer up.
+                if (inflight.size <= maxOf(2, limit / 2)) requestKey = true
+                -1L
+            } else {
+                if (key) droppingVideo = false
+                ++seq
+            }
+        }
+        lowerBitrate?.let { video?.bitrate(it) }
+        if (requestKey) video?.keyFrame()
+        if (n < 0) return
+        val header = linkedMapOf<String, Any?>(
+            "t" to "frame", "seq" to n, "full" to key, "display" to 0,
+            "w" to w, "h" to h, "sw" to sw, "sh" to sh,
+            "q" to synchronized(lock) { quality }, "s" to w.toDouble() / sw, "fmt" to "h264",
+            "tiles" to listOf(mapOf("x" to 0, "y" to 0, "w" to w, "h" to h, "n" to data.size)),
+            "changed_pct" to 100, "mode" to "android",
+        )
+        if (key) header["displays"] = listOf(display(sw to sh))
+        val pkt = WsClient.framePacket(header, data)
+        synchronized(lock) {
+            inflight[n] = now
+            sentFrames++
+            sentBytes += pkt.size
+        }
+        c.sendBinary(pkt)
+    }
+
+    private fun stopVideo() {
+        if (video == null) return
+        video = null
+        videoSide = 0
+        ScreenShare.capturer?.stopVideo()
+    }
+
+    /** The bitrate the chosen quality asks for (VideoPlan.bitrate). */
+    private fun targetBitrate(): Int = VideoPlan.bitrate(quality)
 
     private data class Snapshot(val viewers: Int, val full: Boolean, val quality: Int, val scale: Double, val blocked: Boolean)
 
@@ -193,6 +302,10 @@ class LiveStream private constructor(
                 (m["quality"] as? Number)?.let { quality = it.toInt().coerceIn(25, 95) }
                 (m["scale"] as? Number)?.let { scale = it.toDouble().coerceIn(0.25, 1.0) }
                 (m["adaptive"] as? Boolean)?.let { adaptive = it }
+                @Suppress("UNCHECKED_CAST")
+                wantVideo = (m["codecs"] as? List<Any?>)?.contains("h264") == true
+                bitrate = if (adaptive) minOf(if (bitrate > 0) bitrate else VideoPlan.initialBitrate(quality), targetBitrate()) else targetBitrate()
+                video?.bitrate(bitrate)
                 needFull = true
                 lock.notifyAll()
             }
@@ -208,8 +321,16 @@ class LiveStream private constructor(
 
     /** A slow link: smaller, softer pictures; a fast one: back towards what the operator chose. */
     private fun adapt() {
-        if (rttMs > 600 && quality > 40) quality -= 5
-        else if (rttMs < 200 && quality < DEFAULT_QUALITY) quality += 1
+        val v = video
+        if (v != null) {
+            // Video: the bitrate follows the round trip (a picture that takes long to arrive means
+            // the link is full); back up slowly towards what the chosen quality asks for.
+            val next = VideoPlan.adaptBitrate(bitrate, targetBitrate(), rttMs, MIN_BITRATE)
+            if (next != bitrate) { bitrate = next; v.bitrate(next) }
+            return
+        }
+        if (rttMs > 350 && quality > 35) quality -= 5
+        else if (rttMs < 180 && quality < DEFAULT_QUALITY) quality += 1
     }
 
     private fun applyInput(c: WsClient, ev: Map<String, Any?>) {
@@ -223,7 +344,12 @@ class LiveStream private constructor(
                 service == null -> "android_control_not_enabled: remote control is not turned on in Settings → Accessibility on the phone"
                 else -> {
                     val event = InputEvent.parse(ev)
-                    if (event is InputEvent.Unsupported) null // pointer moves and keys: nothing to do on a phone
+                    if (event is InputEvent.Unsupported) null // keys and the wheel: nothing to do on a phone
+                    else if (event is InputEvent.Touch) {
+                        // A live finger: no wait for Android to finish (the next move continues it).
+                        service.touch(event.phase, Gestures.px(event.x, size.first), Gestures.px(event.y, size.second))
+                        null
+                    }
                     else if (service.perform(Gestures.plan(event, size.first, size.second))) null
                     else "Android did not complete the gesture (cancelled by the system or by a touch on the phone)"
                 }
@@ -246,7 +372,8 @@ class LiveStream private constructor(
                 "t" to "stats", "fps" to Math.round(sentFrames / elapsed * 10) / 10.0, "kbps" to (sentBytes * 8 / 1000 / elapsed).toLong(),
                 "rtt_ms" to rttMs, "throughput_kbps" to 0, "quality" to quality, "scale" to scale, "display" to 0, "adaptive" to adaptive,
                 "changed_pct" to 100, "cap_ms" to (g?.captureMs ?: 0), "enc_ms" to (g?.encodeMs ?: 0), "viewers" to viewers,
-                "width" to (g?.width ?: 0), "height" to (g?.height ?: 0),
+                "width" to (video?.width ?: g?.width ?: 0), "height" to (video?.height ?: g?.height ?: 0),
+                "encoder" to (if (video != null) "h264" else "jpeg"), "bitrate_kbps" to (if (video != null) bitrate / 1000 else 0),
             )
             sentFrames = 0; sentBytes = 0; statsAt = now
             out
@@ -267,10 +394,10 @@ class LiveStream private constructor(
     companion object {
         const val CLOSE_SESSION_ENDED = 4000
         private const val MAX_FPS = 15
-        private const val INFLIGHT = 3
         private const val ACK_TIMEOUT_MS = 3_000L
         private const val DEFAULT_QUALITY = 60
         private const val DEFAULT_SCALE = 0.6
+        private const val MIN_BITRATE = VideoPlan.MIN_BITRATE
         @Volatile private var current: LiveStream? = null
 
         fun start(server: String, pin: String?, credential: () -> String?, session: ScreenSessionRequest) {

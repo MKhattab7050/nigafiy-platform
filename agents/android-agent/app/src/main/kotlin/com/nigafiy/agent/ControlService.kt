@@ -16,6 +16,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.TextView
 import com.nigafiy.agent.core.GesturePlan
+import com.nigafiy.agent.core.InputEvent
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -86,6 +87,39 @@ class ControlService : AccessibilityService() {
         }
     }
 
+    // ── A live finger (the live stream's mouse_down / mouse_move / mouse_up) ──
+    // Each move continues the stroke (StrokeDescription.continueStroke), so a list scrolls and a
+    // slider moves while the operator drags, instead of replaying the whole swipe after they let go.
+    private var liveStroke: GestureDescription.StrokeDescription? = null
+    private var liveX = 0f
+    private var liveY = 0f
+    private var liveAt = 0L
+
+    /** Called off the main thread, in order; true when Android took the segment. */
+    fun touch(phase: InputEvent.Phase, x: Float, y: Float): Boolean {
+        if (Store(this).stopped) return false
+        val now = System.currentTimeMillis()
+        val segment: GestureDescription.StrokeDescription = synchronized(this) {
+            val prev = liveStroke
+            when (phase) {
+                InputEvent.Phase.DOWN -> {
+                    val path = Path().apply { moveTo(x, y) }
+                    GestureDescription.StrokeDescription(path, 0, LIVE_FIRST_MS, true).also { liveStroke = it }
+                }
+                InputEvent.Phase.MOVE, InputEvent.Phase.UP -> {
+                    if (prev == null) return false
+                    val path = Path().apply { moveTo(liveX, liveY); lineTo(x, y) }
+                    val dur = (now - liveAt).coerceIn(LIVE_MIN_MS, LIVE_MAX_MS)
+                    val last = phase == InputEvent.Phase.UP
+                    prev.continueStroke(path, 0, dur, !last).also { liveStroke = if (last) null else it }
+                }
+            }.also { liveX = x; liveY = y; liveAt = now }
+        }
+        val gesture = GestureDescription.Builder().addStroke(segment).build()
+        main.post { dispatchGesture(gesture, null, null) }
+        return true
+    }
+
     private fun updateBar() {
         val a = ScreenShare.active
         if (a != null && a.control) showBar(a.operator) else removeBar()
@@ -125,6 +159,9 @@ class ControlService : AccessibilityService() {
     }
 
     companion object {
+        private const val LIVE_FIRST_MS = 1L
+        private const val LIVE_MIN_MS = 8L
+        private const val LIVE_MAX_MS = 120L
         @Volatile var instance: ControlService? = null
             private set
 

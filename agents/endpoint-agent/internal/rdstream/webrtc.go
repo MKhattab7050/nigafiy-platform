@@ -35,11 +35,14 @@ const (
 	// MaxRTCPeers: WebRTC viewers of one session (each is a colleague's browser).
 	MaxRTCPeers = 4
 	// Bitrate range and start (bits per second).
+	// Start at 2.5 Mbit/s: sharp on LAN and climbs to MaxVideoBitrate within seconds when RTT and
+	// loss are low, without flooding WAN / Tailscale DERP / mobile uplinks on the first second.
 	MinVideoBitrate   = 300_000
-	MaxVideoBitrate   = 8_000_000
-	StartVideoBitrate = 4_000_000
-	// DefaultVideoFPS caps the video frame rate.
-	DefaultVideoFPS = 30
+	MaxVideoBitrate   = 12_000_000
+	StartVideoBitrate = 2_500_000
+	// DefaultVideoFPS caps the video frame rate on a fast LAN link. Higher-latency links (WAN /
+	// Tailscale relay) step down via VideoFPSFor so each frame gets more bits and queues stay empty.
+	DefaultVideoFPS = 60
 	maxSDPBytes     = 64 << 10
 	adaptEvery      = 2 * time.Second
 	// The pump gives up after this many failed grabs in a row (the encoder or capture is broken).
@@ -56,11 +59,13 @@ type rtcCandidate struct {
 }
 
 type rtcPeer struct {
-	req     string
-	pc      *webrtc.PeerConnection
-	control atomic.Bool
-	loss    atomic.Uint32 // last RTCP fraction lost (0..255)
-	up      atomic.Bool   // ICE + DTLS connected
+	req      string
+	pc       *webrtc.PeerConnection
+	control  atomic.Bool
+	loss     atomic.Uint32 // last RTCP fraction lost (0..255)
+	jitterMs atomic.Uint32 // last RTCP interarrival jitter in ms (90 kHz clock / 90)
+	pli      atomic.Uint32 // PLI/FIR requests since the last adapt window
+	up       atomic.Bool   // ICE + DTLS connected
 }
 
 type rtcManager struct {
@@ -75,6 +80,8 @@ type rtcManager struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 	bitrate  int
+	rttMs    int
+	videoFPS int
 	encoder  string
 	closed   bool
 	wantKey  atomic.Bool
@@ -282,6 +289,16 @@ func (r *rtcManager) offer(m inMsg) {
 		_ = pc.Close()
 		return
 	}
+	if old := r.peers[req]; old != nil {
+		delete(r.peers, req)
+		go old.pc.Close() //nolint:errcheck // replaced by the newer concurrent offer
+	}
+	if len(r.peers) >= MaxRTCPeers {
+		r.mu.Unlock()
+		_ = pc.Close()
+		r.fail(req, "too_many_peers", "too many WebRTC viewers in this session")
+		return
+	}
 	r.peers[req] = p
 	early := r.pending[req]
 	delete(r.pending, req)
@@ -341,10 +358,12 @@ func (r *rtcManager) readRTCP(p *rtcPeer, sender *webrtc.RTPSender) {
 		for _, pkt := range pkts {
 			switch t := pkt.(type) {
 			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+				p.pli.Add(1)
 				r.wantKey.Store(true)
 			case *rtcp.ReceiverReport:
 				for _, rep := range t.Reports {
 					p.loss.Store(uint32(rep.FractionLost))
+					p.jitterMs.Store(rep.Jitter / 90)
 				}
 			}
 		}
@@ -513,31 +532,138 @@ func (r *rtcManager) connected() int {
 	return n
 }
 
-// adapt steps the bitrate on the worst viewer's loss (RTCP receiver reports).
-func (r *rtcManager) adapt(now time.Time) {
+// peerRTTMs returns the active ICE candidate pair's current RTT in milliseconds (0 when unknown).
+func peerRTTMs(pc *webrtc.PeerConnection) int {
+	if pc == nil {
+		return 0
+	}
+	var best int
+	for _, st := range pc.GetStats() {
+		pair, ok := st.(webrtc.ICECandidatePairStats)
+		if !ok || pair.CurrentRoundTripTime <= 0 {
+			continue
+		}
+		ms := int(pair.CurrentRoundTripTime * 1000)
+		if pair.Nominated || pair.State == webrtc.StatsICECandidatePairStateSucceeded {
+			return ms
+		}
+		if best == 0 {
+			best = ms
+		}
+	}
+	return best
+}
+
+// adapt steps the bitrate and target FPS on the worst viewer's RTCP loss/jitter/PLI and ICE RTT.
+// Over relayed TCP tunnels (such as Tailscale DERP), packet loss can stay 0 % while RTT rises to
+// 200-400 ms; adapting on RTT as well prevents the encoder from ramping up to 12 Mbit/s into a
+// congested relay.
+func (r *rtcManager) adapt(now time.Time, maxFPS int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if now.Sub(r.lastAdap) < adaptEvery {
+		r.mu.Unlock()
 		return
 	}
 	r.lastAdap = now
-	var worst uint32
+	peers := make([]*rtcPeer, 0, len(r.peers))
 	for _, p := range r.peers {
-		worst = max(worst, p.loss.Load())
+		peers = append(peers, p)
 	}
-	r.bitrate = NextBitrate(r.bitrate, float64(worst)/256)
+	r.mu.Unlock()
+
+	var worstLoss, worstJitter, worstPLI uint32
+	var worstRTT int
+	for _, p := range peers {
+		worstLoss = max(worstLoss, p.loss.Load())
+		worstJitter = max(worstJitter, p.jitterMs.Load())
+		worstPLI = max(worstPLI, p.pli.Swap(0))
+		if p.up.Load() {
+			if ms := peerRTTMs(p.pc); ms > worstRTT {
+				worstRTT = ms
+			}
+		}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if worstRTT > 0 {
+		if r.rttMs == 0 {
+			r.rttMs = worstRTT
+		} else {
+			r.rttMs = (r.rttMs*7 + worstRTT*3) / 10
+		}
+	}
+	r.bitrate = NextBitrateFor(r.bitrate, float64(worstLoss)/256, r.rttMs, int(worstJitter), worstPLI >= 3)
+	r.videoFPS = VideoFPSFor(maxFPS, r.bitrate, r.rttMs)
+}
+
+// VideoScale is the video picture's scale. The console's 75 % default is there for JPEG pictures,
+// where every pixel costs bandwidth; H.264 at 75 % only blurs text. So video is full size while the
+// bitrate allows it, smaller only when packet loss or latency has pushed the bitrate down, and the
+// console's 50 % (a deliberate choice for a weak link) is still honoured.
+func VideoScale(chosen float64, bitrate int) float64 {
+	s := 1.0
+	switch {
+	case bitrate < 900_000:
+		s = 0.5
+	case bitrate < 2_000_000:
+		s = 0.75
+	}
+	if chosen > 0 && chosen <= 0.5 {
+		s = min(s, chosen)
+	}
+	return s
+}
+
+// MaxBitrateForRTT caps H.264 bitrate on higher-latency WAN / relayed links (e.g. Tailscale DERP
+// over mobile CGNAT) while leaving LAN links free up to MaxVideoBitrate.
+func MaxBitrateForRTT(rttMs int) int {
+	switch {
+	case rttMs >= 220:
+		return 1_200_000
+	case rttMs >= 140:
+		return 2_500_000
+	case rttMs >= 80:
+		return 5_000_000
+	default:
+		return MaxVideoBitrate
+	}
+}
+
+// VideoFPSFor picks a frame-rate cap matching the link's latency and bitrate budget so relayed or
+// mobile links spend their bits on crisp frames instead of overflowing buffers at 60 fps.
+func VideoFPSFor(maxFPS, bitrate, rttMs int) int {
+	if maxFPS <= 0 {
+		maxFPS = DefaultVideoFPS
+	}
+	switch {
+	case rttMs >= 160 || bitrate < 1_000_000:
+		return min(maxFPS, 20)
+	case rttMs >= 60 || bitrate < 2_500_000:
+		return min(maxFPS, 30)
+	default:
+		return maxFPS
+	}
 }
 
 // NextBitrate: more than 10 % loss steps the bitrate down by a fifth, less than 2 % lets it climb
 // by a tenth, within MinVideoBitrate..MaxVideoBitrate.
 func NextBitrate(cur int, loss float64) int {
+	return NextBitrateFor(cur, loss, 0, 0, false)
+}
+
+// NextBitrateFor adapts video bitrate from RTCP loss, ICE RTT, jitter and PLI bursts.
+func NextBitrateFor(cur int, loss float64, rttMs, jitterMs int, pliBurst bool) int {
+	capRate := MaxBitrateForRTT(rttMs)
 	switch {
-	case loss > 0.10:
+	case loss > 0.15 || rttMs >= 260:
+		cur = cur * 7 / 10
+	case loss > 0.10 || (loss > 0.05 && rttMs >= 80) || rttMs >= 180 || jitterMs >= 50 || pliBurst:
 		cur = cur * 4 / 5
-	case loss < 0.02:
+	case loss < 0.02 && rttMs < 120 && jitterMs < 25 && !pliBurst:
 		cur = cur * 11 / 10
 	}
-	return min(MaxVideoBitrate, max(MinVideoBitrate, cur))
+	return min(capRate, max(MinVideoBitrate, cur))
 }
 
 func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
@@ -546,11 +672,15 @@ func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
 	if !ok {
 		return
 	}
-	fps := r.l.m.cfg.VideoFPS
-	if fps <= 0 {
-		fps = DefaultVideoFPS
+	maxFPS := r.l.m.cfg.VideoFPS
+	if maxFPS <= 0 {
+		maxFPS = DefaultVideoFPS
 	}
-	gap := time.Second / time.Duration(fps)
+	r.mu.Lock()
+	if r.videoFPS <= 0 {
+		r.videoFPS = min(maxFPS, 30)
+	}
+	r.mu.Unlock()
 	last := time.Now()
 	failures := 0
 	for ctx.Err() == nil {
@@ -560,11 +690,16 @@ func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
 			last = time.Now()
 			continue
 		}
-		r.adapt(started)
+		r.adapt(started, maxFPS)
 		r.mu.Lock()
-		req := remotedesktop.VideoRequest{Display: r.display, Scale: r.scale, FPS: fps, Bitrate: r.bitrate, Cursor: r.cursor && remotedesktop.CursorSupported}
+		fps := r.videoFPS
+		if fps <= 0 {
+			fps = min(maxFPS, 30)
+		}
+		req := remotedesktop.VideoRequest{Display: r.display, Scale: VideoScale(r.scale, r.bitrate), FPS: fps, Bitrate: r.bitrate, Cursor: r.cursor && remotedesktop.CursorSupported}
 		track := r.track
 		r.mu.Unlock()
+		gap := time.Second / time.Duration(fps)
 		req.Key = r.wantKey.Swap(false)
 		frame, err := v.GrabVideo(r.l.req.SessionID, req)
 		if err != nil {
@@ -628,7 +763,7 @@ func (r *rtcManager) maybeStats(now time.Time) {
 		worst = max(worst, p.loss.Load())
 	}
 	m := map[string]any{"t": "rtc_stats", "fps": float64(int(float64(r.stats.frames)/el*10)) / 10, "kbps": int(float64(r.stats.bytes) * 8 / 1000 / el),
-		"bitrate_kbps": r.bitrate / 1000, "encoder": r.encoder, "enc_ms": r.stats.encMs, "width": r.stats.w, "height": r.stats.h,
+		"bitrate_kbps": r.bitrate / 1000, "rtt_ms": r.rttMs, "encoder": r.encoder, "enc_ms": r.stats.encMs, "width": r.stats.w, "height": r.stats.h,
 		"loss_pct": float64(int(float64(worst)/256*1000)) / 10, "peers": len(r.peers)}
 	r.stats = rtcCounters{since: now}
 	r.mu.Unlock()

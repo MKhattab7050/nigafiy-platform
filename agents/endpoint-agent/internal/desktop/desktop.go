@@ -61,10 +61,12 @@ var ErrHelperGone = errors.New("the session helper in the user's desktop is not 
 
 // Local runs everything in this process.
 type Local struct {
-	ui       userui.UI
-	capture  remotedesktop.CaptureSource
-	mu       sync.Mutex
-	encoders map[string]*remotedesktop.Encoder
+	ui      userui.UI
+	capture remotedesktop.CaptureSource
+	// realScreen: capture is this computer's screen (NewLocal), so video grabs may prefetch.
+	realScreen bool
+	mu         sync.Mutex
+	encoders   map[string]*remotedesktop.Encoder
 	// video: the WebRTC H.264 grabbers per stream (video.go); videoOpen replaces the encoder.
 	video     map[string]*remotedesktop.VideoGrabber
 	videoOpen videoenc.Opener
@@ -73,7 +75,7 @@ type Local struct {
 }
 
 func NewLocal() *Local {
-	return &Local{ui: userui.New(), capture: remotedesktop.SystemCapture, encoders: map[string]*remotedesktop.Encoder{}}
+	return &Local{ui: userui.New(), capture: remotedesktop.SystemCapture, realScreen: true, encoders: map[string]*remotedesktop.Encoder{}}
 }
 
 // NewLocalWith is for tests: a synthetic capture source and UI.

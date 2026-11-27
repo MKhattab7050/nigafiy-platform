@@ -469,7 +469,8 @@ func TestNextBitrate(t *testing.T) {
 		loss float64
 		want int
 	}{
-		{4_000_000, 0.20, 3_200_000},
+		{4_000_000, 0.20, 2_800_000},
+		{4_000_000, 0.12, 3_200_000},
 		{4_000_000, 0.05, 4_000_000},
 		{4_000_000, 0.0, 4_400_000},
 		{MaxVideoBitrate, 0.0, MaxVideoBitrate},
@@ -479,6 +480,48 @@ func TestNextBitrate(t *testing.T) {
 		if got := NextBitrate(c.cur, c.loss); got != c.want {
 			t.Errorf("NextBitrate(%d, %.2f) = %d, want %d", c.cur, c.loss, got, c.want)
 		}
+	}
+}
+
+func TestNextBitrateForRelayedHighRTT(t *testing.T) {
+	// Zero packet loss over a TCP relay (Tailscale DERP at 250 ms RTT) must cap & reduce bitrate
+	// instead of climbing to 12 Mbit/s.
+	got := NextBitrateFor(StartVideoBitrate, 0.0, 250, 10, false)
+	if got > 1_200_000 {
+		t.Fatalf("250 ms relay with 0%% loss must cap <= 1.2 Mbit/s, got %d", got)
+	}
+	// Moderate WAN (150 ms RTT, 0% loss) stays bounded <= 2.5 Mbit/s and does not climb.
+	if got := NextBitrateFor(2_500_000, 0.0, 150, 10, false); got > 2_500_000 {
+		t.Fatalf("150 ms RTT must not climb above 2.5 Mbit/s, got %d", got)
+	}
+	// PLI burst (stalled decoder) backs off even with 0% reported loss.
+	if got := NextBitrateFor(2_500_000, 0.0, 30, 5, true); got != 2_000_000 {
+		t.Fatalf("PLI burst must step down 20%%, got %d", got)
+	}
+	// Low-latency LAN climbs cleanly up to MaxVideoBitrate.
+	if got := NextBitrateFor(2_500_000, 0.0, 10, 2, false); got != 2_750_000 {
+		t.Fatalf("LAN should climb 10%%, got %d", got)
+	}
+}
+
+func TestVideoFPSForAndInflightWindowFor(t *testing.T) {
+	if got := VideoFPSFor(60, 4_000_000, 10); got != 60 {
+		t.Errorf("LAN fps = %d, want 60", got)
+	}
+	if got := VideoFPSFor(60, 2_000_000, 80); got != 30 {
+		t.Errorf("moderate WAN fps = %d, want 30", got)
+	}
+	if got := VideoFPSFor(60, 1_200_000, 240); got != 20 {
+		t.Errorf("relay fps = %d, want 20", got)
+	}
+	if got := InflightWindowFor(20*time.Millisecond, false); got != InflightWindow {
+		t.Errorf("LAN jpeg inflight = %d, want %d", got, InflightWindow)
+	}
+	if got := InflightWindowFor(220*time.Millisecond, false); got != 6 {
+		t.Errorf("high-RTT jpeg inflight = %d, want 6", got)
+	}
+	if got := InflightWindowFor(220*time.Millisecond, true); got != 8 {
+		t.Errorf("high-RTT h264 inflight = %d, want 8", got)
 	}
 }
 
@@ -510,6 +553,25 @@ func TestValidateInputMirrorsTheAPI(t *testing.T) {
 	for _, ev := range bad {
 		if err := remotedesktop.ValidateInput(ev); err == nil {
 			t.Errorf("%+v accepted", ev)
+		}
+	}
+}
+
+func TestVideoScale(t *testing.T) {
+	cases := []struct {
+		chosen  float64
+		bitrate int
+		want    float64
+	}{
+		{0.75, StartVideoBitrate, 1},  // the JPEG default does not shrink video
+		{1, 1_500_000, 0.75},          // loss pushed the bitrate down: smaller picture
+		{1, 500_000, 0.5},             //
+		{0.5, MaxVideoBitrate, 0.5},   // a deliberate 50 % is kept
+		{0.25, MaxVideoBitrate, 0.25}, //
+	}
+	for _, c := range cases {
+		if got := VideoScale(c.chosen, c.bitrate); got != c.want {
+			t.Errorf("VideoScale(%.2f, %d) = %.2f, want %.2f", c.chosen, c.bitrate, got, c.want)
 		}
 	}
 }

@@ -79,6 +79,15 @@ class GesturesTest {
     }
 
     @Test
+    fun aLiveFingerIsDownMoveUpAndNeedsTheLiveStream() {
+        assertEquals(InputEvent.Touch(InputEvent.Phase.DOWN, 0.25, 0.5), input(mapOf("kind" to "mouse_down", "x" to 0.25, "y" to 0.5)))
+        assertEquals(InputEvent.Touch(InputEvent.Phase.MOVE, 0.3, 0.5), input(mapOf("kind" to "mouse_move", "x" to 0.3, "y" to 0.5)))
+        assertEquals(InputEvent.Touch(InputEvent.Phase.UP, 0.3, 0.6), input(mapOf("kind" to "mouse_up", "x" to 0.3, "y" to 0.6)))
+        assertFailsWith<IllegalArgumentException> { input(mapOf("kind" to "mouse_down", "x" to 2.0, "y" to 0.5)) }
+        assertFailsWith<IllegalArgumentException> { Gestures.plan(input(mapOf("kind" to "mouse_down", "x" to 0.1, "y" to 0.1)), 10, 10) }
+    }
+
+    @Test
     fun keyboardAndTextAreRefusedNeverTyped() {
         val ev = input(mapOf("kind" to "text", "text" to "secret"))
         assertTrue(ev is InputEvent.Unsupported)
@@ -113,7 +122,7 @@ class GesturesTest {
             features = PhoneFeatures.supported(36), allFilesAccess = false, accessibilityEnabled = true, screenCapture = true,
         )
         val a = Protocol.androidBlock(i)
-        assertEquals(listOf("screen", "control", "files", "ring", "message"), a["features"])
+        assertEquals(listOf("screen", "control", "files", "ring", "message", "live_touch"), a["features"])
         assertEquals(false, a["all_files_access"])
         assertEquals(true, a["accessibility_enabled"])
         assertEquals(true, a["screen_capture"])

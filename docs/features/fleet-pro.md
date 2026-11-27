@@ -1040,10 +1040,22 @@ it is the automatic fallback: nothing in it was removed.
   uses JPEG. An encoder that fails during a session ends that peer with `rtc_state failed`. The
   picture is converted to NV12 in Go. One encoder per session feeds every WebRTC viewer of that
   session; a new viewer or a picture-loss report (PLI) asks for a key frame.
-- **Caps and quality.** Frame rate up to 30 fps (`MaxFPS`, the operator may ask for less), the
-  operator's scale as a resolution cap, and a longest edge of 1920 px. The bitrate starts at
-  4 Mbit/s and follows the RTCP receiver reports of every viewer: more than 10 % loss steps it down by
-  a fifth, less than 2 % lets it climb by a tenth, between 300 kbit/s and 8 Mbit/s.
+- **Capture (since 1.0.8).** DXGI Desktop Duplication: the desktop the compositor already drew,
+  one GPU copy into a CPU-readable texture, about 3 ms for 1080p instead of GDI's 27 ms (23 of them
+  BitBlt reading the screen back). Same pixels as GDI (checked byte for byte). The next screen is
+  read while the current one is scaled and encoded, and row work (colour swap, scaling, NV12) is
+  split across the cores. GDI takes over for a picture DXGI cannot give (a rotated screen, the UAC
+  desktop, a mode change, Windows 7) and DXGI is tried again 5 s later; `NIGAFIY_RD_GDI=1` turns
+  DXGI off. Measured on a 1080p PC with Quick Sync: a changing screen took 76 ms a picture before
+  (13 fps), about 4 ms after.
+- **Caps and quality.** Frame rate up to 60 fps (`MaxFPS`, the operator may ask for less; an
+  unchanged screen is not encoded), a longest edge of 1920 px. The video is full size while the
+  bitrate is at least 2 Mbit/s, 75 % below that and 50 % below 0.9 Mbit/s; the console's 75 % scale
+  default is for JPEG and does not shrink video, but a chosen 50 % is kept. The bitrate starts at
+  2.5 Mbit/s and follows the RTCP receiver reports and the round trip of every viewer: more than 10 %
+  loss (or a slow round trip, high jitter, a burst of picture-loss reports) steps it down by a fifth,
+  less than 2 % loss on a quick link lets it climb by a tenth, between 300 kbit/s and 12 Mbit/s; a
+  round trip over 80 ms caps it lower (5, 2.5 and 1.2 Mbit/s at 80, 140 and 220 ms).
 - **Several monitors.** The display choice (`settings`) is the same as for JPEG. A different display
   or size restarts the encoder at a key frame; the browser's video element follows the new size.
 - **Linux and macOS** keep the JPEG path. A pure-Go H.264 encoder does not exist, and the platform

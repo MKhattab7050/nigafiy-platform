@@ -40,6 +40,8 @@ const ANDROID_FEATURE: Partial<Record<CommandInput['kind'], 'screen' | 'files' |
 };
 /** A phone has taps, swipes and Back / Home / Recents; no mouse moves, wheel, keys or typing. */
 export const ANDROID_INPUT_KINDS = new Set(['mouse_click', 'swipe', 'nav']);
+/** A finger held down and moved as the operator moves (apps that report live_touch). */
+export const ANDROID_LIVE_TOUCH_KINDS = new Set(['mouse_down', 'mouse_move', 'mouse_up']);
 
 export function assertAndroidCommand(body: CommandInput, android: EndpointAndroidState | null): void {
   if (body.kind === 'refresh_inventory') return;
@@ -48,7 +50,8 @@ export function assertAndroidCommand(body: CommandInput, android: EndpointAndroi
   if (!android?.features?.includes(feature)) {
     throw new AppError(409, 'android_feature_missing', 'The Nigafiy app on this phone does not offer this yet: update the app on the phone');
   }
-  if (body.kind === 'rd_input' && !ANDROID_INPUT_KINDS.has(body.event_kind)) {
+  const live = body.kind === 'rd_input' && ANDROID_LIVE_TOUCH_KINDS.has(body.event_kind) && android.features.includes('live_touch');
+  if (body.kind === 'rd_input' && !live && !ANDROID_INPUT_KINDS.has(body.event_kind)) {
     throw new AppError(409, 'unsupported_by_platform', 'A phone takes taps, swipes and Back / Home / Recents only');
   }
   if (body.kind === 'rd_input' && body.event_kind !== 'mouse_click' && !android.features.includes('control')) {

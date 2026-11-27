@@ -47,6 +47,8 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
     private var lastSentDigest: String? = null
     private var lastSentKey: String? = null
     private var sessionId: String? = null
+    private var video: VideoEncoder? = null
+    private var videoLandscape = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -130,6 +132,60 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
         vdHeight = (h * f).roundToInt().coerceAtLeast(2) and 1.inv()
     }
 
+    @Synchronized
+    override fun startVideo(maxSide: Int, bitrate: Int, onFrame: (data: ByteArray, key: Boolean, ptsUs: Long) -> Unit): VideoEncoder? {
+        val d = display ?: return null
+        stopVideoLocked()
+        val (w, h) = screenSize()
+        val (ew, eh) = VideoEncoder.sizeFor(w, h, maxSide)
+        val enc = try { VideoEncoder(ew, eh, bitrate, onFrame) } catch (_: Exception) { return null }
+        try {
+            d.resize(ew, eh, densityDpi())
+            d.surface = enc.surface
+        } catch (_: Exception) {
+            enc.stop()
+            restorePictures()
+            return null
+        }
+        video = enc
+        videoLandscape = w > h
+        return enc
+    }
+
+    @Synchronized
+    override fun stopVideo() = stopVideoLocked()
+
+    private fun stopVideoLocked() {
+        val v = video ?: return
+        video = null
+        // The display draws into the picture reader again before the encoder's surface goes away.
+        restorePictures()
+        v.stop()
+    }
+
+    private fun restorePictures() {
+        val (w, h) = screenSize()
+        sizeFor(w, h)
+        val r = ImageReader.newInstance(vdWidth, vdHeight, PixelFormat.RGBA_8888, 2)
+        try {
+            display?.resize(vdWidth, vdHeight, densityDpi())
+            display?.surface = r.surface
+        } catch (_: Exception) { }
+        reader?.close()
+        reader = r
+        last = null
+        padded?.recycle()
+        padded = null
+    }
+
+    @Synchronized
+    override fun videoStale(): Boolean {
+        val v = video ?: return false
+        if (!v.alive) return true
+        val (w, h) = screenSize()
+        return (w > h) != videoLandscape
+    }
+
     /** The phone was turned: the virtual display follows so the picture is not squeezed. */
     private fun followRotation() {
         val (w, h) = screenSize()
@@ -183,6 +239,7 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
     @Synchronized
     override fun grab(quality: Int, scale: Double, full: Boolean): ScreenShare.Grabbed? {
         if (projection == null) throw IllegalStateException("the screen is not being shared")
+        if (video != null) return null
         val t0 = System.currentTimeMillis()
         followRotation()
         val fresh = takeLatest()
@@ -198,6 +255,8 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
     override fun frame(quality: Int, scale: Double, full: Boolean): Map<String, Any?> {
         val t0 = System.currentTimeMillis()
         if (projection == null) throw IllegalStateException("the screen is not being shared")
+        // The HTTP path asks for a picture: the video (if any) gives the display back first.
+        stopVideoLocked()
         followRotation()
         takeLatest()
         val src = last ?: throw IllegalStateException("no picture yet: the screen has not drawn since sharing started")
@@ -226,7 +285,10 @@ class ScreenCaptureService : Service(), ScreenShare.Capturer {
 
     @Synchronized
     private fun release() {
+        val v = video
+        video = null
         try { display?.release() } catch (_: Exception) { }
+        v?.stop()
         display = null
         try { reader?.close() } catch (_: Exception) { }
         reader = null

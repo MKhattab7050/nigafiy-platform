@@ -14,6 +14,8 @@ import (
 	"errors"
 	"image"
 	"sync"
+
+	"github.com/nigafiy/agent/internal/par"
 )
 
 // ErrUnavailable: this computer has no H.264 encoder the agent can use.
@@ -104,7 +106,15 @@ func ToNV12(img *image.RGBA, w, h int, dst []byte) []byte {
 	}
 	ys := dst[:w*h]
 	uv := dst[w*h:]
-	for y := 0; y < h; y += 2 {
+	par.Rows(h/2, func(lo, hi int) {
+		toNV12Rows(img, w, ys, uv, lo*2, hi*2)
+	})
+	return dst
+}
+
+// toNV12Rows converts source rows [from, to) (both even) into the Y and interleaved UV planes.
+func toNV12Rows(img *image.RGBA, w int, ys, uv []byte, from, to int) {
+	for y := from; y < to; y += 2 {
 		r0 := img.Pix[y*img.Stride:]
 		r1 := img.Pix[(y+1)*img.Stride:]
 		y0 := ys[y*w:]
@@ -134,7 +144,6 @@ func ToNV12(img *image.RGBA, w, h int, dst []byte) []byte {
 			c[x+1] = clamp8((112*sr - 94*sg - 18*sb + 128 + 32768) >> 8)
 		}
 	}
-	return dst
 }
 
 func clamp8(v int32) byte {

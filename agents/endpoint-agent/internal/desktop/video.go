@@ -48,6 +48,9 @@ func (l *Local) GrabVideo(stream string, req remotedesktop.VideoRequest) (*remot
 			}
 		}
 		g = remotedesktop.NewVideoGrabber(l.capture, l.videoOpen)
+		if l.realScreen {
+			g.EnablePrefetch()
+		}
 		l.video[stream] = g
 	}
 	l.mu.Unlock()

@@ -147,6 +147,9 @@ const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
     // Show the remote pointer in the picture; colour depth (8 = greyscale).
     cursor: z.boolean().optional(),
     depth: z.union([z.literal(8), z.literal(16), z.literal(24)]).optional(),
+    // Video this browser can decode (WebCodecs): a phone then sends hardware H.264 instead of a
+    // JPEG per picture. Absent: JPEG, as before.
+    codecs: z.array(z.literal('h264')).max(4).optional(),
   }),
   z.object({ t: z.literal('input'), ev: z.record(z.string(), z.unknown()) }),
   z.object({ t: z.literal('clipboard_get'), req: reqId, format: clipFormat.optional() }),
@@ -255,6 +258,9 @@ interface FrameMeta {
   full: boolean;
 }
 
+/** At most one audit row per this long for scrolling (the wheel sends a step every ~40 ms). */
+const WHEEL_AUDIT_MS = 3_000;
+
 /** Checks a binary frame packet ('N', 1, uint32 header length, JSON header, tiles). */
 export function frameMeta(buf: Buffer): FrameMeta | null {
   if (buf.length < 6 || buf.length > MAX_FRAME_BYTES || buf[0] !== 0x4e || buf[1] !== 1) return null;
@@ -354,6 +360,8 @@ interface Room {
   frames: number;
   bytes: number;
   lastDisplay: number | null;
+  /** When a scroll was last written to the audit trail (scrolling sends ~25 wheel events a second). */
+  lastWheelAudit: number;
   /** The session's granted permission profile (rd_session.permissions), enforced on every operator message. */
   permissions: FleetPermissions;
   /** The session recording written here (this instance holds the agent's socket). */
@@ -516,6 +524,7 @@ export class StreamHub {
         frames: 0,
         bytes: 0,
         lastDisplay: null,
+        lastWheelAudit: 0,
         permissions: sessionPermissions(session),
         recorder: null,
         recordingId: null,
@@ -923,6 +932,12 @@ export class StreamHub {
           r.lastDisplay = m.display;
           await this.auditViewer(r, user, 'fleet.session_display', { display: m.display });
         }
+        // A recorded session keeps JPEG pictures: the recording player does not decode video.
+        if (r.recordingOn && m.codecs) {
+          const { codecs: _c, ...rest } = m;
+          this.toAgent(r, rest);
+          return;
+        }
         this.toAgent(r, m);
         return;
       }
@@ -952,8 +967,19 @@ export class StreamHub {
         }
         // Input timing (never keys or text) goes into the recording.
         r.recorder?.input(out as { kind: string; display_index?: number; x?: number; y?: number });
-        // Every action except pointer movement is in the audit trail (keys and text redacted).
-        if (event_kind !== 'mouse_move') await this.auditViewer(r, user, 'endpoint.rd_input', { via: 'live_stream', ...payloadForAudit('rd_input', out) });
+        // Every action except pointer movement is in the audit trail (keys and text redacted); a
+        // scroll is written once every few seconds, not once per wheel step. The row is written in
+        // order (inAuditOrder) without holding up this operator's next move: waiting for the
+        // database here made dragging and scrolling from a phone lag (owner, 2026-11-27).
+        if (event_kind === 'mouse_move') return;
+        if (event_kind === 'mouse_wheel') {
+          const now = Date.now();
+          if (now - r.lastWheelAudit < WHEEL_AUDIT_MS) return;
+          r.lastWheelAudit = now;
+        }
+        void this.auditViewer(r, user, 'endpoint.rd_input', { via: 'live_stream', ...payloadForAudit('rd_input', out) }).catch((err: unknown) =>
+          logger.warn({ err }, 'remote desktop input audit failed'),
+        );
         return;
       }
       case 'clipboard_get':
