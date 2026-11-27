@@ -165,7 +165,7 @@ export function FleetContent({
   return (
     <div className="space-y-4">
       {/* Fleet summary: reachability counters, compliance split and platform mix, all from GET /endpoints. */}
-      <section className="grid gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line shadow-[var(--shadow-card)] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] [&>div]:bg-surface">
+      <section className="grid grid-cols-1 gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line shadow-[var(--shadow-card)] lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)] [&>div]:bg-surface">
         <div className="grid grid-cols-2 gap-x-4 gap-y-4 p-5 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
           {[
             { label: tx.fleetStats.total, value: stats.total, cls: 'text-fg' },
@@ -227,12 +227,12 @@ export function FleetContent({
 
       {/* Address book: search, site, tag, signed-in user, favourites and my recent sessions. */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-64 flex-1">
+        <div className="relative w-full min-w-0 sm:w-auto sm:min-w-64 sm:flex-1">
           <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={rx.search} aria-label={rx.search} className="ps-8" dir="auto" />
         </div>
         {sitesSeen.length > 1 && (
-          <Select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} aria-label={rx.allSites} className="w-44">
+          <Select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} aria-label={rx.allSites} className="min-w-0 flex-1 basis-36 sm:w-44 sm:flex-none sm:basis-auto">
             <option value="all">{rx.allSites}</option>
             {sitesSeen.map((s) => (
               <option key={s} value={s}>
@@ -242,7 +242,7 @@ export function FleetContent({
           </Select>
         )}
         {tagsSeen.length > 0 && (
-          <Select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label={rx.allTags} className="w-40">
+          <Select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} aria-label={rx.allTags} className="min-w-0 flex-1 basis-36 sm:w-40 sm:flex-none sm:basis-auto">
             <option value="all">{rx.allTags}</option>
             {tagsSeen.map((s) => (
               <option key={s} value={s}>
@@ -252,7 +252,7 @@ export function FleetContent({
           </Select>
         )}
         {usersSeen.length > 0 && (
-          <Select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} aria-label={rx.anyUser} className="w-48">
+          <Select value={userFilter} onChange={(e) => setUserFilter(e.target.value)} aria-label={rx.anyUser} className="min-w-0 flex-1 basis-36 sm:w-48 sm:flex-none sm:basis-auto">
             <option value="all">{rx.anyUser}</option>
             {usersSeen.map((s) => (
               <option key={s} value={s}>
@@ -278,7 +278,7 @@ export function FleetContent({
       {/* Fleet groups: filter, and bulk actions on a selection. */}
       {(groups.length > 0 || canTech) && (
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} aria-label={px.group} className="w-64">
+          <Select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} aria-label={px.group} className="min-w-0 flex-1 basis-40 sm:w-64 sm:flex-none sm:basis-auto">
             <option value="all">{px.allGroups}</option>
             <option value="none">{px.noGroup}</option>
             {groups.map((g) => (
@@ -307,7 +307,7 @@ export function FleetContent({
       {filtered.length === 0 && <p className="text-sm text-muted">{rx.noMatch}</p>}
 
       {/* Endpoint Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {filtered.map((ep) => {
           return (
             <Card

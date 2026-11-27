@@ -233,7 +233,7 @@ function QuickSupportPanel({ onConnected }: { onConnected: (endpointId: string) 
       <div className="space-y-4">
         <div className="flex flex-wrap items-end gap-2">
           {sites.length > 1 && (
-            <Select value={site} onChange={(e) => setSite(e.target.value)} aria-label={tx.qsSite} className="w-56">
+            <Select value={site} onChange={(e) => setSite(e.target.value)} aria-label={tx.qsSite} className="w-full sm:w-56">
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}

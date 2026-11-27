@@ -64,7 +64,24 @@ export function nextSteps(report: InsightsReport | null | undefined, skip: Reado
   const all = report.insights
     .filter((i) => !NOT_A_STEP.has(i.code) && !skip.has(i.code) && i.actions.length > 0)
     .map((insight) => ({ insight, action: pickAction(insight) }));
-  return { steps: all.slice(0, MAX_STEPS), more: Math.max(0, all.length - MAX_STEPS) };
+  // One step per kind of job: "turn monitoring on" for one important device and for the
+  // infrastructure devices read as the same step twice (or three times). The first, most serious
+  // one stays; the others are still listed in Network health and counted in "more".
+  const seen = new Set<string>();
+  const steps: NextStep[] = [];
+  for (const s of all) {
+    const group = stepGroup(s.insight.code);
+    if (seen.has(group)) continue;
+    seen.add(group);
+    if (steps.length < MAX_STEPS) steps.push(s);
+  }
+  return { steps, more: all.length - steps.length };
+}
+
+/** Steps that ask for the same job share a group: only one of a group goes in "Next". */
+export function stepGroup(code: string): string {
+  if (code === 'suggest_monitor' || code === 'suggest_monitor_infrastructure') return 'monitor';
+  return stepKey(code);
 }
 
 /** Bulk "Mark all as known" asks too much trust for a one-click step: reviewing them is the step. */

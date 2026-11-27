@@ -19,7 +19,7 @@ import { type Transfer, type TransferState, useTransferQueue } from './use-trans
 const text = {
   en: {
     local: 'This browser',
-    localHint: 'Drop files here or pick them, then send them to the folder open on the right.',
+    localHint: 'Drop files here or pick them, then send them to the folder open on the computer.',
     pick: 'Pick files…',
     sendTo: 'Send to',
     sendAll: 'Send all',
@@ -53,7 +53,7 @@ const text = {
   },
   ar: {
     local: 'هذا المتصفح',
-    localHint: 'أفلت الملفات هنا أو اخترها، ثم أرسلها إلى المجلد المفتوح على اليمين.',
+    localHint: 'أفلت الملفات هنا أو اخترها، ثم أرسلها إلى المجلد المفتوح على الحاسوب.',
     pick: 'اختيار ملفات…',
     sendTo: 'إرسال إلى',
     sendAll: 'إرسال الكل',
@@ -145,8 +145,8 @@ export function TwoPaneFileManager(props: RemoteFileManagerProps) {
   const received = queue.items.filter((x) => x.dir === 'down' && x.state === 'done' && x.url);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_2.2fr]">
+    <div className="min-w-0 space-y-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,1fr)_minmax(0,2.2fr)]">
         <Card title={t.local} action={<Laptop className="size-4 text-muted" aria-hidden />}>
           <div className="space-y-3 text-xs">
             {!canWrite ? (
@@ -323,7 +323,7 @@ function TransferQueue({
                   <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg">
                     <div className={clsx('h-full transition-all', x.state === 'failed' ? 'bg-crit' : 'bg-accent')} style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="mono w-40 shrink-0 text-end text-muted">
+                  <span className="mono shrink-0 text-end text-muted sm:w-40">
                     {ltr(`${formatBytes(x.done)} / ${formatBytes(x.size)}`)}
                   </span>
                 </div>

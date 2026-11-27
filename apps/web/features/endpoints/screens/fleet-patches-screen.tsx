@@ -71,7 +71,7 @@ function Catalog({ t, canAdmin }: { t: PatchesText; canAdmin: boolean }) {
       {canAdmin && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <label htmlFor="patch-scope">{t.scope}</label>
-          <Select id="patch-scope" value={scope} onChange={(e) => setScope(e.target.value)} className="w-auto">
+          <Select id="patch-scope" value={scope} onChange={(e) => setScope(e.target.value)} className="w-auto max-w-full">
             <option value="">{t.allGroups}</option>
             {(groupsQ.data?.groups ?? []).map((g) => (
               <option key={g.id} value={g.id}>
@@ -235,7 +235,7 @@ function Policies({ t, canAdmin }: { t: PatchesText; canAdmin: boolean }) {
                 <Select
                   aria-label={t.addGroupPolicy}
                   value=""
-                  className="w-auto"
+                  className="w-auto max-w-full"
                   onChange={(e) => {
                     const g = groups.find((x) => x.id === e.target.value);
                     if (g) setEditing({ policy: { ...def, id: null }, groupId: g.id, groupName: g.name });

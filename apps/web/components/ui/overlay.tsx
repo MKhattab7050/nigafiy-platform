@@ -26,6 +26,23 @@ function DialogHeader({ id, title, onClose }: { id: string; title: string; onClo
   );
 }
 
+/**
+ * Phones (below md) have the fixed bottom bar (components/shell/bottom-nav.tsx: h-14 = 3.5rem, plus the
+ * home-indicator safe area). A modal dialog is in the browser's top layer, so it is always drawn over
+ * the bar, but its lower edge would still sit where the bar and the system navigation are: there the
+ * dialog keeps to the area above them (inset-block-end), and its height fits what is left.
+ */
+const PHONE_CLEAR_BAR = 'max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:max-h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom)-2rem)]';
+
+/**
+ * The action row (the last `flex justify-end` row of buttons, the convention every dialog follows,
+ * inside the body or its form) stays in view on phones: sticky to the bottom of the scrolling body,
+ * on the surface colour, with a hairline above. The side shadows paint the body's 1.25rem padding so
+ * scrolled content does not show beside the row. Desktop is unchanged.
+ */
+const DIALOG_STICKY_FOOTER =
+  'max-md:[&_.justify-end:last-child:has(>button)]:sticky max-md:[&_.justify-end:last-child:has(>button)]:bottom-0 max-md:[&_.justify-end:last-child:has(>button)]:z-10 max-md:[&_.justify-end:last-child:has(>button)]:border-t max-md:[&_.justify-end:last-child:has(>button)]:border-line max-md:[&_.justify-end:last-child:has(>button)]:bg-surface max-md:[&_.justify-end:last-child:has(>button)]:py-3 max-md:[&_.justify-end:last-child:has(>button)]:flex-wrap max-md:[&_.justify-end:last-child:has(>button)]:shadow-[1.25rem_0_0_var(--color-surface),-1.25rem_0_0_var(--color-surface)]';
+
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -37,12 +54,17 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
       onClose={onClose}
       onClick={(e) => e.target === ref.current && onClose()}
       className={clsx(
-        'm-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] animate-enter overflow-y-auto rounded-[12px] border border-line-strong bg-surface p-0 text-fg shadow-[var(--shadow-overlay)] backdrop:bg-[rgb(5_9_14/0.6)]',
+        // open:flex, not flex: a plain display class would beat the UA's dialog:not([open]) { display: none }
+        'm-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] animate-enter flex-col overflow-hidden rounded-[12px] border border-line-strong bg-surface p-0 text-fg shadow-[var(--shadow-overlay)] backdrop:bg-[rgb(5_9_14/0.6)] open:flex',
+        PHONE_CLEAR_BAR,
         wide ? 'max-w-2xl' : 'max-w-md',
       )}
     >
       <DialogHeader id={titleId} title={title} onClose={onClose} />
-      <div className="p-5">{children}</div>
+      {/* the body scrolls, the header stays; the scroller has no padding so a sticky action row meets its edge */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className={clsx('p-5', DIALOG_STICKY_FOOTER)}>{children}</div>
+      </div>
     </dialog>
   );
 }
@@ -61,7 +83,8 @@ export function Drawer({ title, onClose, children }: { title: string; onClose: (
       className="fixed inset-y-0 start-auto end-0 m-0 h-dvh max-h-dvh w-[min(28rem,100%)] max-w-full animate-enter overflow-y-auto border-s border-line-strong bg-surface p-0 text-fg shadow-[var(--shadow-overlay)] backdrop:bg-[rgb(5_9_14/0.5)]"
     >
       <DialogHeader id={titleId} title={title} onClose={onClose} />
-      <div className="p-5">{children}</div>
+      {/* the panel runs to the bottom edge: keep its end clear of the home indicator / system bar */}
+      <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">{children}</div>
     </dialog>
   );
 }

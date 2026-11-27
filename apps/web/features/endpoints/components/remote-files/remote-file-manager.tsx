@@ -43,7 +43,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
   const { overwritePrompt, answerOverwrite, locale, isAr, roots, currentPath, parentPath, pathInput, setPathInput, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, progress, error, notice, cancelRef, fileInputRef, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile } = props.files;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {overwritePrompt && <OverwriteDialog prompt={overwritePrompt} isAr={isAr} onAnswer={answerOverwrite} />}
       {error && <ErrorNote error={error} />}
       {notice && (
@@ -53,9 +53,9 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
       )}
       {progress && (
         <div className="flex items-center justify-between gap-4 rounded-md border border-line-strong bg-raised p-3 text-xs">
-          <div className="flex-1">
-            <div className="mb-1 flex justify-between">
-              <span className="font-medium text-fg">{progress.label}</span>
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex justify-between gap-2">
+              <span className="min-w-0 truncate font-medium text-fg">{progress.label}</span>
               <span className="mono text-muted">{progress.pct}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-bg">
@@ -77,7 +77,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
       {ep.policy?.allowed_fs_roots && ep.policy.allowed_fs_roots.length > 0 && (
         <div className="rounded-md border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-muted">
           <strong className="text-fg">{isAr ? 'تقييد المسارات حسب السياسة:' : 'Policy Directory Restriction:'}</strong>{' '}
-          <span dir="ltr" className="mono">
+          <span dir="ltr" className="mono break-all">
             {ep.policy.allowed_fs_roots.join(', ')}
           </span>
         </div>
@@ -119,7 +119,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                   type="button"
                   onClick={() => void loadDirectory(r.path)}
                   className={clsx(
-                    'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
+                    'inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors',
                     currentPath.startsWith(r.path)
                       ? 'border-accent bg-accent/15 text-fg'
                       : 'border-line bg-raised text-muted hover:text-fg',
@@ -129,20 +129,20 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                   <span dir="ltr" className="mono">
                     {r.name}
                   </span>
-                  <span className="text-[11px] text-faint">({r.label})</span>
+                  <span className="min-w-0 truncate text-[11px] text-faint">({r.label})</span>
                 </button>
               ))}
             </div>
           )}
 
           {/* Path navigation bar + Search bar */}
-          <div className="grid gap-2 md:grid-cols-[1fr_280px]">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_280px]">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (pathInput.trim()) void loadDirectory(pathInput.trim());
               }}
-              className="flex items-center gap-1.5"
+              className="flex min-w-0 items-center gap-1.5"
             >
               <Button
                 type="button"
@@ -166,7 +166,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
               </Button>
             </form>
 
-            <form onSubmit={handleSearch} className="flex items-center gap-1.5">
+            <form onSubmit={handleSearch} className="flex min-w-0 items-center gap-1.5">
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -260,7 +260,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
             <table className="w-full text-start text-xs">
               <thead className="border-b border-line bg-raised/60 text-muted">
                 <tr>
-                  <th className="w-10 px-3 py-2.5 text-center">
+                  <th className="w-8 px-2 py-2.5 text-center sm:w-10 sm:px-3">
                     <input
                       type="checkbox"
                       aria-label={isAr ? 'تحديد الكل' : 'Select all'}
@@ -271,23 +271,23 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                       }}
                     />
                   </th>
-                  <th className="px-3 py-2.5 text-start font-medium">
+                  <th className="px-2 py-2.5 text-start font-medium sm:px-3">
                     <button type="button" onClick={() => setSortBy('name')} className="hover:text-fg">
                       {isAr ? 'الاسم' : 'Name'} {sortBy === 'name' ? '▾' : ''}
                     </button>
                   </th>
-                  <th className="w-28 px-3 py-2.5 text-end font-medium">
+                  <th className="whitespace-nowrap px-2 py-2.5 text-end font-medium sm:w-28 sm:px-3">
                     <button type="button" onClick={() => setSortBy('size')} className="hover:text-fg">
                       {isAr ? 'الحجم' : 'Size'} {sortBy === 'size' ? '▾' : ''}
                     </button>
                   </th>
-                  <th className="w-32 px-3 py-2.5 text-start font-medium">{isAr ? 'الصلاحيات' : 'Permissions'}</th>
-                  <th className="w-40 px-3 py-2.5 text-start font-medium">
+                  <th className="hidden w-32 px-3 py-2.5 text-start font-medium md:table-cell">{isAr ? 'الصلاحيات' : 'Permissions'}</th>
+                  <th className="hidden w-40 px-3 py-2.5 text-start font-medium sm:table-cell">
                     <button type="button" onClick={() => setSortBy('mod_time')} className="hover:text-fg">
                       {isAr ? 'آخر تعديل' : 'Modified'} {sortBy === 'mod_time' ? '▾' : ''}
                     </button>
                   </th>
-                  <th className="w-44 px-3 py-2.5 text-end font-medium">{isAr ? 'إجراءات' : 'Actions'}</th>
+                  <th className="px-2 py-2.5 text-end font-medium sm:w-44 sm:px-3">{isAr ? 'إجراءات' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -306,7 +306,7 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                 ) : (
                   sortedEntries.map((entry) => (
                     <tr key={entry.path} className={clsx('hover:bg-raised/40', selected.has(entry.path) && 'bg-accent/10')}>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-2 py-2 text-center sm:px-3">
                         <input
                           type="checkbox"
                           aria-label={entry.name}
@@ -314,8 +314,8 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                           onChange={() => toggleSelect(entry.path)}
                         />
                       </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
+                      <td className="px-2 py-2 sm:px-3">
+                        <div className="flex min-w-0 items-center gap-2">
                           {entry.is_dir ? (
                             <Folder className="size-4 shrink-0 text-amber-400" aria-hidden />
                           ) : (
@@ -326,12 +326,13 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                               type="button"
                               dir="ltr"
                               onClick={() => void loadDirectory(entry.path)}
-                              className="mono font-medium text-fg hover:text-accent-hover hover:underline text-start"
+                              title={entry.name}
+                              className="mono max-w-[9rem] truncate text-start font-medium text-fg hover:text-accent-hover hover:underline sm:max-w-none sm:overflow-visible sm:whitespace-normal"
                             >
                               {entry.name}
                             </button>
                           ) : (
-                            <span dir="ltr" className="mono text-fg">
+                            <span dir="ltr" title={entry.name} className="mono max-w-[9rem] truncate text-fg sm:max-w-none sm:overflow-visible sm:whitespace-normal">
                               {entry.name}
                             </span>
                           )}
@@ -339,15 +340,15 @@ export function RemoteFilePane(props: RemoteFilePaneProps) {
                           {entry.is_system && <Badge tone="warn">{isAr ? 'نظام' : 'system'}</Badge>}
                         </div>
                       </td>
-                      <td dir="ltr" className="mono px-3 py-2 text-end text-muted">
+                      <td dir="ltr" className="mono whitespace-nowrap px-2 py-2 text-end text-muted sm:px-3">
                         {entry.is_dir ? '—' : formatBytes(entry.size)}
                       </td>
-                      <td dir="ltr" className="mono px-3 py-2 text-faint">
+                      <td dir="ltr" className="mono hidden px-3 py-2 text-faint md:table-cell">
                         {entry.mode}
                       </td>
-                      <td className="px-3 py-2 text-muted">{relativeTime(entry.mod_time, locale)}</td>
-                      <td className="px-3 py-2 text-end">
-                        <div className="inline-flex items-center gap-1">
+                      <td className="hidden px-3 py-2 text-muted sm:table-cell">{relativeTime(entry.mod_time, locale)}</td>
+                      <td className="px-2 py-2 text-end sm:px-3">
+                        <div className="inline-flex items-center gap-1 whitespace-nowrap">
                           {!entry.is_dir && (
                             <Button
                               size="sm"

@@ -71,6 +71,9 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  // The full placeholder ("Search pages, devices, IPs, MACs…") is cut off on a phone; a short one reads whole.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => setNarrow(window.matchMedia('(max-width: 639px)').matches), []);
   const q = query.trim();
 
   useEffect(() => {
@@ -245,7 +248,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         <h2 id={titleId} className="sr-only">
           {t('top.searchTitle')}
         </h2>
-        <div className="flex shrink-0 items-center gap-2.5 border-b border-line px-4 max-sm:pt-[env(safe-area-inset-top)]">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-line px-4 transition-colors focus-within:border-accent max-sm:pt-[env(safe-area-inset-top)]">
           <Search className="size-4 shrink-0 text-faint" aria-hidden />
           <input
             autoFocus
@@ -256,13 +259,17 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
             aria-autocomplete="list"
             aria-activedescendant={flat.length ? optionId(current) : undefined}
             aria-label={t('top.searchTitle')}
-            placeholder={t('top.searchPlaceholder')}
+            placeholder={t(narrow ? 'top.searchPlaceholderShort' : 'top.searchPlaceholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
             autoComplete="off"
             spellCheck={false}
             enterKeyHint="go"
+            // The global :focus-visible ring is unlayered, so Tailwind's outline-none cannot beat it; inside
+            // the dialog the ring was clipped at the top. The always-focused field shows focus through the
+            // row's accent border instead.
+            style={{ outline: 'none' }}
             className="h-12 min-w-0 flex-1 bg-transparent text-[14px] text-fg outline-none placeholder:text-faint"
           />
           <button type="button" onClick={onClose} aria-label={t('common.close')} className="rounded-[6px] p-1.5 text-muted transition-colors hover:bg-raised hover:text-fg">

@@ -88,9 +88,11 @@ function ConfirmDialog({ pending, onAnswer }: { pending: Pending; onAnswer: (ok:
         onAnswer(false);
       }}
       onClick={(e) => e.target === ref.current && onAnswer(false)}
-      className="m-auto w-[calc(100%-2rem)] max-w-md animate-enter rounded-[12px] border border-line-strong bg-surface p-0 text-fg shadow-[var(--shadow-overlay)] backdrop:bg-[rgb(5_9_14/0.6)]"
+      // open:flex keeps the UA's display:none while closed. Phones: above the bottom bar and the safe
+      // area (same rule as Modal), the message scrolls and the buttons below it always stay in view.
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md animate-enter flex-col overflow-hidden rounded-[12px] border border-line-strong bg-surface p-0 text-fg shadow-[var(--shadow-overlay)] backdrop:bg-[rgb(5_9_14/0.6)] open:flex max-md:bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-md:max-h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom)-2rem)]"
     >
-      <div className="flex gap-3 px-5 pt-5">
+      <div className="flex min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain px-5 pt-5 pb-5">
         {pending.destructive && (
           <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-crit/15 text-crit" aria-hidden>
             <TriangleAlert className="size-4" />
@@ -105,7 +107,7 @@ function ConfirmDialog({ pending, onAnswer }: { pending: Pending; onAnswer: (ok:
           </p>
         </div>
       </div>
-      <div className="mt-5 flex justify-end gap-2 border-t border-line px-5 py-3.5">
+      <div className="flex shrink-0 justify-end gap-2 border-t border-line px-5 py-3.5">
         <Button data-confirm-cancel onClick={() => onAnswer(false)}>
           {t('common.cancel')}
         </Button>
