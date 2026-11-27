@@ -39,7 +39,7 @@ import (
 	"github.com/nigafiy/agent/internal/service"
 )
 
-var Version = "1.0.6"
+var Version = "1.0.7"
 
 func main() {
 	if len(os.Args) > 1 {
