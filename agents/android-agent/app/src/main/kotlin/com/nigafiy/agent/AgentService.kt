@@ -204,7 +204,7 @@ class AgentService : Service() {
                 }
             }
             if (addr != active) store.activeServer = if (addr == home) null else addr
-            ServerAddresses.parse(r["server_addresses"])?.let { store.otherServers = it }
+            ServerAddresses.parse(r["server_addresses"])?.let { store.otherServers = ServerAddresses.keep(it, addr, home) }
             val g = Gateway(addr, store.pin, store.credential)
             if (withApps) { lastAppsAt = now; forceApps = false }
             (r["heartbeat_interval_seconds"] as? Long)?.let { store.heartbeatSeconds = it.toInt() }

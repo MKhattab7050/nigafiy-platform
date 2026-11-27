@@ -47,7 +47,8 @@ describe('phone server addresses (Tailscale)', () => {
     (env as { HTTPS_PORT?: number }).HTTPS_PORT = 47143;
     const t = fakeTailscale('Running');
     // First call does not wait for the CLI.
-    expect(await phoneServerAddresses({ now: 1000 })).toEqual([]);
+    // Not known yet just after the server started: null, so the heartbeat leaves the field out.
+    expect(await phoneServerAddresses({ now: 1000 })).toBeNull();
     expect(await phoneServerAddresses({ now: 1000, wait: true })).toEqual(['https://100.101.102.103:47143']);
     const after = t.calls();
     expect(await phoneServerAddresses({ now: 2000 })).toEqual(['https://100.101.102.103:47143']);

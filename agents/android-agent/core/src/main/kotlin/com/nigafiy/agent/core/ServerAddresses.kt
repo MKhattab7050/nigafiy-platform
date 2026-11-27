@@ -30,6 +30,15 @@ object ServerAddresses {
             .toList()
     }
 
+    /**
+     * The list to keep after a heartbeat answered at [answered]: the server's [listed] addresses, plus
+     * [answered] when it is not home. The address that just worked is never forgotten: a server that
+     * had just started sent an empty list, and a phone away from home then tried only home and stayed
+     * cut off (A36, 2026-11-27).
+     */
+    fun keep(listed: List<String>, answered: String, home: String): List<String> =
+        (if (answered != home && answered !in listed) listOf(answered) + listed else listed).distinct().take(MAX)
+
     /** Addresses to try, the one in use first, then home, then the others. */
     fun order(home: String, others: List<String>, active: String?): List<String> =
         (listOfNotNull(active) + home + others).distinct()

@@ -54,13 +54,17 @@ async function refresh(now: number): Promise<string[]> {
 
 /**
  * The addresses to hand a phone. A heartbeat never waits for the Tailscale CLI: when the cached
- * answer is old it is refreshed in the background and the old one (none the first time) is returned;
- * the phone gets the new list with its next heartbeat. `wait` (tests) waits for the refresh.
+ * answer is old it is refreshed in the background and the old one is returned; the phone gets the
+ * new list with its next heartbeat. `wait` (tests) waits for the refresh.
+ *
+ * null before the first answer (just after the server started): the heartbeat then leaves
+ * server_addresses out, so the phone keeps the list it has. An empty list here made a phone that was
+ * away from home forget this PC's Tailscale address and stay cut off (A36, 2026-11-27).
  */
-export async function phoneServerAddresses(opts: { now?: number; wait?: boolean } = {}): Promise<string[]> {
+export async function phoneServerAddresses(opts: { now?: number; wait?: boolean } = {}): Promise<string[] | null> {
   const now = opts.now ?? Date.now();
   if (cache && now - cache.at < CACHE_MS) return cache.value;
   if (!refreshing) refreshing = refresh(now).finally(() => { refreshing = null; });
   if (opts.wait) return refreshing;
-  return cache?.value ?? [];
+  return cache?.value ?? null;
 }

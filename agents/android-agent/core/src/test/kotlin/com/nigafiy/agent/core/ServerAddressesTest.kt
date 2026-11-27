@@ -55,4 +55,15 @@ class ServerAddressesTest {
 
         assertFailsWith<IOException> { ServerAddresses.firstAnswering(listOf(home, ts)) { throw IOException("down") } }
     }
+
+    @Test
+    fun `the address that just answered is kept even when the server sends an empty list`() {
+        // Away from home, the server had just started and did not know its addresses yet.
+        assertEquals(listOf(ts), ServerAddresses.keep(emptyList(), ts, home))
+        // At home an empty list stays empty; a listed address is not doubled.
+        assertEquals(emptyList(), ServerAddresses.keep(emptyList(), home, home))
+        assertEquals(listOf(ts), ServerAddresses.keep(listOf(ts), ts, home))
+        val other = "https://100.64.0.9:47143"
+        assertEquals(listOf(ts, other), ServerAddresses.keep(listOf(other), ts, home))
+    }
 }

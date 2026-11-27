@@ -304,6 +304,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     const commands = await deliverPendingCommands(db, ep.id, now);
     const idRow = (await db.query<{ nigafiy_id: string; phone_role: string }>(`SELECT nigafiy_id, phone_role FROM endpoints WHERE id = $1`, [ep.id])).rows[0];
     const nigafiyId = idRow?.nigafiy_id ?? null;
+    // Phones only: null until the server knows them (just after it started); the field is then left
+    // out so the phone keeps the addresses it has.
+    const serverAddresses = platform === 'android' ? await phoneServerAddresses() : null;
 
     if (ep.connectionState !== 'online' || cmdResults.length > 0) {
       await notifyRealtime(db, ep.organizationId, 'devices');
@@ -324,7 +327,7 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         ...(platform === 'android' ? { phone_role: idRow?.phone_role ?? 'user' } : {}),
         // Phones only: where else this server answers (this PC's Tailscale address), tried by the
         // phone when the home address does not answer (outside-access/phone-addresses.ts).
-        ...(platform === 'android' ? { server_addresses: await phoneServerAddresses() } : {}),
+        ...(serverAddresses ? { server_addresses: serverAddresses } : {}),
         ...(idRow?.phone_role === 'admin' ? { alerts: await takePhoneAlerts(ep.id) } : {}),
       },
     };

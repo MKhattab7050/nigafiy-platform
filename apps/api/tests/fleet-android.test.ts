@@ -702,6 +702,11 @@ describe('Admin phones (migration 066)', () => {
     });
     try {
       resetPhoneAddressCache();
+      // Just after the server started it does not know them yet: the field is left out, so the phone
+      // keeps the Tailscale address it has instead of replacing it with an empty list.
+      const early = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
+      expect(early.status).toBe(200);
+      expect(early.body).not.toHaveProperty('server_addresses');
       await phoneServerAddresses({ wait: true });
       const hb = await request(app).post('/api/v1/agent/heartbeat').set('Authorization', `Bearer ${cred}`).send(heartbeatBody('Owner phone', 'regular'));
       expect(hb.status).toBe(200);
