@@ -64,7 +64,7 @@ func NewController(quality int, scale float64, adaptive bool, now time.Time) *Co
 // SetCeiling applies the operator's quality/scale choice (and whether to adapt below it).
 func (c *Controller) SetCeiling(quality int, scale float64, adaptive bool) {
 	c.adaptive = adaptive
-	quality = clampInt(quality, 25, 95)
+	quality = clampInt(quality, 10, 95)
 	scale = math.Max(0.25, math.Min(1, scale))
 	c.rungs = c.rungs[:0]
 	for _, s := range Ladder {

@@ -141,7 +141,7 @@ const messageSchema = (reqId: z.ZodString) => z.discriminatedUnion('t', [
   z.object({
     t: z.literal('settings'),
     display: z.number().int().min(0).max(16).optional(),
-    quality: z.number().int().min(25).max(95).optional(),
+    quality: z.number().int().min(10).max(95).optional(),
     scale: z.number().min(0.25).max(1).optional(),
     adaptive: z.boolean().optional(),
     // Show the remote pointer in the picture; colour depth (8 = greyscale).

@@ -299,7 +299,7 @@ class LiveStream private constructor(
             }
             "full" -> synchronized(lock) { needFull = true; lock.notifyAll() }
             "settings" -> synchronized(lock) {
-                (m["quality"] as? Number)?.let { quality = it.toInt().coerceIn(25, 95) }
+                (m["quality"] as? Number)?.let { quality = it.toInt().coerceIn(10, 95) }
                 (m["scale"] as? Number)?.let { scale = it.toDouble().coerceIn(0.25, 1.0) }
                 (m["adaptive"] as? Boolean)?.let { adaptive = it }
                 @Suppress("UNCHECKED_CAST")

@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const rdStartSchema = z
   .object({
     display_index: z.number().int().min(0).max(8).default(0),
-    quality: z.number().int().min(25).max(95).default(68),
+    quality: z.number().int().min(10).max(95).default(68),
     scale: z.number().min(0.25).max(1.0).default(0.75),
     // Record the session (the profile needs "record" and the group's policy must allow it; a group
     // that requires recording records every session whatever this says).
@@ -29,7 +29,7 @@ export const rdCaptureCommandSchema = z
   .object({
     kind: z.literal('rd_capture'),
     display_index: z.number().int().min(0).max(8).default(0),
-    quality: z.number().int().min(25).max(95).default(65),
+    quality: z.number().int().min(10).max(95).default(65),
     scale: z.number().min(0.25).max(1.0).default(0.75),
     // Send the image even if the screen did not change (the viewer has no frame yet).
     full_frame: z.boolean().optional(),

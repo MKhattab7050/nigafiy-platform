@@ -86,11 +86,13 @@ func InflightWindowFor(rtt time.Duration, video bool) int {
 }
 
 // WSVideoBitrate returns the bitrate ceiling for H.264-over-WebSocket matching the chosen quality.
+// The lowest quality still gets 1 Mbit/s: below that VideoFPSFor caps the frame rate at 20, and a
+// low quality is chosen for more pictures a second, not fewer (owner, 2026-11-27).
 func WSVideoBitrate(quality int) int {
 	if quality < 25 {
 		quality = 25
 	}
-	return min(MaxVideoBitrate, 800_000+(quality-25)*60_000)
+	return min(MaxVideoBitrate, 1_000_000+(quality-25)*56_000)
 }
 
 // AckTimeout: a frame not acknowledged within this is counted as a stall (quality goes down).

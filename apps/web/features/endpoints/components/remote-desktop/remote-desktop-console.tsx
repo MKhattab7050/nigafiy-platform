@@ -149,12 +149,13 @@ export function RemoteDesktopConsole(props: RemoteDesktopConsoleProps) {
               </Select>
             )}
             <Select value={String(rd.scale)} onChange={(e) => rd.setScale(Number(e.target.value))} aria-label={tx.scale}>
-              {[0.5, 0.75, 1].map((s) => (
+              {[0.25, 0.35, 0.5, 0.75, 1].map((s) => (
                 <option key={s} value={s}>{`${tx.scale} ${ltr(`${s * 100}%`)}`}</option>
               ))}
             </Select>
             <Select value={String(rd.quality)} onChange={(e) => rd.setQuality(Number(e.target.value))} aria-label={tx.quality}>
-              {[45, 68, 85].map((q) => (
+              {/* 10–35: a softer picture for more pictures a second on a slow link (owner, 2026-11-27). */}
+              {[10, 15, 25, 35, 45, 68, 85].map((q) => (
                 <option key={q} value={q}>{`${tx.quality} ${ltr(q)}`}</option>
               ))}
             </Select>

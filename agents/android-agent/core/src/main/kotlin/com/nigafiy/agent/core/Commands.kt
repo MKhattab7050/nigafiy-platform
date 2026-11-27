@@ -107,7 +107,7 @@ sealed class AgentCommand(val id: String, val kind: String) {
                 "rd_session_update" -> SessionUpdate(id, sessionId(p), operators(p))
                 "rd_capture" -> Capture(
                     id,
-                    (p.long("quality") ?: 65L).toInt().coerceIn(25, 95),
+                    (p.long("quality") ?: 65L).toInt().coerceIn(10, 95),
                     (p["scale"] as? Number)?.toDouble()?.coerceIn(0.25, 1.0) ?: 0.75,
                     p.bool("full_frame") ?: false,
                 )

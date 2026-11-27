@@ -32,7 +32,7 @@ type DisplayInfo struct {
 
 type CaptureOptions struct {
 	DisplayIndex int     `json:"display_index"`
-	Quality      int     `json:"quality"` // 25..95
+	Quality      int     `json:"quality"` // 10..95
 	Scale        float64 `json:"scale"`   // 0.25..1.0
 	// FullFrame asks for the image even when the screen has not changed since the last frame (the
 	// viewer has no frame yet, e.g. after a page reload).
@@ -100,8 +100,11 @@ func newFrameState() *frameState { return &frameState{seed: maphash.MakeSeed()} 
 var sessionFrames = newFrameState()
 
 func normalizeOptions(opts CaptureOptions) CaptureOptions {
-	if opts.Quality < 25 {
+	if opts.Quality <= 0 {
 		opts.Quality = 65
+	}
+	if opts.Quality < 10 {
+		opts.Quality = 10
 	}
 	if opts.Quality > 95 {
 		opts.Quality = 95
