@@ -1,6 +1,5 @@
 import type { RemoteFileResponse } from '@nigafiy/shared-types';
-import { arrayBufferToBase64, base64ToUint8Array } from './file-utils';
-import { FsError, fsCall, toFsError } from './fs-client';
+import { FsError, type FsResult, fsCall, fsRead, fsStage, fsWrite, toFsError } from './fs-client';
 import { Sha256, type Sha256State } from './sha256';
 import { joinRemote, relPath } from './paths';
 import { transferStore } from './transfer-store';
@@ -469,13 +468,13 @@ class TransferEngine {
     let offset = from;
     let chunk = CHUNK;
     for (;;) {
-      const inflight: { at: number; p: Promise<RemoteFileResponse> }[] = [];
+      const inflight: { at: number; p: Promise<{ res: FsResult; data: Uint8Array }> }[] = [];
       let next = offset;
       let restart = false;
       const fill = () => {
         while (inflight.length < window && (inflight.length === 0 || next < (j.srcSize ?? j.size))) {
           const at = next;
-          const p = fsCall(ref.endpointId, { op: 'download', path, offset: at, length: chunk }, { stopped: () => Boolean(this.control.get(j.id)) });
+          const p = fsRead(ref.endpointId, { path, offset: at, length: chunk }, { stopped: () => Boolean(this.control.get(j.id)) });
           p.catch(() => undefined);
           inflight.push({ at, p });
           next += chunk;
@@ -485,8 +484,7 @@ class TransferEngine {
       while (inflight.length) {
         this.check(j);
         const { at, p } = inflight.shift()!;
-        const res = await p;
-        const data = res.data_base64 ? base64ToUint8Array(res.data_base64) : new Uint8Array();
+        const { res, data } = await p;
         if (typeof res.offset === 'number' && res.offset !== at) throw refused('chunk_order');
         // The source must stay the same file from the first chunk to the last.
         if (j.srcMod === undefined && res.mod_time) j.srcMod = res.mod_time;
@@ -614,20 +612,25 @@ class TransferEngine {
   }
 
   /** Sends one chunk; the first may meet an existing file (asks, or follows the group's choice). */
-  private async put(j: Job, dst: Extract<Place, { kind: 'remote' }>, offset: number, data: Uint8Array, overwrite: boolean, last: boolean, sha: Sha256): Promise<RemoteFileResponse | 'skipped'> {
+  private async put(j: Job, dst: Extract<Place, { kind: 'remote' }>, offset: number, data: Uint8Array, overwrite: boolean, last: boolean, sha: Sha256, staged?: Promise<string>): Promise<RemoteFileResponse | 'skipped'> {
     const before = sha.save();
     sha.update(data);
     const expected = last ? Sha256.restore(sha.save()).hex() : undefined;
     const send = (ow: boolean) =>
-      fsCall(dst.endpointId, {
-        op: 'upload',
-        path: dst.path,
-        offset,
-        append: offset > 0,
-        data_base64: arrayBufferToBase64(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer),
-        ...(offset === 0 && ow ? { overwrite: true } : {}),
-        ...(expected ? { expected_sha256: expected } : {}),
-      });
+      fsWrite(
+        dst.endpointId,
+        {
+          path: dst.path,
+          offset,
+          append: offset > 0,
+          ...(offset === 0 && ow ? { overwrite: true } : {}),
+          ...(expected ? { expected_sha256: expected } : {}),
+        },
+        data,
+        // Staged bytes serve one command only; the first piece (which may ask to overwrite and be
+        // sent again) is never staged.
+        offset > 0 ? staged : undefined,
+      );
     try {
       try {
         return await send(overwrite);
@@ -649,6 +652,47 @@ class TransferEngine {
     }
   }
 
+  /**
+   * Writes pieces to a device in order, one write command at a time (the device appends), while the
+   * next piece's bytes already go up to the server: a piece costs one round trip instead of two.
+   * The first piece (it may meet an existing file) is written alone. After each written piece,
+   * `written` records the progress. `flush` waits for the last write and reports its error.
+   */
+  private orderedWriter(j: Job, dst: Extract<Place, { kind: 'remote' }>, sha: Sha256, overwrite: boolean, written: (res: RemoteFileResponse, end: number) => void) {
+    let pending: Promise<void> | null = null;
+    let first = overwrite;
+    const one = async (data: Uint8Array, at: number, staged?: Promise<string>) => {
+      const end = at + data.length;
+      const res = await this.put(j, dst, at, data, first && at === 0, end >= j.size, sha, staged);
+      if (res === 'skipped') throw new FsError('cancelled', 'skipped', 'skipped');
+      first = false;
+      written(res, end);
+    };
+    return {
+      write: async (data: Uint8Array, at: number) => {
+        const staged = at > 0 && data.length > 0 ? fsStage(dst.endpointId, data) : undefined;
+        staged?.catch(() => undefined);
+        if (pending) await pending;
+        pending = null;
+        if (!staged) return one(data, at);
+        const p = one(data, at, staged);
+        p.catch(() => undefined);
+        pending = p;
+      },
+      flush: async () => {
+        const p = pending;
+        pending = null;
+        if (p) await p;
+      },
+      /** After a failure elsewhere: let a running write settle (its own error is not the one to report). */
+      settle: async () => {
+        const p = pending;
+        pending = null;
+        await p?.catch(() => undefined);
+      },
+    };
+  }
+
   // Upload: this computer → device.
   private async runUpload(j: Job) {
     const dst = j.dst as Extract<Place, { kind: 'remote' }>;
@@ -660,22 +704,32 @@ class TransferEngine {
     if (!file) throw refused('lost_local_file');
     if (file.size !== j.size) throw refused('source_changed', 'source_changed');
     const read = async (a: number, b: number) => new Uint8Array(await file.slice(a, b).arrayBuffer());
-    let { offset, sha, overwrite } = await this.resumePoint(j, dst, read);
-    do {
-      this.check(j);
-      const end = Math.min(file.size, offset + CHUNK);
-      const res = await this.put(j, dst, offset, await read(offset, end), overwrite, end >= file.size, sha);
-      if (res === 'skipped') return;
-      overwrite = false;
-      offset = end;
-      this.progress(j, offset, { hash: sha.save(), hashedTo: offset });
+    const resumed = await this.resumePoint(j, dst, read);
+    let offset = resumed.offset;
+    const sha = resumed.sha;
+    let last: RemoteFileResponse | null = null;
+    const w = this.orderedWriter(j, dst, sha, resumed.overwrite, (res, end) => {
+      last = res;
+      this.progress(j, end, { hash: sha.save(), hashedTo: end });
       this.persist(j);
-      if (end >= file.size) {
-        const mine = Sha256.restore(sha.save()).hex();
-        if (res.sha256 && res.sha256.toLowerCase() !== mine) throw refused('checksum_mismatch', 'checksum');
-        this.patch(j.id, { sha256: mine, verified: res.sha256 ? 'receiver' : undefined });
-      }
-    } while (offset < file.size);
+    });
+    try {
+      do {
+        this.check(j);
+        const end = Math.min(file.size, offset + CHUNK);
+        await w.write(await read(offset, end), offset);
+        offset = end;
+      } while (offset < file.size);
+      await w.flush();
+    } catch (err) {
+      await w.settle();
+      if (toFsError(err).code === 'skipped') return;
+      throw err;
+    }
+    const res = last as RemoteFileResponse | null;
+    const mine = Sha256.restore(sha.save()).hex();
+    if (res?.sha256 && res.sha256.toLowerCase() !== mine) throw refused('checksum_mismatch', 'checksum');
+    this.patch(j.id, { sha256: mine, verified: res?.sha256 ? 'receiver' : undefined });
   }
 
   // Copy: device → device, chunk by chunk through this page (nothing kept whole).
@@ -686,8 +740,7 @@ class TransferEngine {
       const parts: Uint8Array[] = [];
       let at = a;
       while (at < b) {
-        const r = await fsCall(src.endpointId, { op: 'download', path: src.path, offset: at, length: Math.min(CHUNK, b - at) });
-        const d = r.data_base64 ? base64ToUint8Array(r.data_base64) : new Uint8Array();
+        const { data: d } = await fsRead(src.endpointId, { path: src.path, offset: at, length: Math.min(CHUNK, b - at) });
         if (!d.length) break;
         parts.push(d);
         at += d.length;
@@ -700,7 +753,7 @@ class TransferEngine {
       }
       return out;
     };
-    let { offset, sha, overwrite } = await this.resumePoint(j, dst, readSource);
+    const { offset, sha, overwrite } = await this.resumePoint(j, dst, readSource);
     if (offset > 0) {
       // The source must still be the file whose first part was copied.
       const st = await fsCall(src.endpointId, { op: 'hash', path: src.path, size_only: true }, { deadlineMs: 20 * 60_000 });
@@ -711,25 +764,19 @@ class TransferEngine {
       if (res !== 'skipped') this.patch(j.id, { sha256: Sha256.restore(sha.save()).hex(), verified: 'receiver' });
       return;
     }
-    let last: RemoteFileResponse | 'skipped' | null = null;
-    await this.pull(
-      j,
-      src,
-      src.path,
-      offset,
-      async (data, at) => {
-        const end = at + data.length;
-        last = await this.put(j, dst, at, data, overwrite && at === 0, end >= j.size, sha);
-        if (last === 'skipped') throw new FsError('cancelled', 'skipped', 'skipped');
-        overwrite = false;
-        this.progress(j, end, { hash: sha.save(), hashedTo: end });
-        this.persist(j);
-      },
-      2,
-    ).catch((err) => {
-      if (toFsError(err).code === 'skipped') return 0;
-      throw err;
+    let last: RemoteFileResponse | null = null;
+    const w = this.orderedWriter(j, dst, sha, overwrite, (res, end) => {
+      last = res;
+      this.progress(j, end, { hash: sha.save(), hashedTo: end });
+      this.persist(j);
     });
+    try {
+      await this.pull(j, src, src.path, offset, (data, at) => w.write(data, at));
+      await w.flush();
+    } catch (err) {
+      await w.settle();
+      if (toFsError(err).code !== 'skipped') throw err;
+    }
     if (j.state === 'skipped') return;
     const res = last as RemoteFileResponse | null;
     const mine = Sha256.restore(sha.save()).hex();

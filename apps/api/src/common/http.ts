@@ -108,6 +108,8 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return;
   }
   if (e?.code === '23505') {
+    // Which unique rule was hit (never the values): a 409 nobody expected is otherwise untraceable.
+    logger.warn({ request_id: req.id, path: req.path, method: req.method, constraint: (err as { constraint?: string }).constraint, table: (err as { table?: string }).table }, 'unique conflict');
     res.status(409).json({ error: { code: 'conflict', message: 'A record with these values already exists', request_id: req.id } });
     return;
   }

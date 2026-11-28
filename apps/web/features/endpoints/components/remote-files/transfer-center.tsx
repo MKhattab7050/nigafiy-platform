@@ -33,8 +33,16 @@ function useNow(on: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!on) return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    // Start from the real time (a stale value showed "retry in 362 s" for a 1 s wait), and catch up
+    // when the tab comes back: a background tab runs this timer rarely.
+    const tick = () => setNow(Date.now());
+    tick();
+    const t = setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [on]);
   return now;
 }

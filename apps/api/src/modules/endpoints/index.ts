@@ -59,7 +59,13 @@ let unsubscribeWake: (() => void) | null = null;
 export const endpointsModule = defineModule({
   name: 'endpoints',
   api: endpointsApi,
-  gateway: { path: '/api/v1/agent', rateLimitPerMinute: 360, router: agentGatewayRouter },
+  gateway: {
+    path: '/api/v1/agent',
+    rateLimitPerMinute: 360,
+    router: agentGatewayRouter,
+    // File transfers: taking commands, sending results and piece bytes (docs/roadmap/2026-11-28-file-transfer-speed.md).
+    transfer: { paths: /^\/(poll|command-result|file-data(\/[0-9a-f-]{36})?)\/?$/, perAgentPerMinute: 6000, perIpPerMinute: 12_000 },
+  },
   // The player page of a "Past recordings…" link from the tray (token only, no session).
   publicApi: { path: '/recording-links', router: recordingLinksRouter },
   // Session recordings past their group's retention: the file goes, the row stays (marked deleted).

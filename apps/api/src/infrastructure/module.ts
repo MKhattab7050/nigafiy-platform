@@ -24,7 +24,13 @@ export interface ModuleManifest {
    * Credential-authenticated machine gateway (collector, endpoint agent). Mounted at `path` before the
    * user API's JSON body parser, with its own per-minute rate limit; the router parses its own body.
    */
-  readonly gateway?: { readonly path: `/${string}`; readonly rateLimitPerMinute: number; readonly router: Router };
+  readonly gateway?: {
+    readonly path: `/${string}`;
+    readonly rateLimitPerMinute: number;
+    readonly router: Router;
+    /** Requests that move file transfers (paths relative to `path`): counted per credential and per address instead. */
+    readonly transfer?: { readonly paths: RegExp; readonly perAgentPerMinute: number; readonly perIpPerMinute: number };
+  };
 
   /** Background jobs owned by the module, run by the shared scheduler (infrastructure/scheduler.ts). */
   readonly jobs?: readonly JobDefinition[];

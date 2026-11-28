@@ -30,8 +30,8 @@ import type { RemoteFileEntry } from '@nigafiy/shared-types';
 import { Badge, Button, Card, ErrorNote, Input, Modal } from '@/components/ui';
 import { absoluteTime, relativeTime } from '@/lib/format';
 import { ltr } from '@/lib/localize/bidi';
-import { base64ToUint8Array, formatBytes } from './file-utils';
-import { fsCall } from './fs-client';
+import { formatBytes } from './file-utils';
+import { fsRead } from './fs-client';
 import { type LocalSelection, canWriteToDisk, downloadItems, folderSize, fromDrop, fromInput, pickLocalFolder, uploadItems } from './transfer-plans';
 import { transferText } from './transfer-text';
 import { type RemoteFileManagerProps, type RemoteFiles, type SortKey, crumbsOf, useRemoteFiles } from './use-remote-files';
@@ -708,8 +708,7 @@ function PreviewDialog({ entry, endpointId, isAr, onClose, onDownload }: { entry
         const parts: Uint8Array[] = [];
         let offset = 0;
         while (!stop && offset < Math.min(entry.size, limit)) {
-          const r = await fsCall(endpointId, { op: 'download', path: entry.path, offset, length: 1024 * 1024 });
-          const d = r.data_base64 ? base64ToUint8Array(r.data_base64) : new Uint8Array();
+          const { res: r, data: d } = await fsRead(endpointId, { path: entry.path, offset, length: 1024 * 1024 });
           parts.push(d);
           offset += d.length;
           setState((s) => ({ ...s, pct: entry.size ? Math.round((offset * 100) / Math.min(entry.size, limit)) : 100 }));

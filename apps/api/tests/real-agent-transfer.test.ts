@@ -9,7 +9,8 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { endpointsModule } from '../src/modules/endpoints/index.ts';
 import { CSRF, app, newAccount } from './helpers.ts';
 
 const binPath = path.resolve(import.meta.dirname, '../../../agents/endpoint-agent/bin', 'nigafiy-agent.exe');
@@ -17,6 +18,14 @@ const MiB = 1024 * 1024;
 const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 
 describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || process.env.NIGAFIY_UI_TEST !== '1')('large file transfer with the real agent', () => {
+  // Queued commands wake the agent's held poll at once, as on a running server.
+  beforeAll(async () => {
+    await endpointsModule.lifecycle.start();
+  });
+  afterAll(async () => {
+    await endpointsModule.lifecycle.stop();
+  });
+
   it(
     'uploads 24 MiB in 1 MiB pieces, survives an agent restart mid way, walks the folder and downloads it back with per-piece checks',
     async () => {
@@ -57,6 +66,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || process.
           }
           throw new Error('agent did not come online');
         };
+        let lastId = '';
         const fs = async (payload: Record<string, unknown>) => {
           const res = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=6000`).set(CSRF).send({ kind: 'fs_op', ...payload });
           if (res.status !== 200) throw new Error(`${res.status} ${JSON.stringify(res.body)}`);
@@ -67,6 +77,7 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || process.
             body = w.body;
           }
           if (body.status === 'failed') throw new Error(`${payload.op} failed: ${body.error_message ?? JSON.stringify(body)}`);
+          lastId = body.id;
           return body.result_data;
         };
 
@@ -127,15 +138,78 @@ describe.skipIf(process.platform !== 'win32' || !existsSync(binPath) || process.
           parts.push(piece);
         }
         expect(sha(Buffer.concat(parts))).toBe(sha(data));
-        console.log(`download 24 MiB one piece at a time: ${Date.now() - t0} ms`);
+        // A command round trip is milliseconds here, so 24 pieces one after another are quick.
+        const oldMs = Date.now() - t0;
+        expect(oldMs).toBeLessThan(30_000);
+
+        // 5. The same through the binary side channel (the agent announced fs_relay in its poll):
+        // the bytes never sit in a command as base64. Measured one piece at a time, as the slowest case.
+        const raw = async (method: 'get' | 'post', url: string, body?: Buffer) => {
+          const r0 = method === 'get' ? a.agent.get(url) : a.agent.post(url).set(CSRF).set('Content-Type', 'application/octet-stream').send(body);
+          return r0.buffer(true).parse((res, cb) => {
+            const bufs: Buffer[] = [];
+            res.on('data', (c: Buffer) => bufs.push(c));
+            res.on('end', () => cb(null, Buffer.concat(bufs)));
+          });
+        };
         const t1 = Date.now();
-        for (let i = 0; i < 10; i++) {
-          const s0 = Date.now();
-          const r = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=6000`).set(CSRF).send({ kind: 'fs_op', op: 'roots' });
-          const b = r.body;
-          console.log('TIMING', Date.now() - s0, b.status, new Date(b.delivered_at).getTime() - new Date(b.created_at).getTime(), new Date(b.completed_at).getTime() - new Date(b.delivered_at).getTime());
+        const back: Buffer[] = [];
+        for (let off = 0; off < data.length; off += MiB) {
+          const r = await fs({ op: 'download', path: dest, offset: off, length: MiB, relay: true });
+          expect(r.relayed).toBe(true);
+          expect(r.data_base64).toBeUndefined();
+          const got = await raw('get', `/api/v1/endpoints/${epId}/commands/${lastId}/data`);
+          expect(got.status).toBe(200);
+          const piece = got.body as Buffer;
+          expect(r.chunk_sha256).toBe(sha(piece));
+          back.push(piece);
         }
-        console.log(`10 small commands: ${Date.now() - t1} ms`);
+        const relayDownMs = Date.now() - t1;
+        expect(sha(Buffer.concat(back))).toBe(sha(data));
+
+        const dest2 = path.join(work, 'up', 'big2.bin');
+        const t2 = Date.now();
+        const running2 = createHash('sha256');
+        for (let off = 0; off < data.length; off += MiB) {
+          const p = data.subarray(off, off + MiB);
+          running2.update(p);
+          const last = off + MiB >= data.length;
+          const stored = await raw('post', `/api/v1/endpoints/${epId}/file-data`, p);
+          expect(stored.status).toBe(201);
+          const { id } = JSON.parse((stored.body as Buffer).toString('utf8')) as { id: string };
+          await fs({ op: 'upload', path: dest2, offset: off, append: off > 0, data_ref: id, ...(last ? { expected_sha256: running2.copy().digest('hex') } : {}) });
+        }
+        const relayUpMs = Date.now() - t2;
+        expect(sha(readFileSync(dest2))).toBe(sha(data));
+
+        // As the web engine reads: three pieces in flight.
+        const t3 = Date.now();
+        const piecesIn: Buffer[] = new Array(data.length / MiB);
+        let nextOff = 0;
+        const lane = async () => {
+          while (nextOff < data.length) {
+            const off = nextOff;
+            nextOff += MiB;
+            const res = await a.agent.post(`/api/v1/endpoints/${epId}/commands?wait_ms=6000`).set(CSRF).send({ kind: 'fs_op', op: 'download', path: dest, offset: off, length: MiB, relay: true });
+            let body = res.body;
+            while (body.status !== 'completed' && body.status !== 'failed') body = (await a.agent.get(`/api/v1/endpoints/${epId}/commands/${body.id}?wait_ms=20000`)).body;
+            expect(body.result_data?.relayed).toBe(true);
+            piecesIn[off / MiB] = (await raw('get', `/api/v1/endpoints/${epId}/commands/${body.id}/data`)).body as Buffer;
+          }
+        };
+        await Promise.all([lane(), lane(), lane()]);
+        const pipeMs = Date.now() - t3;
+        expect(sha(Buffer.concat(piecesIn))).toBe(sha(data));
+
+        const mbps = (ms: number) => Math.round(((data.length / MiB) * 1000 * 10) / ms) / 10;
+        const speedLine = (
+          `[transfer speed] 24 MiB, one piece at a time: base64 download ${mbps(oldMs)} MB/s, relay download ${mbps(relayDownMs)} MB/s, relay upload ${mbps(relayUpMs)} MB/s; relay download, 3 in flight: ${mbps(pipeMs)} MB/s`
+        );
+        console.log(speedLine);
+        if (process.env.NIGAFIY_SPEED_OUT) writeFileSync(process.env.NIGAFIY_SPEED_OUT, `${speedLine}
+`, { flag: 'a' });
+        expect(mbps(relayDownMs)).toBeGreaterThan(mbps(oldMs));
+        expect(mbps(pipeMs)).toBeGreaterThanOrEqual(20);
       } finally {
         if (child) (child as ReturnType<typeof spawn>).kill();
         await new Promise<void>((resolve) => srv.close(() => resolve()));

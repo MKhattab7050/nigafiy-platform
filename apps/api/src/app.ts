@@ -1,7 +1,7 @@
 import { phoneDashboardProxy } from './modules/auth/phone-dashboard.ts';
 import { randomUUID } from 'node:crypto';
 import express, { type Express, Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import { gzipJson } from './common/gzip-json.ts';
 import { AppError, errorHandler } from './common/http.ts';
@@ -38,6 +38,8 @@ function trustProxySetting(value: string): boolean | number | string {
  */
 /** POST /api/v1/endpoints/:id/commands (fs_op chunks travel here). */
 const COMMANDS_ROUTE = /^\/endpoints\/[0-9a-f-]{36}\/commands\/?$/i;
+/** The rest of a transfer's traffic: piece bytes up, a command's result and its bytes down. */
+const TRANSFER_ROUTE = /^\/endpoints\/[0-9a-f-]{36}\/(file-data\/?|commands\/[0-9a-f-]{36}(\/data)?\/?)$/i;
 
 export function createApp(modules: readonly ModuleManifest[] = registeredModules): Express {
   const app = express();
@@ -94,7 +96,28 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
 
   // ── Collector-facing & Endpoint-agent-facing APIs (credential auth, own body limit) ──
   for (const m of modules) {
-    if (m.gateway) app.use(m.gateway.path, limiter(m.gateway.rateLimitPerMinute, `gateway:${m.gateway.path}`), m.gateway.router);
+    if (!m.gateway) continue;
+    const g = m.gateway;
+    const general = limiter(g.rateLimitPerMinute, `gateway:${g.path}`);
+    const t = g.transfer;
+    if (!t) {
+      app.use(g.path, general, g.router);
+      continue;
+    }
+    // A file transfer costs a few agent requests per 1 MiB piece; under the general limit one agent
+    // was capped near 3 MB/s. Its requests count per agent (the credential's endpoint id) and, more
+    // loosely, per address; everything else keeps the general limit.
+    const perIp = limiter(t.perIpPerMinute, `gateway:${g.path}:transfer-ip`);
+    const perAgent = rateLimit({
+      store: limiterStore(`gateway:${g.path}:transfer-agent`),
+      windowMs: 60_000,
+      limit: env.NODE_ENV === 'test' ? 100_000 : t.perAgentPerMinute,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+      keyGenerator: (req) => /^Bearer [a-z]+_([0-9a-f-]{36})\./.exec(req.headers.authorization ?? '')?.[1] ?? `ip:${ipKeyGenerator(req.ip ?? '')}`,
+      message: { error: { code: 'rate_limited', message: 'Too many requests' } },
+    });
+    app.use(g.path, (req, res, next) => (t.paths.test(req.path) ? perIp(req, res, (e?: unknown) => (e ? next(e) : perAgent(req, res, next))) : general(req, res, next)), g.router);
   }
 
   // ── User-facing API (session auth) ──
@@ -102,9 +125,9 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
   // File transfers: one command per 1 MiB chunk (base64 in JSON). The commands route takes bodies
   // up to 2 MB and has its own counter, so a large copy neither fails on the body limit nor uses
   // up the requests the dashboard needs; every other route keeps 100 KB and the shared counter.
-  const isCommandsRoute = (req: express.Request) => req.method === 'POST' && COMMANDS_ROUTE.test(req.path);
+  const isCommandsRoute = (req: express.Request) => (req.method === 'POST' && COMMANDS_ROUTE.test(req.path)) || TRANSFER_ROUTE.test(req.path);
   const apiLimiter = limiter(600, 'api');
-  const transferLimiter = limiter(6000, 'api-commands');
+  const transferLimiter = limiter(12_000, 'api-commands');
   const smallJson = express.json({ limit: '100kb' });
   const transferJson = express.json({ limit: '2mb' });
   api.use((req, res, next) => (isCommandsRoute(req) ? transferLimiter : apiLimiter)(req, res, next));

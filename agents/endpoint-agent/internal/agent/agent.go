@@ -552,7 +552,9 @@ func (a *Agent) pollOnce(ctx context.Context) ([]control.Command, time.Duration,
 		client = a.pollClient
 	}
 	started := time.Now()
-	err := a.postWith(ctx, client, path, map[string]any{}, true, &resp)
+	// The features tell the server which faster paths this agent takes (filerelay.go); an older
+	// server ignores the body.
+	err := a.postWith(ctx, client, path, map[string]any{"features": agentFeatures}, true, &resp)
 	return resp.Commands, time.Since(started), err
 }
 
@@ -641,6 +643,9 @@ func (a *Agent) execute(ctx context.Context, cmd control.Command) (res control.R
 	}
 	if !handled {
 		res, handled = a.reachCommand(ctx, cmd)
+	}
+	if !handled {
+		res, handled = a.fsRelayCommand(ctx, cmd)
 	}
 	if !handled {
 		res = a.deps.ExecuteCommand(ctx, cmd)

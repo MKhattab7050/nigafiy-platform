@@ -22,6 +22,13 @@ export const fsOpCommandSchema = z
     /** One upload chunk: at most 1 MiB of bytes (1 398 104 base64 characters). */
     data_base64: z.string().max(1_400_000).optional(),
     expected_sha256: z.string().max(64).optional(),
+    /**
+     * Upload only: the piece's bytes were sent apart, as binary, to POST /endpoints/:id/file-data
+     * (file-manager/relay.ts); this is the id that call returned. Instead of data_base64.
+     */
+    data_ref: z.string().uuid().optional(),
+    /** Download only: send the bytes through the binary side channel (agents that can; ignored otherwise). */
+    relay: z.boolean().optional(),
     /** hash only: size, modification time and resume point without reading the whole file. */
     size_only: z.boolean().optional(),
     /** Upload only: replace an existing file. The console sets it only after the operator confirms in a dialog. */

@@ -21,7 +21,7 @@ Rules that win over any feature below (design §2, `docs/security/model.md`):
 | --- | --- | --- |
 | Remote desktop: JPEG frames (quality 25–95, scale), mouse/keyboard/text input | `agents/endpoint-agent/internal/remotedesktop`, `rd_capture`/`rd_input` | Built, frame-by-frame over commands (now the HTTP fallback; monitors were the primary only) |
 | Session start with operator + reason, on-screen notice, audit | `apps/api/src/modules/endpoints/remote-desktop` | Built (the `prompt` consent policy was **not** built: such sessions were refused with `consent_unavailable` until Fleet Pro; see below) |
-| File manager: browse, chunked SHA-256 transfers, guarded paths, delete with confirm | `internal/filemgr`, `modules/endpoints/file-manager` | Built |
+| File manager: browse, chunked SHA-256 transfers, guarded paths, delete with confirm; whole folders down (to a folder or ZIP) and up, device → device copies, resumable very large transfers (`docs/roadmap/2026-11-28-file-manager-pro.md`); PC agents from 1.0.10 move the bytes through a binary side channel, ~24 MB/s on one PC (`docs/roadmap/2026-11-28-file-transfer-speed.md`) | `internal/filemgr`, `modules/endpoints/file-manager`, web `remote-files/transfer-engine.ts` | Built |
 | Processes, services, software (install/remove), logs, power (lock/logoff/restart/shutdown), notify user, diagnostic commands (allow-listed) | `internal/control` | Built |
 | Enrollment, groups/fleet, policy, compliance | `modules/endpoints/{enrollment,fleet,policy}` | Built |
 | Wake-on-LAN | `collectors/lan-collector/internal/wol` | Built (Sensor side) |

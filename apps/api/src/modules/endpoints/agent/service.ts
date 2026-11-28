@@ -1,3 +1,4 @@
+import { sweepRelay } from '../file-manager/relay.ts';
 import { onHeartbeatRestarts } from '../fleet-reach/restarts.ts';
 import type { EndpointPlatform, EndpointSecurityPosture } from '@nigafiy/shared-types';
 import { randomToken, sha256 } from '../../../common/crypto.ts';
@@ -298,6 +299,31 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
       [ep.id, now],
     );
 
+    // File transfers: the middle pieces of a transfer are transport only (not audited, see
+    // quietTransferChunk), so their rows go after 10 minutes, like screen frames. Bytes that nobody
+    // collected (a paused or closed transfer, an upload that expired undelivered) are dropped from
+    // the rows that stay. Without this a 100 GB copy would leave 100 000 rows and stray megabytes.
+    await db.query(
+      `DELETE FROM endpoint_commands
+        WHERE endpoint_id = $1 AND kind = 'fs_op' AND status IN ('completed', 'failed', 'expired')
+          AND created_at < $2::timestamptz - interval '10 minutes'
+          AND (payload->>'op' = 'walk'
+               OR (payload->>'op' = 'hash' AND payload->>'size_only' = 'true')
+               OR (payload->>'op' = 'download' AND coalesce(payload->>'offset', '0') <> '0')
+               OR (payload->>'op' = 'upload' AND coalesce(payload->>'offset', '0') <> '0' AND payload->>'expected_sha256' IS NULL))`,
+      [ep.id, now],
+    );
+    await db.query(
+      `UPDATE endpoint_commands
+          SET payload = payload - 'data_base64', result_data = CASE WHEN result_data ? 'data_base64' THEN result_data - 'data_base64' ELSE result_data END
+        WHERE endpoint_id = $1 AND kind = 'fs_op' AND created_at < $2::timestamptz - interval '10 minutes'
+          AND (payload ? 'data_base64' OR result_data ? 'data_base64')`,
+      [ep.id, now],
+    );
+
+    // Transfer bytes nobody collected (file-manager/relay.ts).
+    await sweepRelay(db, ep.id);
+
     // At most once: a command already handed out is never handed out again. Redelivery after an
     // agent restart would repeat it, and for "restart this computer" that is a reboot loop.
     // Undelivered results simply expire above.
@@ -373,6 +399,8 @@ export async function recordCommandResults(ep: EndpointContext, results: Command
   const now = new Date();
   const completedIds = await withTenant(ep.organizationId, async (db) => {
     const ids = await applyCommandResults(db, ep.id, results, now);
+    // An upload piece is not needed once its command has ended (file-manager/relay.ts).
+    if (ids.length) await sweepRelay(db, ep.id, ids);
     await notifyRealtime(db, ep.organizationId, 'devices');
     return ids;
   });

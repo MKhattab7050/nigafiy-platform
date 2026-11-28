@@ -11,6 +11,7 @@ import { validateCommandForPlatform } from './guards.ts';
 import { PROFILE_REFUSAL_MESSAGES, commandRefusal, openSessionFor, refusalFlag, toolNeedOf, toolRefusal } from '../fleet-policy/enforce.ts';
 import { normalizeIp } from '../fleet-policy/policy.ts';
 import type { CommandInput } from './schema.ts';
+import { fitRelayPayload } from '../file-manager/relay.ts';
 
 // Remote commands: process/service/power/software actions, logs, diagnostics, user notices, and
 // the transport for File Manager (fs_op) and Remote Desktop frames/input (rd_capture / rd_input).
@@ -67,8 +68,9 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
         rd_state: string | null;
         kind: string;
         android: EndpointAndroidState | null;
+        agent_features: string[] | null;
       }>(
-        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, kind, android,
+        `SELECT id, site_id, device_id, name, platform, status, last_heartbeat_at, policy, kind, android, agent_features,
                 rd_session IS NOT NULL AS rd_active, rd_session->>'state' AS rd_state
            FROM endpoints WHERE id = $1`,
         [id],
@@ -116,6 +118,8 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     if (body.kind === 'fs_op' && ep.policy?.allowed_fs_roots && ep.policy.allowed_fs_roots.length > 0) {
       payload.allowed_roots = ep.policy.allowed_fs_roots;
     }
+    // Bytes apart from the command where the agent can (file-manager/relay.ts), base64 inside it otherwise.
+    if (body.kind === 'fs_op') await fitRelayPayload(db, ctx, id, ep.agent_features, payload);
 
     const inserted = await db.query<EndpointCommand>(
       `INSERT INTO endpoint_commands (organization_id, endpoint_id, kind, payload, created_by, created_by_name)

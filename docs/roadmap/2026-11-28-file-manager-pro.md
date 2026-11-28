@@ -20,7 +20,7 @@ one device to another; it isn't professional." Owner said: do all of it.
 paths, session profiles and audit as before)
 
 - **API**: commands route takes bodies up to 2 MB (others keep 100 KB); its own limiter
-  (3000/min) so transfers do not starve the dashboard; download `length` up to 1 MiB; new op
+  (6000/min) so transfers do not starve the dashboard; download `length` up to 1 MiB; new op
   `walk` (read-only, technician, same guards as `list`).
 - **Agents** (Windows/Linux/macOS Go + Android): `walk` = every file and folder under a folder
   (no links entered, credential stores skipped, ≤ 10 000 entries, ≤ 32 levels, `truncated` when
@@ -42,7 +42,41 @@ paths, session profiles and audit as before)
   selected size), preview (images, text ≤ 1 MiB), properties (folder size via walk), download
   button on folders and on the selection.
 
+## Very large files: a transfer must not die midway (owner, mid-task)
+
+- **Retries forever, never starts over.** A lost connection, an offline device, a server restart
+  or a rate limit marks the job "Waiting for the connection" and retries (1 s doubling to 30 s,
+  at once when the browser is back online). It continues from the last byte that really arrived.
+  A request the device has not taken after 20 s counts as "device gone" at once, not after 90 s.
+- **The receiver remembers.** The agent keeps each unfinished upload (path, next offset, running
+  SHA-256 state) in `<state dir>/file-uploads.json` for 72 h, so an agent or PC restart resumes
+  too. `hash` with `size_only` answers size, time and the resume point without reading the file.
+- **The browser remembers.** Jobs and their folder/file handles are kept in IndexedDB
+  (`nigafiy-transfers`). After a reload, copies between devices resume by themselves; uploads from
+  this computer resume after one click (the browser asks again for the folder permission).
+  Downloads to a folder restart that one file (the browser commits a file only when it closes).
+- **Checked end to end.** Every downloaded chunk carries its own SHA-256 and the file's time; a
+  changed source stops the job ("the file changed while copying") instead of mixing two versions.
+  The receiving agent checks the whole-file SHA-256 on the last chunk and deletes a file that
+  fails it (it never stays behind looking complete).
+- **No noise, no bloat.** Only the start and the end of a transfer are audited. The middle pieces
+  are transport: their rows are deleted 10 minutes later (heartbeat sweep), and bytes nobody
+  collected are dropped. The screen is kept awake and leaving the page warns while a transfer runs.
+
+## Tested (2026-11-28)
+
+- `apps/api/tests/real-agent-transfer.test.ts` (opt-in `NIGAFIY_UI_TEST=1`, real Windows agent):
+  24 MiB in 1 MiB pieces, agent killed and restarted at 10 MiB, resumed and verified; a wrong
+  final checksum is refused and the file removed; `walk` of a tree; download with per-chunk checks.
+- In the browser, isolated stack with two real agents: folder + 700 MB file copied device A →
+  device B while device B's agent was killed and restarted and the page was reloaded: all files
+  byte-identical (SHA-256), empty folder and an Arabic file name kept. Folder download to a folder
+  and as ZIP (10 entries, all CRCs right).
+- Measured on one PC (loopback): a command round trip is ~13 ms, a 1 MiB piece ~150–250 ms because
+  its bytes pass through PostgreSQL as base64 JSON. Device → device copy ≈ 1.5–3.5 MB/s.
+
 ## Not in this round
 
-- A binary streaming channel agent ↔ server (would beat base64-over-commands on speed).
+- A binary streaming channel agent ↔ server that keeps the bytes out of PostgreSQL. This is the
+  speed step (the measured limit above); proposed to the owner as the next round.
 - Server-side background copies that survive closing the browser.

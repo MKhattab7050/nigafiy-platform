@@ -21,6 +21,7 @@ import { agentPatchStatusSchema } from '../fleet-patches/schema.ts';
 import { recordPatchStatus } from '../fleet-patches/service.ts';
 import { agentRecordingLink, agentRecordings, recordingLinkSchema } from '../fleet-user/recordings.ts';
 import { androidGatewayRouter } from '../fleet-android/routes.ts';
+import { MAX_RELAY_BYTES, readUploadPiece, recordAgentFeatures, storeDownloadPiece } from '../file-manager/relay.ts';
 
 const quickRegisterLimiter = rateLimit({
   store: limiterStore('agent:quick-support'),
@@ -73,8 +74,26 @@ agentGatewayRouter.post('/poll', requireEndpointAgent, async (req, res) => {
   const waitMs = parsePollWaitMs(req.query.wait_ms);
   const aborted = new AbortController();
   res.on('close', () => aborted.abort());
+  // A newer agent says what it can do (e.g. fs_relay); an older one sends {} and keeps the old paths.
+  await recordAgentFeatures(ep, (req.body as { features?: unknown } | undefined)?.features);
   const commands = await longPollCommands(ep, waitMs, aborted.signal);
   if (!aborted.signal.aborted) res.json({ commands });
+});
+
+// File transfer bytes apart from the commands (file-manager/relay.ts): raw, no base64, no JSON.
+const relayParams = z.object({ ref: z.string().uuid() });
+agentGatewayRouter.get('/file-data/:ref', requireEndpointAgent, async (req, res) => {
+  const { ref } = parse(relayParams, req.params);
+  const data = await readUploadPiece(req.endpoint!, ref);
+  if (!data) throw new AppError(404, 'relay_piece_missing', 'No such upload piece');
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.end(data);
+});
+const relayQuery = z.object({ command_id: z.string().uuid() });
+agentGatewayRouter.post('/file-data', requireEndpointAgent, express.raw({ type: 'application/octet-stream', limit: MAX_RELAY_BYTES }), async (req, res) => {
+  const { command_id } = parse(relayQuery, req.query);
+  await storeDownloadPiece(req.endpoint!, command_id, req.body);
+  res.status(201).json({ ok: true });
 });
 
 // Immediate command result delivery endpoint.
