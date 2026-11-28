@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import express, { type Express, Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
+import { gzipJson } from './common/gzip-json.ts';
 import { AppError, errorHandler } from './common/http.ts';
 import { env } from './config/env.ts';
 import { databaseUnavailableCode, systemPool } from './infrastructure/db.ts';
@@ -53,6 +54,7 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
   // Admin phones' dashboard pages, before helmet: the web app sends its own security headers.
   app.use(phoneDashboardProxy());
   app.use(helmet());
+  app.use(gzipJson());
 
   // Liveness: the process is up. Readiness: it can reach its database (with a free connection) and,
   // where this process runs the background jobs, the scheduler is not stuck. The desktop engine

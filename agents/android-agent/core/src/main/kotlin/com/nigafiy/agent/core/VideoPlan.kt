@@ -32,25 +32,66 @@ object VideoPlan {
     /** Conservative starting bitrate so mobile / Tailscale DERP uplinks do not bufferbloat on connect. */
     fun initialBitrate(quality: Int): Int = minOf(bitrate(quality), INITIAL_BITRATE_CAP)
 
-    /** Adapts bitrate from measured ack RTT; caps relayed/high-RTT links instead of flooding TCP. */
-    fun adaptBitrate(cur: Int, target: Int, rttMs: Long, minBitrate: Int = MIN_BITRATE): Int {
-        val rttCap = when {
-            rttMs >= 300 -> 1_000_000
-            rttMs >= 220 -> 1_600_000
-            else -> target
+    /** Highest bitrate off the local network (Phase 1, 2026-11-28: clean up to ~4 Mbit/s over the relay). */
+    const val WAN_BITRATE = 3_000_000
+    /** A base RTT below this is the local network. */
+    const val LAN_BASE_MS = 40L
+    /** Windows without climbing after a cut (hysteresis). */
+    const val HOLD_WINDOWS = 3
+    /** The video frame rate the window is sized for (VideoEncoder.FPS). */
+    const val VIDEO_FPS = 30
+
+    /**
+     * One link's bitrate controller, stepped once per window (about 1.5 s), not once per ack.
+     *
+     * The old rule cut the bitrate whenever the ack RTT passed 220 ms, on every ack. A phone on 4G
+     * reaches the PC through a Tailscale relay whose RTT is 150-230 ms when the link is empty, so
+     * the bitrate fell to the floor within a second (owner, 2026-11-28, docs/roadmap/2026-11-28-wan-speed.md).
+     * This one learns the link's base RTT (the lowest recent RTT) and cuts only when the RTT rises
+     * well above it (a queue is building), then waits [HOLD_WINDOWS] windows before climbing again.
+     */
+    class Link {
+        var rttMs = 0L; private set
+        var baseMs = 0L; private set
+        private var hold = 0
+
+        val wan: Boolean get() = baseMs >= LAN_BASE_MS
+        val queueMs: Long get() = maxOf(0L, rttMs - baseMs)
+
+        private fun observe(sample: Long) {
+            if (sample <= 0) return
+            if (rttMs == 0L) { rttMs = sample; baseMs = sample; return }
+            rttMs = (rttMs * 7 + sample * 3) / 10
+            baseMs = if (rttMs < baseMs) rttMs else baseMs + (rttMs - baseMs + 9) / 10
         }
-        val cap = maxOf(minBitrate, minOf(target, rttCap))
-        val next = when {
-            rttMs > 220 -> (cur * 3) / 4
-            rttMs in 1..129 -> minOf(cap, (cur * 105) / 100 + 50_000)
-            else -> cur
+
+        /** A stall (frames dropped or never acknowledged): no climbing for a while. */
+        fun stalled() { hold = HOLD_WINDOWS }
+
+        fun step(cur: Int, target: Int, sampleMs: Long, minBitrate: Int = MIN_BITRATE): Int {
+            observe(sampleMs)
+            val q = queueMs
+            val big = if (wan) maxOf(300L, baseMs) else 250L
+            val small = if (wan) maxOf(140L, baseMs / 2) else 100L
+            val calm = if (wan) maxOf(70L, baseMs / 4) else 50L
+            var next = cur
+            when {
+                q > big -> { next = cur * 3 / 4; hold = HOLD_WINDOWS }
+                q > small -> { next = cur * 9 / 10; hold = HOLD_WINDOWS }
+                hold > 0 -> hold--
+                q < calm -> next = cur * 108 / 100 + 50_000
+            }
+            val cap = maxOf(minBitrate, if (wan) minOf(target, WAN_BITRATE) else target)
+            return next.coerceIn(minBitrate, cap)
         }
-        return next.coerceIn(minBitrate, cap)
     }
 
-    /** Unacknowledged frame pipeline scaled by RTT so relayed links stay responsive without queue buildup. */
+    /**
+     * Unacknowledged frame pipeline. Video needs about one RTT of frames at [VIDEO_FPS] in flight
+     * plus a few for arrival time, or the window, not the link, caps the frame rate.
+     */
     fun inflightWindow(rttMs: Long, video: Boolean): Int {
-        if (video) return if (rttMs >= 150) 8 else 6
+        if (video) return (rttMs * VIDEO_FPS / 1000 + 3).toInt().coerceIn(6, 16)
         return when {
             rttMs >= 150 -> 6
             rttMs >= 60 -> 4

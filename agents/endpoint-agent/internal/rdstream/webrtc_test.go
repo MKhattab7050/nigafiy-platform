@@ -463,56 +463,100 @@ func TestRTCEncoderFailureEndsPeers(t *testing.T) {
 	}
 }
 
-func TestNextBitrate(t *testing.T) {
-	cases := []struct {
-		cur  int
-		loss float64
-		want int
-	}{
-		{4_000_000, 0.20, 2_800_000},
-		{4_000_000, 0.12, 3_200_000},
-		{4_000_000, 0.05, 4_000_000},
-		{4_000_000, 0.0, 4_400_000},
-		{MaxVideoBitrate, 0.0, MaxVideoBitrate},
-		{MinVideoBitrate, 0.5, MinVideoBitrate},
+// run feeds the same window n times and returns the last bitrate.
+func run(a *LinkAdapt, cur, n int, loss float64, rtt int) int {
+	for range n {
+		cur = a.Step(cur, loss, rtt, 0, false)
 	}
-	for _, c := range cases {
-		if got := NextBitrate(c.cur, c.loss); got != c.want {
-			t.Errorf("NextBitrate(%d, %.2f) = %d, want %d", c.cur, c.loss, got, c.want)
-		}
+	return cur
+}
+
+// Phase 1 (2026-11-28): a phone on 4G over a Tailscale relay, 150-230 ms RTT when the link is
+// empty and 0 % loss, sat at the 300 kbit/s floor. A steady high RTT is the path, not a queue.
+func TestLinkAdaptClimbsOnASteadySlowPath(t *testing.T) {
+	var a LinkAdapt
+	got := run(&a, MinVideoBitrate, 40, 0, 200)
+	if got != WANVideoBitrate {
+		t.Fatalf("steady 200 ms relay, 0 %% loss: bitrate %d, want the WAN cap %d", got, WANVideoBitrate)
+	}
+	if !a.WAN() {
+		t.Fatal("a 200 ms base RTT is not the local network")
 	}
 }
 
-func TestNextBitrateForRelayedHighRTT(t *testing.T) {
-	// Zero packet loss over a TCP relay (Tailscale DERP at 250 ms RTT) must cap & reduce bitrate
-	// instead of climbing to 12 Mbit/s.
-	got := NextBitrateFor(StartVideoBitrate, 0.0, 250, 10, false)
-	if got > 1_200_000 {
-		t.Fatalf("250 ms relay with 0%% loss must cap <= 1.2 Mbit/s, got %d", got)
+func TestLinkAdaptLANClimbsToTheLANCap(t *testing.T) {
+	var a LinkAdapt
+	if got := run(&a, StartVideoBitrate, 60, 0, 5); got != MaxVideoBitrate {
+		t.Fatalf("LAN bitrate %d, want %d", got, MaxVideoBitrate)
 	}
-	// Moderate WAN (150 ms RTT, 0% loss) stays bounded <= 2.5 Mbit/s and does not climb.
-	if got := NextBitrateFor(2_500_000, 0.0, 150, 10, false); got > 2_500_000 {
-		t.Fatalf("150 ms RTT must not climb above 2.5 Mbit/s, got %d", got)
+	if a.WAN() {
+		t.Fatal("5 ms is the local network")
 	}
-	// PLI burst (stalled decoder) backs off even with 0% reported loss.
-	if got := NextBitrateFor(2_500_000, 0.0, 30, 5, true); got != 2_000_000 {
-		t.Fatalf("PLI burst must step down 20%%, got %d", got)
+}
+
+func TestLinkAdaptCutsOnAQueueAndHolds(t *testing.T) {
+	var a LinkAdapt
+	cur := run(&a, 3_000_000, 10, 0, 200)
+	// A queue builds: RTT jumps far above the 200 ms base.
+	cut := a.Step(cur, 0, 900, 0, false)
+	if cut >= cur {
+		t.Fatalf("a growing queue must cut: %d -> %d", cur, cut)
 	}
-	// Low-latency LAN climbs cleanly up to MaxVideoBitrate.
-	if got := NextBitrateFor(2_500_000, 0.0, 10, 2, false); got != 2_750_000 {
-		t.Fatalf("LAN should climb 10%%, got %d", got)
+	// Back to the base: no climb for holdWindows windows (hysteresis).
+	after := cut
+	for i := range holdWindows {
+		next := a.Step(after, 0, 200, 0, false)
+		if next > after {
+			t.Fatalf("climbed %d windows after a cut (%d -> %d), want a hold of %d", i+1, after, next, holdWindows)
+		}
+		after = next
+	}
+}
+
+func TestLinkAdaptCutsOnLossAndPLI(t *testing.T) {
+	var a LinkAdapt
+	if got := a.Step(4_000_000, 0.20, 5, 0, false); got != 3_000_000 {
+		t.Errorf("20 %% loss: %d, want 3000000", got)
+	}
+	var b LinkAdapt
+	if got := b.Step(4_000_000, 0.05, 5, 0, false); got != 3_600_000 {
+		t.Errorf("5 %% loss: %d, want 3600000", got)
+	}
+	var c LinkAdapt
+	if got := c.Step(2_500_000, 0, 30, 5, true); got != 2_250_000 {
+		t.Errorf("PLI burst: %d, want 2250000", got)
+	}
+	var d LinkAdapt
+	if got := d.Step(MinVideoBitrate, 0.5, 5, 0, false); got != MinVideoBitrate {
+		t.Errorf("floor: %d, want %d", got, MinVideoBitrate)
+	}
+}
+
+// A direct path found after the relay lowers the base at once.
+func TestLinkAdaptLearnsAFasterPath(t *testing.T) {
+	var a LinkAdapt
+	run(&a, 1_000_000, 10, 0, 200)
+	run(&a, 1_000_000, 10, 0, 20)
+	if a.WAN() {
+		t.Fatalf("base %d ms after 10 windows at 20 ms, want the local network", a.Base())
 	}
 }
 
 func TestVideoFPSForAndInflightWindowFor(t *testing.T) {
-	if got := VideoFPSFor(60, 4_000_000, 10); got != 60 {
+	if got := VideoFPSFor(60, 4_000_000, false); got != 60 {
 		t.Errorf("LAN fps = %d, want 60", got)
 	}
-	if got := VideoFPSFor(60, 2_000_000, 80); got != 30 {
-		t.Errorf("moderate WAN fps = %d, want 30", got)
+	if got := VideoFPSFor(60, 4_000_000, true); got != 30 {
+		t.Errorf("WAN fps = %d, want 30", got)
 	}
-	if got := VideoFPSFor(60, 1_200_000, 240); got != 20 {
-		t.Errorf("relay fps = %d, want 20", got)
+	if got := VideoFPSFor(60, 1_200_000, true); got != 30 {
+		t.Errorf("relay at 1.2 Mbit/s fps = %d, want 30 (latency alone no longer costs frames)", got)
+	}
+	if got := VideoFPSFor(60, 500_000, true); got != 24 {
+		t.Errorf("500 kbit/s fps = %d, want 24", got)
+	}
+	if got := VideoFPSFor(60, 300_000, true); got != 20 {
+		t.Errorf("floor fps = %d, want 20", got)
 	}
 	if got := InflightWindowFor(20*time.Millisecond, false); got != InflightWindow {
 		t.Errorf("LAN jpeg inflight = %d, want %d", got, InflightWindow)
@@ -520,8 +564,15 @@ func TestVideoFPSForAndInflightWindowFor(t *testing.T) {
 	if got := InflightWindowFor(220*time.Millisecond, false); got != 6 {
 		t.Errorf("high-RTT jpeg inflight = %d, want 6", got)
 	}
-	if got := InflightWindowFor(220*time.Millisecond, true); got != 8 {
-		t.Errorf("high-RTT h264 inflight = %d, want 8", got)
+	if got := InflightWindowFor(20*time.Millisecond, true); got != 6 {
+		t.Errorf("LAN h264 inflight = %d, want 6", got)
+	}
+	// 30 fps over 220 ms needs about 7 frames in flight, plus arrival time.
+	if got := InflightWindowFor(220*time.Millisecond, true); got != 9 {
+		t.Errorf("high-RTT h264 inflight = %d, want 9", got)
+	}
+	if got := InflightWindowFor(2*time.Second, true); got != 16 {
+		t.Errorf("stalled h264 inflight = %d, want the 16 cap", got)
 	}
 }
 

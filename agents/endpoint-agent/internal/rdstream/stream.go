@@ -67,13 +67,12 @@ const CloseSessionEnded = 4000
 const InflightWindow = 2
 
 // InflightWindowFor scales the unacknowledged frame pipeline with link RTT so a 200-300 ms relay
-// can still deliver smooth frame rates without letting queues grow unbounded.
+// can still deliver smooth frame rates without letting queues grow unbounded. Video needs about
+// one RTT of frames at 30 fps in flight plus a few for the time each frame takes to arrive, or the
+// window, not the link, caps the frame rate (19.5 fps over a 220 ms relay in Phase 1).
 func InflightWindowFor(rtt time.Duration, video bool) int {
 	if video {
-		if rtt >= 150*time.Millisecond {
-			return 8
-		}
-		return 6
+		return min(16, max(6, int(rtt.Milliseconds())*WANVideoFPS/1000+3))
 	}
 	switch {
 	case rtt >= 150*time.Millisecond:
@@ -86,7 +85,7 @@ func InflightWindowFor(rtt time.Duration, video bool) int {
 }
 
 // WSVideoBitrate returns the bitrate ceiling for H.264-over-WebSocket matching the chosen quality.
-// The lowest quality still gets 1 Mbit/s: below that VideoFPSFor caps the frame rate at 20, and a
+// The lowest quality still gets 1 Mbit/s: a
 // low quality is chosen for more pictures a second, not fewer (owner, 2026-11-27).
 func WSVideoBitrate(quality int) int {
 	if quality < 25 {
@@ -122,6 +121,7 @@ type stream struct {
 	wsVideoOn     bool
 	wsVideoSeq    uint64
 	wsBitrate     int
+	wsLink        LinkAdapt
 	wsLastAdapt   time.Time
 	wsVideoFails  int
 	chosenScale   float64
@@ -248,6 +248,7 @@ func (s *stream) serve(ctx context.Context) bool {
 			s.adaptWSVideo(now)
 		}
 		wsBitrate := s.wsBitrate
+		wsWAN := s.wsLink.WAN() || (s.wsLink.Base() == 0 && rtt >= lanBaseMs*time.Millisecond)
 		chosenScale := s.chosenScale
 		wsVideoOn := s.wsVideoOn
 		blocked := len(s.inflight) >= InflightWindowFor(rtt, useH264)
@@ -275,7 +276,7 @@ func (s *stream) serve(ctx context.Context) bool {
 		}
 		if useH264 {
 			started := time.Now()
-			fps := VideoFPSFor(30, wsBitrate, int(rtt.Milliseconds()))
+			fps := VideoFPSFor(WANVideoFPS, wsBitrate, wsWAN)
 			h264Gap := time.Second / time.Duration(fps)
 			vf, err := vid.GrabVideo(s.l.req.SessionID, remotedesktop.VideoRequest{
 				Display: display,
@@ -431,6 +432,7 @@ func (s *stream) stopWSVideo(d desktop.Desktop) {
 }
 
 // adaptWSVideo adjusts the H.264-over-WebSocket bitrate from measured ack RTT (caller holds mu).
+// The socket has no loss report; a queue shows as the ack RTT rising above the link's base RTT.
 func (s *stream) adaptWSVideo(now time.Time) {
 	if now.Sub(s.wsLastAdapt) < 1500*time.Millisecond {
 		return
@@ -441,19 +443,11 @@ func (s *stream) adaptWSVideo(now time.Time) {
 		s.wsBitrate = target
 		return
 	}
-	rttMs := int(s.ctrl.RTT().Milliseconds())
-	capRate := min(target, MaxBitrateForRTT(rttMs))
 	cur := s.wsBitrate
 	if cur <= 0 {
-		cur = min(1_800_000, capRate)
+		cur = min(1_800_000, target)
 	}
-	switch {
-	case rttMs > 220:
-		cur = cur * 3 / 4
-	case rttMs > 0 && rttMs < 130:
-		cur = cur*105/100 + 50_000
-	}
-	s.wsBitrate = min(capRate, max(MinVideoBitrate, cur))
+	s.wsBitrate = min(target, s.wsLink.Step(cur, 0, int(s.ctrl.RTT().Milliseconds()), 0, false))
 }
 
 // expireInflight drops frames never acknowledged (caller holds mu).
@@ -464,6 +458,7 @@ func (s *stream) expireInflight(now time.Time) {
 			s.ctrl.Timeout(now)
 			if s.wsVideoOn && s.ctrl.adaptive {
 				s.wsBitrate = max(MinVideoBitrate, s.wsBitrate*3/4)
+				s.wsLink.hold = holdWindows
 			}
 			s.needFull = true // the viewer may have missed it
 		}

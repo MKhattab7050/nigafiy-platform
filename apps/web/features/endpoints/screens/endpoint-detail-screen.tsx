@@ -39,7 +39,6 @@ export function EndpointDetailScreen({ id }: { id: string }) {
   const tx = endpointsText(locale);
   const { can } = useApp();
 
-  const query = useQuery<EndpointDetail>(`/endpoints/${id}`, ['devices'], 4_000);
   const [range, setRange] = useState<'15m' | '1h' | '24h' | '7d'>('1h');
   const seriesQuery = useQuery<{ points: EndpointSeriesPoint[] }>(`/endpoints/${id}/series?range=${range}`, ['devices'], 15_000);
 
@@ -50,6 +49,12 @@ export function EndpointDetailScreen({ id }: { id: string }) {
   const autoConnect = params.get('connect') === '1';
   const rx = reachText(locale);
   const [tab, setTab] = useState<Tab>(() => (autoConnect ? 'desktop' : ((requested as Tab | null) ?? 'overview')));
+  // The device record is large (342 KB for a PC with its processes and services). During a remote
+  // desktop session the picture is what matters, and on a phone away from home every 4 s refresh
+  // competed with it for the 4G link (owner, 2026-11-28, docs/roadmap/2026-11-28-wan-speed.md), as
+  // did a re-read on every devices event.
+  const onDesktop = tab === 'desktop';
+  const query = useQuery<EndpointDetail>(`/endpoints/${id}`, onDesktop ? [] : ['devices'], onDesktop ? 30_000 : 4_000);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState<ApiError | null>(null);

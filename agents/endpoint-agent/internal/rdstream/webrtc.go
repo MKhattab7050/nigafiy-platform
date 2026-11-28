@@ -43,6 +43,8 @@ const (
 	// DefaultVideoFPS caps the video frame rate on a fast LAN link. Higher-latency links (WAN /
 	// Tailscale relay) step down via VideoFPSFor so each frame gets more bits and queues stay empty.
 	DefaultVideoFPS = 60
+	// WANVideoFPS: the frame-rate cap off the local network (owner target 24-30 fps).
+	WANVideoFPS = 30
 	maxSDPBytes     = 64 << 10
 	adaptEvery      = 2 * time.Second
 	// The pump gives up after this many failed grabs in a row (the encoder or capture is broken).
@@ -80,7 +82,7 @@ type rtcManager struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 	bitrate  int
-	rttMs    int
+	link     LinkAdapt
 	videoFPS int
 	encoder  string
 	closed   bool
@@ -555,9 +557,8 @@ func peerRTTMs(pc *webrtc.PeerConnection) int {
 }
 
 // adapt steps the bitrate and target FPS on the worst viewer's RTCP loss/jitter/PLI and ICE RTT.
-// Over relayed TCP tunnels (such as Tailscale DERP), packet loss can stay 0 % while RTT rises to
-// 200-400 ms; adapting on RTT as well prevents the encoder from ramping up to 12 Mbit/s into a
-// congested relay.
+// The RTT counts against the link only where it rises above the link's own base RTT (LinkAdapt):
+// a Tailscale relay over 4G sits at 150-230 ms when empty and still carries 4 Mbit/s.
 func (r *rtcManager) adapt(now time.Time, maxFPS int) {
 	r.mu.Lock()
 	if now.Sub(r.lastAdap) < adaptEvery {
@@ -586,21 +587,15 @@ func (r *rtcManager) adapt(now time.Time, maxFPS int) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if worstRTT > 0 {
-		if r.rttMs == 0 {
-			r.rttMs = worstRTT
-		} else {
-			r.rttMs = (r.rttMs*7 + worstRTT*3) / 10
-		}
-	}
-	r.bitrate = NextBitrateFor(r.bitrate, float64(worstLoss)/256, r.rttMs, int(worstJitter), worstPLI >= 3)
-	r.videoFPS = VideoFPSFor(maxFPS, r.bitrate, r.rttMs)
+	r.bitrate = r.link.Step(r.bitrate, float64(worstLoss)/256, worstRTT, int(worstJitter), worstPLI >= 3)
+	r.videoFPS = VideoFPSFor(maxFPS, r.bitrate, r.link.WAN())
 }
 
 // VideoScale is the video picture's scale. The console's 75 % default is there for JPEG pictures,
 // where every pixel costs bandwidth; H.264 at 75 % only blurs text. So video is full size while the
-// bitrate allows it, smaller only when packet loss or latency has pushed the bitrate down, and the
-// console's 50 % (a deliberate choice for a weak link) is still honoured.
+// bitrate allows it, smaller only when packet loss or a queue has pushed the bitrate down, and the
+// console's 50 % (a deliberate choice for a weak link) is still honoured. A weak link loses size
+// first, then bits, and frame rate last (VideoFPSFor).
 func VideoScale(chosen float64, bitrate int) float64 {
 	s := 1.0
 	switch {
@@ -615,55 +610,23 @@ func VideoScale(chosen float64, bitrate int) float64 {
 	return s
 }
 
-// MaxBitrateForRTT caps H.264 bitrate on higher-latency WAN / relayed links (e.g. Tailscale DERP
-// over mobile CGNAT) while leaving LAN links free up to MaxVideoBitrate.
-func MaxBitrateForRTT(rttMs int) int {
-	switch {
-	case rttMs >= 220:
-		return 1_200_000
-	case rttMs >= 140:
-		return 2_500_000
-	case rttMs >= 80:
-		return 5_000_000
-	default:
-		return MaxVideoBitrate
-	}
-}
-
-// VideoFPSFor picks a frame-rate cap matching the link's latency and bitrate budget so relayed or
-// mobile links spend their bits on crisp frames instead of overflowing buffers at 60 fps.
-func VideoFPSFor(maxFPS, bitrate, rttMs int) int {
+// VideoFPSFor picks the frame-rate cap. On the local network a high bitrate gets the full rate.
+// Off it the rate stays at 30 and steps down to 24 and 20 only when the bitrate is very low, so
+// the latency of a relayed path alone no longer costs frames.
+func VideoFPSFor(maxFPS, bitrate int, wan bool) int {
 	if maxFPS <= 0 {
 		maxFPS = DefaultVideoFPS
 	}
 	switch {
-	case rttMs >= 160 || bitrate < 1_000_000:
+	case bitrate < 400_000:
 		return min(maxFPS, 20)
-	case rttMs >= 60 || bitrate < 2_500_000:
-		return min(maxFPS, 30)
+	case bitrate < 700_000:
+		return min(maxFPS, 24)
+	case wan || bitrate < 2_500_000:
+		return min(maxFPS, WANVideoFPS)
 	default:
 		return maxFPS
 	}
-}
-
-// NextBitrate: more than 10 % loss steps the bitrate down by a fifth, less than 2 % lets it climb
-// by a tenth, within MinVideoBitrate..MaxVideoBitrate.
-func NextBitrate(cur int, loss float64) int {
-	return NextBitrateFor(cur, loss, 0, 0, false)
-}
-
-// NextBitrateFor adapts video bitrate from RTCP loss, ICE RTT, jitter and PLI bursts.
-func NextBitrateFor(cur int, loss float64, rttMs, jitterMs int, pliBurst bool) int {
-	capRate := MaxBitrateForRTT(rttMs)
-	switch {
-	case loss > 0.15 || rttMs >= 260:
-		cur = cur * 7 / 10
-	case loss > 0.10 || (loss > 0.05 && rttMs >= 80) || rttMs >= 180 || jitterMs >= 50 || pliBurst:
-		cur = cur * 4 / 5
-	case loss < 0.02 && rttMs < 120 && jitterMs < 25 && !pliBurst:
-		cur = cur * 11 / 10
-	}
-	return min(capRate, max(MinVideoBitrate, cur))
 }
 
 func (r *rtcManager) pump(ctx context.Context, done chan struct{}) {
@@ -763,7 +726,7 @@ func (r *rtcManager) maybeStats(now time.Time) {
 		worst = max(worst, p.loss.Load())
 	}
 	m := map[string]any{"t": "rtc_stats", "fps": float64(int(float64(r.stats.frames)/el*10)) / 10, "kbps": int(float64(r.stats.bytes) * 8 / 1000 / el),
-		"bitrate_kbps": r.bitrate / 1000, "rtt_ms": r.rttMs, "encoder": r.encoder, "enc_ms": r.stats.encMs, "width": r.stats.w, "height": r.stats.h,
+		"bitrate_kbps": r.bitrate / 1000, "rtt_ms": r.link.RTT(), "base_rtt_ms": r.link.Base(), "encoder": r.encoder, "enc_ms": r.stats.encMs, "width": r.stats.w, "height": r.stats.h,
 		"loss_pct": float64(int(float64(worst)/256*1000)) / 10, "peers": len(r.peers)}
 	r.stats = rtcCounters{since: now}
 	r.mu.Unlock()

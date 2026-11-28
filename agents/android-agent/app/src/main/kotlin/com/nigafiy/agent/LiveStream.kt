@@ -54,6 +54,8 @@ class LiveStream private constructor(
     private var videoFailed = false
     private var droppingVideo = false
     private var lastDropBackoffAt = 0L
+    private val link = VideoPlan.Link()
+    private var lastAdaptAt = 0L
 
     private fun run() {
         try {
@@ -227,8 +229,9 @@ class LiveStream private constructor(
             val limit = VideoPlan.inflightWindow(rttMs, true)
             if (inflight.size >= limit && (!key || inflight.size >= limit + 4)) {
                 droppingVideo = true
-                if (adaptive && now - lastDropBackoffAt >= 1_000L) {
+                if (adaptive && now - lastDropBackoffAt >= 2_000L) {
                     lastDropBackoffAt = now
+                    link.stalled()
                     val next = ((bitrate * 3) / 4).coerceAtLeast(MIN_BITRATE)
                     if (next != bitrate) {
                         bitrate = next
@@ -323,9 +326,12 @@ class LiveStream private constructor(
     private fun adapt() {
         val v = video
         if (v != null) {
-            // Video: the bitrate follows the round trip (a picture that takes long to arrive means
-            // the link is full); back up slowly towards what the chosen quality asks for.
-            val next = VideoPlan.adaptBitrate(bitrate, targetBitrate(), rttMs, MIN_BITRATE)
+            // Video: once a window (not on every ack), the bitrate follows the queue the ack round
+            // trip shows above the link's own base RTT (VideoPlan.Link).
+            val now = System.currentTimeMillis()
+            if (now - lastAdaptAt < ADAPT_EVERY_MS) return
+            lastAdaptAt = now
+            val next = link.step(bitrate, targetBitrate(), rttMs, MIN_BITRATE)
             if (next != bitrate) { bitrate = next; v.bitrate(next) }
             return
         }
@@ -395,6 +401,7 @@ class LiveStream private constructor(
         const val CLOSE_SESSION_ENDED = 4000
         private const val MAX_FPS = 15
         private const val ACK_TIMEOUT_MS = 3_000L
+        private const val ADAPT_EVERY_MS = 1_500L
         private const val DEFAULT_QUALITY = 60
         private const val DEFAULT_SCALE = 0.6
         private const val MIN_BITRATE = VideoPlan.MIN_BITRATE
