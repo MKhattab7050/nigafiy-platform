@@ -132,6 +132,32 @@ export function diagnoseNetwork(f: NetworkFacts): Core {
     };
   }
 
+  // 1a. Gateway and the LAN unreachable while the internet answers: the collector's computer is cut
+  // off from its own network (a guest or isolated Wi-Fi), not a failed router or switch.
+  if (G === 'down' && I === 'ok' && manyDevicesLost) {
+    return {
+      rule: 'cut-off-from-lan',
+      fault_domain: 'lan_segment',
+      title: 'This computer is cut off from its home network',
+      summary: `The collector reaches the internet but not the default gateway, and ${f.devices.went_offline_recently} devices stopped answering it at the same time. The router is working (it carries this computer's internet traffic): this computer is on a part of the network that cannot reach the rest.`,
+      probable_cause: "This computer is on a Wi-Fi network that keeps devices apart: a guest network, or the router's client isolation on that network or band.",
+      confidence: 'high',
+      confidence_reason: 'Internet targets answer through the same router whose LAN address does not, and many local devices went silent at once.',
+      evidence: [
+        ...ev(bad),
+        { label: 'Devices that stopped responding in the last 30 min', value: `${f.devices.went_offline_recently} of ${f.devices.total}`, basis: 'observed' as const, source: 'Discovery sweeps', observed_at: iso(f.now) },
+        ...changeNotes(f),
+      ],
+      ruled_out: ev(good),
+      alternatives: ['A firewall on this computer blocks the local network'],
+      investigation_steps: [
+        'Check which Wi-Fi this computer is on; connect it by cable or to the main Wi-Fi',
+        "In the router's Wi-Fi settings, turn off client isolation (also called AP isolation or Intra-BSS blocking)",
+      ],
+      recommendations: ['Do not restart the router: it is working.', 'The computer that runs Nigafiy is best on a cable.'],
+    };
+  }
+
   // 1. Gateway unreachable.
   if (G === 'down') {
     const lanWide = manyDevicesLost;

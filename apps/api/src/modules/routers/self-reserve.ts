@@ -1,16 +1,16 @@
-import { networkInterfaces } from 'node:os';
 import { auditSystem } from '../../common/audit.ts';
 import type { AuthContext } from '../../common/http.ts';
 import { normalizeMac } from '../../common/net.ts';
 import { type Db, systemPool } from '../../infrastructure/db.ts';
 import { automationEnabled } from '../automation/index.ts';
+import { ownAdapters } from '../outside-access/own-adapters.ts';
 import { capability } from './control.ts';
 import { delivery, loadRouter, queueRequest } from './service.ts';
 import { lanAddressProblem, lanSubnet, loadSettings } from './settings.ts';
 
 // The computer running Nigafiy keeps the same address at home (owner's request 2026-11-28): after a
-// router is read, each of this computer's network adapters on the router's LAN gets its current
-// address reserved there (automation router.reserve_own_address). Once per adapter and router: what
+// router is read, each of this computer's network adapters on the router's LAN (an unplugged cable
+// too, at the address it last had) gets that address reserved there (automation router.reserve_own_address). Once per adapter and router: what
 // was done is kept in site_routers.self_reservations, so a reservation removed by hand stays removed.
 
 export interface OwnAdapter {
@@ -26,22 +26,6 @@ export interface SelfReservation {
   at: string;
 }
 
-/** This computer's IPv4 adapters with a real MAC (no loopback, no Tailscale / carrier NAT, no link-local). */
-function readOwnAdapters(): OwnAdapter[] {
-  const out: OwnAdapter[] = [];
-  for (const list of Object.values(networkInterfaces())) {
-    for (const a of list ?? []) {
-      if (a.family !== 'IPv4' || a.internal) continue;
-      if (!a.mac || a.mac === '00:00:00:00:00:00') continue;
-      if (/^169\.254\./.test(a.address)) continue;
-      const [p0, p1] = a.address.split('.').map(Number);
-      if (p0 === 100 && p1! >= 64 && p1! <= 127) continue;
-      out.push({ mac: normalizeMac(a.mac), ip: a.address });
-    }
-  }
-  return out;
-}
-
 const RETRY_MS = 24 * 3600_000;
 
 /** Status of the reserve requests Nigafiy made (request id → pending / completed / failed / expired). */
@@ -52,11 +36,12 @@ export async function requestStatuses(db: Db, done: Record<string, SelfReservati
   return new Map(rows.map((x) => [x.id, x.status]));
 }
 
-// Under the test runner the machine's real adapters are left out: a test LAN could match them.
-let adapterSource: () => OwnAdapter[] = process.env.VITEST ? () => [] : readOwnAdapters;
-/** Tests: replace where this computer's adapters come from (null: none). */
+// This computer's adapters, unplugged ones included with the address they last had (the cable's
+// .147 while the PC is on Wi-Fi), so both keep their address (own-adapters.ts).
+let adapterSource: () => OwnAdapter[] | Promise<OwnAdapter[]> = () => ownAdapters({ wait: true });
+/** Tests: replace where this computer's adapters come from (null: the shared source, none under vitest). */
 export function setOwnAdapterSource(fn: (() => OwnAdapter[]) | null): void {
-  adapterSource = fn ?? (() => []);
+  adapterSource = fn ?? (() => ownAdapters({ wait: true }));
 }
 
 /**
@@ -69,7 +54,7 @@ export async function reserveOwnAddresses(db: Db, organizationId: string, router
   if (delivery(r) !== 'active') return;
   const { settings } = await loadSettings(db, r.id);
   if (!settings?.reservations) return;
-  const adapters = adapterSource();
+  const adapters = await adapterSource();
   if (!adapters.length) return;
   const lan = await lanSubnet(db, r, settings);
   const mine = adapters.filter((a) => !lanAddressProblem(lan, a.ip));

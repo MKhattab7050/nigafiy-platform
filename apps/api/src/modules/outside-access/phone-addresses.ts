@@ -1,6 +1,7 @@
 import os from 'node:os';
 import { env } from '../../config/env.ts';
 import { tailscaleState } from './detect.ts';
+import { ownAdapters } from './own-adapters.ts';
 
 /**
  * Other addresses a phone can reach this server at when it is away from home (owner, 2026-11-27:
@@ -54,15 +55,14 @@ export interface LocalAddresses {
   hostname: string;
 }
 
-function readLocal(): LocalAddresses {
-  const ips = Object.values(os.networkInterfaces())
-    .flat()
-    .filter((a): a is os.NetworkInterfaceInfo => Boolean(a) && a?.family === 'IPv4' && !a.internal)
-    .map((a) => a.address);
+// Connected adapters first, then an unplugged cable at the address it last had (own-adapters.ts): a
+// phone at home learns the cable's address while the PC is on Wi-Fi, and the other way round.
+async function readLocal(): Promise<LocalAddresses> {
+  const ips = (await ownAdapters({ wait: true })).map((a) => a.ip);
   return { ips, hostname: os.hostname() };
 }
 
-let localSource: () => LocalAddresses = readLocal;
+let localSource: () => LocalAddresses | Promise<LocalAddresses> = readLocal;
 
 /** Tests: where this PC's own addresses come from (null: the real network interfaces). */
 export function setLocalAddressSource(fn: (() => LocalAddresses) | null): void {
@@ -95,7 +95,7 @@ async function refresh(now: number): Promise<string[]> {
     value = [];
   }
   try {
-    value = [...value, ...lanAddressesFrom(localSource(), env.HTTPS_PORT)];
+    value = [...value, ...lanAddressesFrom(await localSource(), env.HTTPS_PORT)];
   } catch {
     /* no interfaces readable: Tailscale only */
   }

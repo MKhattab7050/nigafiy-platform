@@ -211,6 +211,24 @@ export function localizeDiagnosis(d: Diagnosis, locale: Locale): Diagnosis {
       };
     }
 
+    case 'cut-off-from-lan': {
+      const mLost = d.summary.match(/and (\d+) devices stopped/);
+      const lostN = mLost ? mLost[1]! : String(d.affected.devices_offline);
+      return {
+        ...out,
+        title: 'هذا الكمبيوتر مفصول عن شبكة البيت',
+        summary: `المستشعر يصل للإنترنت لكن لا يصل للبوابة الافتراضية، وتوقف ${ltr(lostN)} جهازًا عن الرد عليه في نفس الوقت. الراوتر يعمل (هو الذي يوصّل إنترنت هذا الكمبيوتر): الكمبيوتر على جزء من الشبكة لا يصل لباقيها.`,
+        probable_cause: 'الكمبيوتر متصل بواي فاي يفصل الأجهزة عن بعضها: شبكة ضيوف، أو خاصية عزل الأجهزة في الراوتر على هذه الشبكة أو هذا التردد.',
+        confidence_reason: 'أهداف الإنترنت ترد عبر نفس الراوتر الذي لا يرد عنوانه المحلي، وأجهزة كثيرة في البيت سكتت مرة واحدة.',
+        alternatives: ['جدار حماية على هذا الكمبيوتر يمنع الشبكة المحلية'],
+        investigation_steps: [
+          'شوف الكمبيوتر متصل بأي واي فاي، ووصّله بالكابل أو بالواي فاي الأساسي',
+          'من إعدادات الواي فاي في الراوتر اقفل عزل الأجهزة (اسمه أحيانًا AP Isolation أو Intra-BSS Blocking)',
+        ],
+        recommendations: ['لا تعيد تشغيل الراوتر: هو يعمل.', 'الأفضل أن يكون الكمبيوتر الذي يشغّل Nigafiy متصلًا بالكابل.'],
+      };
+    }
+
     case 'gateway-down-and-devices-lost': {
       const mLost = d.summary.match(/and (\d+) devices stopped/);
       const lostN = mLost ? mLost[1]! : String(d.affected.devices_offline);

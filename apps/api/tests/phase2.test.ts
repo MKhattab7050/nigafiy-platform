@@ -90,6 +90,13 @@ describe('Network Doctor rules', () => {
     // Gateway silent but internet works: probably ICMP filtered → not claimed with high confidence.
     expect(diagnoseNetwork(facts([check('gateway', 'down'), check('internet', 'ok')]))).toMatchObject({ fault_domain: 'local_gateway', confidence: 'medium' });
     expect(diagnoseNetwork(facts([check('gateway', 'down'), check('internet', 'down')], { devices: { total: 20, offline: 9, went_offline_recently: 9 } })).fault_domain).toBe('lan_segment');
+    // Internet answers through the router whose LAN address does not, and the LAN went silent: this
+    // computer is cut off (an isolated Wi-Fi), not a dead router or switch.
+    expect(diagnoseNetwork(facts([check('gateway', 'down'), check('internet', 'ok')], { devices: { total: 20, offline: 9, went_offline_recently: 9 } }))).toMatchObject({
+      rule: 'cut-off-from-lan',
+      fault_domain: 'lan_segment',
+      confidence: 'high',
+    });
 
     expect(diagnoseNetwork(facts([check('gateway', 'ok'), check('internet', 'ok'), check('internet', 'ok'), check('dns', 'down')]))).toMatchObject({ fault_domain: 'dns', confidence: 'high' });
     expect(diagnoseNetwork(facts([check('gateway', 'ok'), check('internet', 'down'), check('internet', 'ok')])).fault_domain).toBe('remote_target');

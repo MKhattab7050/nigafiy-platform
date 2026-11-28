@@ -190,6 +190,17 @@ describe('insights', () => {
     expect(bad.verdict).toBe('urgent');
     expect(bad.insights.map((i) => i.code)).toEqual(['path_gateway_down', 'critical_offline', 'suggest_monitor']);
 
+    // The router does not answer but the internet does: this computer is cut off from the home network.
+    const cut = buildInsights({
+      ...facts,
+      checks: [
+        { ...facts.checks[0]!, state: 'down' },
+        { id: 'i', name: 'Internet', role: 'internet', state: 'ok', last_latency_ms: 30, last_loss_pct: 0 },
+      ],
+    });
+    expect(cut.insights.map((i) => i.code)).toEqual(['path_cut_off']);
+    expect(cut.verdict).toBe('urgent');
+
     // Housekeeping alone (ten new devices not reviewed yet) lowers the score but is never "act now".
     const fresh = Array.from({ length: 10 }, (_, i) => dev({ id: `n${i}`, label: `phone-${i}`, trust: 'unreviewed', first_seen_at: now }));
     const busy = buildInsights({ ...facts, devices: fresh });

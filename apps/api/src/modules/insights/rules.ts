@@ -214,7 +214,25 @@ export function buildInsights(f: InsightFacts): InsightsReport {
   const gw = worst(role('gateway'));
   const inet = worst(role('internet'));
   const dns = worst(role('dns'));
-  if (gw || inet || dns) {
+  // The router does not answer but the internet does: this computer is cut off from its own home
+  // network (2026-11-28: the server PC on a 5 GHz Wi-Fi that keeps devices apart; phones at home could
+  // not reach Nigafiy and the router read failed). Saying "your router is not responding" sent the owner
+  // to the wrong place.
+  const cutOff = gw === 'down' && role('internet').some((c) => c.state === 'ok');
+  if (cutOff) {
+    add({
+      id: 'path',
+      code: 'path_cut_off',
+      severity: 'critical',
+      category: 'availability',
+      title: 'This computer reaches the internet but not your home network',
+      detail:
+        "Usually the Wi-Fi it is on keeps devices apart (a guest network, or the router's isolation setting). Phones and other computers at home cannot reach Nigafiy then. Connect this computer by cable or to the main Wi-Fi, or turn that isolation off on the router.",
+      evidence: f.checks.filter((c) => c.role === 'gateway' || c.role === 'internet').map((c) => `${c.name}: ${c.state}`),
+      actions: [link('open_doctor', 'Diagnose with Network Doctor', '/watch/doctor')],
+    });
+    deduct('path_gateway', 'cut off from the home network', 30);
+  } else if (gw || inet || dns) {
     const what = gw ? 'gateway' : inet ? 'internet' : 'dns';
     const state = (gw ?? inet ?? dns)!;
     add({
