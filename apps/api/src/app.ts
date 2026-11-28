@@ -50,8 +50,6 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
     });
     next();
   });
-  // Admin phones' dashboard pages, before helmet: the web app sends its own security headers.
-  app.use(phoneDashboardProxy());
   app.use(helmet());
 
   // Liveness: the process is up. Readiness: it can reach its database (with a free connection) and,
@@ -83,6 +81,9 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
       legacyHeaders: false,
       message: { error: { code: 'rate_limited', message: 'Too many requests' } },
     });
+
+  // Admin phones' dashboard pages: after helmet, with their own limit (a page load asks for dozens of files).
+  app.use(phoneDashboardProxy(env.WEB_ORIGIN, undefined, limiter(1200, 'phone-dashboard')));
 
   // ── Collector-facing & Endpoint-agent-facing APIs (credential auth, own body limit) ──
   for (const m of modules) {

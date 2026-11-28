@@ -21,8 +21,17 @@ import { SESSION_COOKIE, readCookie } from './session.ts';
  *
  * Only on the HTTPS listener, and only when the web app is on this computer (WEB_ORIGIN is a
  * loopback http address, as on an installed copy).
+ *
+ * app.ts mounts it after helmet, so the pages get the API's security headers too; the web app's own
+ * headers win where both send one, and helmet's Content-Security-Policy is dropped because the web
+ * app writes its own per-request policy (with a script nonce) on every page. `limit` (the rate
+ * limiter) runs before the session lookup, so a flood of made-up cookies cannot reach the database.
  */
-export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN, isHome: (ip: string | undefined) => boolean = isHomeAddress): RequestHandler {
+export function phoneDashboardProxy(
+  webOrigin: string = env.WEB_ORIGIN,
+  isHome: (ip: string | undefined) => boolean = isHomeAddress,
+  limit?: RequestHandler,
+): RequestHandler {
   let target: URL | null = null;
   try {
     const u = new URL(webOrigin);
@@ -57,6 +66,14 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN, isHome: 
     const home = isHome(req.socket.remoteAddress);
     const token = readCookie(req, SESSION_COOKIE);
     if (!token && !home) return next();
+    if (limit) {
+      void Promise.resolve(limit(req, res, (err?: unknown) => (err ? next(err) : forward(req, res, next, home, token)))).catch(next);
+      return;
+    }
+    forward(req, res, next, home, token);
+  };
+
+  function forward(req: Request, res: Response, next: NextFunction, home: boolean, token: string | undefined): void {
     (home ? Promise.resolve(true) : isPhoneSession(token!))
       .then((ok) => {
         if (!ok) return next();
@@ -70,6 +87,7 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN, isHome: 
             if (typeof loc === 'string' && req.headers.host && loc.startsWith(target!.origin)) {
               up.headers.location = `https://${req.headers.host}${loc.slice(target!.origin.length)}`;
             }
+            res.removeHeader('Content-Security-Policy'); // helmet's; the web app sends its own
             res.writeHead(up.statusCode ?? 502, up.headers);
             up.pipe(res);
           },
@@ -82,7 +100,7 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN, isHome: 
         req.pipe(upstream);
       })
       .catch(next);
-  };
+  }
 }
 
 function ipv4ToInt(ip: string): number | null {
