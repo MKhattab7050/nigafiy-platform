@@ -135,8 +135,36 @@ class Gateway(
             c.requestMethod = "POST"
             c.doOutput = true
             c.setRequestProperty("Content-Type", "application/json")
-            c.outputStream.use { it.write("{}".toByteArray()) }
+            // The features tell the server which faster paths this agent takes ([FileRelay]).
+            c.outputStream.use { it.write(Json.write(mapOf("features" to FileRelay.FEATURES)).toByteArray()) }
             return Protocol.parseCommands(Json.write(answer(c)))
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    /** GET of raw bytes (a file transfer piece, at most [FileRelay.MAX_PIECE]). */
+    fun getBytes(path: String): ByteArray {
+        val c = open(path, 60_000)
+        try {
+            val status = c.responseCode
+            if (status !in 200..299) throw GatewayError(status, null, "HTTP $status")
+            return c.inputStream.use { it.readBytes(limit = FileRelay.MAX_PIECE) }
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    /** POST of raw bytes (a file transfer piece). */
+    fun postBytes(path: String, data: ByteArray) {
+        val c = open(path, 60_000)
+        try {
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setFixedLengthStreamingMode(data.size)
+            c.setRequestProperty("Content-Type", "application/octet-stream")
+            c.outputStream.use { it.write(data) }
+            answer(c)
         } finally {
             c.disconnect()
         }

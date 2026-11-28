@@ -35,8 +35,8 @@ Follows `2026-11-28-file-manager-pro.md`, which made very large transfers reliab
 - **Old agents keep working.** A new agent says so in its command poll (`features: ["fs_relay"]`,
   kept in `endpoints.agent_features`). For an agent that did not, the API strips `relay` from a
   download and puts the stored bytes back into the upload command as `data_base64` (the old path).
-  A new agent whose relay upload fails falls back to base64 in the result. The Android agent and
-  Quick Support stay on the old path for now.
+  A new agent whose relay upload fails falls back to base64 in the result. The Android agent does
+  the same from 1.0.10 (`core/FileRelay.kt`); Quick Support stays on the old path.
 - Integrity checks are unchanged: per-chunk SHA-256, source time and size, final SHA-256 on the
   receiver.
 
@@ -74,8 +74,10 @@ What is covered by tests:
   refuses a short or missing one before writing; sends a download piece apart and falls back to
   base64 when the server refuses it; leaves other commands alone.
 
-To benefit, the PCs need the new agent (release 1.0.10). Android phones and Quick Support keep the
-old path, which still works.
+To benefit, PCs and phones need the new agent (release 1.0.10). Quick Support and older agents keep
+the old path, which still works. Phone side tested in `core/src/test/.../FileRelayTest.kt` (the poll
+announces `fs_relay`; an upload piece is fetched and checked before writing; a download piece is
+sent apart and stays in the result if the server refuses it).
 
 ## In the browser (measured 2026-11-28, one PC, isolated stack)
 

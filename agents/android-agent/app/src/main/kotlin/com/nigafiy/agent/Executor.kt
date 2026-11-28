@@ -12,6 +12,7 @@ import com.nigafiy.agent.admin.NigafiyAdminReceiver
 import com.nigafiy.agent.core.AgentCommand
 import com.nigafiy.agent.core.CommandOutcome
 import com.nigafiy.agent.core.CommandRules
+import com.nigafiy.agent.core.FileRelay
 import com.nigafiy.agent.core.FsError
 import com.nigafiy.agent.core.Gateway
 import com.nigafiy.agent.core.Gestures
@@ -77,7 +78,7 @@ class Executor(private val ctx: Context, private val store: Store, private val f
                     Result(CommandOutcome(cmd.id, true, output = out, data = frame))
                 }
                 is AgentCommand.Input -> input(cmd)
-                is AgentCommand.FsOp -> fsOp(cmd)
+                is AgentCommand.FsOp -> fsOp(cmd, gateway)
                 is AgentCommand.Notify -> {
                     if (!Notices.allowed(ctx)) return Result(CommandOutcome(cmd.id, false, error = NOTIFICATIONS_OFF))
                     Notices.message(ctx, cmd.id, cmd.title, cmd.message)
@@ -129,13 +130,14 @@ class Executor(private val ctx: Context, private val store: Store, private val f
 
     private val storage by lazy { SharedStorage(Environment.getExternalStorageDirectory()) }
 
-    private fun fsOp(cmd: AgentCommand.FsOp): Result {
+    private fun fsOp(cmd: AgentCommand.FsOp, gateway: Gateway): Result {
         if (Build.VERSION.SDK_INT < 30) return Result(CommandOutcome(cmd.id, false, error = "android_files_unsupported: the file manager needs Android 11 or newer"))
         if (!Environment.isExternalStorageManager()) {
             return Result(CommandOutcome(cmd.id, false, error = "android_files_not_allowed: All files access is not allowed on the phone yet (the person allows it in the Nigafiy app)"))
         }
         return try {
-            val res = storage.execute(cmd.request)
+            // Transfer pieces move apart from the command when the server sent them so (FileRelay).
+            val res = FileRelay.send(cmd.id, cmd.request, storage.execute(FileRelay.resolve(cmd.request, gateway)), gateway)
             Result(CommandOutcome(cmd.id, true, output = (res["message"] as? String) ?: "fs ${cmd.request.op} ok", data = res))
         } catch (e: FsError) {
             Result(CommandOutcome(cmd.id, false, error = e.message ?: "file operation refused"))

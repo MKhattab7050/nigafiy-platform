@@ -30,6 +30,11 @@ data class FsRequest(
     /** hash only: size, modification time and resume point, without reading the file. */
     val sizeOnly: Boolean = false,
     val allowedRoots: List<String> = emptyList(),
+    /** upload: the piece's bytes wait on the server under this id ([FileRelay]); [dataLen] is their size. */
+    val dataRef: String? = null,
+    val dataLen: Long? = null,
+    /** download: send the bytes to the server apart from the result ([FileRelay]). */
+    val relay: Boolean = false,
 ) {
     companion object {
         val OPS = setOf("roots", "list", "walk", "search", "mkdir", "touch", "rename", "copy", "move", "delete", "download", "upload", "hash")
@@ -54,6 +59,9 @@ data class FsRequest(
                 overwrite = p.bool("overwrite") ?: false,
                 sizeOnly = p.bool("size_only") ?: false,
                 allowedRoots = strings("allowed_roots").take(20),
+                dataRef = p.str("data_ref"),
+                dataLen = p.long("data_len"),
+                relay = p.bool("relay") ?: false,
             )
         }
     }

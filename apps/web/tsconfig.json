@@ -39,7 +39,9 @@
     ".next-e2e/types/**/*.ts",
     ".next-e2e/dev/types/**/*.ts",
     ".next-standalone-check/types/**/*.ts",
-    ".next-standalone-check/dev/types/**/*.ts"
+    ".next-standalone-check/dev/types/**/*.ts",
+    ".next-fm/types/**/*.ts",
+    ".next-fm/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
