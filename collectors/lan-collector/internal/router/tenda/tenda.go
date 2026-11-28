@@ -63,6 +63,11 @@ func New(t router.Target, creds router.CredentialSource) (*Driver, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Tenda answers POST /login/Auth with a 302 (to the main page on success, back to the login page
+	// on failure) that carries the session cookie. The shared client turns any redirect into an
+	// error, so that answer would never be seen: here the 302 itself is returned to the driver. It is
+	// still never followed, and the client still dials only the router.
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &Driver{target: t, base: t.BaseURL(), http: c, creds: creds}, nil
 }
 
@@ -74,7 +79,15 @@ func (d *Driver) wipeSession() {
 	d.loggedIn = false
 }
 
+func isRedirect(st int) bool { return st >= 300 && st < 400 }
+
 func (d *Driver) rawDo(ctx context.Context, op, method, path string, form url.Values) (int, []byte, error) {
+	st, _, raw, err := d.rawDoLoc(ctx, op, method, path, form)
+	return st, raw, err
+}
+
+// rawDoLoc is rawDo that also returns the Location header of a (never followed) redirect.
+func (d *Driver) rawDoLoc(ctx context.Context, op, method, path string, form url.Values) (int, string, []byte, error) {
 	var body []byte
 	if form != nil {
 		body = []byte(form.Encode())
@@ -82,7 +95,7 @@ func (d *Driver) rawDo(ctx context.Context, op, method, path string, form url.Va
 	}
 	req, err := http.NewRequestWithContext(ctx, method, d.base+path, bytes.NewReader(body))
 	if err != nil {
-		return 0, nil, router.Errorf(router.ErrInvalidArgument, op, "bad request")
+		return 0, "", nil, router.Errorf(router.ErrInvalidArgument, op, "bad request")
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -96,17 +109,17 @@ func (d *Driver) rawDo(ctx context.Context, op, method, path string, form url.Va
 	}
 	resp, err := d.http.Do(req)
 	if err != nil {
-		return 0, nil, router.TransportError(op, err)
+		return 0, "", nil, router.TransportError(op, err)
 	}
 	defer resp.Body.Close()
 	raw, err := router.ReadBody(resp.Body)
 	if err != nil {
-		return resp.StatusCode, nil, err
+		return resp.StatusCode, "", nil, err
 	}
 	for _, c := range resp.Cookies() {
 		d.cookies = append(d.cookies, []byte(c.Name+"="+c.Value))
 	}
-	return resp.StatusCode, raw, nil
+	return resp.StatusCode, resp.Header.Get("Location"), raw, nil
 }
 
 func (d *Driver) login(ctx context.Context) error {
@@ -124,9 +137,23 @@ func (d *Driver) login(ctx context.Context) error {
 	form := url.Values{"username": {user}, "password": {string(enc)}}
 	router.Zero(enc)
 
-	st, raw, err := d.rawDo(ctx, "login", http.MethodPost, "/login/Auth", form)
+	d.wipeSession()
+	st, loc, raw, err := d.rawDoLoc(ctx, "login", http.MethodPost, "/login/Auth", form)
 	if err != nil {
 		return err
+	}
+	if isRedirect(st) {
+		// A redirect is the answer itself: back to the login page = refused; anywhere else with a
+		// session cookie = logged in.
+		if strings.Contains(strings.ToLower(loc), "login") {
+			d.wipeSession()
+			return &router.Error{Kind: router.ErrBadCredentials, Op: "login", Detail: "Tenda sent the login page back"}
+		}
+		if len(d.cookies) == 0 {
+			return &router.Error{Kind: router.ErrBadCredentials, Op: "login", Detail: "no session cookie returned"}
+		}
+		d.loggedIn = true
+		return nil
 	}
 	if st == http.StatusUnauthorized || st == http.StatusForbidden {
 		return &router.Error{Kind: router.ErrBadCredentials, Op: "login", Detail: fmt.Sprintf("HTTP %d", st)}
@@ -140,7 +167,7 @@ func (d *Driver) login(ctx context.Context) error {
 			return &router.Error{Kind: router.ErrBadCredentials, Op: "login", Detail: "Tenda login error " + ec}
 		}
 	}
-	if len(d.cookies) == 0 && st != http.StatusOK && st != http.StatusFound {
+	if len(d.cookies) == 0 && st != http.StatusOK {
 		return &router.Error{Kind: router.ErrBadCredentials, Op: "login", Detail: "no session cookie returned"}
 	}
 	d.loggedIn = true
@@ -157,7 +184,7 @@ func (d *Driver) getJSON(ctx context.Context, op, path string) (map[string]any, 
 	if err != nil {
 		return nil, err
 	}
-	if st == http.StatusUnauthorized || st == http.StatusForbidden {
+	if st == http.StatusUnauthorized || st == http.StatusForbidden || isRedirect(st) { // a redirect = session gone, sent to the login page
 		d.wipeSession()
 		if err := d.login(ctx); err != nil {
 			return nil, err

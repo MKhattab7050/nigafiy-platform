@@ -25,6 +25,12 @@ type fakeTenda struct {
 	lastQos string
 	logouts int
 	srv     *httptest.Server
+	// redirectLogin: answer like real Tenda firmware — POST /login/Auth is a 302 (to /main.html with
+	// the session cookie on success, to /login.html on failure); a request without a session is a
+	// 302 to /login.html.
+	redirectLogin bool
+	session       string // the accepted session cookie value
+	followed      int    // requests for a redirect target (must stay 0: redirects are never followed)
 }
 
 func newFakeTenda(t *testing.T) *fakeTenda {
@@ -48,6 +54,28 @@ func (f *fakeTenda) handle(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	w.Header().Set("Content-Type", "application/json")
 
+	sess := f.session
+	if sess == "" {
+		sess = "tenda-sess-1"
+	}
+	if r.URL.Path == "/main.html" || r.URL.Path == "/login.html" {
+		f.followed++
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if f.redirectLogin && r.URL.Path == "/login/Auth" {
+		if r.FormValue("password") != base64.StdEncoding.EncodeToString([]byte("tenda-pass")) {
+			http.Redirect(w, r, "/login.html?0", http.StatusFound)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: "password", Value: sess, Path: "/"})
+		http.Redirect(w, r, "/main.html", http.StatusFound)
+		return
+	}
+	if f.redirectLogin && !strings.Contains(r.Header.Get("Cookie"), sess) {
+		http.Redirect(w, r, "/login.html", http.StatusFound)
+		return
+	}
 	if r.URL.Path == "/login/Auth" {
 		if r.FormValue("password") != base64.StdEncoding.EncodeToString([]byte("tenda-pass")) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"errCode": 1})
@@ -62,7 +90,7 @@ func (f *fakeTenda) handle(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	if !strings.Contains(r.Header.Get("Cookie"), "tenda-sess-1") {
+	if !strings.Contains(r.Header.Get("Cookie"), sess) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -162,5 +190,41 @@ func TestTendaBadAuth(t *testing.T) {
 	defer d.Close(context.Background())
 	if _, err := d.Identify(context.Background()); !errors.Is(err, router.ErrBadCredentials) {
 		t.Fatalf("want ErrBadCredentials, got %v", err)
+	}
+}
+
+// Real Tenda firmware answers the login with a 302 that carries the session cookie.
+func TestTendaRedirectLogin(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeTenda(t)
+	f.redirectLogin = true
+	d := openTestTenda(t, f, "tenda-pass")
+	info, err := d.Identify(ctx)
+	if err != nil || info.Model != "AC10" {
+		t.Fatalf("302 login: %+v %v", info, err)
+	}
+	// The session expires; the router sends data calls to the login page → one new login.
+	f.mu.Lock()
+	f.session = "tenda-sess-2"
+	f.mu.Unlock()
+	if ch, err := d.Block(ctx, "aa:bb:cc:00:00:01"); err != nil || !ch.Applied {
+		t.Fatalf("block after the session expired: %+v %v", ch, err)
+	}
+	if err := d.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if f.followed != 0 {
+		t.Fatalf("a redirect was followed %d times", f.followed)
+	}
+
+	bad := newFakeTenda(t)
+	bad.redirectLogin = true
+	d2 := openTestTenda(t, bad, "wrong")
+	defer d2.Close(ctx)
+	if _, err := d2.Identify(ctx); !errors.Is(err, router.ErrBadCredentials) {
+		t.Fatalf("302 back to the login page: want ErrBadCredentials, got %v", err)
+	}
+	if bad.followed != 0 {
+		t.Fatalf("a redirect was followed %d times", bad.followed)
 	}
 }
