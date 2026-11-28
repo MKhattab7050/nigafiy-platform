@@ -59,6 +59,7 @@ class Executor(private val ctx: Context, private val store: Store, private val f
                 is AgentCommand.Release -> Result(CommandOutcome(cmd.id, true, output = "Nigafiy is no longer the Device Owner"), after = {
                     @Suppress("DEPRECATION") dpm.clearDeviceOwnerApp(ctx.packageName)
                     store.forget()
+                    DashboardScreen.clearWebData(ctx)
                 })
                 is AgentCommand.SessionOpen -> sessionOpen(cmd)
                 is AgentCommand.SessionClose -> {
