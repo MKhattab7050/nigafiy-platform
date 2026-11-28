@@ -228,6 +228,8 @@ export function useTouchControl(host: TouchHost) {
       if (e.pointerType !== 'touch') return;
       setTouchSeen(true);
       if (!active) return;
+      // A box left focused without the keyboard would make Android show it on this tap.
+      if (!kb.current.wanted && document.activeElement === boxRef.current) boxRef.current?.blur();
       e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
       gestures.down(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -283,6 +285,8 @@ export function useTouchControl(host: TouchHost) {
   const boxProps = {
     ref: boxRef,
     defaultValue: SENTINEL,
+    inputMode: 'none' as const,
+    onBlur: () => boxBlur(),
     onInput: (e: React.FormEvent<HTMLTextAreaElement>) => {
       sendSteps(e.currentTarget.value);
       const v = e.currentTarget.value;
@@ -328,15 +332,49 @@ export function useTouchControl(host: TouchHost) {
   };
   const combo = (keys: string[]) => send({ kind: 'key_combo', keys });
 
+  // The phone keyboard shows only when the person taps "Keyboard". The hidden box keeps
+  // inputmode="none" otherwise: Android shows the keyboard again on any tap while a text box has
+  // focus, and closing the keyboard with Back leaves the box focused (owner, 2026-11-28: "the
+  // keyboard keeps popping up by itself or when I tap anything").
+  const kb = useRef({ wanted: false, shown: false, base: 0 });
+  const closeKeyboard = useCallback(() => {
+    kb.current.wanted = false;
+    kb.current.shown = false;
+    const b = boxRef.current;
+    if (!b) return;
+    b.inputMode = 'none';
+    if (document.activeElement === b) b.blur();
+  }, []);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const k = kb.current;
+      if (!k.wanted) return;
+      // The keyboard takes at least ~120 px; when the view grows back, it was closed (Back key).
+      if (vv.height < k.base - 120) k.shown = true;
+      else if (k.shown && vv.height > k.base - 60) closeKeyboard();
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, [closeKeyboard]);
+
   const openKeyboard = () => {
     const b = boxRef.current;
     if (!b) return;
-    if (document.activeElement === b) {
-      b.blur();
+    if (kb.current.wanted && document.activeElement === b) {
+      closeKeyboard();
       return;
     }
     resetBox();
+    kb.current = { wanted: true, shown: false, base: window.visualViewport?.height ?? window.innerHeight };
+    b.inputMode = 'text';
     b.focus({ preventScroll: true });
+  };
+  const boxBlur = () => {
+    kb.current.wanted = false;
+    kb.current.shown = false;
+    if (boxRef.current) boxRef.current.inputMode = 'none';
   };
 
   return {
