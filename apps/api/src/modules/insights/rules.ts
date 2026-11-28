@@ -231,7 +231,7 @@ export function buildInsights(f: InsightFacts): InsightsReport {
       evidence: f.checks.filter((c) => c.role === 'gateway' || c.role === 'internet').map((c) => `${c.name}: ${c.state}`),
       actions: [link('open_doctor', 'Diagnose with Network Doctor', '/watch/doctor')],
     });
-    deduct('path_gateway', 'cut off from the home network', 30);
+    deduct('path_cut_off', 'cut off from the home network', 30);
   } else if (gw || inet || dns) {
     const what = gw ? 'gateway' : inet ? 'internet' : 'dns';
     const state = (gw ?? inet ?? dns)!;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Insight, InsightsReport } from '@nigafiy/shared-types';
-import { MAX_STEPS, nextSteps } from './guidance-text.ts';
+import { MAX_STEPS, nextSteps, reasonText, stepText } from './guidance-text.ts';
 
 const insight = (id: string, code: string): Insight =>
   ({
@@ -41,6 +41,14 @@ describe('nextSteps', () => {
       steps.map((s) => s.insight.id),
       ['gw'],
     );
+  });
+
+  it('says plainly when this computer is cut off from the home network', () => {
+    assert.equal(stepText('path_cut_off')?.text, 'dash.next.path_cut_off');
+    assert.equal(stepText('path_gateway_down')?.text, 'dash.next.path');
+    const why = (code: string, reason: string) => reasonText({ code, reason, points: 30 } as unknown as InsightsReport['score_breakdown'][number]);
+    assert.equal(why('path_cut_off', 'cut off from the home network')?.key, 'dash.why.path_cut_off');
+    assert.equal(why('path_gateway', 'gateway down')?.key, 'dash.why.path_gateway.down');
   });
 
   it('still stops at three steps and counts the rest', () => {

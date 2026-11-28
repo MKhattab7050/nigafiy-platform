@@ -24,6 +24,7 @@ const STEP: Record<string, StepText> = {
   unwanted_online: { text: 'dash.next.unwanted_online', button: 'dash.next.unwanted_online.do' },
   unwanted_blockable: { text: 'dash.next.unwanted_blockable', button: 'dash.next.unwanted_blockable.do' },
   path: { text: 'dash.next.path', button: 'dash.next.path.do' },
+  path_cut_off: { text: 'dash.next.path_cut_off', button: 'dash.next.path.do' },
   open_incidents: { text: 'dash.next.open_incidents', button: 'dash.next.open_incidents.do', plural: true },
   certificate_expiring: { text: 'dash.next.certificate_expiring', button: 'dash.next.certificate_expiring.do', plural: true },
   access_not_running: { text: 'dash.next.access_not_running', button: 'dash.next.access_not_running.do' },
@@ -35,7 +36,7 @@ const STEP: Record<string, StepText> = {
 };
 
 /** path_gateway_down, path_internet_degraded… share one step: "find the cause" in Network Doctor. */
-const stepKey = (code: string) => (code.startsWith('path_') ? 'path' : code);
+const stepKey = (code: string) => (code !== 'path_cut_off' && code.startsWith('path_') ? 'path' : code);
 
 export function stepText(code: string): StepText | null {
   return STEP[stepKey(code)] ?? null;
@@ -127,6 +128,7 @@ const PATH: Record<string, Key> = {
  * reporting", "gateway down"); the count and the name are read back out of them.
  */
 export function reasonText(d: InsightsReport['score_breakdown'][number]): ReasonText | null {
+  if (d.code === 'path_cut_off') return { key: 'dash.why.path_cut_off', params: {} };
   if (d.code.startsWith('path_')) {
     const key = PATH[`${d.code}.${/\bdown\b/.test(d.reason) ? 'down' : 'degraded'}`];
     return key ? { key, params: {} } : null;

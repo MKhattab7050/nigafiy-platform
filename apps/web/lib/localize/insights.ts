@@ -36,6 +36,7 @@ export function localizeDeductionReason(item: { code: string; reason: string }, 
     const m = reason.match(/^Switch (.+) unreadable$/);
     return m ? `تعذّرت قراءة السويتش ${m[1]}` : 'تعذّرت قراءة سويتش';
   }
+  if (code === 'path_cut_off') return 'الكمبيوتر مفصول عن شبكة البيت';
   if (code === 'path_gateway') return reason.includes('down') ? 'الراوتر لا يستجيب' : 'أداء الراوتر متراجع';
   if (code === 'path_internet') return reason.includes('down') ? 'الإنترنت مقطوع' : 'جودة الإنترنت متراجعة';
   if (code === 'path_dns') return reason.includes('down') ? 'فشل ترجمة الأسماء (DNS)' : 'بطء ترجمة الأسماء (DNS)';
