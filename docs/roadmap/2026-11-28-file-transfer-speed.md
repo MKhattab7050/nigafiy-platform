@@ -112,3 +112,23 @@ so these are a floor, not what two real PCs on a home network will see. The next
 write command's round trip (~60–70 ms per 1 MiB piece); 2 MiB write pieces would halve it, but old
 agents and phones get the bytes inlined in the command at a 1 MiB limit, so that needs the web to
 know the device's features first. Not done.
+
+## Real devices (1.0.10, measured 2026-11-28 evening)
+
+Installed 1.0.10 server on the PC, A36 on the same home Wi-Fi (2.4 GHz 802.11n, link 130 Mbit/s;
+the PC is on Wi-Fi too). Transfers between this PC's browser and the phone, same protocol as the
+web engine, 32–64 MiB, every copy byte-identical:
+
+- Raw Wi-Fi between the two, no Nigafiy (curl on the phone against a plain HTTP server on the PC):
+  3.0–3.2 MB/s PC→phone, 2.8 MB/s phone→PC. This link, not the server, is the ceiling here.
+- The phone ran file pieces one at a time, so the web's three download pieces waited behind each
+  other (~1.75 s each). Download pieces now have their own lane of three threads on the phone
+  (`WorkLanes.kt`, `Lane.READ`); uploads stay in order.
+- Results swing with the Wi-Fi more than with the path (the same run gave 2.2 MB/s, then 1.3):
+  download from the phone 1.4–2.2 MB/s, upload to it 0.8–1.8 MB/s, old and new paths within that
+  spread. On this phone the side channel mostly saves the server's database and CPU; the speed is
+  the Wi-Fi's.
+
+Not measured: PC agent ↔ phone device-to-device, because the PC's own agent was offline: it is
+installed with a fixed server address (192.168.1.147) and the PC's address changed to .138. The
+Windows agent has no list of fallback addresses like the phone's.
