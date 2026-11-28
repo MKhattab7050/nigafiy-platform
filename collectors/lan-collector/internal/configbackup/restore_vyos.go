@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 // VyOS / Ubiquiti EdgeOS restore with "commit-confirm".
@@ -48,7 +49,10 @@ const (
 var (
 	vyosErrorRe   = regexp.MustCompile(`(?im)^.*(set failed|delete failed|commit failed|is not valid|invalid command|invalid value|error:|failed to|cannot be|not allowed).*$`)
 	vyosProceedRe = regexp.MustCompile(`(?i)proceed\?|\[confirm\]|\[y/n\]`)
-	vyosSetLineRe = regexp.MustCompile(`^set [A-Za-z0-9_-]+( |$)`)
+	// A bare (unquoted) word: only characters the VyOS / EdgeOS shell (vbash) gives no meaning to —
+	// no ; | & $ ` ( ) < > * ? [ ] { } ~ ! # \ " ' or whitespace.
+	vyosBareRe = regexp.MustCompile(`^[A-Za-z0-9._:/@+,=%-]+$`)
+	vyosNodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
 func vyosLines(text string) []string {
@@ -100,11 +104,60 @@ func validVyOSConfig(cfg string) bool {
 		return false
 	}
 	for _, l := range lines {
-		if !vyosSetLineRe.MatchString(l) {
+		if !validVyOSSetLine(l) {
 			return false
 		}
 	}
 	return true
+}
+
+// validVyOSSetLine is a strict allowlist for one line typed into the device's configuration shell.
+// VyOS / EdgeOS configuration mode is a bash shell (vbash), so every line is parsed by a shell: the
+// line must be "set", a configuration node, then words that are either bare (vyosBareRe) or
+// single-quoted. Inside single quotes bash expands nothing; a single quote cannot occur inside them,
+// so the quoted text cannot end the quoting early. Control characters are refused everywhere (a tab
+// would trigger completion, ^C / ^D / ESC drive the terminal, CR / LF end the line). Anything else —
+// ; | & $() backticks, redirections, double quotes, backslashes, globs — refuses the whole version.
+func validVyOSSetLine(l string) bool {
+	for _, r := range l {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == utf8.RuneError {
+			return false
+		}
+	}
+	if !utf8.ValidString(l) {
+		return false
+	}
+	var words []string
+	for i := 0; i < len(l); {
+		switch {
+		case l[i] == ' ':
+			i++
+		case l[i] == '\'':
+			end := strings.IndexByte(l[i+1:], '\'')
+			if end < 0 {
+				return false // unterminated quote
+			}
+			j := i + 1 + end + 1
+			if j < len(l) && l[j] != ' ' {
+				return false // 'abc'def — glued words
+			}
+			words = append(words, l[i:j])
+			i = j
+		default:
+			j := strings.IndexByte(l[i:], ' ')
+			if j < 0 {
+				j = len(l)
+			} else {
+				j += i
+			}
+			if !vyosBareRe.MatchString(l[i:j]) {
+				return false
+			}
+			words = append(words, l[i:j])
+			i = j
+		}
+	}
+	return len(words) >= 2 && words[0] == "set" && vyosNodeRe.MatchString(words[1])
 }
 
 type vyosSession struct {

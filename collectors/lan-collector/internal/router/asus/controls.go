@@ -260,7 +260,12 @@ func (d *Driver) readPortForwards(ctx context.Context) ([]router.PortForward, er
 	if err != nil {
 		return nil, err
 	}
-	rows := parseVTSList(str(m["vts_rulelist"]))
+	return portForwardsFrom(parseVTSList(str(m["vts_rulelist"]))), nil
+}
+
+// portForwardsFrom lists the rules Nigafiy understands. A row it cannot read is skipped, so a rule's
+// ID is its position in rows (1-based), not its position in the returned list.
+func portForwardsFrom(rows []vtsRow) []router.PortForward {
 	out := make([]router.PortForward, 0, len(rows))
 	for i, r := range rows {
 		proto, ok := router.NormalizeProtocol(r.proto)
@@ -292,7 +297,7 @@ func (d *Driver) readPortForwards(ctx context.Context) ([]router.PortForward, er
 			Owner:         owner,
 		})
 	}
-	return out, nil
+	return out
 }
 
 func (d *Driver) Settings(ctx context.Context) (router.Settings, error) {
@@ -471,25 +476,26 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 }
 
 func (d *Driver) RemovePortForward(ctx context.Context, rule router.PortForward) (router.Change, error) {
-	existing, err := d.readPortForwards(ctx)
-	if err != nil {
-		return router.Change{}, err
-	}
+	// One read: the rules and the rows they index come from the same vts_rulelist.
 	m, err := d.appGet(ctx, "remove_port_forward", "nvram_get(vts_rulelist)")
 	if err != nil {
 		return router.Change{}, err
 	}
 	rows := parseVTSList(str(m["vts_rulelist"]))
-	for i, e := range existing {
+	for _, e := range portForwardsFrom(rows) {
 		if e.ID != rule.ID {
 			continue
 		}
 		if !router.SameRule(e, rule) {
 			return router.Change{}, router.Errorf(router.ErrRejected, "remove_port_forward", "Asuswrt rule %s changed since it was last read", rule.ID)
 		}
-		if i < len(rows) {
-			rows = append(rows[:i], rows[i+1:]...)
+		// The ID is the row's position in vts_rulelist; rows Nigafiy skips (unreadable protocol or
+		// port) stay in place, so the filtered list's index would point at another rule.
+		idx, err := strconv.Atoi(e.ID)
+		if err != nil || idx < 1 || idx > len(rows) {
+			return router.Change{}, router.Errorf(router.ErrProtocol, "remove_port_forward", "Asuswrt rule %s has no row in vts_rulelist", e.ID)
 		}
+		rows = append(rows[:idx-1], rows[idx:]...)
 		if err := d.applyNVRAM(ctx, "remove_port_forward", "restart_firewall", map[string]string{
 			"vts_rulelist": renderVTSList(rows),
 		}); err != nil {

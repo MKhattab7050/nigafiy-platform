@@ -46,7 +46,7 @@ func newFakeDLinkControls(t *testing.T) *fakeDLinkControls {
 	f := &fakeDLinkControls{
 		challenge: ch,
 		pubKey:    pk,
-		privKey:   hmacMD5Upper([]byte(ch), []byte(pk+"dl-ctrl-pass")),
+		privKey:   hmacMD5Upper([]byte(pk+"dl-ctrl-pass"), []byte(ch)),
 		radios: map[string]*fakeDLinkRadio{
 			"RADIO_2.4GHz":       {ssid: "DLink_2G", enabled: "true", broadcast: "true", key: "dlink-secret-psk"},
 			"RADIO_5GHz":         {ssid: "DLink_5G", enabled: "true", broadcast: "false", key: "dlink-5g-psk"},

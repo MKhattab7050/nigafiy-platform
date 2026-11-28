@@ -13,12 +13,12 @@ import (
 )
 
 const (
-	mechOverview     = "RouterOS system resource, IP addresses and DNS (/rest/system/resource, /rest/ip/address)"
-	mechWiFi         = "RouterOS Wi-Fi interface enable/disable (/rest/interface/wifi or /rest/interface/wireless)"
-	mechReservation  = "RouterOS static DHCP lease (/rest/ip/dhcp-server/lease)"
-	mechPortForward  = "RouterOS dst-nat rule (/rest/ip/firewall/nat)"
-	mechRename       = "RouterOS DHCP lease comment (/rest/ip/dhcp-server/lease)"
-	mechReboot       = "RouterOS system reboot (/rest/system/reboot)"
+	mechOverview    = "RouterOS system resource, IP addresses and DNS (/rest/system/resource, /rest/ip/address)"
+	mechWiFi        = "RouterOS Wi-Fi interface enable/disable (/rest/interface/wifi or /rest/interface/wireless)"
+	mechReservation = "RouterOS static DHCP lease (/rest/ip/dhcp-server/lease)"
+	mechPortForward = "RouterOS dst-nat rule (/rest/ip/firewall/nat)"
+	mechRename      = "RouterOS DHCP lease comment (/rest/ip/dhcp-server/lease)"
+	mechReboot      = "RouterOS system reboot (/rest/system/reboot)"
 )
 
 var (
@@ -451,6 +451,15 @@ func (d *Driver) AddPortForward(ctx context.Context, rule router.PortForward) (r
 			"to-addresses": clean.InternalIP,
 			"to-ports":     formatPortRange(clean.InternalStart, clean.InternalEnd),
 			"comment":      clean.Description,
+			// Only packets addressed to the router itself. Without a destination matcher a dstnat
+			// rule catches every packet to that port crossing the router: forwarding 443 would send
+			// all LAN clients' outbound HTTPS (and this REST session) to the internal host.
+			"dst-address-type": "local",
+		}
+		if routerIP.IsValid() {
+			// Not the router's LAN address: WebFig / REST / SSH from the LAN keep reaching the router
+			// itself; the WAN address (and hairpin to it) is still forwarded.
+			payload["dst-address"] = "!" + routerIP.String()
 		}
 		st, raw, err := d.do(ctx, "add_port_forward", http.MethodPut, "/rest/ip/firewall/nat", payload)
 		if err != nil {
