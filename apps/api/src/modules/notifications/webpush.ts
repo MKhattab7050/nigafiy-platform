@@ -231,6 +231,20 @@ export interface PushRequest {
   body: Buffer;
 }
 
+/**
+ * A `lookup` for the socket that always answers the address already checked (no second DNS answer
+ * can point the request somewhere private). Node 20+ connects with autoSelectFamily and asks with
+ * `{ all: true }`, expecting a list: answering one string there made every push fail on Node 24
+ * (audit item 6, 2026-11-27).
+ */
+export function pinnedLookup(target: { address: string; family: number }) {
+  return (_host: string, opts: unknown, cb: (err: Error | null, address: string | Array<{ address: string; family: number }>, family?: number) => void): void => {
+    const options = typeof opts === 'object' && opts !== null ? (opts as { all?: boolean }) : {};
+    if (options.all) cb(null, [{ address: target.address, family: target.family }]);
+    else cb(null, target.address, target.family);
+  };
+}
+
 /** Sends one request and returns the HTTP status. Replaced in tests (no real network). */
 export const pushTransport = {
   send: async (req: PushRequest): Promise<number> => {
@@ -239,9 +253,8 @@ export const pushTransport = {
     const target = addresses[0];
     if (!target) throw new Error('push service name did not resolve');
     if (addresses.some((a) => !isPublicAddress(a.address))) throw new Error('push service resolved to a private address');
-    const pinned = (_h: string, _o: unknown, cb: (err: Error | null, address: string, family: number) => void) => cb(null, target.address, target.family);
     return new Promise<number>((resolve, reject) => {
-      const r = https.request(req.endpoint, { method: 'POST', headers: req.headers, timeout: 10_000, lookup: pinned as never }, (res) => {
+      const r = https.request(req.endpoint, { method: 'POST', headers: req.headers, timeout: 10_000, lookup: pinnedLookup(target) as never }, (res) => {
         res.resume();
         res.on('end', () => resolve(res.statusCode ?? 0));
       });
