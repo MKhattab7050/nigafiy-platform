@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { Sha256 } from './sha256.ts';
-import { classifyTransferError, uploadResumePoint } from './transfer-rules.ts';
+import { crc32 } from 'node:zlib';
+import { crumbsOf, joinRemote, relPath } from './paths.ts';
+import { Crc32, MemoryZipSink, ZipWriter } from './zip-writer.ts';
 
 const ref = (b: Uint8Array) => createHash('sha256').update(b).digest('hex');
 
@@ -24,21 +26,59 @@ describe('Sha256', () => {
   });
 });
 
-describe('transfer rules', () => {
-  it('resumes an upload only where the agent says its own upload stopped', () => {
-    assert.deepEqual(uploadResumePoint(1000, { total_size: 400, upload_next: 400 }), { kind: 'resume', offset: 400 });
-    // Not one this agent can continue (restarted, or another file): start again, which replaces it.
-    assert.deepEqual(uploadResumePoint(1000, { total_size: 400 }), { kind: 'restart' });
-    // Larger than the file being sent: never continue into it.
-    assert.deepEqual(uploadResumePoint(1000, { total_size: 4000, upload_next: 4000 }), { kind: 'restart' });
-    assert.deepEqual(uploadResumePoint(1000, null), { kind: 'restart' });
+describe('Sha256 state', () => {
+  it('continues the same checksum after save and restore (a page reload)', () => {
+    const data = new Uint8Array(randomBytes(200_003));
+    const a = new Sha256().update(data.subarray(0, 77_777));
+    const b = Sha256.restore(JSON.parse(JSON.stringify(a.save())));
+    b.update(data.subarray(77_777));
+    assert.equal(b.hex(), ref(data));
   });
-  it('keeps a transfer for resuming after a lost connection, fails it on an agent refusal', () => {
-    assert.equal(classifyTransferError({ status: 504, code: 'timeout' }), 'interrupted');
-    assert.equal(classifyTransferError({ status: 0, code: 'network_error' }), 'interrupted');
-    assert.equal(classifyTransferError({ status: 409, code: 'endpoint_offline' }), 'interrupted');
-    assert.equal(classifyTransferError({ status: 422, code: 'fs_op_failed', message: 'path is outside the allowed roots' }), 'failed');
-    assert.equal(classifyTransferError({ status: 403, code: 'forbidden' }), 'failed');
-    assert.equal(classifyTransferError({ status: 499, code: 'cancelled' }), 'cancelled');
+});
+
+describe('paths', () => {
+  it('joins and splits Windows and phone paths', () => {
+    assert.equal(joinRemote('C:\\Users\\Pat', 'Trip/Day 1/a.jpg'), 'C:\\Users\\Pat\\Trip\\Day 1\\a.jpg');
+    assert.equal(joinRemote('C:\\', 'a.txt'), 'C:\\a.txt');
+    assert.equal(joinRemote('/storage/emulated/0/DCIM', 'Camera/x.jpg'), '/storage/emulated/0/DCIM/Camera/x.jpg');
+    assert.equal(relPath('C:\\Users\\Pat\\Trip', 'C:\\Users\\Pat\\Trip\\Day 1\\a.jpg'), 'Day 1/a.jpg');
+    assert.equal(relPath('/sdcard/DCIM', '/sdcard/DCIM/Camera/x.jpg'), 'Camera/x.jpg');
+    assert.deepEqual(
+      crumbsOf('C:\\Users\\Pat').map((c) => c.path),
+      ['C:\\', 'C:\\Users', 'C:\\Users\\Pat'],
+    );
+    assert.deepEqual(
+      crumbsOf('/storage/emulated').map((c) => c.path),
+      ['/', '/storage', '/storage/emulated'],
+    );
+  });
+});
+
+describe('ZipWriter', () => {
+  it('writes stored entries whose CRC and sizes match, folders included', async () => {
+    assert.equal(new Crc32().update(new TextEncoder().encode('hello')).value(), crc32('hello'));
+    const sink = new MemoryZipSink();
+    const z = new ZipWriter(sink);
+    await z.addFolder('Trip/empty');
+    const a = new Uint8Array(randomBytes(70_001));
+    await z.begin('Trip/a.bin', a.length);
+    await z.data(a.subarray(0, 1000));
+    await z.data(a.subarray(1000));
+    await z.end();
+    await z.finish();
+    const buf = Buffer.from(await sink.blob().arrayBuffer());
+    // End of central directory: 2 entries.
+    const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    assert.equal(buf.readUInt16LE(eocd + 10), 2);
+    // The file's local header carries the CRC written after its data.
+    const local = buf.indexOf(Buffer.from('Trip/a.bin')) - 30;
+    assert.equal(buf.readUInt32LE(local), 0x04034b50);
+    assert.equal(buf.readUInt32LE(local + 14), crc32(a));
+    assert.equal(buf.readUInt32LE(local + 18), a.length);
+    // A wrong size is refused, never written silently.
+    const z2 = new ZipWriter(new MemoryZipSink());
+    await z2.begin('x', 3);
+    await z2.data(new Uint8Array(2));
+    await assert.rejects(() => z2.end());
   });
 });

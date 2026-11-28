@@ -270,6 +270,67 @@ func searchChecked(clean, queryLower string, showHidden bool, roots []string) ([
 	return hits, nil
 }
 
+// walkChecked lists every file and folder under clean, folders before their contents, through
+// handles like searchChecked: links are listed, never entered, and credential stores are skipped.
+// The answer stops at MaxWalkEntries entries or MaxWalkDepth levels and then says Truncated.
+func walkChecked(clean string, showHidden bool, roots []string) (Response, error) {
+	d, real, err := openListedDir(clean, roots)
+	if err != nil {
+		return Response{}, fmt.Errorf("read directory failed: %w", err)
+	}
+	defer d.close()
+	out := Response{Op: "walk", Path: clean, Entries: []FileEntry{}}
+	var walk func(d *dirHandle, shown, real string, depth int) bool
+	walk = func(d *dirHandle, shown, real string, depth int) bool {
+		infos, err := d.readDir()
+		if err != nil {
+			return true
+		}
+		sort.Slice(infos, func(i, j int) bool { return infos[i].Name() < infos[j].Name() })
+		for _, info := range infos {
+			name := info.Name()
+			full, fullReal := filepath.Join(shown, name), filepath.Join(real, name)
+			if isForbiddenCredentialPath(full) || isForbiddenCredentialPath(fullReal) {
+				continue
+			}
+			hidden, sys := isHiddenOrSystem(full, info)
+			if !showHidden && (hidden || sys) {
+				continue
+			}
+			if len(out.Entries) >= MaxWalkEntries {
+				out.Truncated = true
+				return false
+			}
+			out.Entries = append(out.Entries, fileEntry(full, info, hidden, sys))
+			if !info.IsDir() {
+				out.TotalFiles++
+				out.TotalSize += info.Size()
+				continue
+			}
+			out.TotalDirs++
+			if info.Mode()&fs.ModeSymlink != 0 {
+				continue
+			}
+			if depth >= MaxWalkDepth {
+				out.Truncated = true
+				continue
+			}
+			sub, err := d.child(name, false)
+			if err != nil {
+				continue
+			}
+			more := walk(sub, full, fullReal, depth+1)
+			sub.close()
+			if !more {
+				return false
+			}
+		}
+		return true
+	}
+	walk(d, clean, real, 1)
+	return out, nil
+}
+
 func fileEntry(full string, info fs.FileInfo, hidden, sys bool) FileEntry {
 	ext := ""
 	if !info.IsDir() {

@@ -36,6 +36,9 @@ function trustProxySetting(value: string): boolean | number | string {
  *
  * @param modules the module list; tests may pass their own.
  */
+/** POST /api/v1/endpoints/:id/commands (fs_op chunks travel here). */
+const COMMANDS_ROUTE = /^\/endpoints\/[0-9a-f-]{36}\/commands\/?$/i;
+
 export function createApp(modules: readonly ModuleManifest[] = registeredModules): Express {
   const app = express();
   app.disable('x-powered-by');
@@ -96,8 +99,16 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
 
   // ── User-facing API (session auth) ──
   const api = Router();
-  api.use(limiter(600, 'api'));
-  api.use(express.json({ limit: '100kb' }));
+  // File transfers: one command per 1 MiB chunk (base64 in JSON). The commands route takes bodies
+  // up to 2 MB and has its own counter, so a large copy neither fails on the body limit nor uses
+  // up the requests the dashboard needs; every other route keeps 100 KB and the shared counter.
+  const isCommandsRoute = (req: express.Request) => req.method === 'POST' && COMMANDS_ROUTE.test(req.path);
+  const apiLimiter = limiter(600, 'api');
+  const transferLimiter = limiter(6000, 'api-commands');
+  const smallJson = express.json({ limit: '100kb' });
+  const transferJson = express.json({ limit: '2mb' });
+  api.use((req, res, next) => (isCommandsRoute(req) ? transferLimiter : apiLimiter)(req, res, next));
+  api.use((req, res, next) => (isCommandsRoute(req) ? transferJson : smallJson)(req, res, next));
   for (const m of modules) {
     if (m.publicApi) api.use(m.publicApi.path, m.publicApi.router);
   }

@@ -27,10 +27,12 @@ data class FsRequest(
     val dataBase64: String? = null,
     val expectedSha256: String? = null,
     val overwrite: Boolean = false,
+    /** hash only: size, modification time and resume point, without reading the file. */
+    val sizeOnly: Boolean = false,
     val allowedRoots: List<String> = emptyList(),
 ) {
     companion object {
-        val OPS = setOf("roots", "list", "search", "mkdir", "touch", "rename", "copy", "move", "delete", "download", "upload", "hash")
+        val OPS = setOf("roots", "list", "walk", "search", "mkdir", "touch", "rename", "copy", "move", "delete", "download", "upload", "hash")
 
         fun parse(p: Map<String, Any?>): FsRequest {
             val op = p.str("op") ?: ""
@@ -50,6 +52,7 @@ data class FsRequest(
                 dataBase64 = p.str("data_base64"),
                 expectedSha256 = p.str("expected_sha256"),
                 overwrite = p.bool("overwrite") ?: false,
+                sizeOnly = p.bool("size_only") ?: false,
                 allowedRoots = strings("allowed_roots").take(20),
             )
         }
@@ -68,8 +71,9 @@ class FsError(message: String) : IOException(message)
  * contain "." or ".." segments, and again on the canonical path, so a symbolic link cannot lead
  * out). The app-private folders under Android/ (data, obb, media of other apps) are refused, and
  * the root itself and Android/ cannot be renamed, moved or deleted. Limits are the Windows file
- * manager's: 512 KiB per download chunk, 1 MiB per upload chunk, 1500 entries per listing, 250
- * search hits at most 6 levels deep. Uploads never replace a file without the operator's
+ * manager's: 1 MiB per download chunk, 2 MiB per upload chunk, 1500 entries per listing, 250
+ * search hits at most 6 levels deep, 10 000 entries at most 32 levels deep for a walk (a whole
+ * folder for folder downloads and copies). Uploads never replace a file without the operator's
  * confirmed overwrite, and a continuation chunk only extends the file its own upload created.
  */
 class SharedStorage(
@@ -93,6 +97,7 @@ class SharedStorage(
     fun execute(req: FsRequest): Map<String, Any?> = when (req.op) {
         "roots" -> roots()
         "list" -> list(resolve(req.path?.takeIf { it.isNotBlank() } ?: rootPath, req, mutating = false), req.showHidden)
+        "walk" -> walk(resolve(req.path, req, false), req.showHidden)
         "search" -> search(resolve(req.path, req, false), req)
         "mkdir" -> mkdir(resolve(req.path, req, true))
         "touch" -> touch(resolve(req.path, req, true), req.dataBase64)
@@ -101,7 +106,7 @@ class SharedStorage(
         "delete" -> delete(req)
         "download" -> download(resolve(req.path, req, false), req.offset, req.length)
         "upload" -> upload(resolve(req.path, req, true), req)
-        "hash" -> hash(resolve(req.path, req, false))
+        "hash" -> hash(resolve(req.path, req, false), req.sizeOnly)
         else -> throw FsError("unknown file operation '${req.op}'")
     }
 
@@ -217,6 +222,38 @@ class SharedStorage(
         return linkedMapOf("op" to "search", "path" to dir.path, "entries" to hits.map { entry(it) })
     }
 
+    /** Every file and folder under [dir], folders before what they hold (links listed, not entered). */
+    private fun walk(dir: Target, showHidden: Boolean): Map<String, Any?> {
+        if (!dir.file.isDirectory) throw FsError("${dir.name} is not a folder")
+        val out = ArrayList<Map<String, Any?>>()
+        var files = 0
+        var dirs = 0
+        var bytes = 0L
+        var truncated = false
+        fun visit(d: Target, depth: Int): Boolean {
+            if (d.path.removePrefix(rootPath).trimStart('/').startsWith("Android/", ignoreCase = true)) return true
+            for (c in (try { children(d) } catch (e: FsError) { return true })) {
+                if (!showHidden && c.name.startsWith(".")) continue
+                if (c.path == "$rootPath/Android") continue
+                if (out.size >= MAX_WALK) { truncated = true; return false }
+                out.add(entry(c))
+                val link = Files.isSymbolicLink(c.file.toPath())
+                if (!c.file.isDirectory || link) {
+                    if (!c.file.isDirectory) { files++; bytes += c.file.length() } else dirs++
+                    continue
+                }
+                dirs++
+                if (depth >= MAX_WALK_DEPTH) { truncated = true; continue }
+                if (!visit(c, depth + 1)) return false
+            }
+            return true
+        }
+        visit(dir, 1)
+        val m = linkedMapOf<String, Any?>("op" to "walk", "path" to dir.path, "entries" to out, "total_size" to bytes, "total_files" to files, "total_dirs" to dirs)
+        if (truncated) m["truncated"] = true
+        return m
+    }
+
     private fun mkdir(t: Target): Map<String, Any?> {
         val f = t.file
         validName(f.name)
@@ -330,24 +367,31 @@ class SharedStorage(
         val m = linkedMapOf<String, Any?>(
             "op" to "download", "path" to t.path, "total_size" to size, "offset" to off, "bytes_read" to buf.size,
             "eof" to eof, "data_base64" to Base64.getEncoder().encodeToString(buf),
+            "mod_time" to modTime(f),
+            "chunk_sha256" to MessageDigest.getInstance("SHA-256").digest(buf).joinToString("") { "%02x".format(it) },
         )
         if (eof && size <= 32L * 1024 * 1024) m["sha256"] = sha256(f)
         return m
     }
 
-    private val uploads = HashMap<String, Pair<Long, Long>>() // path → (next offset, at)
+    /** An upload this app started: where its next chunk begins, when, and the SHA-256 so far. */
+    private class Tracked(val next: Long, val at: Long, val digest: MessageDigest?)
+
+    private val uploads = HashMap<String, Tracked>()
 
     @Synchronized
-    private fun continues(p: String, offset: Long): Boolean {
-        val t = uploads[p] ?: return false
-        return t.first == offset && clock() - t.second < 3_600_000
+    private fun tracked(p: String, offset: Long): Tracked? {
+        val t = uploads[p] ?: return null
+        return t.takeIf { it.next == offset && clock() - it.at < UPLOAD_TTL_MS }
     }
 
+    private fun continues(p: String, offset: Long): Boolean = tracked(p, offset) != null
+
     @Synchronized
-    private fun advance(p: String, next: Long) {
+    private fun advance(p: String, next: Long, digest: MessageDigest?) {
         val now = clock()
-        uploads.entries.removeIf { now - it.value.second > 3_600_000 }
-        uploads[p] = next to now
+        uploads.entries.removeIf { now - it.value.at > UPLOAD_TTL_MS }
+        uploads[p] = Tracked(next, now, digest)
     }
 
     @Synchronized
@@ -372,6 +416,8 @@ class SharedStorage(
             !continues(t.path, offset) -> throw FsError("upload continuation refused: no upload of ${f.name} started here at that offset")
             f.length() != offset -> throw FsError("upload continuation refused: the file is ${f.length()} bytes, the chunk starts at $offset")
         }
+        // The running SHA-256 of the whole file, so the last chunk is checked without reading it again.
+        val digest: MessageDigest? = if (first) MessageDigest.getInstance("SHA-256") else tracked(t.path, offset)?.digest?.let { d -> try { d.clone() as MessageDigest } catch (e: CloneNotSupportedException) { null } }
         try {
             RandomAccessFile(f, "rw").use { r ->
                 if (overwritten) r.setLength(0)
@@ -382,12 +428,19 @@ class SharedStorage(
             forget(t.path)
             throw FsError("write failed: ${e.message}")
         }
-        advance(t.path, offset + raw.size)
+        digest?.update(raw)
+        advance(t.path, offset + raw.size, digest)
         var sum: String? = null
         val expected = req.expectedSha256?.trim()?.lowercase()
         if (!expected.isNullOrEmpty()) {
-            sum = sha256(f)
-            if (sum != expected) throw FsError("upload checksum mismatch: expected $expected, got $sum")
+            val running = digest?.let { d -> try { (d.clone() as MessageDigest).digest().joinToString("") { "%02x".format(it) } } catch (e: CloneNotSupportedException) { null } }
+            sum = running ?: sha256(f)
+            if (sum != expected) {
+                // A file that failed its check must not stay behind looking complete.
+                forget(t.path)
+                val note = if (f.delete()) "; the damaged file was removed, send it again" else ""
+                throw FsError("upload checksum mismatch: expected $expected, got $sum$note")
+            }
         }
         val msg = if (overwritten) "Overwrote ${f.name} with ${raw.size} bytes (operator-confirmed)" else "Uploaded ${raw.size} bytes to ${f.name}"
         val m = linkedMapOf<String, Any?>("op" to "upload", "path" to t.path, "total_size" to f.length(), "offset" to offset, "bytes_read" to raw.size, "message" to msg, "overwritten" to overwritten)
@@ -395,14 +448,17 @@ class SharedStorage(
         return m
     }
 
-    private fun hash(t: Target): Map<String, Any?> {
+    private fun hash(t: Target, sizeOnly: Boolean): Map<String, Any?> {
         val f = t.file
         if (!Files.isRegularFile(f.toPath(), LinkOption.NOFOLLOW_LINKS)) throw FsError("only a regular file can be checked")
         val size = f.length()
-        val m = linkedMapOf<String, Any?>("op" to "hash", "path" to t.path, "total_size" to size, "sha256" to sha256(f))
+        val m = linkedMapOf<String, Any?>("op" to "hash", "path" to t.path, "total_size" to size, "mod_time" to modTime(f))
+        if (!sizeOnly) m["sha256"] = sha256(f)
         if (continues(t.path, size)) m["upload_next"] = size
         return m
     }
+
+    private fun modTime(f: File): String = Instant.ofEpochMilli(f.lastModified()).toString()
 
     private fun decode(b64: String): ByteArray = try { Base64.getDecoder().decode(b64) } catch (e: IllegalArgumentException) { throw FsError("invalid base64 payload") }
 
@@ -421,7 +477,11 @@ class SharedStorage(
 
     companion object {
         const val MAX_PATH = 1024
-        const val MAX_CHUNK = 512 * 1024
+        const val MAX_CHUNK = 1024 * 1024
+        const val MAX_WALK = 10_000
+        const val MAX_WALK_DEPTH = 32
+        /** How long an interrupted upload can wait to be continued. */
+        const val UPLOAD_TTL_MS = 72L * 3_600_000
         const val MAX_LIST = 1500
         const val MAX_SEARCH = 250
         const val MAX_SEARCH_DEPTH = 6

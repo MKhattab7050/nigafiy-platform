@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EndpointCommand, EndpointDetail, RemoteFileEntry, RemoteFileResponse, RemoteFileRoot } from '@nigafiy/shared-types';
-import { type ApiError, api } from '@/lib/api';
+import type { EndpointDetail, RemoteFileEntry, RemoteFileResponse, RemoteFileRoot } from '@nigafiy/shared-types';
+import type { ApiError } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { formatBytes, arrayBufferToBase64, base64ToUint8Array } from './file-utils';
 import { useConfirm } from '@/components/ui';
+import { type FsError, fsCall } from './fs-client';
+import { crumbsOf, joinRemote } from './paths';
+import { transfers } from './transfer-engine';
+
+export { crumbsOf };
 
 export interface RemoteFileManagerProps {
   ep: EndpointDetail;
@@ -14,158 +18,143 @@ export interface RemoteFileManagerProps {
   canDelete: boolean;
 }
 
-/** The agent's refusal when an upload target exists and no overwrite was confirmed (filemgr.ErrUploadTargetExists). */
-export const UPLOAD_TARGET_EXISTS = 'upload target already exists';
+export type SortKey = 'name' | 'size' | 'mod_time' | 'ext';
 
-/** An upload waiting for the operator to confirm that an existing remote file may be replaced. */
-export interface OverwritePrompt {
-  name: string;
-  path: string;
-  newSize: number;
-  existingSize?: number;
-  existingModTime?: string;
-  resolve: (confirmed: boolean) => void;
-}
+const asApiError = (e: unknown): ApiError => {
+  const f = e as FsError;
+  return { status: f.kind === 'transient' ? 0 : 422, code: f.code || 'fs_op_failed', message: f.message } as ApiError;
+};
 
-/** SHA-256 of the file for the agent's end-of-upload check; null where Web Crypto is unavailable (plain-HTTP origins). */
-async function sha256Hex(buf: ArrayBuffer): Promise<string | null> {
-  if (typeof crypto === 'undefined' || !crypto.subtle) return null;
-  const digest = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** State and file operations of the remote file manager; the component only renders. */
-export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: RemoteFileManagerProps) {
+/** State and file operations of one device's file pane; the component only renders. */
+export function useRemoteFiles({ ep, online }: RemoteFileManagerProps) {
   const confirm = useConfirm();
   const { locale } = useI18n();
   const isAr = locale === 'ar';
+  const ref = useMemo(() => ({ endpointId: ep.id, device: ep.name }), [ep.id, ep.name]);
 
   const [roots, setRoots] = useState<RemoteFileRoot[]>([]);
   const [currentPath, setCurrentPath] = useState<string>('');
   const [parentPath, setParentPath] = useState<string>('');
   const [pathInput, setPathInput] = useState<string>('');
   const [entries, setEntries] = useState<RemoteFileEntry[]>([]);
+  const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const anchor = useRef<string | null>(null);
   const [clipboard, setClipboard] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null);
-
   const [showHidden, setShowHidden] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'mod_time'>('name');
+  const [sortBy, setSortBy] = useState<SortKey>('name');
+  const [sortDesc, setSortDesc] = useState(false);
   const [busy, setBusy] = useState('');
-  const [progress, setProgress] = useState<{ label: string; pct: number } | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState('');
-  const [overwritePrompt, setOverwritePrompt] = useState<OverwritePrompt | null>(null);
-  const cancelRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      cancelRef.current = true;
-    };
+  const runFsOp = useCallback((payload: Record<string, unknown>): Promise<RemoteFileResponse> => fsCall(ep.id, payload), [ep.id]);
+
+  const attempt = useCallback(async (tag: string, fn: () => Promise<void>) => {
+    setBusy(tag);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(asApiError(err));
+    } finally {
+      setBusy('');
+    }
   }, []);
-
-  const runFsOp = useCallback(
-    async (payload: Record<string, unknown>): Promise<RemoteFileResponse> => {
-      const cmd = await api<EndpointCommand>(`/endpoints/${ep.id}/commands?wait_ms=4500`, {
-        method: 'POST',
-        body: { kind: 'fs_op', ...payload },
-      });
-      if (cmd.status === 'completed' && cmd.result_data) {
-        return cmd.result_data as unknown as RemoteFileResponse;
-      }
-      if (cmd.status === 'failed') {
-        throw {
-          status: 422,
-          code: 'fs_op_failed',
-          message: cmd.error || (isAr ? 'فشلت عملية الملفات على الجهاز' : 'File operation failed on endpoint'),
-        } as ApiError;
-      }
-      // Poll up to 8 more seconds if the agent took slightly longer
-      for (let i = 0; i < 16; i++) {
-        if (cancelRef.current) break;
-        await new Promise((r) => setTimeout(r, 500));
-        if (cancelRef.current) break;
-        const detail = await api<EndpointDetail>(`/endpoints/${ep.id}`);
-        const found = detail.commands.find((c) => c.id === cmd.id);
-        if (found?.status === 'completed' && found.result_data) {
-          return found.result_data as unknown as RemoteFileResponse;
-        }
-        if (found?.status === 'failed') {
-          throw {
-            status: 422,
-            code: 'fs_op_failed',
-            message: found.error || (isAr ? 'فشلت عملية الملفات' : 'File operation failed'),
-          } as ApiError;
-        }
-      }
-      throw {
-        status: 504,
-        code: 'timeout',
-        message: isAr ? 'انتهت مهلة انتظار استجابة وكيل الجهاز' : 'Timed out waiting for endpoint agent response',
-      } as ApiError;
-    },
-    [ep.id, isAr],
-  );
 
   const loadDirectory = useCallback(
     async (targetPath: string, hidden = showHidden) => {
       if (!online) return;
-      setBusy('list');
-      setError(null);
-      try {
+      await attempt('list', async () => {
         const res = await runFsOp({ op: 'list', path: targetPath || undefined, show_hidden: hidden });
         setCurrentPath(res.path ?? targetPath);
         setPathInput(res.path ?? targetPath);
         setParentPath(res.parent_path ?? '');
         setEntries(res.entries ?? []);
+        setSearching(false);
         setSelected(new Set());
-      } catch (err) {
-        setError(err as ApiError);
-      } finally {
-        setBusy('');
-      }
+        anchor.current = null;
+      });
     },
-    [online, runFsOp, showHidden],
+    [attempt, online, runFsOp, showHidden],
   );
 
   const initRoots = useCallback(async () => {
     if (!online) return;
-    setBusy('roots');
-    setError(null);
-    try {
+    await attempt('roots', async () => {
       const res = await runFsOp({ op: 'roots' });
       const rList = res.roots ?? [];
       setRoots(rList);
       if (rList.length > 0) {
         const homeOrFirst = rList.find((r) => r.name === 'Home')?.path ?? rList[0]!.path;
-        await loadDirectory(homeOrFirst, showHidden);
+        const r = await runFsOp({ op: 'list', path: homeOrFirst, show_hidden: showHidden });
+        setCurrentPath(r.path ?? homeOrFirst);
+        setPathInput(r.path ?? homeOrFirst);
+        setParentPath(r.parent_path ?? '');
+        setEntries(r.entries ?? []);
       }
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
-  }, [loadDirectory, online, runFsOp, showHidden]);
+    });
+  }, [attempt, online, runFsOp, showHidden]);
 
   useEffect(() => {
-    if (online && roots.length === 0 && !currentPath) {
-      void initRoots();
-    }
-  }, [online, roots.length, currentPath, initRoots]);
+    if (online && roots.length === 0 && !currentPath) void initRoots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, ep.id]);
+
+  // A transfer that finished into the open folder refreshes it.
+  const cur = useRef('');
+  cur.current = currentPath;
+  useEffect(
+    () =>
+      transfers.onRemoteChanged((endpointId, dir) => {
+        if (endpointId === ep.id && dir && cur.current && dir.toLowerCase() === cur.current.replace(/[\\/]$/, '').toLowerCase()) void loadDirectory(cur.current);
+      }),
+    [ep.id, loadDirectory],
+  );
 
   const sortedEntries = useMemo(() => {
     const copy = [...entries];
+    const dir = sortDesc ? -1 : 1;
     copy.sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
-      if (sortBy === 'size') return b.size - a.size;
-      if (sortBy === 'mod_time') return b.mod_time.localeCompare(a.mod_time);
-      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      let c = 0;
+      if (sortBy === 'size') c = a.size - b.size;
+      else if (sortBy === 'mod_time') c = a.mod_time.localeCompare(b.mod_time);
+      else if (sortBy === 'ext') c = a.ext.localeCompare(b.ext);
+      if (c === 0) c = a.name.toLowerCase().localeCompare(b.name.toLowerCase(), undefined, { numeric: true });
+      return c * dir;
     });
     return copy;
-  }, [entries, sortBy]);
+  }, [entries, sortBy, sortDesc]);
+
+  const sortOn = (k: SortKey) => {
+    if (k === sortBy) setSortDesc((d) => !d);
+    else {
+      setSortBy(k);
+      setSortDesc(k === 'size' || k === 'mod_time');
+    }
+  };
+
+  /** Click: one item; Ctrl/⌘: add or remove; Shift: the range from the last click. */
+  function selectClick(path: string, e: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean }) {
+    if (e.shiftKey && anchor.current) {
+      const ids = sortedEntries.map((x) => x.path);
+      const a = ids.indexOf(anchor.current);
+      const b = ids.indexOf(path);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelected(new Set(ids.slice(lo, hi + 1)));
+        return;
+      }
+    }
+    anchor.current = path;
+    if (e.ctrlKey || e.metaKey) toggleSelect(path);
+    else setSelected(new Set([path]));
+  }
 
   function toggleSelect(path: string) {
+    anchor.current = path;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
@@ -174,293 +163,113 @@ export function useRemoteFiles({ ep, online, canWrite, canUpload, canDelete }: R
     });
   }
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
+  const selectedEntries = useMemo(() => sortedEntries.filter((e) => selected.has(e.path)), [sortedEntries, selected]);
+
+  async function handleSearch(e?: React.FormEvent) {
+    e?.preventDefault();
     if (!searchQuery.trim() || !currentPath) return;
-    setBusy('search');
-    setError(null);
-    try {
-      const res = await runFsOp({
-        op: 'search',
-        path: currentPath,
-        query: searchQuery.trim(),
-        show_hidden: showHidden,
-      });
+    await attempt('search', async () => {
+      const res = await runFsOp({ op: 'search', path: currentPath, query: searchQuery.trim(), show_hidden: showHidden });
       setEntries(res.entries ?? []);
+      setSearching(true);
       setSelected(new Set());
-      setNotice(
-        isAr
-          ? `تم العثور على ${(res.entries ?? []).length} نتيجة في ${currentPath}`
-          : `Found ${(res.entries ?? []).length} item(s) in ${currentPath}`,
-      );
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+      setNotice(isAr ? `تم العثور على ${(res.entries ?? []).length} نتيجة في ${currentPath} ومجلداته الفرعية` : `Found ${(res.entries ?? []).length} item(s) in ${currentPath} and its subfolders`);
+    });
   }
 
   async function handleMkdir() {
     const folderName = window.prompt(isAr ? 'اسم المجلد الجديد:' : 'New folder name:');
     if (!folderName?.trim() || !currentPath) return;
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    const full = currentPath.endsWith(sep) ? `${currentPath}${folderName.trim()}` : `${currentPath}${sep}${folderName.trim()}`;
-    setBusy('mkdir');
-    setError(null);
-    try {
-      await runFsOp({ op: 'mkdir', path: full });
+    await attempt('mkdir', async () => {
+      await runFsOp({ op: 'mkdir', path: joinRemote(currentPath, folderName.trim()) });
       await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function handleNewFile() {
     const fileName = window.prompt(isAr ? 'اسم الملف الجديد (مثال: notes.txt):' : 'New file name (e.g. notes.txt):');
     if (!fileName?.trim() || !currentPath) return;
     const content = window.prompt(isAr ? 'محتوى الملف النصي (اختياري):' : 'Initial text content (optional):') ?? '';
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    const full = currentPath.endsWith(sep) ? `${currentPath}${fileName.trim()}` : `${currentPath}${sep}${fileName.trim()}`;
-    setBusy('touch');
-    setError(null);
-    try {
+    await attempt('touch', async () => {
       const b64 = btoa(unescape(encodeURIComponent(content)));
-      await runFsOp({ op: 'touch', path: full, data_base64: b64 });
+      await runFsOp({ op: 'touch', path: joinRemote(currentPath, fileName.trim()), data_base64: b64 });
       await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function handleRename(entry: RemoteFileEntry) {
     const newName = window.prompt(isAr ? 'الاسم الجديد:' : 'Rename to:', entry.name);
     if (!newName?.trim() || newName.trim() === entry.name) return;
-    setBusy(`rename-${entry.path}`);
-    setError(null);
-    try {
+    await attempt(`rename-${entry.path}`, async () => {
       await runFsOp({ op: 'rename', path: entry.path, new_name: newName.trim() });
       await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function handlePaste() {
     if (!clipboard || clipboard.paths.length === 0 || !currentPath) return;
-    setBusy('paste');
-    setError(null);
-    try {
-      await runFsOp({
-        op: clipboard.mode,
-        paths: clipboard.paths,
-        target_path: currentPath,
-      });
+    await attempt('paste', async () => {
+      await runFsOp({ op: clipboard.mode, paths: clipboard.paths, target_path: currentPath });
       if (clipboard.mode === 'move') setClipboard(null);
       await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
   async function handleDelete(paths: string[]) {
     if (paths.length === 0) return;
     const msg = isAr
-      ? `تحذير: هل أنت متأكد من حذف ${paths.length} عنصر نهائياً من الجهاز البعيد؟`
-      : `Confirm permanent deletion of ${paths.length} item(s) on the remote endpoint?`;
+      ? `تحذير: هل أنت متأكد من حذف ${paths.length} عنصر نهائياً من ${ep.name}؟ لا يمكن التراجع عن ذلك.`
+      : `Permanently delete ${paths.length} item(s) on ${ep.name}? This cannot be undone.`;
     if (!(await confirm(msg, { destructive: true }))) return;
-    setBusy('delete');
-    setError(null);
-    try {
-      await runFsOp({ op: 'delete', paths, confirm_destructive: true });
+    await attempt('delete', async () => {
+      for (let i = 0; i < paths.length; i += 100) await runFsOp({ op: 'delete', paths: paths.slice(i, i + 100), confirm_destructive: true });
       await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy('');
-    }
+    });
   }
 
-  async function handleDownload(entry: RemoteFileEntry) {
-    if (entry.is_dir) return;
-    cancelRef.current = false;
-    setBusy(`dl-${entry.path}`);
-    setError(null);
-    try {
-      const chunks: Uint8Array[] = [];
-      let offset = 0;
-      const chunkLen = 256 * 1024;
-      let sha = '';
-      while (true) {
-        if (cancelRef.current) {
-          throw {
-            status: 499,
-            code: 'cancelled',
-            message: isAr ? 'تم إلغاء النقل بواسطة المشغّل' : 'Transfer cancelled by operator',
-          } as ApiError;
-        }
-        const pctVal = entry.size > 0 ? Math.min(99, Math.round((offset * 100) / entry.size)) : 50;
-        setProgress({
-          label: isAr ? `جارٍ تنزيل ${entry.name}…` : `Downloading ${entry.name}…`,
-          pct: pctVal,
-        });
-        const res = await runFsOp({ op: 'download', path: entry.path, offset, length: chunkLen });
-        if (res.data_base64) {
-          const raw = base64ToUint8Array(res.data_base64);
-          chunks.push(raw);
-          offset += raw.byteLength;
-        }
-        if (res.sha256) sha = res.sha256;
-        if (res.eof || !res.bytes_read) break;
-      }
-      const totalLen = chunks.reduce((acc, c) => acc + c.byteLength, 0);
-      const merged = new Uint8Array(totalLen);
-      let pos = 0;
-      for (const c of chunks) {
-        merged.set(c, pos);
-        pos += c.byteLength;
-      }
-      const blob = new Blob([merged], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = entry.name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setNotice(
-        sha
-          ? isAr
-            ? `تم تنزيل ${entry.name} (${formatBytes(totalLen)} · SHA-256: ${sha.slice(0, 16)}…)`
-            : `Downloaded ${entry.name} (${formatBytes(totalLen)} · SHA-256: ${sha.slice(0, 16)}…)`
-          : isAr
-            ? `تم تنزيل ${entry.name} (${formatBytes(totalLen)})`
-            : `Downloaded ${entry.name} (${formatBytes(totalLen)})`,
-      );
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setProgress(null);
-      setBusy('');
-    }
-  }
-
-  /** Asks the operator, in a dialog, whether an existing remote file may be replaced. */
-  const askOverwrite = useCallback(
-    (prompt: Omit<OverwritePrompt, 'resolve'>) =>
-      new Promise<boolean>((resolve) => {
-        setOverwritePrompt({ ...prompt, resolve });
-      }),
-    [],
-  );
-  function answerOverwrite(confirmed: boolean) {
-    overwritePrompt?.resolve(confirmed);
-    setOverwritePrompt(null);
-  }
-
-  async function handleUploadFile(file: File) {
-    if (!currentPath) return;
-    cancelRef.current = false;
-    const sep = currentPath.includes('\\') ? '\\' : '/';
-    const remotePath = currentPath.endsWith(sep) ? `${currentPath}${file.name}` : `${currentPath}${sep}${file.name}`;
-    // Windows paths are case-insensitive: "Report.xlsx" replaces "report.xlsx".
-    const sameName = (n: string) => (sep === '\\' ? n.toLowerCase() === file.name.toLowerCase() : n === file.name);
-    const existing = entries.find((e) => sameName(e.name));
-    if (existing?.is_dir) {
-      setError({
-        status: 409,
-        code: 'target_is_folder',
-        message: isAr ? `يوجد مجلد باسم ${file.name} هنا؛ لا يمكن استبداله بملف.` : `A folder named ${file.name} exists here; an upload cannot replace it.`,
-      } as ApiError);
-      return;
-    }
-    // Never silently overwrite: an existing file is replaced only after the operator confirms.
-    let overwrite = false;
-    if (existing) {
-      overwrite = await askOverwrite({ name: file.name, path: remotePath, newSize: file.size, existingSize: existing.size, existingModTime: existing.mod_time });
-      if (!overwrite) {
-        setNotice(isAr ? `لم يُرفع ${file.name}: الملف الموجود بقي كما هو.` : `${file.name} was not uploaded: the existing file was kept.`);
-        return;
-      }
-    }
-    setBusy('upload');
-    setError(null);
-    try {
-      const buf = await file.arrayBuffer();
-      const total = buf.byteLength;
-      const sha = await sha256Hex(buf);
-      const send = async (confirmed: boolean) => {
-        const chunkLen = 256 * 1024;
-        let offset = 0;
-        let res: RemoteFileResponse | null = null;
-        do {
-          if (cancelRef.current) {
-            throw {
-              status: 499,
-              code: 'cancelled',
-              message: isAr ? 'تم إلغاء الرفع بواسطة المشغّل' : 'Upload cancelled by operator',
-            } as ApiError;
-          }
-          const end = Math.min(total, offset + chunkLen);
-          setProgress({
-            label: isAr ? `جارٍ رفع ${file.name}…` : `Uploading ${file.name}…`,
-            pct: total === 0 ? 50 : Math.min(99, Math.round((end * 100) / total)),
-          });
-          res = await runFsOp({
-            op: 'upload',
-            path: remotePath,
-            offset,
-            append: offset > 0,
-            data_base64: arrayBufferToBase64(buf.slice(offset, end)),
-            // The confirmed overwrite travels with the first chunk only (the agent refuses it later).
-            ...(offset === 0 && confirmed ? { overwrite: true } : {}),
-            // The agent verifies the whole file against this on the last chunk.
-            ...(end >= total && sha ? { expected_sha256: sha } : {}),
-          });
-          offset = end;
-        } while (offset < total);
-        return res;
-      };
-      let res: RemoteFileResponse | null;
-      try {
-        res = await send(overwrite);
-      } catch (err) {
-        // Someone created the file after the listing was read: ask now, then start again.
-        const e = err as ApiError;
-        if (overwrite || e.code !== 'fs_op_failed' || !e.message?.includes(UPLOAD_TARGET_EXISTS)) throw err;
-        setProgress(null);
-        const confirmed = await askOverwrite({ name: file.name, path: remotePath, newSize: file.size });
-        if (!confirmed) {
-          setNotice(isAr ? `لم يُرفع ${file.name}: الملف الموجود بقي كما هو.` : `${file.name} was not uploaded: the existing file was kept.`);
-          return;
-        }
-        res = await send(true);
-      }
-      const replaced = Boolean(res?.overwritten);
-      setNotice(
-        replaced
-          ? isAr
-            ? `تم استبدال ${file.name} (${formatBytes(total)}) بعد تأكيدك، وسُجّل ذلك في سجل التدقيق`
-            : `Replaced ${file.name} (${formatBytes(total)}) after your confirmation; recorded in the audit log`
-          : isAr
-            ? `تم رفع ${file.name} (${formatBytes(total)})`
-            : `Uploaded ${file.name} (${formatBytes(total)})`,
-      );
-      await loadDirectory(currentPath);
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setProgress(null);
-      setBusy('');
-    }
-  }
-  return { askOverwrite, overwritePrompt, answerOverwrite, locale, isAr, roots, setRoots, currentPath, setCurrentPath, parentPath, setParentPath, pathInput, setPathInput, entries, setEntries, selected, setSelected, clipboard, setClipboard, showHidden, setShowHidden, searchQuery, setSearchQuery, sortBy, setSortBy, busy, setBusy, progress, setProgress, error, setError, notice, setNotice, cancelRef, fileInputRef, runFsOp, loadDirectory, initRoots, sortedEntries, toggleSelect, handleSearch, handleMkdir, handleNewFile, handleRename, handlePaste, handleDelete, handleDownload, handleUploadFile };
+  return {
+    ref,
+    locale,
+    isAr,
+    roots,
+    currentPath,
+    parentPath,
+    pathInput,
+    setPathInput,
+    entries,
+    searching,
+    selected,
+    setSelected,
+    selectedEntries,
+    clipboard,
+    setClipboard,
+    showHidden,
+    setShowHidden,
+    searchQuery,
+    setSearchQuery,
+    sortBy,
+    sortDesc,
+    sortOn,
+    busy,
+    setBusy,
+    error,
+    setError,
+    notice,
+    setNotice,
+    runFsOp,
+    attempt,
+    loadDirectory,
+    initRoots,
+    sortedEntries,
+    toggleSelect,
+    selectClick,
+    handleSearch,
+    handleMkdir,
+    handleNewFile,
+    handleRename,
+    handlePaste,
+    handleDelete,
+  };
 }
+
+export type RemoteFiles = ReturnType<typeof useRemoteFiles>;

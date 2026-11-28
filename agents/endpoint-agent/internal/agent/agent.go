@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -603,6 +604,31 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 		}
 	}
 	a.log.Info("executing remote IT command", "id", cmd.ID, "kind", cmd.Kind)
+	a.deliver(ctx, a.execute(ctx, cmd))
+
+	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" || cmd.Kind == "software_action" {
+		select {
+		case a.wakeInventory <- struct{}{}:
+		default:
+		}
+	}
+	if cmd.Kind == "refresh_inventory" {
+		select {
+		case a.wakeHardware <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// execute runs one command. A panic inside a handler fails only that command (the operator sees
+// the error) instead of taking the whole agent down with every session, stream and shell.
+func (a *Agent) execute(ctx context.Context, cmd control.Command) (res control.Result) {
+	defer func() {
+		if p := recover(); p != nil {
+			a.log.Error("remote IT command crashed", "id", cmd.ID, "kind", cmd.Kind, "panic", fmt.Sprint(p), "stack", string(debug.Stack()))
+			res = control.Result{ID: cmd.ID, OK: false, Error: "The command failed inside the agent (internal error). Details are in the agent log."}
+		}
+	}()
 	res, handled := a.sessionCommand(ctx, cmd)
 	if !handled {
 		res, handled = a.jobsCommand(ctx, cmd)
@@ -619,20 +645,7 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	if !handled {
 		res = a.deps.ExecuteCommand(ctx, cmd)
 	}
-	a.deliver(ctx, res)
-
-	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" || cmd.Kind == "software_action" {
-		select {
-		case a.wakeInventory <- struct{}{}:
-		default:
-		}
-	}
-	if cmd.Kind == "refresh_inventory" {
-		select {
-		case a.wakeHardware <- struct{}{}:
-		default:
-		}
-	}
+	return res
 }
 
 // deliver sends a result over /command-result at once; if that fails it waits for the next heartbeat.

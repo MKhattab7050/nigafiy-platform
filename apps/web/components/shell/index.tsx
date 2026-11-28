@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useFocusTrap } from '@/components/ui/focus-trap';
 import { OwnPasswordBanner } from '@/features/auth';
+import { TransferCenter } from '@/features/endpoints/components/remote-files/transfer-center';
 import { useSession } from '@/lib/app';
 import { useI18n } from '@/lib/i18n';
 import { useProgramId } from '@/lib/programs-context';
@@ -95,6 +96,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <ShellPartBoundary part="bottomNav">
         <BottomNav onMore={() => setOpen(true)} moreOpen={open} />
       </ShellPartBoundary>
+      {/* File transfers keep running (and show their progress) on every page of the console. */}
+      <TransferCenter userId={me.user.id} />
       {search && (
         <ShellPartBoundary part="search">
           <CommandPalette onClose={closeSearch} />

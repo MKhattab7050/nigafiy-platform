@@ -20,6 +20,9 @@ export function assertFileOperationAllowed(body: FsOpCommand, isAdmin: boolean):
   if (body.overwrite !== undefined && body.op !== 'upload') {
     throw new AppError(400, 'invalid_option', 'overwrite applies only to uploads');
   }
+  if (body.size_only !== undefined && body.op !== 'hash') {
+    throw new AppError(400, 'invalid_option', 'size_only applies only to hash');
+  }
   if (body.overwrite === true && (body.offset ?? 0) !== 0) {
     throw new AppError(400, 'invalid_option', 'overwrite is confirmed on the first chunk of an upload (offset 0) only');
   }

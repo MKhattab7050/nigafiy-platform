@@ -5,10 +5,13 @@ package filemgr
 
 import (
 	"crypto/sha256"
+	"encoding"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
@@ -21,10 +24,13 @@ import (
 )
 
 const (
-	MaxChunkBytes  = 512 * 1024 // 512 KB per transfer chunk
+	MaxChunkBytes  = 1024 * 1024 // 1 MiB per download chunk (uploads take up to twice that)
 	MaxListEntries = 1500
 	MaxSearchHits  = 250
 	MaxSearchDepth = 6
+	// walk: a whole folder tree for folder downloads, copies and folder sizes.
+	MaxWalkEntries = 10000
+	MaxWalkDepth   = 32
 )
 
 type RootEntry struct {
@@ -46,7 +52,7 @@ type FileEntry struct {
 }
 
 type Request struct {
-	Op                 string   `json:"op"` // roots | list | search | mkdir | touch | rename | copy | move | delete | download | upload | hash
+	Op                 string   `json:"op"` // roots | list | walk | search | mkdir | touch | rename | copy | move | delete | download | upload | hash
 	Path               string   `json:"path,omitempty"`
 	Paths              []string `json:"paths,omitempty"`
 	TargetPath         string   `json:"target_path,omitempty"`
@@ -60,6 +66,9 @@ type Request struct {
 	DataBase64         string   `json:"data_base64,omitempty"`
 	ExpectedSHA256     string   `json:"expected_sha256,omitempty"`
 	AllowedRoots       []string `json:"allowed_roots,omitempty"`
+	// SizeOnly (hash only): answer the size, modification time and resume point without reading
+	// the file (resuming a very large transfer must not wait for a whole-file checksum).
+	SizeOnly bool `json:"size_only,omitempty"`
 	// Overwrite lets an upload replace an existing file. The operator confirms it in a dialog first;
 	// without it an upload never touches a file that already exists.
 	Overwrite bool `json:"overwrite,omitempty"`
@@ -83,6 +92,15 @@ type Response struct {
 	// UploadNext (hash only): an interrupted upload of this file that this agent started and can
 	// still continue, and the offset its next chunk must start at (the file's size).
 	UploadNext *int64 `json:"upload_next,omitempty"`
+	// walk only: how many files and folders were found (TotalSize is their bytes), and whether
+	// the tree was cut at MaxWalkEntries or MaxWalkDepth.
+	// ModTime (download, hash): the file's modification time, so a copy notices a file that
+	// changed while it was copied. ChunkSHA256 (download): the SHA-256 of this chunk's bytes.
+	ModTime     string `json:"mod_time,omitempty"`
+	ChunkSHA256 string `json:"chunk_sha256,omitempty"`
+	TotalFiles  int    `json:"total_files,omitempty"`
+	TotalDirs   int    `json:"total_dirs,omitempty"`
+	Truncated   bool   `json:"truncated,omitempty"`
 }
 
 // ValidateAndCleanPath rejects traversal segments, null bytes, relative paths, and
@@ -379,6 +397,14 @@ func Execute(req Request) (Response, error) {
 		afterValidate(clean)
 		return listDir(clean, req.ShowHidden, req.AllowedRoots)
 
+	case "walk":
+		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, false)
+		if err != nil {
+			return Response{}, err
+		}
+		afterValidate(clean)
+		return walkChecked(clean, req.ShowHidden, req.AllowedRoots)
+
 	case "search":
 		clean, err := ValidateAndCleanPath(req.Path, req.AllowedRoots, false)
 		if err != nil {
@@ -565,6 +591,9 @@ func Execute(req Request) (Response, error) {
 			return Response{}, err
 		}
 		afterValidate(clean)
+		if req.SizeOnly {
+			return statFile(clean, guard{req.AllowedRoots, false})
+		}
 		return hashFile(clean, guard{req.AllowedRoots, false})
 
 	default:
@@ -652,15 +681,18 @@ func downloadChunk(clean string, offset int64, length int64, g guard) (Response,
 		}
 	}
 
+	chunkSum := sha256.Sum256(chunk)
 	return Response{
-		Op:         "download",
-		Path:       clean,
-		TotalSize:  info.Size(),
-		Offset:     offset,
-		BytesRead:  int64(n),
-		EOF:        eof,
-		DataBase64: base64.StdEncoding.EncodeToString(chunk),
-		SHA256:     sumHex,
+		Op:          "download",
+		Path:        clean,
+		TotalSize:   info.Size(),
+		Offset:      offset,
+		BytesRead:   int64(n),
+		EOF:         eof,
+		DataBase64:  base64.StdEncoding.EncodeToString(chunk),
+		SHA256:      sumHex,
+		ModTime:     modTime(info),
+		ChunkSHA256: hex.EncodeToString(chunkSum[:]),
 	}, nil
 }
 
@@ -685,6 +717,9 @@ func hashFile(clean string, g guard) (Response, error) {
 		return Response{}, fmt.Errorf("read failed: %w", err)
 	}
 	out := Response{Op: "hash", Path: clean, TotalSize: n, SHA256: hex.EncodeToString(h.Sum(nil))}
+	if info, err := f.Stat(); err == nil {
+		out.ModTime = modTime(info)
+	}
 	if uploads.continues(clean, n) {
 		next := n
 		out.UploadNext = &next
@@ -693,19 +728,93 @@ func hashFile(clean string, g guard) (Response, error) {
 }
 
 // uploadTracker remembers the uploads this agent started (created, or overwrote after
-// confirmation) and where their next chunk must begin, so a continuation chunk can only extend a
-// file its own upload created. An agent restart forgets them: the operator uploads again.
+// confirmation), where their next chunk must begin and the SHA-256 state of what was written so
+// far, so a continuation chunk can only extend a file its own upload created and the last chunk is
+// checked without reading the file again. With a state folder (SetStateDir) it survives an agent
+// restart: a very large upload continues where it stopped instead of starting over.
 type uploadTracker struct {
-	mu sync.Mutex
-	m  map[string]trackedUpload
+	mu   sync.Mutex
+	m    map[string]trackedUpload
+	file string
+	// busy: one chunk at a time per file. Commands run concurrently, and two chunks of one file
+	// must never both pass the offset checks and write at the same place.
+	busy map[string]*sync.Mutex
+}
+
+// lockPath serialises the chunks of one file and returns the unlock.
+func (u *uploadTracker) lockPath(p string) func() {
+	u.mu.Lock()
+	if u.busy == nil {
+		u.busy = map[string]*sync.Mutex{}
+	}
+	k := uploadKey(p)
+	l, ok := u.busy[k]
+	if !ok {
+		l = &sync.Mutex{}
+		u.busy[k] = l
+	}
+	u.mu.Unlock()
+	l.Lock()
+	return l.Unlock
 }
 
 type trackedUpload struct {
-	next int64
-	at   time.Time
+	Path string    `json:"path"`
+	Next int64     `json:"next"`
+	At   time.Time `json:"at"`
+	// Hash: the marshalled SHA-256 state of bytes 0..Next (crypto/sha256 supports it).
+	Hash []byte `json:"hash,omitempty"`
+	// ModTime: the file's modification time after that write. If the file changed since (someone
+	// else wrote it while the agent was stopped), the running hash is not trusted.
+	ModTime string `json:"mod_time,omitempty"`
 }
 
+// uploadTTL: how long an interrupted upload can wait to be continued (a laptop closed overnight).
+const uploadTTL = 72 * time.Hour
+
 var uploads = &uploadTracker{m: map[string]trackedUpload{}}
+
+// SetStateDir keeps interrupted uploads in dir/file-uploads.json so they survive a restart.
+func SetStateDir(dir string) {
+	if strings.TrimSpace(dir) == "" {
+		return
+	}
+	uploads.mu.Lock()
+	defer uploads.mu.Unlock()
+	uploads.file = filepath.Join(dir, "file-uploads.json")
+	raw, err := os.ReadFile(uploads.file)
+	if err != nil {
+		return
+	}
+	var saved []trackedUpload
+	if json.Unmarshal(raw, &saved) != nil {
+		return
+	}
+	for _, t := range saved {
+		if t.Path != "" && time.Since(t.At) < uploadTTL {
+			uploads.m[uploadKey(t.Path)] = t
+		}
+	}
+}
+
+// save writes the tracker (lock held); a failure only means a restart forgets the uploads.
+func (u *uploadTracker) save() {
+	if u.file == "" {
+		return
+	}
+	list := make([]trackedUpload, 0, len(u.m))
+	for _, t := range u.m {
+		list = append(list, t)
+	}
+	raw, err := json.Marshal(list)
+	if err != nil {
+		return
+	}
+	tmp := u.file + ".tmp"
+	if os.WriteFile(tmp, raw, 0o600) == nil {
+		_ = os.Rename(tmp, u.file)
+	}
+}
 
 // uploadKey folds case only on Windows, whose paths are case-insensitive; on Linux and macOS
 // "Report" and "report" can be different files and must never continue each other's upload.
@@ -717,27 +826,80 @@ func uploadKey(p string) string {
 }
 
 func (u *uploadTracker) continues(p string, offset int64) bool {
+	_, ok := u.lookup(p, offset)
+	return ok
+}
+
+// lookup: the tracked upload of p whose next chunk starts at offset.
+func (u *uploadTracker) lookup(p string, offset int64) (trackedUpload, bool) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	t, ok := u.m[uploadKey(p)]
-	return ok && t.next == offset && time.Since(t.at) < time.Hour
+	return t, ok && t.Next == offset && time.Since(t.At) < uploadTTL
 }
 
-func (u *uploadTracker) advance(p string, next int64) {
+func (u *uploadTracker) advance(p string, next int64, h hash.Hash, mod string) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	for k, t := range u.m {
-		if time.Since(t.at) > time.Hour {
+		if time.Since(t.At) > uploadTTL {
 			delete(u.m, k)
 		}
 	}
-	u.m[uploadKey(p)] = trackedUpload{next: next, at: time.Now()}
+	t := trackedUpload{Path: filepath.Clean(p), Next: next, At: time.Now(), ModTime: mod}
+	if h != nil {
+		if m, ok := h.(encoding.BinaryMarshaler); ok {
+			if state, err := m.MarshalBinary(); err == nil {
+				t.Hash = state
+			}
+		}
+	}
+	u.m[uploadKey(p)] = t
+	u.save()
 }
 
 func (u *uploadTracker) forget(p string) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	delete(u.m, uploadKey(p))
+	u.save()
+}
+
+// resumedHash: the SHA-256 of the bytes written so far, or nil when it is not known.
+func resumedHash(t trackedUpload) hash.Hash {
+	if len(t.Hash) == 0 {
+		return nil
+	}
+	h := sha256.New()
+	u, ok := h.(encoding.BinaryUnmarshaler)
+	if !ok || u.UnmarshalBinary(t.Hash) != nil {
+		return nil
+	}
+	return h
+}
+
+func modTime(info fs.FileInfo) string { return info.ModTime().UTC().Format(time.RFC3339Nano) }
+
+// statFile: size, modification time and resume point of a file, without reading it.
+func statFile(clean string, g guard) (Response, error) {
+	f, err := openChecked(clean, os.O_RDONLY, 0, g)
+	if err != nil {
+		return Response{}, fmt.Errorf("open failed: %w", err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return Response{}, fmt.Errorf("stat failed: %w", err)
+	}
+	if info.IsDir() {
+		return Response{}, errors.New("cannot check a directory")
+	}
+	out := Response{Op: "hash", Path: clean, TotalSize: info.Size(), ModTime: modTime(info)}
+	if uploads.continues(clean, info.Size()) {
+		next := info.Size()
+		out.UploadNext = &next
+	}
+	return out, nil
 }
 
 // ErrUploadTargetExists starts the error an upload gets when its target already exists and the
@@ -753,6 +915,7 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 	if err != nil {
 		return Response{}, errors.New("invalid base64 upload payload")
 	}
+	defer uploads.lockPath(clean)()
 	if len(raw) > MaxChunkBytes*2 {
 		return Response{}, errors.New("upload chunk exceeds maximum permitted chunk size")
 	}
@@ -815,30 +978,53 @@ func uploadChunk(clean string, offset int64, dataB64 string, expectedSHA256 stri
 			return Response{}, fmt.Errorf("seek for upload failed: %w", err)
 		}
 	}
+	// The running SHA-256 of the whole file: new for a first chunk, the tracked one for a
+	// continuation (nil if unknown; then the last chunk reads the file again).
+	var h hash.Hash
+	if firstChunk {
+		h = sha256.New()
+	} else if t, ok := uploads.lookup(clean, offset); ok && t.ModTime == modTime(opened) {
+		h = resumedHash(t)
+	}
 	n, err := f.Write(raw)
 	if err != nil {
 		uploads.forget(clean)
 		return Response{}, fmt.Errorf("write failed: %w", err)
 	}
-	uploads.advance(clean, offset+int64(n))
-
+	if h != nil {
+		h.Write(raw[:n])
+	}
 	info, err := f.Stat()
 	if err != nil {
+		uploads.forget(clean)
 		return Response{}, err
 	}
+	uploads.advance(clean, offset+int64(n), h, modTime(info))
 
 	var sumHex string
 	if expectedSHA256 != "" {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return Response{}, err
+		if h != nil {
+			sumHex = hex.EncodeToString(h.Sum(nil))
+		} else {
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return Response{}, err
+			}
+			whole := sha256.New()
+			if _, err := io.Copy(whole, f); err != nil {
+				return Response{}, err
+			}
+			sumHex = hex.EncodeToString(whole.Sum(nil))
 		}
-		h := sha256.New()
-		if _, err := io.Copy(h, f); err != nil {
-			return Response{}, err
-		}
-		sumHex = hex.EncodeToString(h.Sum(nil))
 		if !strings.EqualFold(sumHex, expectedSHA256) {
-			return Response{}, fmt.Errorf("upload checksum mismatch: expected %s, got %s", expectedSHA256, sumHex)
+			// A file that failed its check must not stay behind looking complete.
+			uploads.forget(clean)
+			_ = f.Close()
+			removed := os.Remove(clean) == nil
+			note := ""
+			if removed {
+				note = "; the damaged file was removed, send it again"
+			}
+			return Response{}, fmt.Errorf("upload checksum mismatch: expected %s, got %s%s", expectedSHA256, sumHex, note)
 		}
 	}
 

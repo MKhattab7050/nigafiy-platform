@@ -127,10 +127,20 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
 
     // Avoid spamming audit logs on high-frequency remote desktop frame captures or mouse moves,
     // while auditing every mutating file op, process/service/power/software action, and session start/stop.
+    // A transfer is audited when it starts (offset 0) and when an upload finishes (its last chunk
+    // carries the checksum), with the path and size; the chunks in between are not (a 50 GB copy
+    // would otherwise write 50 000 audit rows and events). Folder walks are reads like listings.
+    const quietTransferChunk =
+      kind === 'fs_op' &&
+      (body.op === 'walk' ||
+        (body.op === 'hash' && body.size_only === true) ||
+        (body.op === 'download' && (body.offset ?? 0) > 0) ||
+        (body.op === 'upload' && (body.offset ?? 0) > 0 && !body.expected_sha256));
     const isHighFreqStream =
       kind === 'rd_capture' ||
       (kind === 'rd_input' && body.event_kind === 'mouse_move') ||
-      (kind === 'fs_op' && (body.op === 'roots' || body.op === 'list'));
+      (kind === 'fs_op' && (body.op === 'roots' || body.op === 'list')) ||
+      quietTransferChunk;
 
     const recorded = payloadForAudit(kind, payload);
     if (!isHighFreqStream) {
@@ -150,7 +160,7 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
       });
     }
 
-    await notifyRealtime(db, ctx.organizationId, 'devices');
+    if (!quietTransferChunk) await notifyRealtime(db, ctx.organizationId, 'devices');
     return created;
   });
 }
@@ -195,7 +205,8 @@ export async function waitForCommandResult(organizationId: string, endpointId: s
       }
       return row;
     });
-    if (latest && (latest.status === 'completed' || latest.status === 'failed')) {
+    // An expired command (the agent was away more than 10 minutes) is final too.
+    if (latest && (latest.status === 'completed' || latest.status === 'failed' || latest.status === 'expired')) {
       return latest.kind === 'rd_capture' && latest.status === 'completed' ? withRelayedFrame(latest, endpointId, deadline) : latest;
     }
   }
@@ -219,4 +230,30 @@ async function withRelayedFrame(cmd: EndpointCommand, endpointId: string, deadli
   }
   // The image is gone (session ended, or a newer frame replaced it): the metadata alone, flagged.
   return { ...cmd, result_data: { ...meta, image_unavailable: true } };
+}
+
+/**
+ * One file-manager command of this operator, waited on up to `waitMs` (GET
+ * /endpoints/:id/commands/:commandId): a transfer whose POST answered before the agent finished
+ * (a whole-file checksum of a very large file) asks here again instead of starting over. Only the
+ * operator who sent the command reads its result (a download chunk holds the file's bytes).
+ */
+export async function ownFileCommandResult(organizationId: string, userId: string, endpointId: string, commandId: string, waitMs: number): Promise<EndpointCommand | null> {
+  const mine = await withTenant(organizationId, async (db) =>
+    (
+      await db.query<{ id: string }>(`SELECT id FROM endpoint_commands WHERE id = $1 AND endpoint_id = $2 AND kind = 'fs_op' AND created_by = $3`, [commandId, endpointId, userId])
+    ).rows[0],
+  );
+  if (!mine) throw new AppError(404, 'not_found', 'No such file command');
+  const done = await waitForCommandResult(organizationId, endpointId, commandId, waitMs);
+  if (done) return done;
+  return withTenant(organizationId, async (db) =>
+    (
+      await db.query<EndpointCommand>(
+        `SELECT id, endpoint_id, kind, payload, status, output, error, result_data, created_by_name, created_at, delivered_at, completed_at
+           FROM endpoint_commands WHERE id = $1 AND endpoint_id = $2`,
+        [commandId, endpointId],
+      )
+    ).rows[0] ?? null,
+  );
 }

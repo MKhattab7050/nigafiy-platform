@@ -8,7 +8,7 @@ import { z } from 'zod';
 export const fsOpCommandSchema = z
   .object({
     kind: z.literal('fs_op'),
-    op: z.enum(['roots', 'list', 'search', 'mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'download', 'upload', 'hash']),
+    op: z.enum(['roots', 'list', 'walk', 'search', 'mkdir', 'touch', 'rename', 'copy', 'move', 'delete', 'download', 'upload', 'hash']),
     path: z.string().max(1024).optional(),
     paths: z.array(z.string().max(1024)).max(100).optional(),
     target_path: z.string().max(1024).optional(),
@@ -17,10 +17,13 @@ export const fsOpCommandSchema = z
     show_hidden: z.boolean().optional(),
     confirm_destructive: z.boolean().optional(),
     offset: z.number().int().min(0).optional(),
-    length: z.number().int().min(1).max(524_288).optional(),
+    length: z.number().int().min(1).max(1_048_576).optional(),
     append: z.boolean().optional(),
-    data_base64: z.string().max(1_500_000).optional(),
+    /** One upload chunk: at most 1 MiB of bytes (1 398 104 base64 characters). */
+    data_base64: z.string().max(1_400_000).optional(),
     expected_sha256: z.string().max(64).optional(),
+    /** hash only: size, modification time and resume point without reading the whole file. */
+    size_only: z.boolean().optional(),
     /** Upload only: replace an existing file. The console sets it only after the operator confirms in a dialog. */
     overwrite: z.boolean().optional(),
   })

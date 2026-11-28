@@ -1325,6 +1325,14 @@ export interface RemoteFileResponse {
   overwritten?: boolean;
   /** `hash` only: an interrupted upload of this file the agent can continue, from this offset. */
   upload_next?: number;
+  /** `download`, `hash`: the file's modification time (a copy notices a file that changed meanwhile). */
+  mod_time?: string;
+  /** `download`: SHA-256 of this chunk's bytes (agents from 2026-11-28). */
+  chunk_sha256?: string;
+  /** `walk`: how many files and folders were found (total_size: their bytes) and whether the tree was cut. */
+  total_files?: number;
+  total_dirs?: number;
+  truncated?: boolean;
 }
 
 export interface RemoteDesktopDisplay {

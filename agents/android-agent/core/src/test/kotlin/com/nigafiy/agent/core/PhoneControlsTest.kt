@@ -212,7 +212,7 @@ class SharedStorageTest {
 
     @Test
     fun downloadInChunksWithTheChecksumAtTheEnd() {
-        val data = ByteArray(700_000) { (it % 251).toByte() }
+        val data = ByteArray(1_500_000) { (it % 251).toByte() }
         File(root, "big.bin").writeBytes(data)
         val first = op("download", "path" to "$prefix/big.bin", "offset" to 0L, "length" to 10_000_000L)
         assertEquals(SharedStorage.MAX_CHUNK, first["bytes_read"])

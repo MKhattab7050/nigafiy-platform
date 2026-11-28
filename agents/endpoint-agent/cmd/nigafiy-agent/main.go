@@ -36,6 +36,7 @@ import (
 	"github.com/nigafiy/agent/internal/agent"
 	"github.com/nigafiy/agent/internal/config"
 	"github.com/nigafiy/agent/internal/desktop"
+	"github.com/nigafiy/agent/internal/filemgr"
 	"github.com/nigafiy/agent/internal/service"
 )
 
@@ -122,6 +123,8 @@ func cmdForeground(args []string) int {
 	deps := agent.SystemDeps()
 	deps.ServiceName = service.DefaultName()
 	deps.Health = healthWriter(cfg.StateDir, log)
+	// Interrupted file uploads survive a restart (the file manager continues them).
+	filemgr.SetStateDir(cfg.StateDir)
 	ag, err := agent.New(&cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start endpoint agent", "error", err.Error())
@@ -369,6 +372,8 @@ func cmdRun(args []string) int {
 	deps.InService = service.InService()
 	deps.ServiceName = name
 	deps.Health = healthWriter(cfg.StateDir, log)
+	// Interrupted file uploads survive a restart (the file manager continues them).
+	filemgr.SetStateDir(cfg.StateDir)
 	ag, err := agent.New(&cfg, deps, log, Version, agent.DefaultTuning())
 	if err != nil {
 		log.Error("cannot start endpoint agent", "error", err.Error())
