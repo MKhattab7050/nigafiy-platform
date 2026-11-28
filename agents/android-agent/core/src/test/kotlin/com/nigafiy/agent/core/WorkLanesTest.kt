@@ -20,6 +20,9 @@ class WorkLanesTest {
         assertEquals(Lane.LONG, WorkLanes.lane(AgentCommand.InstallApk("1", "a", "/p", "00", 1, "x")))
         assertEquals(Lane.LONG, WorkLanes.lane(AgentCommand.Uninstall("2", "com.x")))
         assertEquals(Lane.LONG, WorkLanes.lane(fs("3")))
+        // Download pieces are independent reads: their own lane, so they overlap.
+        assertEquals(Lane.READ, WorkLanes.lane(AgentCommand.FsOp("4", FsRequest.parse(mapOf("op" to "download", "path" to "/a")))))
+        assertEquals(Lane.LONG, WorkLanes.lane(AgentCommand.FsOp("5", FsRequest.parse(mapOf("op" to "upload", "path" to "/a")))))
         for (c in listOf(
             AgentCommand.Lock("4"),
             AgentCommand.Capture("5", 60, 1.0, false),

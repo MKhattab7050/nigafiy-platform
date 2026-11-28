@@ -16,14 +16,17 @@ import java.util.concurrent.atomic.AtomicInteger
  * Now each long-lived loop has its own thread, short background jobs have their own small pool, and
  * commands go to one of three lanes: [Lane.QUICK] (screen, input, policy: never waits behind a
  * download), [Lane.LONG] (installs, uninstalls, files: one at a time, in order) and [Lane.CONSENT]
- * (asking the person, up to a minute: its own thread each).
+ * (asking the person, up to a minute: its own thread each). Download pieces of a file transfer are
+ * independent reads, so they have their own lane, [Lane.READ], with as many threads as pieces the web
+ * keeps in flight: the next piece is read while the previous one is still on its way.
  */
-enum class Lane { QUICK, LONG, CONSENT }
+enum class Lane { QUICK, LONG, CONSENT, READ }
 
 object WorkLanes {
     fun lane(cmd: AgentCommand): Lane = when (cmd) {
         is AgentCommand.SessionOpen -> Lane.CONSENT
-        is AgentCommand.InstallApk, is AgentCommand.Uninstall, is AgentCommand.FsOp -> Lane.LONG
+        is AgentCommand.FsOp -> if (cmd.request.op == "download") Lane.READ else Lane.LONG
+        is AgentCommand.InstallApk, is AgentCommand.Uninstall -> Lane.LONG
         else -> Lane.QUICK
     }
 }
@@ -39,17 +42,20 @@ class AgentThreads(prefix: String = "nigafiy") {
     private val quick: ExecutorService = Executors.newSingleThreadExecutor(named("$prefix-cmd"))
     private val long: ExecutorService = Executors.newSingleThreadExecutor(named("$prefix-cmd-long"))
     private val consent: ExecutorService = Executors.newCachedThreadPool(named("$prefix-share-request"))
+    /** Download pieces: the web keeps up to 3 in flight (transfer-engine.ts PIPELINE). */
+    private val reads: ExecutorService = Executors.newFixedThreadPool(3, named("$prefix-cmd-read"))
 
     fun commands(lane: Lane): ExecutorService = when (lane) {
         Lane.QUICK -> quick
         Lane.LONG -> long
         Lane.CONSENT -> consent
+        Lane.READ -> reads
     }
 
     fun run(cmd: AgentCommand, work: Runnable) = commands(WorkLanes.lane(cmd)).execute(work)
 
     fun shutdownNow() {
-        for (e in listOf(heartbeatLoop, pollLoop, background, quick, long, consent)) e.shutdownNow()
+        for (e in listOf(heartbeatLoop, pollLoop, background, quick, long, consent, reads)) e.shutdownNow()
     }
 
     private fun named(name: String): ThreadFactory {
