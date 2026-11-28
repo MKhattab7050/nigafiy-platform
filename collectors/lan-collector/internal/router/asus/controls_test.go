@@ -239,3 +239,35 @@ func TestAsusControls(t *testing.T) {
 		t.Fatalf("Reboot: %+v %v rebooted=%v", ch, err, f.rebooted)
 	}
 }
+
+// vts_rulelist rows Nigafiy cannot read (here a GRE rule) are skipped when listing; removing the rule
+// after them must remove that rule's own row, not the one at the same index in the filtered list.
+func TestAsusRemovePortForwardAfterSkippedRow(t *testing.T) {
+	f := newFakeAsusControls(t)
+	f.nvram["vts_rulelist"] = "<VPN>1723>192.168.50.30>1723>GRE<WebAdmin>8443>192.168.50.20>443>TCP<Cam>8554>192.168.50.40>554>UDP"
+	d := openTestAsusControls(t, f)
+	ctx := context.Background()
+	s, err := d.(router.SettingsReader).Settings(ctx)
+	if err != nil || len(s.PortForwards) != 2 {
+		t.Fatalf("settings: %+v %v", s.PortForwards, err)
+	}
+	cam := s.PortForwards[1]
+	if cam.Description != "Cam" || cam.ID != "3" {
+		t.Fatalf("the Cam rule keeps its row number as ID: %+v", cam)
+	}
+	if ch, err := d.(router.PortForwarder).RemovePortForward(ctx, cam); err != nil || !ch.Applied {
+		t.Fatalf("RemovePortForward: %+v %v", ch, err)
+	}
+	if got, want := f.nvram["vts_rulelist"], "<VPN>1723>192.168.50.30>1723>GRE<WebAdmin>8443>192.168.50.20>443>TCP"; got != want {
+		t.Fatalf("vts_rulelist after removing Cam:\n got %q\nwant %q", got, want)
+	}
+
+	// Removing the WebAdmin rule (row 2) leaves the unreadable row in place too.
+	s, _ = d.(router.SettingsReader).Settings(ctx)
+	if _, err := d.(router.PortForwarder).RemovePortForward(ctx, s.PortForwards[0]); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.nvram["vts_rulelist"], "<VPN>1723>192.168.50.30>1723>GRE"; got != want {
+		t.Fatalf("vts_rulelist after removing WebAdmin: got %q want %q", got, want)
+	}
+}
