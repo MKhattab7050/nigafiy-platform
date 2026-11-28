@@ -28,7 +28,7 @@ describe('automation settings', () => {
     expect(keys).toEqual([
       'incident.refresh_measurements', 'classify.switch_from_snmp', 'suggest.monitor_infrastructure',
       'suggest.knowledge_from_incidents',
-      'smart.rogue_dhcp', 'smart.upnp_audit', 'smart.wifi_analyzer', 'smart.banner_probe', 'smart.dhcp_fingerprint',
+      'smart.rogue_dhcp', 'smart.upnp_audit', 'smart.wifi_analyzer', 'smart.banner_probe', 'smart.dhcp_fingerprint', 'router.reserve_own_address',
     ]);
     const refresh = list.body.items[0];
     expect(refresh).toMatchObject({

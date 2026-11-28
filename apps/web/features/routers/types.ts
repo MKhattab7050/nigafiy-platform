@@ -334,5 +334,7 @@ export interface RouterSettingsView {
   wifi: WifiNetwork[] | null;
   reservations: RouterReservation[] | null;
   port_forwards: PortForwardRule[] | null;
+  /** This computer's adapters whose address Nigafiy reserved by itself (automation router.reserve_own_address). */
+  own_computer?: { mac: string; ip: string; status: 'reserved' | 'pending' | 'conflict' | 'failed' | 'removed'; code: string | null }[];
   pending: { id: string; action: RequestAction; mac: string | null; device_id: string | null; params: Record<string, unknown>; created_by_email: string | null; created_at: string }[];
 }

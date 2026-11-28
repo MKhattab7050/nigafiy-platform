@@ -148,6 +148,26 @@ MAC address on that router (`router_pause_blocks`, migration 049; `routers/pause
 
 Bedtime windows of access profiles are still DNS-only.
 
+## This computer's own address (2026-11-28)
+
+Owner's request: the computer running Nigafiy keeps the same address at home, so other home
+computers keep reaching the dashboard at `https://<address>:47143`. After a router read that
+succeeds and carries the reservation list, `self-reserve.ts` (automation
+`router.reserve_own_address`, on by default, can be switched off) reserves the current IPv4
+address of each of this computer's adapters that sit inside the router's LAN. It skips loopback,
+link-local and 100.64.0.0/10 (Tailscale). The request is made on behalf of the administrator who
+added the router and is recorded in the audit log with `metadata.automation`.
+
+- Each adapter MAC is handled only once per router (`site_routers.self_reservations`, migration
+  068). A reservation removed by hand is not put back. Only a request that failed or ran out of
+  time is tried again, after a day.
+- If the router already has a reservation for that MAC, it is kept as it is (`already`). If the
+  address is reserved for another MAC or another client has it now, nothing is sent
+  (`conflict`).
+- `GET /routers/:id/settings` returns `own_computer`
+  (`reserved | pending | conflict | failed | removed`). The router page shows one short line per
+  adapter above the reservations table and shows nothing for `removed`.
+
 ## Storage
 
 Migration adds to `site_routers`: `settings jsonb` and `settings_at timestamptz`, and extends the

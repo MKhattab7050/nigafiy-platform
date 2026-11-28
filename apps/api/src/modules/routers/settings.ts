@@ -7,13 +7,15 @@ import { normalizeMac } from '../../common/net.ts';
 import { type Db, withTenant } from '../../infrastructure/db.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { assertCapability, capability, oneDevice, protectedDevice, requesterAddress, siteDevice } from './control.ts';
+import { requestStatuses, selfReservationStatus, type SelfReservation } from './self-reserve.ts';
 import { MANAGEMENT_PORTS, MAX_PORTS_PER_RULE, type PortForwardBody } from './schema.ts';
 import { type RouterAction, type RouterRow, assertControllable, expireStaleRequests, loadRouter, queueRequest } from './service.ts';
 
 // Router controls beyond blocking (docs/features/router-controls.md): Wi-Fi on/off, DHCP
 // reservations, port forwarding, rename on the router, reboot. Each is an explicit administrator
 // request, checked here against the settings the router last reported and re-checked by the
-// collector against the router itself. Nothing here is ever automatic.
+// collector against the router itself. Nothing here is automatic; the one automatic reservation
+// (this computer's own address, automation router.reserve_own_address) is in self-reserve.ts.
 
 export type PortForwardRule = NonNullable<RouterSettings['port_forwards']>[number];
 export type WifiNetwork = NonNullable<RouterSettings['wifi']>[number];
@@ -176,9 +178,11 @@ export function routerSettings(organizationId: string, routerId: string) {
         [r.id],
       )
     ).rows;
+    const done = (await db.query<{ s: Record<string, SelfReservation> }>(`SELECT self_reservations AS s FROM site_routers WHERE id = $1`, [r.id])).rows[0]?.s ?? {};
     return {
       router_id: r.id,
       settings_at,
+      own_computer: selfReservationStatus(done, settings?.reservations, await requestStatuses(db, done)),
       lan: { cidr: lan.cidr, source: lan.source, router_ips: lan.router_ips },
       overview: settings?.overview ?? null,
       wifi: settings?.wifi?.map((w) => ({ ...w, client_count: w.client_macs?.length ?? null })) ?? null,

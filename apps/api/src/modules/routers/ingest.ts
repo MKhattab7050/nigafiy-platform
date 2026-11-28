@@ -4,6 +4,7 @@ import type { Db } from '../../infrastructure/db.ts';
 import { emitEvent } from '../events/index.ts';
 import { notifyRealtime } from '../realtime/index.ts';
 import { DEFAULT_LOCKOUT_MINUTES } from './schema.ts';
+import { reserveOwnAddresses } from './self-reserve.ts';
 
 // Applies router_result telemetry: refresh results (client list, capabilities, blocks in effect),
 // administrator requests (block / unblock / rate limit / schedule / certificate) and router health
@@ -74,6 +75,8 @@ export async function processRouterResult(db: Db, c: CollectorContext, item: Rou
   }
   // Settings: from a refresh, and re-read after any control that succeeded.
   if (item.settings && (item.action === 'refresh' || item.ok)) await applySettings(db, r, item.settings, at);
+  // This computer keeps its address at home: reserved once the router's reservations are known.
+  if (item.ok && item.action === 'refresh' && item.settings?.reservations) await reserveOwnAddresses(db, c.organizationId, r.id);
   if (item.ok && (item.action === 'block' || item.action === 'unblock') && request && item.change) {
     await applyBlockChange(db, c, r, item, request, at);
   }

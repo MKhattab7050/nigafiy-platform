@@ -122,6 +122,17 @@ export const AUTOMATIONS = [
       'Use the option list that devices’ DHCP clients broadcast (overheard by the passive DHCP listener) to recognise their operating system — Windows, Android, Apple, Linux, ChromeOS, printers, VoIP phones, consoles — as evidence for the device type. A type you set by hand is never changed.',
     config: z.object({}).strict(),
   }),
+  // ── Routers (modules/routers) ──
+  define({
+    key: 'router.reserve_own_address',
+    owner: 'routers',
+    defaultEnabled: true,
+    kind: 'act',
+    descriptionKey: 'automation.router_reserve_own_address',
+    description:
+      'After a router is added and read for the first time, reserve on it the current address of each network adapter of the computer running Nigafiy, so the dashboard keeps the same address at home. Done once per adapter: a reservation you remove is not put back, and an address already reserved for another device is left alone.',
+    config: z.object({}).strict(),
+  }),
 ] as const;
 
 export type AutomationKey = (typeof AUTOMATIONS)[number]['key'];

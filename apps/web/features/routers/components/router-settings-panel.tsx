@@ -164,6 +164,13 @@ export function RouterSettingsPanel({
               <EmptyState title={t('routers.settings.notRead')} />
             ) : (
               <>
+                {s.own_computer
+                  ?.flatMap((o) => (o.status === 'removed' ? [] : [{ ...o, status: o.status }]))
+                  .map((o) => (
+                    <p key={o.mac} className={`px-4 pt-3 text-xs ${o.status === 'conflict' || o.status === 'failed' ? 'text-warn' : 'text-muted'}`}>
+                      {fill(t(`routers.res.own.${o.status}`), { ip: o.ip })}
+                    </p>
+                  ))}
                 {s.reservations.length === 0 ? (
                   <EmptyState title={t('routers.res.none')} />
                 ) : (
