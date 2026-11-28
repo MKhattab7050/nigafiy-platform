@@ -39,7 +39,14 @@ export interface JobDefinition {
   readonly everyMs: number;
   /** Stable key for the PostgreSQL advisory lock that makes the job single-runner across API instances. */
   readonly lockKey: number;
-  readonly run: () => Promise<void>;
+  /**
+   * Gets a signal that aborts when the run passes its deadline (`timeoutMs`, else the scheduler's
+   * RUN_DEADLINE_MS). Jobs that wait on the network should hand it on; the scheduler stops waiting
+   * at the deadline either way.
+   */
+  readonly run: (signal: AbortSignal) => Promise<void>;
+  /** Total time one run may take before the scheduler gives up on it. Default RUN_DEADLINE_MS. */
+  readonly timeoutMs?: number;
 }
 
 export const defineModule = <M extends ModuleManifest>(manifest: M): M => manifest;
