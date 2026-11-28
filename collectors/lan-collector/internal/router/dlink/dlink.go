@@ -80,6 +80,17 @@ func hmacMD5Upper(key, data []byte) string {
 	return strings.ToUpper(hex.EncodeToString(m.Sum(nil)))
 }
 
+// hnapPrivateKey derives the HNAP1 session key the way the device's own web UI does
+// (hex_hmac_md5(PublicKey + Password, Challenge), upper-case): the HMAC key is PublicKey followed by
+// the password, the message is the Challenge.
+func hnapPrivateKey(publicKey string, pass []byte, challenge string) string {
+	key := make([]byte, 0, len(publicKey)+len(pass))
+	key = append(key, publicKey...)
+	key = append(key, pass...)
+	defer router.Zero(key)
+	return hmacMD5Upper(key, []byte(challenge))
+}
+
 func soapEnvelope(inner string) []byte {
 	return []byte(`<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>` + inner + `</soap:Body></soap:Envelope>`)
 }
@@ -149,11 +160,7 @@ func (d *Driver) login(ctx context.Context) error {
 	d.uidCookie = []byte(env1.Res.Cookie)
 
 	// Phase 2: derive PrivateKey and LoginPassword.
-	pkData := make([]byte, 0, len(env1.Res.PublicKey)+len(pass))
-	pkData = append(pkData, env1.Res.PublicKey...)
-	pkData = append(pkData, pass...)
-	privKey := hmacMD5Upper([]byte(env1.Res.Challenge), pkData)
-	router.Zero(pkData)
+	privKey := hnapPrivateKey(env1.Res.PublicKey, pass, env1.Res.Challenge)
 	loginPwd := hmacMD5Upper([]byte(privKey), []byte(env1.Res.Challenge))
 
 	router.Zero(d.privateKey)

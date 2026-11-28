@@ -37,7 +37,7 @@ func newFakeDLink(t *testing.T) *fakeDLink {
 	f := &fakeDLink{
 		challenge: ch,
 		pubKey:    pk,
-		privKey:   hmacMD5Upper([]byte(ch), []byte(pk+"dlink-pass")),
+		privKey:   hmacMD5Upper([]byte(pk+"dlink-pass"), []byte(ch)),
 		filters: macFilterInfo{
 			Enabled:     true,
 			IsAllowList: false,
@@ -188,5 +188,22 @@ func TestDLinkBadAuth(t *testing.T) {
 	defer d.Close(context.Background())
 	if _, err := d.Identify(context.Background()); !errors.Is(err, router.ErrBadCredentials) {
 		t.Fatalf("want ErrBadCredentials, got %v", err)
+	}
+}
+
+// Fixed vector, computed outside Go (Python hmac/hashlib) the way the D-Link web UI does it:
+// PrivateKey = HMAC-MD5(key = PublicKey+Password, msg = Challenge); LoginPassword =
+// HMAC-MD5(key = PrivateKey, msg = Challenge); HNAP_AUTH = HMAC-MD5(key = PrivateKey, msg = time+SOAPAction).
+func TestHNAPKeyDerivationVector(t *testing.T) {
+	const pk, pw, ch = "ABCDEFGHIJ0123456789", "dlink-pass", "Q1W2E3R4T5Y6U7I8O9P0"
+	priv := hnapPrivateKey(pk, []byte(pw), ch)
+	if priv != "03C06219B89C82CCDAE1570923A0B51B" {
+		t.Fatalf("PrivateKey = %s", priv)
+	}
+	if got := hmacMD5Upper([]byte(priv), []byte(ch)); got != "2AADF4D5EE4413A5E31ED6A19A669668" {
+		t.Fatalf("LoginPassword = %s", got)
+	}
+	if got := hmacMD5Upper([]byte(priv), []byte(`1700000000"http://purenetworks.com/HNAP1/GetDeviceSettings"`)); got != "40011A20508DDFB57018CC64490F34B1" {
+		t.Fatalf("HNAP_AUTH = %s", got)
 	}
 }
