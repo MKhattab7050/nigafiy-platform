@@ -317,8 +317,14 @@ func Close(ctx context.Context, client *http.Client, b Binding, credential strin
 	return nil
 }
 
-// AllowedCommand: what Quick Support runs outside the remote desktop stream. The server already
-// refuses everything else for a Quick Support computer; this is the program's own copy of that list.
+// AllowedCommand: everything Quick Support runs. The server already refuses everything else for a
+// Quick Support computer (commands/service.ts); this is the program's own copy of that list, so a
+// server it was wrongly pointed at cannot run scripts, a shell, patches or restarts either.
+// rd_session_* are the server-issued session commands; rd_capture/rd_input the HTTP fallback.
 func AllowedCommand(kind string) bool {
-	return kind == "fs_op" || kind == "notify_user"
+	switch kind {
+	case "rd_session_open", "rd_session_close", "rd_session_update", "rd_capture", "rd_input", "fs_op", "notify_user":
+		return true
+	}
+	return false
 }

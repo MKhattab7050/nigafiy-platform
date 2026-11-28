@@ -167,6 +167,7 @@ func Deps(d desktop.Desktop, exec func(context.Context, control.Command) control
 		CollectHealth:    sysinfo.CollectHealth,
 		CollectInventory: emptyInventory,
 		ExecuteCommand:   Limited(exec),
+		AllowCommand:     quicksupport.AllowedCommand,
 		Desktop:          d,
 		NoTray:           true,
 	}

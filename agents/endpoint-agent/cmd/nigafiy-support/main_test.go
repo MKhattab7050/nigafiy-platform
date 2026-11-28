@@ -27,6 +27,20 @@ func TestQuickSupportProfile(t *testing.T) {
 	if len(ran) != 2 {
 		t.Fatalf("ran %v", ran)
 	}
+	// The agent asks AllowCommand before its own handlers (scripts, shell, patches, restarts).
+	if d.AllowCommand == nil {
+		t.Fatal("no AllowCommand gate")
+	}
+	for _, k := range []string{"rd_session_open", "rd_session_close", "rd_session_update", "rd_capture", "rd_input", "fs_op", "notify_user"} {
+		if !d.AllowCommand(k) {
+			t.Errorf("%s refused", k)
+		}
+	}
+	for _, k := range []string{"script_run", "script_cancel", "shell_open", "shell_input", "patch_scan", "patch_install", "fleet_restart", "fleet_safe_boot_clear", "power_action", "run_script", ""} {
+		if d.AllowCommand(k) {
+			t.Errorf("%s allowed", k)
+		}
+	}
 	inv, _ := json.Marshal(d.CollectInventory(context.Background()))
 	if string(inv) != `{"disks":[],"interfaces":[],"processes":[],"services":[],"software":[],"connections":[]}` {
 		t.Fatalf("inventory %s", inv)

@@ -46,6 +46,10 @@ type Deps struct {
 	// CollectHardware: the slow hardware and licence inventory (nil: not reported).
 	CollectHardware func(ctx context.Context) sysinfo.Hardware
 	ExecuteCommand  func(ctx context.Context, cmd control.Command) control.Result
+	// AllowCommand, when set, is asked about every command before anything runs it (the session,
+	// jobs, patch, shell and restart handlers included); a refused kind gets an error result.
+	// Quick Support sets it so a server it was pointed at cannot run more than its short list.
+	AllowCommand func(kind string) bool
 	// Patch reads missing updates and installs approved ones (nil: patches not reported).
 	Patch patch.Scanner
 	// Desktop does the remote-desktop work (capture, input, consent, banner, clipboard): in this
@@ -585,6 +589,11 @@ func (a *Agent) dispatch(ctx context.Context, commands []control.Command) {
 }
 
 func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
+	if a.deps.AllowCommand != nil && !a.deps.AllowCommand(cmd.Kind) {
+		a.log.Warn("refused remote IT command", "id", cmd.ID, "kind", cmd.Kind)
+		a.deliver(ctx, control.Result{ID: cmd.ID, OK: false, Error: "This program does not run " + cmd.Kind})
+		return
+	}
 	if a.cmdSem != nil && !unthrottled(cmd.Kind) {
 		select {
 		case a.cmdSem <- struct{}{}:
@@ -610,20 +619,7 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	if !handled {
 		res = a.deps.ExecuteCommand(ctx, cmd)
 	}
-
-	// Deliver result immediately over /command-result if supported; fall back to heartbeat queue.
-	var ack struct {
-		OK bool `json:"ok"`
-	}
-	if err := a.post(ctx, "/command-result", map[string]any{"command_results": []control.Result{res}}, true, &ack); err != nil || !ack.OK {
-		a.mu.Lock()
-		a.results = append(a.results, res)
-		a.mu.Unlock()
-		select {
-		case a.wakeHeartbeat <- struct{}{}:
-		default:
-		}
-	}
+	a.deliver(ctx, res)
 
 	if cmd.Kind == "refresh_inventory" || cmd.Kind == "kill_process" || cmd.Kind == "service_action" || cmd.Kind == "software_action" {
 		select {
@@ -634,6 +630,22 @@ func (a *Agent) runCommand(ctx context.Context, cmd control.Command) {
 	if cmd.Kind == "refresh_inventory" {
 		select {
 		case a.wakeHardware <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// deliver sends a result over /command-result at once; if that fails it waits for the next heartbeat.
+func (a *Agent) deliver(ctx context.Context, res control.Result) {
+	var ack struct {
+		OK bool `json:"ok"`
+	}
+	if err := a.post(ctx, "/command-result", map[string]any{"command_results": []control.Result{res}}, true, &ack); err != nil || !ack.OK {
+		a.mu.Lock()
+		a.results = append(a.results, res)
+		a.mu.Unlock()
+		select {
+		case a.wakeHeartbeat <- struct{}{}:
 		default:
 		}
 	}
