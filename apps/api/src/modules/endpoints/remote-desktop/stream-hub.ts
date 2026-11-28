@@ -443,8 +443,27 @@ export class StreamHub {
     return { agent: r.agent !== null, viewers: r.viewers.size, peers: r.peers.size, upstream: r.upstream !== null, active: r.active, rtc };
   }
 
+  // An 'upgrade' listener runs outside Express: anything it throws would end the process, so a
+  // bad request line (a URL `new URL` cannot read) or any other throw is answered and logged here.
   private readonly onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    let url: URL;
+    try {
+      url = new URL(req.url ?? '/', 'http://localhost');
+    } catch {
+      socket.on('error', () => undefined);
+      reject(socket, 400, 'bad_request', 'That address cannot be read');
+      return;
+    }
+    try {
+      this.routeUpgrade(req, socket, head, url);
+    } catch (err) {
+      logger.error({ err }, 'remote desktop stream upgrade failed');
+      socket.on('error', () => undefined);
+      if (!socket.destroyed) reject(socket, 500, 'internal_error', 'Stream upgrade failed');
+    }
+  };
+
+  private routeUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, url: URL): void {
     const isShell = this.shell.handles(url.pathname);
     const viewer = VIEWER_PATH.exec(url.pathname);
     if (!isShell && url.pathname !== AGENT_PATH && url.pathname !== PEER_PATH && !viewer) {
@@ -475,7 +494,7 @@ export class StreamHub {
         }
       })
       .finally(release);
-  };
+  }
 
   /** Accepts the socket and starts its heartbeat (a socket that stops answering pings is ended). */
   private upgrade(req: IncomingMessage, socket: Duplex, head: Buffer, server: WebSocketServer = this.wss): Promise<WebSocket> {

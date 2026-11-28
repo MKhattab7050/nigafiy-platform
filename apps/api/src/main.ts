@@ -98,7 +98,7 @@ try {
 }
 
 let shuttingDown = false;
-async function shutdown(signal: string): Promise<void> {
+async function shutdown(signal: string, code = 0): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   logger.info({ signal }, 'shutting down');
@@ -114,8 +114,15 @@ async function shutdown(signal: string): Promise<void> {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await stopJobs();
   await closePools();
-  process.exit(0);
+  process.exit(code);
 }
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('unhandledRejection', (err) => logger.error({ err }, 'unhandled rejection'));
+// A throw nobody caught (a socket or timer callback outside Express) leaves the process in an
+// unknown state: log it, close what can be closed and exit 1 so the engine starts a fresh API,
+// instead of Node ending at once without a word in the log.
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'uncaught exception: restarting the API');
+  void shutdown('uncaughtException', 1).catch(() => process.exit(1));
+});
