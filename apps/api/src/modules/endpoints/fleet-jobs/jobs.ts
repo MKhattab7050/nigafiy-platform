@@ -630,9 +630,10 @@ export async function dispatchPending(orgId: string): Promise<{ queued: number; 
         continue;
       }
       // The computer's group policy at the moment the script would go out: the job creator's role
-      // must be one the group allows. (Address and hours are the operator's; the scheduler sends
-      // jobs on its own, and maintenance windows already decide when.)
-      const refused = await toolRefusal(db, orgId, r.endpoint_id, { role: r.created_by_role });
+      // must be one the group allows, and the group's maximum profile must allow the shell (a script
+      // runs with the agent's full rights, like the shell). Address and hours are the operator's;
+      // the scheduler sends jobs on its own, and maintenance windows already decide when.
+      const refused = await toolRefusal(db, orgId, r.endpoint_id, { need: 'shell', role: r.created_by_role });
       if (refused) {
         await db.query(`UPDATE fleet_job_results SET state = 'failed', waiting_for = NULL, finished_at = now(), error = $2 WHERE id = $1`, [r.id, refused.message]);
         await auditJobEvent(db, orgId, { type: 'fleet_job', id: r.job_id }, 'fleet.job_result', { run_id: r.run_id, result_id: r.id, endpoint_id: r.endpoint_id, state: 'failed', error: refused.code });

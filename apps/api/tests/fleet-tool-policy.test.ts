@@ -103,4 +103,25 @@ describe('group policy for tools outside a session (API)', () => {
     expect(d.runs[0].results[0]).toMatchObject({ state: 'failed', error: expect.stringMatching(/does not allow your role/) });
     expect((await audits(a.organizationId, 'fleet.job_result')).at(-1)!.metadata).toMatchObject({ state: 'failed', error: 'policy_role_not_allowed' });
   });
+
+  it('sends a script only where the group maximum allows the shell', async () => {
+    const a = await newAccount('tool-policy-shell');
+    const p = await profiles(a);
+    const capped = await onlineEndpoint(a, 'SHELL-NO');
+    const open = await onlineEndpoint(a, 'SHELL-YES');
+    const free = await onlineEndpoint(a, 'NO-GROUP');
+    await groupFor(a, capped.epId, { access_mode: 'unattended', default_profile_id: p.support!.id, max_profile_id: p.support!.id });
+    await groupFor(a, open.epId, { access_mode: 'unattended', default_profile_id: p.support!.id, max_profile_id: p.full_admin!.id });
+    const s = await a.agent.post('/api/v1/fleet/scripts').set(CSRF).send({ name: 'hello', os: 'windows', body: 'Write-Output hi' });
+    const job = await a.agent
+      .post('/api/v1/fleet/jobs')
+      .set(CSRF)
+      .send({ script_id: s.body.id, target: { kind: 'endpoints', endpoint_ids: [capped.epId, open.epId, free.epId] }, schedule: { kind: 'now' } });
+    expect(job.status, JSON.stringify(job.body)).toBe(201);
+    expect((await pollFor(capped.cred)).filter((c) => c.kind === 'script_run')).toEqual([]);
+    expect((await pollFor(open.cred)).filter((c) => c.kind === 'script_run')).toHaveLength(1);
+    expect((await pollFor(free.cred)).filter((c) => c.kind === 'script_run')).toHaveLength(1);
+    const results = (await a.agent.get(`/api/v1/fleet/jobs/${job.body.id}`)).body.runs[0].results as Array<{ endpoint_id: string; state: string; error: string | null }>;
+    expect(results.find((r) => r.endpoint_id === capped.epId)).toMatchObject({ state: 'failed', error: expect.stringMatching(/scripts or a remote shell/) });
+  });
 });
