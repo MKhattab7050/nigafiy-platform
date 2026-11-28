@@ -21,8 +21,8 @@ import com.nigafiy.agent.core.Mode
 import com.nigafiy.agent.core.Protocol
 import com.nigafiy.agent.core.SeenCommands
 import com.nigafiy.agent.core.ServerAddresses
+import com.nigafiy.agent.core.AgentThreads
 import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -36,8 +36,8 @@ class AgentService : Service() {
     private lateinit var facts: Facts
     private lateinit var executor: Executor
     private val running = AtomicBoolean(false)
-    private val pool = Executors.newScheduledThreadPool(2)
-    private val worker = Executors.newSingleThreadExecutor()
+    /** One thread per long-lived loop, a small pool for short jobs, and command lanes (core WorkLanes). */
+    private val threads = AgentThreads()
     private val unsent = ConcurrentLinkedQueue<CommandOutcome>()
     private lateinit var seen: SeenCommands
     @Volatile private var lastAppsAt = 0L
@@ -53,7 +53,7 @@ class AgentService : Service() {
         facts = Facts(this, store)
         executor = Executor(this, store, facts)
         seen = SeenCommands(store.seenCommands)
-        ScreenShare.endReporter = { id -> pool.execute { try { gateway()?.endSession(id) } catch (e: Exception) { store.lastError = e.message } } }
+        ScreenShare.endReporter = { id -> threads.background.execute { try { gateway()?.endSession(id) } catch (e: Exception) { store.lastError = e.message } } }
         ScreenShare.streamStarter = { req -> store.currentServer?.let { srv -> LiveStream.start(srv, store.pin, { store.credential }, req) } }
         channel(this)
         showManagementNotification()
@@ -64,15 +64,14 @@ class AgentService : Service() {
         // Stopped by the person (also when Android restarts a sticky service): leave at once.
         if (store.stopped) { stopService(); return START_NOT_STICKY }
         if (running.compareAndSet(false, true)) {
-            pool.execute { loop() }
+            threads.heartbeatLoop.execute { loop() }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         running.set(false)
-        pool.shutdownNow()
-        worker.shutdownNow()
+        threads.shutdownNow()
         super.onDestroy()
     }
 
@@ -119,7 +118,7 @@ class AgentService : Service() {
                 enrollOnce()
                 continue
             }
-            if (polling.compareAndSet(false, true)) pool.execute { try { pollLoop() } finally { polling.set(false) } }
+            if (polling.compareAndSet(false, true)) threads.pollLoop.execute { try { pollLoop() } finally { polling.set(false) } }
             heartbeat()
             sleep(store.heartbeatSeconds * 1000L)
         }
@@ -246,12 +245,12 @@ class AgentService : Service() {
         for (cmd in commands) {
             if (!seen.take(cmd.id)) continue
             store.seenCommands = seen.snapshot()
-            // Asking the person can take a minute: it must not hold back captures, closes or other commands.
-            val queue: (Runnable) -> Unit = if (cmd is com.nigafiy.agent.core.AgentCommand.SessionOpen) { r -> Thread(r, "nigafiy-share-request").start() } else worker::execute
-            queue {
+            // Asking the person can take a minute and an APK download or a file copy longer: neither
+            // holds back captures, taps, closes or Lock (core WorkLanes).
+            threads.run(cmd) {
                 val r = executor.run(cmd, g)
                 report(g, listOf(r.outcome))
-                if (r.refresh) { forceApps = true; pool.execute { heartbeat() } }
+                if (r.refresh) { forceApps = true; threads.background.execute { heartbeat() } }
                 r.after?.let { act -> sleep(2_000); try { act() } catch (e: Exception) { store.lastError = e.message } }
             }
         }
