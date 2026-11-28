@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="Version 1.0.11, internal release" src="https://img.shields.io/badge/version-1.0.11%20internal-C27C0E">
+  <img alt="Version 1.0.12, internal release" src="https://img.shields.io/badge/version-1.0.12%20internal-C27C0E">
   <img alt="Platform: Windows 10 and 11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
   <img alt="English and Arabic" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
   <img alt="No AI, deterministic rules" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
@@ -332,7 +332,7 @@ Only exercised against protocol test doubles, fixtures or loopback, never on rea
 16 router drivers, SNMP switches, SSO, config restore on every vendor, the agent on Linux and macOS,
 WebRTC between two computers (it ran in a real browser on one PC only), the engine's Windows service
 mode, the agent installer, and the Android agent on a real phone (it ran on an Android 16 emulator as
-Device Owner). The website is built but not hosted; version 1.0.11 is an internal release, not
+Device Owner). The website is built but not hosted; version 1.0.12 is an internal release, not
 published. [docs/roadmap/status.md](docs/roadmap/status.md) lists exactly what
 ran for real and what did not.
 
