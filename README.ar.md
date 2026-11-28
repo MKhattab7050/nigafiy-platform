@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MKhattab7050/nigafiy-platform/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="الإصدار 1.0.8، إصدار داخلي" src="https://img.shields.io/badge/version-1.0.8%20internal-C27C0E">
+  <img alt="الإصدار 1.0.9، إصدار داخلي" src="https://img.shields.io/badge/version-1.0.9%20internal-C27C0E">
   <img alt="المنصة: Windows 10 و11" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-1466E6">
   <img alt="العربية والإنجليزية" src="https://img.shields.io/badge/UI-English%20%2B%20Arabic%20(RTL)-0B2A7A">
   <img alt="بلا ذكاء اصطناعي، قواعد ثابتة" src="https://img.shields.io/badge/AI-none%2C%20deterministic-2E8540">
@@ -357,7 +357,7 @@ PostgreSQL الحقيقية؛ ونجاح سير عمل CI على GitHub (فحص 
 16 تعريفاً للراوترات، وسويتشات SNMP، والدخول الموحد SSO، واستعادة الإعدادات لكل الأنواع، والوكيل على
 Linux وmacOS، وWebRTC بين جهازين (جُرّب في متصفح حقيقي على جهاز واحد فقط)، ووضع خدمة Windows للمحرك،
 ومثبّت الوكيل، ووكيل Android على هاتف حقيقي (عمل على محاكي Android 16 كمالك للجهاز). الموقع مبني لكنه
-غير منشور، والإصدار 1.0.8 إصدار داخلي غير منشور.
+غير منشور، والإصدار 1.0.9 إصدار داخلي غير منشور.
 الملف [docs/roadmap/status.md](docs/roadmap/status.md) يذكر بالضبط ما جُرّب فعلاً وما لم يُجرَّب.
 
 </details>

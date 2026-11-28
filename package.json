@@ -2,7 +2,7 @@
   "name": "nigafiy",
   "private": true,
   "license": "UNLICENSED",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Nigafiy — Network Intelligence & IT Infrastructure Operations Platform",
   "packageManager": "pnpm@10.34.8",
   "engines": {
