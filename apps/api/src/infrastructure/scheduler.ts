@@ -66,7 +66,11 @@ interface MutableHealth {
 const timers: NodeJS.Timeout[] = [];
 const running = new Set<Promise<void>>();
 const health = new Map<string, MutableHealth>();
-/** When a run of any job last ended (finished, failed or skipped), and when startJobs ran. */
+/**
+ * When a run of any job last ended (finished, failed in the job itself, or skipped for another
+ * instance). A run that could not even get its lock connection or lock is not progress: readiness
+ * must not say "ok" while every run fails before it starts.
+ */
 let lastProgressAt: Date | null = null;
 let schedulerStartedAt: Date | null = null;
 
@@ -122,9 +126,54 @@ export const MAX_CONCURRENT_JOBS = 4;
 /**
  * A run that lasts longer than this gives its slot back so one stuck job (a router that never
  * answers) cannot stop every other job. It keeps running and keeps its lock until it ends, and it is
- * not started again before then; the health report shows it as running / overdue.
+ * not started again before then (at most RUN_DEADLINE_MS); the health report shows it as running / overdue.
  */
 export const SLOT_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Total deadline of one run (unless the job sets its own `timeoutMs`). Past it the run's signal is
+ * aborted, the run is recorded as failed ("timed out"), its lock is released and the job's next run
+ * starts on schedule, so a job stuck on something that never answers cannot hold its loop forever.
+ * Whatever the abandoned run was still doing is left to end by itself (jobs are idempotent).
+ */
+export const RUN_DEADLINE_MS = 30 * 60_000;
+
+/** The error a run that passed its deadline ends with (and the reason its signal carries). */
+export class JobDeadlineError extends Error {
+  constructor(job: string, ms: number) {
+    super(`timed out: ${job} did not finish within ${Math.round(ms / 1000)} s`);
+    this.name = 'JobDeadlineError';
+  }
+}
+
+/** Runs the job with its total deadline: resolves or rejects no later than the deadline. */
+async function runWithDeadline(job: ScheduledJob): Promise<void> {
+  const ms = job.timeoutMs ?? RUN_DEADLINE_MS;
+  const controller = new AbortController();
+  let timer: NodeJS.Timeout | undefined;
+  const run = (async () => {
+    if (SIMULATED_JOB_WAIT_MS) await new Promise((r) => setTimeout(r, SIMULATED_JOB_WAIT_MS));
+    await job.run(controller.signal);
+  })();
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new JobDeadlineError(job.name, ms);
+      logger.warn({ job: job.name, module: job.module, deadline_ms: ms }, 'background job passed its deadline; giving up on this run');
+      controller.abort(err);
+      reject(err);
+    }, ms);
+    timer.unref();
+  });
+  try {
+    await Promise.race([run, deadline]);
+  } finally {
+    clearTimeout(timer);
+    // An abandoned run that fails later must not become an unhandled rejection.
+    run.catch((err: unknown) => {
+      if (controller.signal.aborted) logger.warn({ err, job: job.name, module: job.module }, 'background job ended after its deadline');
+    });
+  }
+}
 
 /**
  * Tests only (NODE_ENV=test): every run first waits this long, as real jobs do while a router, the
@@ -180,31 +229,32 @@ async function runLocked(job: ScheduledJob, h: MutableHealth): Promise<void> {
     const lock = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [job.lockKey]);
     if (!lock.rows[0]?.locked) {
       h.lastSkippedAt = new Date(); // another instance is running it
+      lastProgressAt = h.lastSkippedAt;
       return;
     }
     h.running = true;
     h.runs++;
     h.lastStartedAt = new Date();
     try {
-      if (SIMULATED_JOB_WAIT_MS) await new Promise((r) => setTimeout(r, SIMULATED_JOB_WAIT_MS));
-      await job.run();
+      await runWithDeadline(job);
       h.lastSuccessAt = new Date();
       h.consecutiveFailures = 0;
     } finally {
       h.running = false;
       h.lastFinishedAt = new Date();
+      lastProgressAt = h.lastFinishedAt; // the job ran (even if it failed): the scheduler works
       await client.query('SELECT pg_advisory_unlock($1)', [job.lockKey]);
     }
   } catch (err) {
     recordFailure(job, h, err);
   } finally {
     client?.release();
-    lastProgressAt = new Date();
   }
 }
 
 function schedule(job: ScheduledJob, initialDelayMs = 1000): void {
   if (!Number.isFinite(job.everyMs) || job.everyMs < 1000) throw new Error(`invalid interval ${job.everyMs} ms`);
+  if (job.timeoutMs !== undefined && (!Number.isFinite(job.timeoutMs) || job.timeoutMs <= 0)) throw new Error(`invalid deadline ${job.timeoutMs} ms`);
   let busy = false;
   const tick = () => {
     if (busy) return; // never overlap with itself

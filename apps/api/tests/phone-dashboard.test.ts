@@ -1,10 +1,12 @@
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sha256 } from '../src/common/crypto.ts';
-import { isOwnOrigin } from '../src/config/env.ts';
+import { createApp } from '../src/app.ts';
+import { env, isOwnOrigin } from '../src/config/env.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
 import { isHomeAddress, netsFrom, phoneDashboardProxy } from '../src/modules/auth/phone-dashboard.ts';
 import { CSRF, app, newAccount } from './helpers.ts';
@@ -19,7 +21,9 @@ beforeAll(async () => {
       res.writeHead(308, { location: `${webOrigin}/fleet/endpoints` });
       return void res.end();
     }
-    res.writeHead(200, { 'content-type': 'text/html', 'x-from': 'web' });
+    // /secure: a page with the web app's own security headers (its per-request CSP), as proxy.ts writes them.
+    const own = req.url === '/secure' ? { 'content-security-policy': "script-src 'nonce-abc'", 'x-frame-options': 'DENY' } : {};
+    res.writeHead(200, { 'content-type': 'text/html', 'x-from': 'web', ...own });
     res.end(`page ${req.url} host=${req.headers.host}`);
   });
   await new Promise<void>((r) => web.listen(0, '127.0.0.1', r));
@@ -121,5 +125,58 @@ describe('dashboard pages for admin phones', () => {
     expect(isHomeAddress('127.0.0.1', nets)).toBe(false);
     expect(isHomeAddress('fe80::1', nets)).toBe(false);
     expect(isHomeAddress(undefined, nets)).toBe(false);
+  });
+
+  it('as mounted by createApp: after helmet (its headers on the pages, the web app CSP wins)', async () => {
+    const { cred } = await phoneSession('admin');
+    const s = await request(app).post('/api/v1/agent/dashboard-session').set('Authorization', `Bearer ${cred}`).send({});
+    const cookie = `ld_session=${s.body.value}`;
+    const saved = env.WEB_ORIGIN;
+    (env as { WEB_ORIGIN: string }).WEB_ORIGIN = webOrigin;
+    let full: express.Express;
+    try {
+      full = createApp(); // the proxy reads WEB_ORIGIN once, here
+    } finally {
+      (env as { WEB_ORIGIN: string }).WEB_ORIGIN = saved;
+    }
+    // An HTTP server whose sockets say they are TLS, like the API's HTTPS listener.
+    const srv = http.createServer(full);
+    srv.on('connection', (sock) => ((sock as { encrypted?: boolean }).encrypted = true));
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    try {
+      const page = await request(srv).get('/fleet').set('Cookie', cookie);
+      expect(page.status).toBe(200);
+      expect(page.headers['x-from']).toBe('web');
+      expect(page.headers['strict-transport-security']).toBeTruthy();
+      expect(page.headers['cross-origin-opener-policy']).toBe('same-origin');
+      expect(page.headers['x-content-type-options']).toBe('nosniff');
+      // helmet's own policy (no nonce) would block the page's scripts: never sent on a proxied page.
+      expect(page.headers['content-security-policy']).toBeUndefined();
+      expect(page.headers['ratelimit-policy']).toBeTruthy(); // the proxy's own limiter answered (tests lift the number)
+
+      const secure = await request(srv).get('/secure').set('Cookie', cookie);
+      expect(secure.headers['content-security-policy']).toBe("script-src 'nonce-abc'");
+      expect(secure.headers['x-frame-options']).toBe('DENY');
+
+      // The API's own answers keep helmet's policy.
+      expect((await request(srv).get('/healthz')).headers['content-security-policy']).toContain("default-src 'self'");
+    } finally {
+      await new Promise<void>((r) => srv.close(() => r()));
+    }
+  });
+
+  it('the rate limit runs before the session lookup: made-up cookies are cut off too', async () => {
+    const a = express();
+    a.use((req, _res, next) => {
+      (req.socket as { encrypted?: boolean }).encrypted = true;
+      next();
+    });
+    a.use(phoneDashboardProxy(webOrigin, () => false, rateLimit({ windowMs: 60_000, limit: 2, standardHeaders: 'draft-7', legacyHeaders: false })));
+    a.use((_req, res) => void res.status(404).json({ error: 'not_found' }));
+    const statuses: number[] = [];
+    for (let i = 0; i < 3; i++) statuses.push((await request(a).get('/fleet').set('Cookie', `ld_session=made-up-${i}`)).status);
+    expect(statuses).toEqual([404, 404, 429]);
+    // Requests the proxy does not handle are not counted here (/api has its own limit).
+    expect((await request(a).get('/api/v1/auth/me')).status).toBe(404);
   });
 });

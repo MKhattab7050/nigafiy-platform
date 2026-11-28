@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { lockPool, systemPool } from '../src/infrastructure/db.ts';
-import { MAX_CONCURRENT_JOBS, queuedJobCount, runJobOnce, type ScheduledJob, schedulerReadiness, STALL_AFTER_MS, startJobs, stopJobs } from '../src/infrastructure/scheduler.ts';
+import { jobHealth, MAX_CONCURRENT_JOBS, queuedJobCount, runJobOnce, type ScheduledJob, schedulerReadiness, STALL_AFTER_MS, startJobs, stopJobs } from '../src/infrastructure/scheduler.ts';
 
-const job = (n: number, run: () => Promise<void>): ScheduledJob => ({ name: `sched-test-${n}`, module: 'test', everyMs: 3_600_000, lockKey: 991_000 + n, run });
+const job = (n: number, run: (signal: AbortSignal) => Promise<void>): ScheduledJob => ({ name: `sched-test-${n}`, module: 'test', everyMs: 3_600_000, lockKey: 991_000 + n, run });
 
 describe('scheduler and database connections', () => {
   afterAll(async () => {
@@ -63,6 +63,55 @@ describe('scheduler and database connections', () => {
     expect(schedulerReadiness([idle], later).state).toBe('stalled');
     await stopJobs();
     expect(schedulerReadiness([idle]).state).toBe('not_running');
+  });
+
+  it('a run that passes its deadline is given up: logged as failed, signal aborted, lock freed, next run starts', async () => {
+    const signals: AbortSignal[] = [];
+    const stuck: ScheduledJob = { ...job(50, (signal) => { signals.push(signal); return new Promise<void>(() => {}); }), timeoutMs: 300 };
+    const started = performance.now();
+    await runJobOnce(stuck); // never answers, yet the run ends at its deadline
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(signals[0]?.aborted).toBe(true);
+    let [h] = jobHealth([stuck]);
+    expect(h).toMatchObject({ state: 'not_scheduled', runs: 1, failures: 1, consecutive_failures: 1 });
+    expect(h!.last_error?.message).toContain('timed out');
+    // The lock was released: the next run gets it and runs again.
+    await runJobOnce(stuck);
+    [h] = jobHealth([stuck]);
+    expect(h).toMatchObject({ runs: 2, failures: 2 });
+  });
+
+  it('the schedule loop keeps going after a stuck run hits its deadline', async () => {
+    let calls = 0;
+    const stuck: ScheduledJob = { name: 'sched-test-loop', module: 'test', everyMs: 1000, lockKey: 991_060, timeoutMs: 300, run: () => { calls++; return new Promise<void>(() => {}); } };
+    startJobs([stuck]);
+    try {
+      await waitFor(() => calls >= 2, 10_000);
+      expect(jobHealth([stuck])[0]!.failures).toBeGreaterThanOrEqual(1);
+    } finally {
+      await stopJobs();
+    }
+  });
+
+  it('a run that fails before it gets its lock is not progress (readiness does not stay ok on it)', async () => {
+    await runJobOnce(job(80, async () => {})); // a normal run: progress
+    const before = schedulerReadiness([]).last_progress_at;
+    expect(before).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 20));
+    const broken = { ...job(81, async () => {}), lockKey: Number.NaN }; // the lock query itself fails
+    await runJobOnce(broken);
+    expect(jobHealth([broken])[0]).toMatchObject({ runs: 0, failures: 1 });
+    expect(schedulerReadiness([]).last_progress_at).toBe(before);
+    // A job that fails in its own work still counts: the scheduler did its part.
+    await runJobOnce(job(82, async () => { throw new Error('router did not answer'); }));
+    expect(schedulerReadiness([]).last_progress_at).not.toBe(before);
+  });
+
+  it('a job with an invalid deadline is not scheduled', () => {
+    const bad: ScheduledJob = { ...job(70, async () => {}), timeoutMs: 0 };
+    startJobs([bad]);
+    expect(jobHealth([bad])[0]).toMatchObject({ state: 'not_scheduled', failures: 1 });
+    return stopJobs();
   });
 });
 

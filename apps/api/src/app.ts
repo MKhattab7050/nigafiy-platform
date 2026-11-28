@@ -11,6 +11,7 @@ import { logger } from './infrastructure/logger.ts';
 import { limiterStore } from './infrastructure/rate-limit.ts';
 import type { ModuleManifest } from './infrastructure/module.ts';
 import { schedulerReadiness } from './infrastructure/scheduler.ts';
+import { startupFailures } from './infrastructure/startup.ts';
 import { requireSession } from './modules/auth/index.ts';
 import { modules as registeredModules } from './modules/registry.ts';
 import { scheduledJobsOf } from './modules/system/service.ts';
@@ -51,8 +52,6 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
     });
     next();
   });
-  // Admin phones' dashboard pages, before helmet: the web app sends its own security headers.
-  app.use(phoneDashboardProxy());
   app.use(helmet());
   app.use(gzipJson());
 
@@ -71,8 +70,9 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
       database = databaseUnavailableCode(err) ?? 'database_unavailable';
     }
     const scheduler = schedulerReadiness(jobs);
-    const ready = database === 'ok' && scheduler.state !== 'stalled';
-    res.status(ready ? 200 : 503).json({ status: ready ? (scheduler.state === 'degraded' ? 'degraded' : 'ready') : 'not_ready', database, scheduler });
+    const failed_steps = startupFailures(); // a module or the jobs did not start: not ready
+    const ready = database === 'ok' && scheduler.state !== 'stalled' && !failed_steps.length;
+    res.status(ready ? 200 : 503).json({ status: ready ? (scheduler.state === 'degraded' ? 'degraded' : 'ready') : 'not_ready', database, scheduler, failed_steps });
   });
 
   // Counters live in Redis when REDIS_URL is set (shared by every API instance), else in memory.
@@ -85,6 +85,9 @@ export function createApp(modules: readonly ModuleManifest[] = registeredModules
       legacyHeaders: false,
       message: { error: { code: 'rate_limited', message: 'Too many requests' } },
     });
+
+  // Admin phones' dashboard pages: after helmet, with their own limit (a page load asks for dozens of files).
+  app.use(phoneDashboardProxy(env.WEB_ORIGIN, undefined, limiter(1200, 'phone-dashboard')));
 
   // ── Collector-facing & Endpoint-agent-facing APIs (credential auth, own body limit) ──
   for (const m of modules) {
