@@ -8,6 +8,7 @@ import { closePools } from './infrastructure/db.ts';
 import { ensureLanTls, setTlsStatus, statusFromMaterial, tlsStatus } from './infrastructure/lan-tls.ts';
 import { logger } from './infrastructure/logger.ts';
 import { startJobs, stopJobs } from './infrastructure/scheduler.ts';
+import { recordStartupFailure } from './infrastructure/startup.ts';
 import { modules } from './modules/registry.ts';
 import { streamHub } from './modules/endpoints/remote-desktop/stream-hub.ts';
 import { scheduledJobsOf } from './modules/system/index.ts';
@@ -82,19 +83,21 @@ if (env.HTTPS_PORT && env.TLS_CERT_FILE && env.TLS_KEY_FILE) {
 streamHub().attach(server);
 if (httpsServer) streamHub().attach(httpsServer);
 
-// A module whose start-up fails is logged; the API keeps serving every other module.
+// A module whose start-up fails is logged and makes /readyz answer not_ready; the API keeps serving every other module.
 for (const m of modules) {
   if (!m.lifecycle?.start) continue;
   try {
     await m.lifecycle.start();
   } catch (err) {
     logger.error({ err, module: m.name }, 'module failed to start');
+    recordStartupFailure(`module:${m.name}`, err);
   }
 }
 try {
   startJobs(scheduledJobsOf(modules));
 } catch (err) {
   logger.error({ err }, 'background jobs failed to start');
+  recordStartupFailure('jobs', err);
 }
 
 let shuttingDown = false;

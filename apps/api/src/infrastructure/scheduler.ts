@@ -66,7 +66,11 @@ interface MutableHealth {
 const timers: NodeJS.Timeout[] = [];
 const running = new Set<Promise<void>>();
 const health = new Map<string, MutableHealth>();
-/** When a run of any job last ended (finished, failed or skipped), and when startJobs ran. */
+/**
+ * When a run of any job last ended (finished, failed in the job itself, or skipped for another
+ * instance). A run that could not even get its lock connection or lock is not progress: readiness
+ * must not say "ok" while every run fails before it starts.
+ */
 let lastProgressAt: Date | null = null;
 let schedulerStartedAt: Date | null = null;
 
@@ -225,6 +229,7 @@ async function runLocked(job: ScheduledJob, h: MutableHealth): Promise<void> {
     const lock = await client.query<{ locked: boolean }>('SELECT pg_try_advisory_lock($1) AS locked', [job.lockKey]);
     if (!lock.rows[0]?.locked) {
       h.lastSkippedAt = new Date(); // another instance is running it
+      lastProgressAt = h.lastSkippedAt;
       return;
     }
     h.running = true;
@@ -237,13 +242,13 @@ async function runLocked(job: ScheduledJob, h: MutableHealth): Promise<void> {
     } finally {
       h.running = false;
       h.lastFinishedAt = new Date();
+      lastProgressAt = h.lastFinishedAt; // the job ran (even if it failed): the scheduler works
       await client.query('SELECT pg_advisory_unlock($1)', [job.lockKey]);
     }
   } catch (err) {
     recordFailure(job, h, err);
   } finally {
     client?.release();
-    lastProgressAt = new Date();
   }
 }
 

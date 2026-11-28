@@ -93,6 +93,20 @@ describe('scheduler and database connections', () => {
     }
   });
 
+  it('a run that fails before it gets its lock is not progress (readiness does not stay ok on it)', async () => {
+    await runJobOnce(job(80, async () => {})); // a normal run: progress
+    const before = schedulerReadiness([]).last_progress_at;
+    expect(before).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 20));
+    const broken = { ...job(81, async () => {}), lockKey: Number.NaN }; // the lock query itself fails
+    await runJobOnce(broken);
+    expect(jobHealth([broken])[0]).toMatchObject({ runs: 0, failures: 1 });
+    expect(schedulerReadiness([]).last_progress_at).toBe(before);
+    // A job that fails in its own work still counts: the scheduler did its part.
+    await runJobOnce(job(82, async () => { throw new Error('router did not answer'); }));
+    expect(schedulerReadiness([]).last_progress_at).not.toBe(before);
+  });
+
   it('a job with an invalid deadline is not scheduled', () => {
     const bad: ScheduledJob = { ...job(70, async () => {}), timeoutMs: 0 };
     startJobs([bad]);
