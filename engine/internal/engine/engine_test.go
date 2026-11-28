@@ -692,3 +692,24 @@ func TestSensorPanicIsIsolatedAndRestarted(t *testing.T) {
 		t.Fatalf("engine stopped with %v", r.err)
 	}
 }
+
+// Audit item 5 (2026-11-27): the desktop app sets NIGAFIY_BUNDLE_DIR; the engine used to read only
+// NIGAFIY_ENGINE_BUNDLE_DIR, so an installed copy refused updates as a "source checkout".
+func TestResolveBundleDirFromTheDesktopName(t *testing.T) {
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "resources", "backend")
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"NIGAFIY_BUNDLE_DIR": bundle}, bundle},
+		{map[string]string{"LD_BUNDLE_DIR": bundle}, bundle},
+		{map[string]string{EnvBundleDir: bundle, "NIGAFIY_BUNDLE_DIR": filepath.Join(dir, "other")}, bundle},
+		{map[string]string{}, ""},
+	} {
+		cfg, err := Resolve(Config{DataDir: dir, StackScript: "x", SensorExe: "y"}, func(k string) string { return tc.env[k] })
+		if err != nil || cfg.BundleDir != tc.want {
+			t.Errorf("env %v: bundle %q, want %q (%v)", tc.env, cfg.BundleDir, tc.want, err)
+		}
+	}
+}

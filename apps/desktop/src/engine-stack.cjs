@@ -65,6 +65,24 @@ function summarizeEngine(s) {
   };
 }
 
+/** The child engine's command line. */
+function engineArgs(o) {
+  const args = [
+    'run',
+    `--data-dir=${o.dataDir}`,
+    `--node=${o.nodePath}`,
+    `--stack-script=${o.script}`,
+    // The desktop app runs the Sensor itself (its panel shows enrollment and activity); a
+    // child engine only runs the stack. The service-mode engine runs the Sensor (Milestone 5 installer).
+    '--no-sensor',
+  ];
+  // Installed app: the engine needs the bundle folder for updates and the installed programs
+  // (audit item 5, 2026-11-27: it used to get none and refused every update).
+  if (o.env?.NIGAFIY_BUNDLE_DIR) args.push(`--bundle-dir=${o.env.NIGAFIY_BUNDLE_DIR}`);
+  if (o.controlUrl !== DEFAULT_CONTROL_URL) args.push(`--control-addr=${new URL(o.controlUrl).host}`);
+  return args;
+}
+
 class EngineStack {
   /**
    * @param {{
@@ -139,16 +157,7 @@ class EngineStack {
 
   #spawn() {
     const env = { ...process.env, ...this.o.env };
-    const args = [
-      'run',
-      `--data-dir=${this.o.dataDir}`,
-      `--node=${this.o.nodePath}`,
-      `--stack-script=${this.o.script}`,
-      // The desktop app runs the Sensor itself (its panel shows enrollment and activity); a
-      // child engine only runs the stack. The service-mode engine runs the Sensor (Milestone 5 installer).
-      '--no-sensor',
-    ];
-    if (this.o.controlUrl !== DEFAULT_CONTROL_URL) args.push(`--control-addr=${new URL(this.o.controlUrl).host}`);
+    const args = engineArgs(this.o);
     const child = this.o.spawnImpl(this.o.engineExe, args, { env, stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
     this.stderr = '';
     child.stderr?.on('data', (d) => {
@@ -200,4 +209,4 @@ class EngineStack {
   }
 }
 
-module.exports = { EngineStack, DEFAULT_CONTROL_URL, stackProgress, summarizeEngine };
+module.exports = { EngineStack, DEFAULT_CONTROL_URL, engineArgs, stackProgress, summarizeEngine };

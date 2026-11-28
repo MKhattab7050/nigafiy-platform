@@ -207,3 +207,12 @@ test('the panel summary keeps only known fields and clips text', () => {
   assert.equal(s.children[1].lastError.length, 400);
   assert.equal(s.children[1].waitingFor, 'api');
 });
+
+test('installed app: the child engine gets the bundle folder (updates need it)', () => {
+  const { engineArgs, DEFAULT_CONTROL_URL } = require('../src/engine-stack.cjs');
+  const base = { dataDir: 'D', nodePath: 'N', script: 'S', controlUrl: DEFAULT_CONTROL_URL };
+  assert.ok(!engineArgs(base).some((a) => a.startsWith('--bundle-dir')), 'a source checkout passes no bundle');
+  const installed = engineArgs({ ...base, env: { NIGAFIY_BUNDLE_DIR: 'C:/Program Files/Nigafiy/resources/backend' } });
+  assert.ok(installed.includes('--bundle-dir=C:/Program Files/Nigafiy/resources/backend'));
+  assert.ok(engineArgs({ ...base, controlUrl: 'http://127.0.0.1:47999' }).includes('--control-addr=127.0.0.1:47999'));
+});
