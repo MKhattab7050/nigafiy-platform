@@ -699,12 +699,22 @@ async function reconcileLocalCollector() {
 
     const net0 = await homeNetwork();
     if (net0 && net0.private) {
-      await client.query(
+      // Only a range this site does not have yet is added. A range the owner turned off stays off
+      // (it used to be switched back on here at every start), and each addition is in the audit log.
+      const added = await client.query(
         `INSERT INTO network_scopes (organization_id, site_id, cidr, label, enabled, authorized_by)
          VALUES ($1, $2, $3::cidr, 'Home network', true, $4)
-         ON CONFLICT (site_id, cidr) DO UPDATE SET enabled = true`,
+         ON CONFLICT (site_id, cidr) DO NOTHING
+         RETURNING id`,
         [primary.organization_id, primary.site_id, net0.cidr, primary.user_id ?? null],
       );
+      if (added.rows[0]) {
+        await client.query(
+          `INSERT INTO audit_logs (organization_id, user_id, user_email, action, target_type, target_id, metadata, actor)
+           VALUES ($1, NULL, NULL, 'scope.authorized', 'network_scope', $2, $3, 'system')`,
+          [primary.organization_id, added.rows[0].id, JSON.stringify({ cidr: net0.cidr, site_id: primary.site_id, automation: 'local_setup_home_network' })],
+        );
+      }
     }
 
     mkdirSync(stateDir, { recursive: true });
