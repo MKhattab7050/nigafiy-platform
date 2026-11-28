@@ -271,3 +271,28 @@ func TestControlsErrorPaths(t *testing.T) {
 		}
 	})
 }
+
+// A RouterOS port forward must match only traffic addressed to the router (not every packet to that
+// port crossing it) and must leave the router's own LAN address alone.
+func TestAddPortForwardMatchesOnlyTheRouter(t *testing.T) {
+	ctx := context.Background()
+	st := newMkControls(t)
+	d := st.driver(t, "", mkPassword)
+	if _, err := d.AddPortForward(ctx, router.PortForward{Description: "Game", Protocol: "both", ExternalStart: 27015, InternalIP: "192.168.88.10"}); err != nil {
+		t.Fatalf("AddPortForward: %v", err)
+	}
+	if len(st.nats) != 3 {
+		t.Fatalf("want one rule per protocol, got %d rules", len(st.nats)-1)
+	}
+	for _, r := range st.nats[1:] {
+		if r["chain"] != "dstnat" || r["action"] != "dst-nat" || r["dst-port"] != "27015" || r["to-addresses"] != "192.168.88.10" {
+			t.Fatalf("rule: %v", r)
+		}
+		if r["dst-address-type"] != "local" {
+			t.Fatalf("the rule must match only packets addressed to the router: %v", r)
+		}
+		if r["dst-address"] != "!192.168.88.1" {
+			t.Fatalf("the router's LAN address must stay the router's: %v", r)
+		}
+	}
+}
