@@ -138,7 +138,8 @@ Docs: [router controls](docs/features/router-controls.md) · [switch ports](docs
 <summary><img src="packages/brand/svg/programs/fleet.svg" width="18" alt=""> <b>Fleet</b>: company computers and phones</summary>
 <br>
 
-- Remote desktop with consent and an on-screen banner: WebRTC H.264 directly on the LAN for Windows agents, WebSocket JPEG everywhere else and as the automatic fallback
+- Remote desktop: WebRTC H.264 directly on the LAN for Windows agents, WebSocket JPEG everywhere else and as the automatic fallback
+- Silent by default on company computers: an unattended computer (in no group, or in an unattended group with the banner off) gets no prompt, no banner and no start/end notice. Attended groups, help requests, Quick Support and Android phones still ask the person and show the full banner. The admin sets this per group in Fleet > Access policies; every session is in the audit log either way
 - Two-pane file manager (queue, resume, SHA-256), shell, scripts, jobs and patches; recordings
 - Access policies with MFA step-up and second-admin approval; compliance from measured evidence only
 - Android phones: enrollment by QR, inventory and compliance; as Device Owner also lock, password policy, camera, APK install from Fleet and wipe
@@ -147,7 +148,7 @@ Docs: [Fleet](docs/features/fleet-pro.md) · [compliance](docs/features/fleet-co
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/fleet-remote-desktop-dark.svg">
-  <img alt="Remote desktop flow: the technician starts a session, the API checks the access policy, the Agent dials out and picks up the command, the user consents, frames flow over WebSocket or WebRTC, and the session is audited" src="docs/assets/readme/fleet-remote-desktop.svg" width="100%">
+  <img alt="Remote desktop flow: the technician starts a session, the API checks the access policy, the Agent dials out and picks up the command, the user consents and sees a banner where the policy asks for it, frames flow over WebSocket or WebRTC, and the session is audited" src="docs/assets/readme/fleet-remote-desktop.svg" width="100%">
 </picture>
 
 </details>

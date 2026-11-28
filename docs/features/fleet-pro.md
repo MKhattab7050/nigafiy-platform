@@ -247,7 +247,8 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
   - Names are unique per organization, case-insensitive.
 - **`fleet_groups`** stores the access policy:
   - `access_mode` (attended / unattended) and `consent_timeout_s` (10–300)
-  - `banner_mode` (`shown` / `minimized` / `off`; default `shown`). `off` is accepted only with
+  - `banner_mode` (`shown` / `minimized` / `off`). The column default is `shown`, but the API creates
+    an unattended group with `off` and an attended one with `shown` when none is given (052). `off` is accepted only with
     `access_mode = unattended` on a managed endpoint — see "Consent and the session banner"
   - `refuse_window_s` (0, or 10–300)
   - `allowed_hours`: up to 14 weekly windows in the site's time zone; an end before the start crosses
@@ -261,7 +262,8 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
 - **No group means the organization default:**
   - attended (60 s) when the endpoint's `policy.remote_desktop_consent` is `prompt`, otherwise
     unattended without a refuse window
-  - `banner_mode = shown` (the admin opts a managed group into `off` deliberately)
+  - `banner_mode = off` when unattended, `shown` when `prompt` (silent by default, migration 052;
+    put the computer in a group to choose otherwise)
   - all operator roles, any time and any address
   - Support by default, Full admin at most
   - no code and no approval
@@ -301,7 +303,8 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
    - Attended: the consent dialog.
    - Unattended with a refuse window: a "Start now / Refuse" dialog that lists the permissions. No answer
      lets the session start (`not_refused`).
-   - Unattended without a window: a notice, then the session starts.
+   - Unattended without a window: a notice, then the session starts (with `banner_mode: off`, no
+     notice and no banner; the default since 052).
    - The window is counted from the approval, if there was one.
 5. **Live.** Two layers enforce the profile:
    - **The API.** The stream hub refuses input without `control`, `clipboard_get` without
@@ -310,7 +313,8 @@ Migration `035_fleet_profiles_and_policy.sql`. API code is in
      `power_action` without `restart`. Each refusal is audited as `fleet.session_refused_action`, except
      mouse moves.
    - **The agent.** It applies the same flags to the stream and to HTTP input. It lists the flags on the
-     banner in English and Arabic. The banner shows for every profile; nothing turns it off.
+     banner in English and Arabic. The banner shows for every profile unless the group's `banner_mode` is
+     `off` (unattended groups only; see "Consent and the session banner"); the audit log is kept either way.
 
 ### Refusal codes (English and Arabic in `policy-text.ts`)
 - **Policy (403):**
@@ -703,10 +707,12 @@ the shell tab and the transcript page). No new Go module.
 - **Limits.** Idle timeout per group (`shell_idle_timeout_minutes`, default 15, 1–240): no input and no
   output ends it (agent watch, and the API sweep if no instance is watching). Transcript limit 32 MiB:
   the shell ends rather than run unrecorded (`limit`). An agent that never connects ends as `open_failed`.
-- **Transparency (cannot be turned off).** While a shell is open, the agent's banner says
+- **Transparency (follows the group's banner).** With `banner_mode` `shown` or `minimized` (and always
+  in an attended group), while a shell is open, the agent's banner says
   **"Shell open by [operator]"** with the reason (one banner names every open shell and session), with
   **End** and Ctrl+Alt+Shift+E; ending it tells the API first so the reason is `user`. The tray's
   **IT activity** list shows the shell (operator, reason, start, end) for 30 days, beside sessions and jobs.
+  With `banner_mode: off` the shell is not named on screen; its transcript and audit rows are kept.
 - **End reasons:** `operator`, `user`, `idle`, `limit`, `exited` (with the exit code), `open_failed`,
   `agent_gone`, `revoked`.
 

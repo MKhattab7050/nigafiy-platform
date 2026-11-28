@@ -702,10 +702,10 @@ export const GUIDE_EN: GuideContent = [
           'Software, hardware and licences, patches, commands (processes, services, power, a message to the user) and the remote shell.',
         ],
       },
-      { kind: 'h', id: 'transparency', text: 'Always visible to the person at the computer' },
+      { kind: 'h', id: 'transparency', text: 'What the person at the computer sees' },
       {
         kind: 'p',
-        text: 'Every remote session shows a bar on the computer’s screen with the operator’s name, the reason and what is allowed, and an End button. Nothing turns it off. Nigafiy never records keystrokes, and typed text and file contents never reach the audit log.',
+        text: 'Company computers are silent by default: an unattended computer, in no group or in an unattended group with the banner off, shows no prompt and no bar. Attended groups, help requests, Quick Support and phones still ask the person and show a bar with the operator’s name, the reason and what is allowed, and an End button. An administrator changes it per group in Access policies (Session banner on the computer). Every session is in the audit log either way. Nigafiy never records keystrokes, and typed text and file contents never reach the audit log.',
       },
       {
         kind: 'note',
@@ -745,7 +745,7 @@ export const GUIDE_EN: GuideContent = [
       },
       {
         kind: 'p',
-        text: 'The remote shell is off by default. When a policy turns it on, only administrators can open it, the banner names the operator, and the transcript is kept encrypted.',
+        text: 'The remote shell is off by default. When a policy turns it on, only administrators can open it, the banner names the operator (unless the group’s banner is off), and the transcript is kept encrypted.',
       },
       {
         kind: 'note',
