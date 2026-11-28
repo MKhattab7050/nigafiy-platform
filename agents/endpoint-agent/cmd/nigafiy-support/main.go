@@ -43,7 +43,7 @@ import (
 	"github.com/nigafiy/agent/internal/sysinfo"
 )
 
-var Version = "1.0.9"
+var Version = "1.0.10"
 
 const title = "Nigafiy Quick Support"
 
