@@ -73,6 +73,9 @@ export const ERROR_MESSAGES: Record<string, ErrorText> = {
   invalid_config: { en: 'The settings of this check are not valid.', ar: 'إعدادات هذا الفحص غير صالحة.' },
   nothing_to_change: { en: 'Change at least one thing before saving.', ar: 'غيّر شيئًا واحدًا على الأقل قبل الحفظ.' },
   payload_too_large: { en: 'This is too large to send.', ar: 'حجم البيانات أكبر من المسموح بإرساله.' },
+  // File transfer pieces (the transfer retries a missing piece by itself).
+  empty_piece: { en: 'A piece of the file arrived empty. The transfer sends it again.', ar: 'وصل جزء من الملف فارغًا. سيُرسَل مرة أخرى.' },
+  relay_piece_missing: { en: 'A piece of the file was no longer on the server. The transfer sends it again.', ar: 'لم يعد جزء من الملف موجودًا على الخادم. سيُرسَل مرة أخرى.' },
   internal_error: { en: 'Something went wrong on the Nigafiy server. Try again in a moment.', ar: 'حدث خطأ في خادم Nigafiy. أعد المحاولة بعد قليل.' },
   not_found: NOT_FOUND,
   conflict: ALREADY_EXISTS,
