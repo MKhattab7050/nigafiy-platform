@@ -8,7 +8,8 @@ import { notifyRealtime } from '../../realtime/index.ts';
 import { ONLINE_WITHIN_MS, commandEvents, payloadForAudit } from '../repo.ts';
 import { frameForCommand } from '../remote-desktop/frames.ts';
 import { validateCommandForPlatform } from './guards.ts';
-import { PROFILE_REFUSAL_MESSAGES, commandRefusal, openSessionFor, refusalFlag } from '../fleet-policy/enforce.ts';
+import { PROFILE_REFUSAL_MESSAGES, commandRefusal, openSessionFor, refusalFlag, toolNeedOf, toolRefusal } from '../fleet-policy/enforce.ts';
+import { normalizeIp } from '../fleet-policy/policy.ts';
 import type { CommandInput } from './schema.ts';
 
 // Remote commands: process/service/power/software actions, logs, diagnostics, user notices, and
@@ -34,6 +35,22 @@ export async function queueCommand(req: Request, ctx: AuthContext, id: string, b
     });
     if (refusal === 'not_a_participant') throw new AppError(403, refusal, 'You are not in this session: ask the operator holding it to invite you');
     if (refusal) throw new AppError(403, refusal, PROFILE_REFUSAL_MESSAGES[refusal]);
+  }
+  // Outside a session (or for an operator not in it) the file manager and power actions follow the
+  // computer's group policy: role, address, hours and the group's maximum profile. Quick Support
+  // has its own rules below. Audited in its own transaction so the refusal is kept.
+  const need = toolNeedOf(body);
+  if (need) {
+    const refused = await withTenant(ctx.organizationId, async (db) => {
+      const kind = (await db.query<{ kind: string }>(`SELECT kind FROM endpoints WHERE id = $1`, [id])).rows[0]?.kind;
+      if (!kind || kind === 'quick_support') return null;
+      const open = await openSessionFor(db, id, ctx.userId);
+      if (open?.participant) return null;
+      const r = await toolRefusal(db, ctx.organizationId, id, { need, role: ctx.role, requestIp: normalizeIp(req.ip), now: new Date() });
+      if (r) await audit(db, req, 'fleet.policy_refused_action', { type: 'endpoint', id }, { code: r.code, kind: body.kind, via: 'http', needs: need });
+      return r;
+    });
+    if (refused) throw new AppError(403, refused.code, refused.message);
   }
   return withTenant(ctx.organizationId, async (db) => {
     const ep = (

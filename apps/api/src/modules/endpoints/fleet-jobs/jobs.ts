@@ -12,6 +12,7 @@ import { audit } from '../../../common/audit.ts';
 import { AppError, type AuthContext, notFound } from '../../../common/http.ts';
 import { safeTimeZone } from '../../../common/timezone.ts';
 import { type Db, withSystem, withTenant } from '../../../infrastructure/db.ts';
+import { toolRefusal } from '../fleet-policy/enforce.ts';
 import { ONLINE_WITHIN_MS } from '../repo.ts';
 import { agentParams, resolveParamValues } from './params.ts';
 import { nextOccurrence } from './schedule.ts';
@@ -557,6 +558,7 @@ interface PendingRow {
   parameters: Record<string, string | number | boolean>;
   created_by: string | null;
   created_by_email: string;
+  created_by_role: string;
   timeout_s: number;
   answer_overdue: boolean;
   command_id: string | null;
@@ -580,7 +582,7 @@ export async function dispatchPending(orgId: string): Promise<{ queued: number; 
                      AND maintenance_occurrence(w.starts_local, w.ends_local, w.timezone, w.weekdays, w.recur_until, now()) IS NOT NULL
                 ) AS in_window,
                 j.maintenance_only, j.state AS job_state, j.script_id, j.script_version, s.language, j.parameters,
-                j.created_by, j.created_by_email, v.timeout_s,
+                j.created_by, j.created_by_email, j.created_by_role, v.timeout_s,
                 (r.state = 'queued' AND r.queued_at < now() - make_interval(secs => v.timeout_s + $2)) AS answer_overdue
            FROM fleet_job_results r
            JOIN fleet_job_runs ru ON ru.id = r.run_id
@@ -625,6 +627,15 @@ export async function dispatchPending(orgId: string): Promise<{ queued: number; 
       const waiting = !r.online ? 'online' : r.maintenance_only && !r.in_window ? 'maintenance_window' : null;
       if (waiting) {
         await db.query(`UPDATE fleet_job_results SET waiting_for = $2 WHERE id = $1 AND waiting_for IS DISTINCT FROM $2`, [r.id, waiting]);
+        continue;
+      }
+      // The computer's group policy at the moment the script would go out: the job creator's role
+      // must be one the group allows. (Address and hours are the operator's; the scheduler sends
+      // jobs on its own, and maintenance windows already decide when.)
+      const refused = await toolRefusal(db, orgId, r.endpoint_id, { role: r.created_by_role });
+      if (refused) {
+        await db.query(`UPDATE fleet_job_results SET state = 'failed', waiting_for = NULL, finished_at = now(), error = $2 WHERE id = $1`, [r.id, refused.message]);
+        await auditJobEvent(db, orgId, { type: 'fleet_job', id: r.job_id }, 'fleet.job_result', { run_id: r.run_id, result_id: r.id, endpoint_id: r.endpoint_id, state: 'failed', error: refused.code });
         continue;
       }
       const key = `${r.script_id}:${r.script_version}`;
