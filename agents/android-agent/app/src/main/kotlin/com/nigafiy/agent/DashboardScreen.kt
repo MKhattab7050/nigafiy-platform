@@ -2,6 +2,7 @@ package com.nigafiy.agent
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -15,7 +16,11 @@ import android.provider.MediaStore
 import android.util.Base64
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
+import android.webkit.WebStorage
+import android.webkit.WebViewDatabase
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -56,6 +61,8 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
     private var clearHistoryNext = false
     /** When the dashboard last moved; a new address that does not answer yet is tried again after FOLLOW_RETRY_MS. */
     private var followAt = 0L
+    /** Bumped on Log out: a session that was still starting then is dropped, not opened. */
+    private var generation = 0
     private val watch = object : Runnable {
         override fun run() {
             followServer()
@@ -107,6 +114,37 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
         startSession(path)
     }
 
+    /**
+     * Log out (audit 2026-11-27, item 7): the dashboard's sign-in goes with the phone's. Before, the
+     * WebView kept the ld_session cookie, its pages and their storage, so after Log out (and a new
+     * enrollment by someone else) the dashboard opened still signed in as the previous admin.
+     * Called on the UI thread.
+     */
+    fun signOut() {
+        generation++
+        loading = false
+        pendingPath = null
+        sessionAt = 0
+        sessionServer = null
+        leafSha256 = null
+        if (fullView != null) { fullDone?.onCustomViewHidden(); hideFull() }
+        filePick?.onReceiveValue(null)
+        filePick = null
+        val w = web ?: try { WebView(act) } catch (_: Exception) { null }
+        web = null
+        w?.let {
+            it.stopLoading()
+            it.clearHistory()
+            it.clearCache(true)
+            it.clearFormData()
+            (it.parent as? ViewGroup)?.removeView(it)
+            it.destroy()
+        }
+        say("")
+        status.visibility = View.GONE
+        clearWebData(act)
+    }
+
     /** Back inside the dashboard first; false when there is nothing to go back to. */
     fun back(): Boolean {
         if (fullView != null) { fullDone?.onCustomViewHidden(); hideFull(); return true }
@@ -126,6 +164,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
         say(act.getString(R.string.dashboard_loading))
         val pin = store.pin
         val cred = store.credential
+        val gen = generation
         Thread {
             val result = try {
                 val g = Gateway(server, pin, cred)
@@ -137,6 +176,7 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
                 Triple(null, null, act.getString(R.string.dashboard_error, e.message ?: e.javaClass.simpleName))
             }
             act.runOnUiThread {
+                if (gen != generation) return@runOnUiThread
                 loading = false
                 val (value, leaf, error) = result
                 if (value == null) { say(error ?: act.getString(R.string.dashboard_error, "")); return@runOnUiThread }
@@ -300,6 +340,26 @@ class DashboardScreen(private val act: Activity, private val ui: Ui, private val
 
     companion object {
         const val REQ_FILE = 4711
+
+        /**
+         * Forgets every WebView sign-in of the app: cookies (the dashboard's ld_session), the pages'
+         * local/session storage and IndexedDB, and saved HTTP sign-ins. Any thread; the work runs on
+         * the main thread, as WebView wants. Used by Log out and by "Release" from Nigafiy.
+         */
+        fun clearWebData(ctx: Context) {
+            val app = ctx.applicationContext
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    val cm = CookieManager.getInstance()
+                    cm.removeAllCookies { cm.flush() }
+                    cm.flush()
+                    WebStorage.getInstance().deleteAllData()
+                    WebViewDatabase.getInstance(app).clearHttpAuthUsernamePassword()
+                } catch (_: Exception) {
+                    // No WebView on the phone (disabled or being updated): nothing was stored either.
+                }
+            }
+        }
 
         // The dashboard saves files through blob: links (<a download>), which a WebView cannot
         // download: hand them to NigafiyFiles instead. Up to 200 MB. The page's CSP does not allow

@@ -365,6 +365,7 @@ class MainActivity : Activity() {
                 stopService(Intent(this, AgentService::class.java))
                 getSystemService(android.app.NotificationManager::class.java).cancelAll()
                 store.forget()
+                dashboard.signOut()
                 android.widget.Toast.makeText(this, if (told) R.string.logout_done else R.string.logout_done_offline, android.widget.Toast.LENGTH_LONG).show()
                 showTab(TAB_HOME)
             }
