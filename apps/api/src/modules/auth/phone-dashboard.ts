@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { networkInterfaces } from 'node:os';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { sha256 } from '../../common/crypto.ts';
 import { env } from '../../config/env.ts';
@@ -14,10 +15,14 @@ import { SESSION_COOKIE, readCookie } from './session.ts';
  * server, but only to a request that carries a live admin-phone session (sessions.endpoint_id of an
  * active admin phone). Anyone else gets what they got before: the API's 404. /api stays the API.
  *
+ * A browser on another computer at home (an address in the same network as one of this computer's
+ * own, owner's choice 2026-11-28) gets the pages too, login page included, and signs in as usual.
+ * Tailscale (100.64.0.0/10) and anything else outside the home network still gets the 404.
+ *
  * Only on the HTTPS listener, and only when the web app is on this computer (WEB_ORIGIN is a
  * loopback http address, as on an installed copy).
  */
-export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN): RequestHandler {
+export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN, isHome: (ip: string | undefined) => boolean = isHomeAddress): RequestHandler {
   let target: URL | null = null;
   try {
     const u = new URL(webOrigin);
@@ -49,9 +54,10 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN): Request
   return (req: Request, res: Response, next: NextFunction) => {
     if (!target || req.path.startsWith('/api/') || req.path === '/healthz' || req.path === '/readyz') return next();
     if (!(req.socket as { encrypted?: boolean }).encrypted) return next();
+    const home = isHome(req.socket.remoteAddress);
     const token = readCookie(req, SESSION_COOKIE);
-    if (!token) return next();
-    isPhoneSession(token)
+    if (!token && !home) return next();
+    (home ? Promise.resolve(true) : isPhoneSession(token!))
       .then((ok) => {
         if (!ok) return next();
         const headers = { ...req.headers, host: target!.host };
@@ -59,6 +65,11 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN): Request
         const upstream = http.request(
           { protocol: target!.protocol, hostname: target!.hostname.replace(/^\[|\]$/g, ''), port: target!.port, method: req.method, path: req.originalUrl, headers },
           (up) => {
+            // The web app writes full redirects to its own loopback address; send them back to the address asked.
+            const loc = up.headers.location;
+            if (typeof loc === 'string' && req.headers.host && loc.startsWith(target!.origin)) {
+              up.headers.location = `https://${req.headers.host}${loc.slice(target!.origin.length)}`;
+            }
             res.writeHead(up.statusCode ?? 502, up.headers);
             up.pipe(res);
           },
@@ -72,4 +83,56 @@ export function phoneDashboardProxy(webOrigin: string = env.WEB_ORIGIN): Request
       })
       .catch(next);
   };
+}
+
+function ipv4ToInt(ip: string): number | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(ip);
+  if (!m) return null;
+  const parts = m.slice(1).map(Number);
+  if (parts.some((n) => n > 255)) return null;
+  return ((parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!) >>> 0;
+}
+
+type Net = { base: number; mask: number };
+let homeNets: { at: number; nets: Net[] } | null = null;
+
+/** This computer's own IPv4 networks (address + netmask), without loopback, link-local and Tailscale. Re-read every 30 s. */
+function ownHomeNetworks(now = Date.now()): Net[] {
+  if (homeNets && now - homeNets.at < 30_000) return homeNets.nets;
+  const nets: Net[] = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const a of list ?? []) {
+      if (a.family !== 'IPv4' || a.internal) continue;
+      const ip = ipv4ToInt(a.address);
+      const mask = ipv4ToInt(a.netmask);
+      if (ip === null || mask === null || mask === 0) continue;
+      if (isTailscaleOrLinkLocal(ip)) continue;
+      nets.push({ base: (ip & mask) >>> 0, mask });
+    }
+  }
+  homeNets = { at: now, nets };
+  return nets;
+}
+
+function isTailscaleOrLinkLocal(ip: number): boolean {
+  if ((ip & 0xffc00000) >>> 0 === 0x64400000) return true; // 100.64.0.0/10 (Tailscale, carrier NAT)
+  if ((ip & 0xffff0000) >>> 0 === 0xa9fe0000) return true; // 169.254.0.0/16
+  return false;
+}
+
+/** True when the address is another device on the same home network as this computer. */
+export function isHomeAddress(remote: string | undefined, nets: Net[] = ownHomeNetworks()): boolean {
+  if (!remote) return false;
+  const ip = ipv4ToInt(remote.replace(/^::ffff:/i, ''));
+  if (ip === null || isTailscaleOrLinkLocal(ip)) return false;
+  return nets.some((n) => ((ip & n.mask) >>> 0) === n.base);
+}
+
+/** For tests: networks given as "address/netmask". */
+export function netsFrom(list: { address: string; netmask: string }[]): Net[] {
+  return list.flatMap((a) => {
+    const ip = ipv4ToInt(a.address);
+    const mask = ipv4ToInt(a.netmask);
+    return ip === null || mask === null || mask === 0 || isTailscaleOrLinkLocal(ip) ? [] : [{ base: (ip & mask) >>> 0, mask }];
+  });
 }

@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sha256 } from '../src/common/crypto.ts';
 import { isOwnOrigin } from '../src/config/env.ts';
 import { systemPool } from '../src/infrastructure/db.ts';
-import { phoneDashboardProxy } from '../src/modules/auth/phone-dashboard.ts';
+import { isHomeAddress, netsFrom, phoneDashboardProxy } from '../src/modules/auth/phone-dashboard.ts';
 import { CSRF, app, newAccount } from './helpers.ts';
 
 // Admin phones open the dashboard over the API's HTTPS listener (docs/roadmap/2026-11-26-admin-phones.md).
@@ -15,6 +15,10 @@ let web: http.Server;
 let webOrigin = '';
 beforeAll(async () => {
   web = http.createServer((req, res) => {
+    if (req.url === '/moved') {
+      res.writeHead(308, { location: `${webOrigin}/fleet/endpoints` });
+      return void res.end();
+    }
     res.writeHead(200, { 'content-type': 'text/html', 'x-from': 'web' });
     res.end(`page ${req.url} host=${req.headers.host}`);
   });
@@ -24,13 +28,13 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((r) => web.close(() => r())));
 
 /** The proxy as mounted in app.ts, on a socket that says it is TLS (the HTTPS listener) or not. */
-function listener(tls: boolean) {
+function listener(tls: boolean, home = false) {
   const a = express();
   a.use((req, _res, next) => {
     (req.socket as { encrypted?: boolean }).encrypted = tls;
     next();
   });
-  a.use(phoneDashboardProxy(webOrigin));
+  a.use(phoneDashboardProxy(webOrigin, () => home));
   a.use((_req, res) => void res.status(404).json({ error: 'not_found' }));
   return a;
 }
@@ -89,5 +93,33 @@ describe('dashboard pages for admin phones', () => {
     expect(isOwnOrigin('https://192.168.1.147:47143', { ...tls, headers: { host: 'other:1' } })).toBe(false);
     expect(isOwnOrigin('http://192.168.1.147:47100', plain)).toBe(false);
     expect(isOwnOrigin(undefined, tls)).toBe(false);
+  });
+
+  it('a browser on another computer at home gets the pages and the login page, over HTTPS only', async () => {
+    const page = await request(listener(true, true)).get('/login');
+    expect(page.status).toBe(200);
+    expect(page.headers['x-from']).toBe('web');
+    expect((await request(listener(false, true)).get('/login')).status).toBe(404);
+    expect((await request(listener(true, true)).get('/api/v1/auth/me')).status).toBe(404);
+    const moved = await request(listener(true, true)).get('/moved').set('Host', '192.168.1.147:47143').redirects(0);
+    expect(moved.status).toBe(308);
+    expect(moved.headers.location).toBe('https://192.168.1.147:47143/fleet/endpoints');
+  });
+
+  it('home means the same network as this computer, never Tailscale or the internet', () => {
+    const nets = netsFrom([
+      { address: '192.168.1.147', netmask: '255.255.255.0' },
+      { address: '100.95.99.101', netmask: '255.192.0.0' },
+      { address: '169.254.211.158', netmask: '255.255.0.0' },
+    ]);
+    expect(isHomeAddress('192.168.1.20', nets)).toBe(true);
+    expect(isHomeAddress('::ffff:192.168.1.20', nets)).toBe(true);
+    expect(isHomeAddress('192.168.2.20', nets)).toBe(false);
+    expect(isHomeAddress('100.123.69.25', nets)).toBe(false);
+    expect(isHomeAddress('169.254.1.1', nets)).toBe(false);
+    expect(isHomeAddress('8.8.8.8', nets)).toBe(false);
+    expect(isHomeAddress('127.0.0.1', nets)).toBe(false);
+    expect(isHomeAddress('fe80::1', nets)).toBe(false);
+    expect(isHomeAddress(undefined, nets)).toBe(false);
   });
 });
