@@ -37,7 +37,7 @@ func TestAllowCommandGatesEveryHandler(t *testing.T) {
 
 	executed := []string{}
 	a := &Agent{
-		baseURL:       srv.URL,
+		addrs:         fixedServer(srv.URL),
 		httpClient:    srv.Client(),
 		log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		scripts:       &scripts.Runner{},

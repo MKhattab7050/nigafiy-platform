@@ -113,7 +113,7 @@ func (a *Agent) showRecordings(user string) {
 		return
 	}
 	// Only a page of this agent's own server is ever opened.
-	url := strings.TrimRight(a.baseURL, "/") + link.Path
+	url := strings.TrimRight(a.server(), "/") + link.Path
 	if _, _, err := a.deps.Desktop.Tool(context.Background(), desktop.ToolRequest{Op: desktop.ToolOpenURL, URL: url}, nil); err != nil {
 		a.log.Info("recording link not opened", "reason", err.Error())
 		a.tellUser("recordings", "Open this address in your browser within 15 minutes: / افتح هذا العنوان في متصفحك خلال 15 دقيقة:\n"+url)

@@ -16,7 +16,7 @@ import { runApkFileSweep } from '../src/modules/endpoints/fleet-android/apks.ts'
 import { measure } from '../src/modules/endpoints/fleet-monitoring/evaluate.ts';
 import { CSRF, app, newAccount, type TestAccount } from './helpers.ts';
 import { setCliRunner } from '../src/modules/outside-access/detect.ts';
-import { phoneServerAddresses, resetPhoneAddressCache } from '../src/modules/outside-access/phone-addresses.ts';
+import { phoneServerAddresses, resetPhoneAddressCache, setLocalAddressSource } from '../src/modules/outside-access/phone-addresses.ts';
 
 // Android phones as Fleet endpoints (migration 045, docs/features/android.md). The agent side is
 // driven with the exact bodies agents/android-agent core/Protocol.kt builds; no phone is involved.
@@ -695,6 +695,7 @@ describe('Admin phones (migration 066)', () => {
     const { cred } = await adminPhone(a, 'user');
     const savedPort = env.HTTPS_PORT;
     (env as { HTTPS_PORT?: number }).HTTPS_PORT = 47143;
+    setLocalAddressSource(() => ({ ips: [], hostname: '' }));
     setCliRunner(async (file, args) => {
       if (args[0] === 'version') return { code: 0, stdout: '1.76.1', stderr: '' };
       if (args[0] === 'status') return { code: 0, stdout: JSON.stringify({ BackendState: 'Running', Self: { DNSName: 'pc.tail1.ts.net.', TailscaleIPs: ['100.101.102.103'] } }), stderr: '' };
@@ -713,6 +714,7 @@ describe('Admin phones (migration 066)', () => {
       expect(hb.body.server_addresses).toEqual(['https://100.101.102.103:47143']);
     } finally {
       setCliRunner(null);
+      setLocalAddressSource(null);
       resetPhoneAddressCache();
       (env as { HTTPS_PORT?: number }).HTTPS_PORT = savedPort;
     }

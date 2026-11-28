@@ -119,7 +119,8 @@ type Agent struct {
 	version    string
 	started    time.Time
 	tuning     Tuning
-	baseURL    string
+	// addrs: where the server is reached now (addresses.go).
+	addrs      *serverAddrs
 	httpClient *http.Client
 	// pollClient is httpClient's transport with a timeout long enough for a held long poll.
 	pollClient *http.Client
@@ -185,7 +186,7 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 		version:       version,
 		started:       time.Now(),
 		tuning:        tuning,
-		baseURL:       strings.TrimRight(cfg.ServerURL, "/"),
+		addrs:         loadServerAddrs(strings.TrimRight(cfg.ServerURL, "/"), cfg.StateDir),
 		tlsConfig:     tlsCfg,
 		httpClient:    &http.Client{Timeout: 20 * time.Second, Transport: transport, CheckRedirect: noRedirect},
 		pollClient:    &http.Client{Timeout: tuning.LongPollWait + 20*time.Second, Transport: transport, CheckRedirect: noRedirect},
@@ -208,7 +209,8 @@ func New(cfg *config.Config, deps Deps, log *slog.Logger, version string, tuning
 	a.shells = a.newShellManager(mux)
 	if deps.Desktop != nil {
 		a.sessions = rdstream.NewManager(rdstream.Config{
-			ServerURL:  a.baseURL,
+			ServerURL:  a.addrs.home,
+			ServerNow:  a.server,
 			TLS:        tlsCfg,
 			Credential: a.currentCredential,
 			UserAgent:  "nigafiy-agent/" + version,
@@ -448,16 +450,26 @@ func (a *Agent) heartbeatOnce(ctx context.Context, attempt *int) time.Duration {
 		Tray                     struct {
 			Recordings bool `json:"recordings"`
 		} `json:"tray"`
+		// Other addresses of this server; absent (nil) means keep the ones known (addresses.go).
+		ServerAddresses *[]string `json:"server_addresses"`
 	}
 	if err := a.post(ctx, "/heartbeat", body, true, &resp); err != nil {
 		if ctx.Err() != nil {
 			return 0
+		}
+		// Not reached at all: the server may answer at another address (a new one at home, Tailscale).
+		if errors.Is(err, errServerUnreachable) && a.findServer(ctx) {
+			return time.Second
 		}
 		*attempt++
 		d := min(a.tuning.MaxBackoff, (2*time.Second)<<min(*attempt, 10))
 		return d/2 + time.Duration(rand.Int64N(int64(d/2)+1))
 	}
 	*attempt = 0
+	if resp.ServerAddresses != nil {
+		a.addrs.learn(*resp.ServerAddresses)
+	}
+	a.tryHome(ctx)
 	if a.deps.Health != nil {
 		a.deps.Health(a.started, time.Now())
 	}
@@ -696,7 +708,7 @@ func (a *Agent) postWith(ctx context.Context, client *http.Client, path string, 
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/api/v1/agent"+path, bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.server()+"/api/v1/agent"+path, bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}
@@ -710,7 +722,10 @@ func (a *Agent) postWith(ctx context.Context, client *http.Client, path string, 
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		if ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("%w: %w", errServerUnreachable, err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))

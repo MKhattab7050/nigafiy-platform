@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { env } from '../../config/env.ts';
 import { tailscaleState } from './detect.ts';
 
@@ -38,6 +39,51 @@ export function addressesFrom(state: { state: string | null; ips: string[] }, ht
   return state.ips.filter(isTailscaleIpv4).map((ip) => `https://${ip}:${httpsPort}`);
 }
 
+/** 10/8, 172.16/12, 192.168/16: the home or office network addresses (not link-local, not Tailscale). */
+export function isPrivateLanIpv4(ip: string): boolean {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (!m) return false;
+  const [a = -1, b = -1, c = -1, d = -1] = m.slice(1).map(Number);
+  if ([a, b, c, d].some((n) => n > 255)) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+/** This PC on its own network: its private IPv4 addresses and its computer name. */
+export interface LocalAddresses {
+  ips: string[];
+  hostname: string;
+}
+
+function readLocal(): LocalAddresses {
+  const ips = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((a): a is os.NetworkInterfaceInfo => Boolean(a) && a?.family === 'IPv4' && !a.internal)
+    .map((a) => a.address);
+  return { ips, hostname: os.hostname() };
+}
+
+let localSource: () => LocalAddresses = readLocal;
+
+/** Tests: where this PC's own addresses come from (null: the real network interfaces). */
+export function setLocalAddressSource(fn: (() => LocalAddresses) | null): void {
+  localSource = fn ?? readLocal;
+  cache = null;
+  refreshing = null;
+}
+
+/**
+ * The home network addresses: each private IPv4 of this PC, then its computer name. When the router
+ * gives this PC a new address, an agent that knew the old one still finds it by name (Windows
+ * resolves it on the local network) and then learns the new address with its next heartbeat.
+ */
+export function lanAddressesFrom(local: LocalAddresses, httpsPort: number | undefined): string[] {
+  if (!httpsPort) return [];
+  const out = [...new Set(local.ips.filter(isPrivateLanIpv4))].map((ip) => `https://${ip}:${httpsPort}`);
+  const name = local.hostname.trim();
+  if (/^[A-Za-z0-9][A-Za-z0-9-]{0,62}$/.test(name)) out.push(`https://${name}:${httpsPort}`);
+  return out;
+}
+
 let refreshing: Promise<string[]> | null = null;
 
 async function refresh(now: number): Promise<string[]> {
@@ -47,6 +93,11 @@ async function refresh(now: number): Promise<string[]> {
     value = addressesFrom(await tailscaleState(0), env.HTTPS_PORT);
   } catch {
     value = [];
+  }
+  try {
+    value = [...value, ...lanAddressesFrom(localSource(), env.HTTPS_PORT)];
+  } catch {
+    /* no interfaces readable: Tailscale only */
   }
   cache = { at: now, value };
   return value;

@@ -55,7 +55,7 @@ func TestPastRecordingsOpensOnlyTheServersOwnLink(t *testing.T) {
 	}))
 	defer srv.Close()
 	d := &trayDesktop{answers: []userui.AskAnswer{{Answer: "text", Text: " 2 "}}}
-	a := &Agent{log: slog.New(slog.NewTextHandler(io.Discard, nil)), baseURL: srv.URL, httpClient: srv.Client(), deps: Deps{Desktop: d}}
+	a := &Agent{log: slog.New(slog.NewTextHandler(io.Discard, nil)), addrs: fixedServer(srv.URL), httpClient: srv.Client(), deps: Deps{Desktop: d}}
 	a.showRecordings(`CORP\sami`)
 	if len(linked) != 1 || linked[0]["recording_id"] != "r2" || linked[0]["user"] != `CORP\sami` {
 		t.Fatalf("linked %v", linked)

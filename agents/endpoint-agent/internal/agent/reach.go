@@ -35,7 +35,7 @@ func (a *Agent) showTray(ctx context.Context, nigafiyID string) {
 	a.nigafiyID = nigafiyID
 	first := a.trayID != nigafiyID
 	a.trayID = nigafiyID
-	info := desktop.TrayInfo{NigafiyID: nigafiyID, Server: a.baseURL, Recordings: a.trayRecordings}
+	info := desktop.TrayInfo{NigafiyID: nigafiyID, Server: a.server(), Recordings: a.trayRecordings}
 	a.mu.Unlock()
 	info.SessionOpen = a.sessionOrShellOpen()
 	go func() {

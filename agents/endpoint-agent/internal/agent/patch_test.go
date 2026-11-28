@@ -61,7 +61,7 @@ func newPatchAgent(t *testing.T) (*Agent, *fakePatch, *[]string, *[]string) {
 	fp := &fakePatch{}
 	a := &Agent{
 		log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		baseURL:    srv.URL,
+		addrs:      fixedServer(srv.URL),
 		httpClient: srv.Client(),
 		wakePatch:  make(chan struct{}, 1),
 		patchBusy:  make(chan struct{}, 1),

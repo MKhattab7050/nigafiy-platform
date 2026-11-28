@@ -94,7 +94,7 @@ func (a *Agent) rawRequest(ctx context.Context, method, path string, body []byte
 	if body != nil {
 		rd = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, a.baseURL+"/api/v1/agent"+path, rd)
+	req, err := http.NewRequestWithContext(ctx, method, a.server()+"/api/v1/agent"+path, rd)
 	if err != nil {
 		return nil, err
 	}

@@ -330,9 +330,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
     const commands = await deliverPendingCommands(db, ep.id, now);
     const idRow = (await db.query<{ nigafiy_id: string; phone_role: string }>(`SELECT nigafiy_id, phone_role FROM endpoints WHERE id = $1`, [ep.id])).rows[0];
     const nigafiyId = idRow?.nigafiy_id ?? null;
-    // Phones only: null until the server knows them (just after it started); the field is then left
-    // out so the phone keeps the addresses it has.
-    const serverAddresses = platform === 'android' ? await phoneServerAddresses() : null;
+    // Every agent: null until the server knows them (just after it started); the field is then left
+    // out so the agent keeps the addresses it has.
+    const serverAddresses = await phoneServerAddresses();
 
     if (ep.connectionState !== 'online' || cmdResults.length > 0) {
       await notifyRealtime(db, ep.organizationId, 'devices');
@@ -351,8 +351,9 @@ export async function recordHeartbeat(ep: EndpointContext, body: AgentHeartbeat)
         commands,
         // Phones only: an admin phone shows the dashboard and the network's alerts (migration 066).
         ...(platform === 'android' ? { phone_role: idRow?.phone_role ?? 'user' } : {}),
-        // Phones only: where else this server answers (this PC's Tailscale address), tried by the
-        // phone when the home address does not answer (outside-access/phone-addresses.ts).
+        // Where else this server answers (this PC's Tailscale address, its home network addresses and
+        // its computer name), tried by the agent when its address does not answer: phones away from
+        // home, and any agent after the router gave this PC a new address (outside-access/phone-addresses.ts).
         ...(serverAddresses ? { server_addresses: serverAddresses } : {}),
         ...(idRow?.phone_role === 'admin' ? { alerts: await takePhoneAlerts(ep.id) } : {}),
       },

@@ -20,7 +20,8 @@ import (
 
 func (a *Agent) newShellManager(mux *desktop.BannerMux) *shell.Manager {
 	cfg := shell.Config{
-		ServerURL:  a.baseURL,
+		ServerURL:  a.addrs.home,
+		ServerNow:  a.server,
 		TLS:        a.tlsConfig,
 		Credential: a.currentCredential,
 		UserAgent:  "nigafiy-agent/" + a.version,

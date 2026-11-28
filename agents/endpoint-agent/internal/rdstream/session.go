@@ -116,6 +116,8 @@ type OpenResult struct {
 
 type Config struct {
 	ServerURL  string
+	// ServerNow, when set, is the server's address now (the agent follows address changes); else ServerURL.
+	ServerNow func() string
 	TLS        *tls.Config
 	Credential func() string
 	UserAgent  string
@@ -410,7 +412,11 @@ func StreamURL(server, sessionID string) (string, error) {
 func (l *live) run(ctx context.Context) {
 	defer close(l.done)
 	cfg := l.m.cfg
-	target, err := StreamURL(cfg.ServerURL, l.req.SessionID)
+	server := cfg.ServerURL
+	if cfg.ServerNow != nil {
+		server = cfg.ServerNow()
+	}
+	target, err := StreamURL(server, l.req.SessionID)
 	if err != nil {
 		cfg.Log.Warn("live stream disabled", "error", err.Error())
 		return

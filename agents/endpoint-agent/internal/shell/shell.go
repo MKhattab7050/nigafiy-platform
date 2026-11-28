@@ -86,6 +86,8 @@ var shellIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{16,64}$`)
 // Config wires the manager to the agent.
 type Config struct {
 	ServerURL  string
+	// ServerNow, when set, is the server's address now (the agent follows address changes); else ServerURL.
+	ServerNow func() string
 	TLS        *tls.Config
 	Credential func() string
 	UserAgent  string
@@ -183,7 +185,11 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (OpenResult, error)
 	}
 	m.mu.Unlock()
 
-	target, err := StreamURL(m.cfg.ServerURL, req.ShellID)
+	server := m.cfg.ServerURL
+	if m.cfg.ServerNow != nil {
+		server = m.cfg.ServerNow()
+	}
+	target, err := StreamURL(server, req.ShellID)
 	if err != nil {
 		return OpenResult{}, err
 	}
